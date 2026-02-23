@@ -773,7 +773,7 @@
   var require_react_dom_production = __commonJS({
     "node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
-      var React2 = require_react();
+      var React = require_react();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
         if (1 < arguments.length) {
@@ -813,7 +813,7 @@
           implementation
         };
       }
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       function getCrossOriginStringAs(as, input) {
         if ("font" === as) return "";
         if ("string" === typeof input)
@@ -949,7 +949,7 @@
     "node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
-      var React2 = require_react();
+      var React = require_react();
       var ReactDOM = require_react_dom();
       function formatProdErrorMessage(code) {
         var url = "https://react.dev/errors/" + code;
@@ -1133,7 +1133,7 @@
         return null;
       }
       var isArrayImpl = Array.isArray;
-      var ReactSharedInternals = React2.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+      var ReactSharedInternals = React.__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var ReactDOMSharedInternals = ReactDOM.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
       var sharedNotPendingObject = {
         pending: false,
@@ -12125,7 +12125,7 @@
           0 === i && attemptExplicitHydrationTarget(target);
         }
       };
-      var isomorphicReactPackageVersion$jscomp$inline_1785 = React2.version;
+      var isomorphicReactPackageVersion$jscomp$inline_1785 = React.version;
       if ("19.1.4" !== isomorphicReactPackageVersion$jscomp$inline_1785)
         throw Error(
           formatProdErrorMessage(
@@ -12250,6 +12250,48 @@
     }
   });
 
+  // node_modules/react/cjs/react-jsx-runtime.production.js
+  var require_react_jsx_runtime_production = __commonJS({
+    "node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
+      "use strict";
+      var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
+      var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
+      function jsxProd(type, config, maybeKey) {
+        var key = null;
+        void 0 !== maybeKey && (key = "" + maybeKey);
+        void 0 !== config.key && (key = "" + config.key);
+        if ("key" in config) {
+          maybeKey = {};
+          for (var propName in config)
+            "key" !== propName && (maybeKey[propName] = config[propName]);
+        } else maybeKey = config;
+        config = maybeKey.ref;
+        return {
+          $$typeof: REACT_ELEMENT_TYPE,
+          type,
+          key,
+          ref: void 0 !== config ? config : null,
+          props: maybeKey
+        };
+      }
+      exports.Fragment = REACT_FRAGMENT_TYPE;
+      exports.jsx = jsxProd;
+      exports.jsxs = jsxProd;
+    }
+  });
+
+  // node_modules/react/jsx-runtime.js
+  var require_jsx_runtime = __commonJS({
+    "node_modules/react/jsx-runtime.js"(exports, module) {
+      "use strict";
+      if (true) {
+        module.exports = require_react_jsx_runtime_production();
+      } else {
+        module.exports = null;
+      }
+    }
+  });
+
   // src/ui/main.jsx
   var import_client = __toESM(require_client());
 
@@ -12368,6 +12410,7 @@
   }
 
   // src/ui/App.jsx
+  var import_jsx_runtime = __toESM(require_jsx_runtime());
   var Emitter = class {
     constructor() {
       this._h = {};
@@ -12612,7 +12655,7 @@
         desc: ""
       } });
     }
-    if (error) return /* @__PURE__ */ React.createElement("div", { style: {
+    if (error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       fontFamily: FONT,
       display: "flex",
       alignItems: "center",
@@ -12623,8 +12666,12 @@
       flexDirection: "column",
       gap: 12,
       padding: 24
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 32 } }, "\u26A0\uFE0F"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 16, fontWeight: 300 } }, "Failed to load PearCal"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "#888", fontFamily: "monospace" } }, error));
-    if (!ready) return /* @__PURE__ */ React.createElement("div", { style: {
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 32 }, children: "\u26A0\uFE0F" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 16, fontWeight: 300 }, children: "Failed to load PearCal" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "#888", fontFamily: "monospace" }, children: error })
+    ] });
+    if (!ready) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       fontFamily: FONT,
       display: "flex",
       alignItems: "center",
@@ -12634,8 +12681,11 @@
       color: "#888",
       flexDirection: "column",
       gap: 16
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 36 } }, "\u{1F350}"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 300, letterSpacing: "0.06em" } }, "Loading PearCal\u2026"));
-    return /* @__PURE__ */ React.createElement("div", { style: {
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 36 }, children: "\u{1F350}" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, letterSpacing: "0.06em" }, children: "Loading PearCal\u2026" })
+    ] });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
       fontFamily: FONT,
       fontWeight: 300,
       minHeight: "100vh",
@@ -12643,107 +12693,123 @@
       display: "flex",
       flexDirection: "column",
       alignItems: "center"
-    } }, /* @__PURE__ */ React.createElement("div", { style: { width: "100%", maxWidth: 430, minHeight: "100vh", display: "flex", flexDirection: "column", ...th.bg } }, /* @__PURE__ */ React.createElement("div", { style: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "16px 20px 8px",
-      ...th.headerBg
-    } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20, fontWeight: 300, ...th.text } }, "\u{1F350} PearCal"), /* @__PURE__ */ React.createElement("button", { onClick: () => setDark((d) => !d), style: { ...th.iconBtn, fontSize: 18 } }, dark ? "\u2600\uFE0F" : "\u{1F319}")), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, overflowY: "auto", paddingBottom: 72 } }, tab === "calendar" && /* @__PURE__ */ React.createElement(
-      CalendarTab,
-      {
-        th,
-        viewDate,
-        setViewDate,
-        calDays,
-        selectedDate,
-        setSelectedDate,
-        eventsOnDate,
-        todayStr: todayStr(),
-        dateStr,
-        selectedEvents: eventsOnDate(selectedDate),
-        openCreate,
-        setModal,
-        events
-      }
-    ), tab === "groups" && /* @__PURE__ */ React.createElement(
-      GroupsTab,
-      {
-        th,
-        groups,
-        profile,
-        onNewGroup: () => setNewGroupOpen(true),
-        onSettings: (g) => setSettingsGroup({ ...g })
-      }
-    ), tab === "profile" && /* @__PURE__ */ React.createElement(ProfileTab, { th, profile, groups, onUpdateProfile: updateProfile })), /* @__PURE__ */ React.createElement("div", { style: {
-      position: "fixed",
-      bottom: 0,
-      left: "50%",
-      transform: "translateX(-50%)",
-      width: "100%",
-      maxWidth: 430,
-      ...th.navBg,
-      display: "flex",
-      borderTop: `1px solid ${th.border}`,
-      zIndex: 50
-    } }, [
-      { key: "calendar", icon: "\u{1F4C5}", label: "Calendar" },
-      { key: "groups", icon: "\u{1F465}", label: "Groups" },
-      { key: "profile", icon: "\u{1F464}", label: "Profile" }
-    ].map((t) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: t.key,
-        onClick: () => setTab(t.key),
-        style: {
-          flex: 1,
-          padding: "10px 0",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 2,
-          fontFamily: FONT
+    }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { width: "100%", maxWidth: 430, minHeight: "100vh", display: "flex", flexDirection: "column", ...th.bg }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "16px 20px 8px",
+        ...th.headerBg
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20, fontWeight: 300, ...th.text }, children: "\u{1F350} PearCal" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDark((d) => !d), style: { ...th.iconBtn, fontSize: 18 }, children: dark ? "\u2600\uFE0F" : "\u{1F319}" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, overflowY: "auto", paddingBottom: 72 }, children: [
+        tab === "calendar" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          CalendarTab,
+          {
+            th,
+            viewDate,
+            setViewDate,
+            calDays,
+            selectedDate,
+            setSelectedDate,
+            eventsOnDate,
+            todayStr: todayStr(),
+            dateStr,
+            selectedEvents: eventsOnDate(selectedDate),
+            openCreate,
+            setModal,
+            events
+          }
+        ),
+        tab === "groups" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          GroupsTab,
+          {
+            th,
+            groups,
+            profile,
+            onNewGroup: () => setNewGroupOpen(true),
+            onSettings: (g) => setSettingsGroup({ ...g })
+          }
+        ),
+        tab === "profile" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(ProfileTab, { th, profile, groups, onUpdateProfile: updateProfile })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        position: "fixed",
+        bottom: 0,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: "100%",
+        maxWidth: 430,
+        ...th.navBg,
+        display: "flex",
+        borderTop: `1px solid ${th.border}`,
+        zIndex: 50
+      }, children: [
+        { key: "calendar", icon: "\u{1F4C5}", label: "Calendar" },
+        { key: "groups", icon: "\u{1F465}", label: "Groups" },
+        { key: "profile", icon: "\u{1F464}", label: "Profile" }
+      ].map((t) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "button",
+        {
+          onClick: () => setTab(t.key),
+          style: {
+            flex: 1,
+            padding: "10px 0",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 2,
+            fontFamily: FONT
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 22 }, children: t.icon }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              fontSize: 11,
+              fontWeight: tab === t.key ? 400 : 300,
+              color: tab === t.key ? th.accent : th.muted
+            }, children: t.label })
+          ]
+        },
+        t.key
+      )) }),
+      modal && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        EventModal,
+        {
+          th,
+          modal,
+          setModal,
+          groups,
+          onSave: saveEvent,
+          onDelete: deleteEvent,
+          REMINDER_OPTIONS
         }
-      },
-      /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, t.icon),
-      /* @__PURE__ */ React.createElement("span", { style: {
-        fontSize: 11,
-        fontWeight: tab === t.key ? 400 : 300,
-        color: tab === t.key ? th.accent : th.muted
-      } }, t.label)
-    ))), modal && /* @__PURE__ */ React.createElement(
-      EventModal,
-      {
-        th,
-        modal,
-        setModal,
-        groups,
-        onSave: saveEvent,
-        onDelete: deleteEvent,
-        REMINDER_OPTIONS
-      }
-    ), newGroupOpen && /* @__PURE__ */ React.createElement(
-      NewGroupModal,
-      {
-        th,
-        onClose: () => setNewGroupOpen(false),
-        onAdd: addGroup,
-        me: profile
-      }
-    ), settingsGroup && /* @__PURE__ */ React.createElement(
-      GroupSettingsModal,
-      {
-        th,
-        group: settingsGroup,
-        me: profile,
-        onClose: () => setSettingsGroup(null),
-        onUpdate: updateGroup,
-        onDelete: deleteGroup
-      }
-    )));
+      ),
+      newGroupOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        NewGroupModal,
+        {
+          th,
+          onClose: () => setNewGroupOpen(false),
+          onAdd: addGroup,
+          me: profile
+        }
+      ),
+      settingsGroup && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        GroupSettingsModal,
+        {
+          th,
+          group: settingsGroup,
+          me: profile,
+          onClose: () => setSettingsGroup(null),
+          onUpdate: updateGroup,
+          onDelete: deleteGroup
+        }
+      )
+    ] }) });
   }
   function todayStr() {
     const t = /* @__PURE__ */ new Date();
@@ -12753,10 +12819,10 @@
     return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
   function Label({ th, children }) {
-    return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 4, letterSpacing: "0.04em" } }, children);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 4, letterSpacing: "0.04em" }, children });
   }
   function Toggle({ val, onChange, accent }) {
-    return /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "div",
       {
         onClick: () => onChange(!val),
@@ -12768,25 +12834,28 @@
           cursor: "pointer",
           position: "relative",
           transition: "background 0.2s"
-        }
-      },
-      /* @__PURE__ */ React.createElement("div", { style: {
-        position: "absolute",
-        top: 2,
-        left: val ? 22 : 2,
-        width: 20,
-        height: 20,
-        borderRadius: "50%",
-        background: "#fff",
-        transition: "left 0.2s"
-      } })
+        },
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          position: "absolute",
+          top: 2,
+          left: val ? 22 : 2,
+          width: 20,
+          height: 20,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left 0.2s"
+        } })
+      }
     );
   }
   function InfoRow({ th, label, val }) {
-    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${th.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: th.muted, fontWeight: 300 } }, label), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 300, ...th.text } }, val));
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", padding: "5px 0", borderBottom: `1px solid ${th.border}` }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: th.muted, fontWeight: 300 }, children: label }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: val })
+    ] });
   }
   function GroupIcon({ group, size = 42, radius = 12 }) {
-    return /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
       width: size,
       height: size,
       borderRadius: radius,
@@ -12797,7 +12866,7 @@
       justifyContent: "center",
       fontSize: size * 0.5,
       flexShrink: 0
-    } }, group.icon ? /* @__PURE__ */ React.createElement("img", { src: group.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : group.emoji);
+    }, children: group.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: group.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : group.emoji });
   }
   function CalendarTab({
     th,
@@ -12846,121 +12915,159 @@
       background: active ? th.accent : "transparent",
       color: active ? "#fff" : th.text.color
     });
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: "0 16px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 8px" } }, /* @__PURE__ */ React.createElement("button", { onClick: prev, style: th.iconBtn }, "\u25C0"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 4, alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => {
-          setShowMonthPicker((v) => !v);
-          setShowYearPicker(false);
-        },
-        style: {
-          ...th.iconBtn,
-          fontWeight: 300,
-          fontSize: 17,
-          padding: "4px 8px",
-          border: `1px solid ${showMonthPicker ? th.accent : th.border}`,
-          borderRadius: 8
-        }
-      },
-      MONTHS[m],
-      " \u25BE"
-    ), showMonthPicker && /* @__PURE__ */ React.createElement("div", { style: { ...dropStyle, ...th.bg, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, width: 216 } }, MONTHS.map((mn, i) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: mn,
-        style: pickBtn(m === i),
-        onClick: () => {
-          setViewDate((v) => ({ ...v, m: i }));
-          setShowMonthPicker(false);
-        }
-      },
-      mn.slice(0, 3)
-    )))), /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => {
-          setShowYearPicker((v) => !v);
-          setShowMonthPicker(false);
-        },
-        style: {
-          ...th.iconBtn,
-          fontWeight: 300,
-          fontSize: 17,
-          padding: "4px 8px",
-          border: `1px solid ${showYearPicker ? th.accent : th.border}`,
-          borderRadius: 8
-        }
-      },
-      y,
-      " \u25BE"
-    ), showYearPicker && /* @__PURE__ */ React.createElement("div", { style: { ...dropStyle, ...th.bg, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, width: 224 } }, years.map((yr) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: yr,
-        style: pickBtn(y === yr),
-        onClick: () => {
-          setViewDate((v) => ({ ...v, y: yr }));
-          setShowYearPicker(false);
-        }
-      },
-      yr
-    ))))), /* @__PURE__ */ React.createElement("button", { onClick: next, style: th.iconBtn }, "\u25B6")), (viewDate.y !== parseInt(todayStr2.slice(0, 4)) || viewDate.m !== parseInt(todayStr2.slice(5, 7)) - 1) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", marginBottom: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => {
-      setViewDate({ y: parseInt(todayStr2.slice(0, 4)), m: parseInt(todayStr2.slice(5, 7)) - 1 });
-      setSelectedDate(todayStr2);
-    }, style: { ...th.pillBtn, fontSize: 12, padding: "4px 16px", fontWeight: 300 } }, "\u2B24 Today")), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 } }, DAYS.map((d) => /* @__PURE__ */ React.createElement("div", { key: d, style: { textAlign: "center", fontSize: 12, fontWeight: 300, color: th.muted, padding: "4px 0" } }, d))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 } }, calDays.map((d, i) => {
-      if (!d) return /* @__PURE__ */ React.createElement("div", { key: "e" + i });
-      const ds = dateStr2(y, m, d);
-      const evs = eventsOnDate(ds);
-      const isToday = ds === todayStr2;
-      const isSel = ds === selectedDate;
-      return /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          key: ds,
-          onClick: () => setSelectedDate(ds),
-          style: {
-            background: isSel ? th.accent : isToday ? th.accentFaint : "none",
-            border: "none",
-            borderRadius: 10,
-            padding: "6px 2px",
-            cursor: "pointer",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: 2,
-            fontFamily: FONT
-          }
-        },
-        /* @__PURE__ */ React.createElement("span", { style: {
-          fontSize: 14,
-          fontWeight: isToday || isSel ? 400 : 300,
-          color: isSel ? "#fff" : isToday ? th.accent : th.text.color
-        } }, d),
-        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 2, minHeight: 6 } }, evs.slice(0, 3).map((e) => /* @__PURE__ */ React.createElement("div", { key: e.id, style: { width: 6, height: 6, borderRadius: "50%", background: e.color } })))
-      );
-    })), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 15, ...th.text } }, selectedDate === todayStr2 ? "Today " : "", selectedDate && (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString(
-      "en-US",
-      { weekday: "long", month: "short", day: "numeric" }
-    )), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => openCreate(selectedDate),
-        style: { ...th.pillBtn, fontSize: 13, padding: "6px 14px", fontWeight: 300 }
-      },
-      "+ Event"
-    )), selectedEvents.length === 0 ? /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: th.muted, fontSize: 14, fontWeight: 300, padding: "32px 0" } }, "No events \u2014 tap + to create one") : selectedEvents.map((ev) => /* @__PURE__ */ React.createElement(EventCard, { key: ev.id, ev, th, onClick: () => setModal({ mode: "edit", event: { ...ev } }) }))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 24 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 15, ...th.text } }, "Upcoming"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8 } }, events.filter((e) => e.date > selectedDate).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4).map((ev) => /* @__PURE__ */ React.createElement(
-      EventCard,
-      {
-        key: ev.id,
-        ev,
-        th,
-        compact: true,
-        onClick: () => setModal({ mode: "edit", event: { ...ev } })
-      }
-    )))));
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 16px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 8px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: prev, style: th.iconBtn, children: "\u25C0" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4, alignItems: "center" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  setShowMonthPicker((v) => !v);
+                  setShowYearPicker(false);
+                },
+                style: {
+                  ...th.iconBtn,
+                  fontWeight: 300,
+                  fontSize: 17,
+                  padding: "4px 8px",
+                  border: `1px solid ${showMonthPicker ? th.accent : th.border}`,
+                  borderRadius: 8
+                },
+                children: [
+                  MONTHS[m],
+                  " \u25BE"
+                ]
+              }
+            ),
+            showMonthPicker && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { ...dropStyle, ...th.bg, display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, width: 216 }, children: MONTHS.map((mn, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                style: pickBtn(m === i),
+                onClick: () => {
+                  setViewDate((v) => ({ ...v, m: i }));
+                  setShowMonthPicker(false);
+                },
+                children: mn.slice(0, 3)
+              },
+              mn
+            )) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  setShowYearPicker((v) => !v);
+                  setShowMonthPicker(false);
+                },
+                style: {
+                  ...th.iconBtn,
+                  fontWeight: 300,
+                  fontSize: 17,
+                  padding: "4px 8px",
+                  border: `1px solid ${showYearPicker ? th.accent : th.border}`,
+                  borderRadius: 8
+                },
+                children: [
+                  y,
+                  " \u25BE"
+                ]
+              }
+            ),
+            showYearPicker && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { ...dropStyle, ...th.bg, display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 4, width: 224 }, children: years.map((yr) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                style: pickBtn(y === yr),
+                onClick: () => {
+                  setViewDate((v) => ({ ...v, y: yr }));
+                  setShowYearPicker(false);
+                },
+                children: yr
+              },
+              yr
+            )) })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: next, style: th.iconBtn, children: "\u25B6" })
+      ] }),
+      (viewDate.y !== parseInt(todayStr2.slice(0, 4)) || viewDate.m !== parseInt(todayStr2.slice(5, 7)) - 1) && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "center", marginBottom: 8 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
+        setViewDate({ y: parseInt(todayStr2.slice(0, 4)), m: parseInt(todayStr2.slice(5, 7)) - 1 });
+        setSelectedDate(todayStr2);
+      }, style: { ...th.pillBtn, fontSize: 12, padding: "4px 16px", fontWeight: 300 }, children: "\u2B24 Today" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }, children: DAYS.map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", fontSize: 12, fontWeight: 300, color: th.muted, padding: "4px 0" }, children: d }, d)) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }, children: calDays.map((d, i) => {
+        if (!d) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {}, "e" + i);
+        const ds = dateStr2(y, m, d);
+        const evs = eventsOnDate(ds);
+        const isToday = ds === todayStr2;
+        const isSel = ds === selectedDate;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            onClick: () => setSelectedDate(ds),
+            style: {
+              background: isSel ? th.accent : isToday ? th.accentFaint : "none",
+              border: "none",
+              borderRadius: 10,
+              padding: "6px 2px",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 2,
+              fontFamily: FONT
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                fontSize: 14,
+                fontWeight: isToday || isSel ? 400 : 300,
+                color: isSel ? "#fff" : isToday ? th.accent : th.text.color
+              }, children: d }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, minHeight: 6 }, children: evs.slice(0, 3).map((e) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 6, height: 6, borderRadius: "50%", background: e.color } }, e.id)) })
+            ]
+          },
+          ds
+        );
+      }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 20 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontWeight: 300, fontSize: 15, ...th.text }, children: [
+            selectedDate === todayStr2 ? "Today " : "",
+            selectedDate && (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString(
+              "en-US",
+              { weekday: "long", month: "short", day: "numeric" }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => openCreate(selectedDate),
+              style: { ...th.pillBtn, fontSize: 13, padding: "6px 14px", fontWeight: 300 },
+              children: "+ Event"
+            }
+          )
+        ] }),
+        selectedEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", color: th.muted, fontSize: 14, fontWeight: 300, padding: "32px 0" }, children: "No events \u2014 tap + to create one" }) : selectedEvents.map((ev) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(EventCard, { ev, th, onClick: () => setModal({ mode: "edit", event: { ...ev } }) }, ev.id))
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 24 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 15, ...th.text }, children: "Upcoming" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }, children: events.filter((e) => e.date > selectedDate).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4).map((ev) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          EventCard,
+          {
+            ev,
+            th,
+            compact: true,
+            onClick: () => setModal({ mode: "edit", event: { ...ev } })
+          },
+          ev.id
+        )) })
+      ] })
+    ] });
   }
   function EventCard({ ev, th, onClick, compact }) {
-    return /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
         onClick,
@@ -12974,13 +13081,21 @@
           ...th.card,
           borderLeft: `4px solid ${ev.color}`,
           marginBottom: compact ? 0 : 8
-        }
-      },
-      /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text } }, ev.title), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 } }, ev.allDay ? "All day" : `${ev.start} \u2013 ${ev.end}`, compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
-        "en-US",
-        { month: "short", day: "numeric" }
-      )}`)),
-      /* @__PURE__ */ React.createElement("div", { style: { width: 10, height: 10, borderRadius: "50%", background: ev.color, marginTop: 4, flexShrink: 0 } })
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text }, children: ev.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
+              ev.allDay ? "All day" : `${ev.start} \u2013 ${ev.end}`,
+              compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
+                "en-US",
+                { month: "short", day: "numeric" }
+              )}`
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 10, height: 10, borderRadius: "50%", background: ev.color, marginTop: 4, flexShrink: 0 } })
+        ]
+      }
     );
   }
   function EventModal({ th, modal, setModal, groups, onSave, onDelete, REMINDER_OPTIONS: REMINDER_OPTIONS2 }) {
@@ -13024,7 +13139,7 @@
       boxSizing: "border-box",
       outline: "none"
     };
-    return /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
       position: "fixed",
       inset: 0,
       background: "rgba(0,0,0,0.6)",
@@ -13032,7 +13147,7 @@
       display: "flex",
       alignItems: "flex-end",
       justifyContent: "center"
-    } }, /* @__PURE__ */ React.createElement("div", { style: {
+    }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       width: "100%",
       maxWidth: 430,
       ...th.bg,
@@ -13040,149 +13155,202 @@
       maxHeight: "92vh",
       overflowY: "auto",
       paddingBottom: 24
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } })), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 17, ...th.text } }, modal.mode === "create" ? "New Event" : "Edit Event"), /* @__PURE__ */ React.createElement("button", { onClick: () => setModal(null), style: { ...th.iconBtn, fontSize: 20 } }, "\u2715")), /* @__PURE__ */ React.createElement("div", { style: { padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 } }, /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        style: inp,
-        placeholder: "Event title",
-        value: ev.title,
-        onChange: (e) => set("title", e.target.value)
-      }
-    ), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Date"), /* @__PURE__ */ React.createElement("input", { type: "date", style: inp, value: ev.date, onChange: (e) => set("date", e.target.value) })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 300, ...th.text } }, "All Day"), /* @__PURE__ */ React.createElement(Toggle, { val: ev.allDay, onChange: (v) => set("allDay", v), accent: th.accent })), !ev.allDay && /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Start"), /* @__PURE__ */ React.createElement("input", { type: "time", style: inp, value: ev.start, onChange: (e) => set("start", e.target.value) })), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "End"), /* @__PURE__ */ React.createElement("input", { type: "time", style: inp, value: ev.end, onChange: (e) => set("end", e.target.value) }))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Reminder"), /* @__PURE__ */ React.createElement(
-      "select",
-      {
-        style: { ...inp, appearance: "none" },
-        value: ev.reminder,
-        onChange: (e) => set("reminder", Number(e.target.value))
-      },
-      REMINDER_OPTIONS2.map((r) => /* @__PURE__ */ React.createElement("option", { key: r.value, value: r.value }, r.label))
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Share with Peer Group(s)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 } }, groups.map((g) => {
-      const sel = ev.groups.includes(g.id);
-      return /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          key: g.id,
-          onClick: () => toggleGroup(g.id),
-          style: {
-            padding: "6px 14px",
-            borderRadius: 20,
-            border: `2px solid ${g.color}`,
-            fontFamily: FONT,
-            background: sel ? g.color : "transparent",
-            color: sel ? "#fff" : g.color,
-            fontSize: 13,
-            fontWeight: 300,
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            gap: 6
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: modal.mode === "create" ? "New Event" : "Edit Event" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setModal(null), style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "16px 20px", display: "flex", flexDirection: "column", gap: 14 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "input",
+          {
+            style: inp,
+            placeholder: "Event title",
+            value: ev.title,
+            onChange: (e) => set("title", e.target.value)
           }
-        },
-        /* @__PURE__ */ React.createElement("span", { style: {
-          width: 18,
-          height: 18,
-          borderRadius: 4,
-          overflow: "hidden",
-          display: "inline-flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 14,
-          flexShrink: 0
-        } }, g.icon ? /* @__PURE__ */ React.createElement("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji),
-        g.name
-      );
-    }))), allMembers.length > 0 && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Invite Members"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 } }, allMembers.map((m) => {
-      const sel = ev.invitees.includes(m.id);
-      const g = groups.find((x) => x.members.some((mb) => mb.id === m.id));
-      const col = g ? g.color : "#888";
-      return /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          key: m.id,
-          onClick: () => toggleInvitee(m.id),
-          style: {
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "5px 12px 5px 6px",
-            borderRadius: 20,
-            border: `2px solid ${col}`,
-            background: sel ? col : "transparent",
-            cursor: "pointer",
-            fontFamily: FONT
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Date" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "date", style: inp, value: ev.date, onChange: (e) => set("date", e.target.value) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "All Day" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => set("allDay", v), accent: th.accent })
+        ] }),
+        !ev.allDay && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Start" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.start, onChange: (e) => set("start", e.target.value) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.end, onChange: (e) => set("end", e.target.value) })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Reminder" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "select",
+            {
+              style: { ...inp, appearance: "none" },
+              value: ev.reminder,
+              onChange: (e) => set("reminder", Number(e.target.value)),
+              children: REMINDER_OPTIONS2.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.value, children: r.label }, r.value))
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Share with Peer Group(s)" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
+            const sel = ev.groups.includes(g.id);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => toggleGroup(g.id),
+                style: {
+                  padding: "6px 14px",
+                  borderRadius: 20,
+                  border: `2px solid ${g.color}`,
+                  fontFamily: FONT,
+                  background: sel ? g.color : "transparent",
+                  color: sel ? "#fff" : g.color,
+                  fontSize: 13,
+                  fontWeight: 300,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    width: 18,
+                    height: 18,
+                    borderRadius: 4,
+                    overflow: "hidden",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 14,
+                    flexShrink: 0
+                  }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                  g.name
+                ]
+              },
+              g.id
+            );
+          }) })
+        ] }),
+        allMembers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Invite Members" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: allMembers.map((m) => {
+            const sel = ev.invitees.includes(m.id);
+            const g = groups.find((x) => x.members.some((mb) => mb.id === m.id));
+            const col = g ? g.color : "#888";
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => toggleInvitee(m.id),
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "5px 12px 5px 6px",
+                  borderRadius: 20,
+                  border: `2px solid ${col}`,
+                  background: sel ? col : "transparent",
+                  cursor: "pointer",
+                  fontFamily: FONT
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                    width: 24,
+                    height: 24,
+                    borderRadius: "50%",
+                    background: col,
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 300
+                  }, children: m.avatar }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m.name })
+                ]
+              },
+              m.id
+            );
+          }) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Color" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 6 }, children: ["#6C9BF5", "#5DBF8A", "#E5864A", "#D45F7A", "#A97FD4", "#4BBDCC"].map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => set("color", c),
+              style: {
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: c,
+                cursor: "pointer",
+                border: ev.color === c ? "3px solid #fff" : "3px solid transparent"
+              }
+            },
+            c
+          )) })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "textarea",
+            {
+              style: { ...inp, resize: "none", minHeight: 60 },
+              placeholder: "Optional notes\u2026",
+              value: ev.desc,
+              onChange: (e) => set("desc", e.target.value)
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: handleSave,
+            disabled: saving,
+            style: {
+              ...th.pillBtn,
+              width: "100%",
+              padding: "13px",
+              fontSize: 15,
+              fontWeight: 300,
+              marginTop: 4,
+              opacity: saving ? 0.6 : 1
+            },
+            children: saving ? "Saving\u2026" : modal.mode === "create" ? "Create Event" : "Save Changes"
           }
-        },
-        /* @__PURE__ */ React.createElement("div", { style: {
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
-          background: col,
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 12,
-          fontWeight: 300
-        } }, m.avatar),
-        /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 } }, m.name)
-      );
-    }))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Color"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 6 } }, ["#6C9BF5", "#5DBF8A", "#E5864A", "#D45F7A", "#A97FD4", "#4BBDCC"].map((c) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: c,
-        onClick: () => set("color", c),
-        style: {
-          width: 28,
-          height: 28,
-          borderRadius: "50%",
-          background: c,
-          cursor: "pointer",
-          border: ev.color === c ? "3px solid #fff" : "3px solid transparent"
-        }
-      }
-    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Notes"), /* @__PURE__ */ React.createElement(
-      "textarea",
-      {
-        style: { ...inp, resize: "none", minHeight: 60 },
-        placeholder: "Optional notes\u2026",
-        value: ev.desc,
-        onChange: (e) => set("desc", e.target.value)
-      }
-    )), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: handleSave,
-        disabled: saving,
-        style: {
-          ...th.pillBtn,
-          width: "100%",
-          padding: "13px",
-          fontSize: 15,
-          fontWeight: 300,
-          marginTop: 4,
-          opacity: saving ? 0.6 : 1
-        }
-      },
-      saving ? "Saving\u2026" : modal.mode === "create" ? "Create Event" : "Save Changes"
-    ), modal.mode === "edit" && /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => onDelete(ev.id),
-        style: {
-          background: "transparent",
-          border: `1px solid #D45F7A`,
-          borderRadius: 12,
-          padding: "11px",
-          color: "#D45F7A",
-          fontSize: 14,
-          fontWeight: 300,
-          fontFamily: FONT,
-          cursor: "pointer",
-          width: "100%"
-        }
-      },
-      "Delete Event"
-    ))));
+        ),
+        modal.mode === "edit" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => onDelete(ev.id),
+            style: {
+              background: "transparent",
+              border: `1px solid #D45F7A`,
+              borderRadius: 12,
+              padding: "11px",
+              color: "#D45F7A",
+              fontSize: 14,
+              fontWeight: 300,
+              fontFamily: FONT,
+              cursor: "pointer",
+              width: "100%"
+            },
+            children: "Delete Event"
+          }
+        )
+      ] })
+    ] }) });
   }
   function GroupsTab({ th, groups, profile, onNewGroup, onSettings }) {
     const [copiedId, setCopiedId] = (0, import_react.useState)(null);
@@ -13196,59 +13364,87 @@
     function previewInvite(g) {
       return buildInviteLink(g, profile?.publicKey ?? "unknown");
     }
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: "16px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 17, ...th.text } }, "Peer Groups"), /* @__PURE__ */ React.createElement("button", { onClick: onNewGroup, style: { ...th.pillBtn, fontSize: 13, padding: "6px 14px", fontWeight: 300 } }, "+ New Group")), groups.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", color: th.muted, fontSize: 14, fontWeight: 300, padding: "48px 0" } }, "No groups yet \u2014 create one!"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } }, groups.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.id, style: { ...th.card, borderRadius: 14, padding: "16px", borderLeft: `4px solid ${g.color}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 } }, /* @__PURE__ */ React.createElement(GroupIcon, { group: g }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 300, fontSize: 15, ...th.text } }, g.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 } }, g.members.length, " member", g.members.length !== 1 ? "s" : "")), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => onSettings(g),
-        style: { ...th.iconBtn, fontSize: 18, padding: "6px", borderRadius: 10, border: `1px solid ${th.border}` }
-      },
-      "\u2699\uFE0F"
-    )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" } }, g.members.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.id, style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: 34,
-      height: 34,
-      borderRadius: "50%",
-      background: g.color,
-      color: "#fff",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: 300,
-      fontSize: 13
-    } }, m.avatar), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 } }, m.name)))), /* @__PURE__ */ React.createElement("div", { style: {
-      background: th.inputBg,
-      borderRadius: 8,
-      padding: "8px 10px",
-      display: "flex",
-      alignItems: "center",
-      gap: 8
-    } }, /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 11,
-      color: th.muted,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      flex: 1,
-      fontFamily: "monospace",
-      fontWeight: 300
-    } }, previewInvite(g)), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: (e) => copyInvite(g, e),
-        style: {
-          background: copiedId === g.id ? "#5DBF8A" : g.color,
-          border: "none",
-          borderRadius: 6,
-          fontFamily: FONT,
-          color: "#fff",
-          fontSize: 12,
-          fontWeight: 300,
-          padding: "5px 10px",
-          cursor: "pointer",
-          flexShrink: 0
-        }
-      },
-      copiedId === g.id ? "Copied!" : "Copy Invite"
-    ))))));
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "16px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: "Peer Groups" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onNewGroup, style: { ...th.pillBtn, fontSize: 13, padding: "6px 14px", fontWeight: 300 }, children: "+ New Group" })
+      ] }),
+      groups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", color: th.muted, fontSize: 14, fontWeight: 300, padding: "48px 0" }, children: "No groups yet \u2014 create one!" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 14, padding: "16px", borderLeft: `4px solid ${g.color}` }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupIcon, { group: g }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 15, ...th.text }, children: g.name }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: [
+              g.members.length,
+              " member",
+              g.members.length !== 1 ? "s" : ""
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => onSettings(g),
+              style: { ...th.iconBtn, fontSize: 18, padding: "6px", borderRadius: 10, border: `1px solid ${th.border}` },
+              children: "\u2699\uFE0F"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: g.members.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            background: g.color,
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 300,
+            fontSize: 13
+          }, children: m.avatar }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m.name })
+        ] }, m.id)) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          background: th.inputBg,
+          borderRadius: 8,
+          padding: "8px 10px",
+          display: "flex",
+          alignItems: "center",
+          gap: 8
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+            fontSize: 11,
+            color: th.muted,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            flex: 1,
+            fontFamily: "monospace",
+            fontWeight: 300
+          }, children: previewInvite(g) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: (e) => copyInvite(g, e),
+              style: {
+                background: copiedId === g.id ? "#5DBF8A" : g.color,
+                border: "none",
+                borderRadius: 6,
+                fontFamily: FONT,
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 300,
+                padding: "5px 10px",
+                cursor: "pointer",
+                flexShrink: 0
+              },
+              children: copiedId === g.id ? "Copied!" : "Copy Invite"
+            }
+          )
+        ] })
+      ] }, g.id)) })
+    ] });
   }
   function GroupSettingsModal({ th, group, me, onClose, onUpdate, onDelete }) {
     const [g, setG] = (0, import_react.useState)({ ...group });
@@ -13308,8 +13504,8 @@
       boxSizing: "border-box",
       outline: "none"
     };
-    const section = (label) => /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, fontWeight: 300, letterSpacing: "0.08em", color: th.muted, marginBottom: 8, marginTop: 4 } }, label);
-    return /* @__PURE__ */ React.createElement("div", { style: {
+    const section = (label) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, letterSpacing: "0.08em", color: th.muted, marginBottom: 8, marginTop: 4 }, children: label });
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       position: "fixed",
       inset: 0,
       background: "rgba(0,0,0,0.65)",
@@ -13317,245 +13513,331 @@
       display: "flex",
       alignItems: "flex-end",
       justifyContent: "center"
-    } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: "100%",
-      maxWidth: 430,
-      ...th.bg,
-      borderRadius: "20px 20px 0 0",
-      maxHeight: "95vh",
-      overflowY: "auto",
-      paddingBottom: 32
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } })), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 17, ...th.text } }, "Group Settings"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } }, saved && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "#5DBF8A", fontWeight: 300 } }, "\u2713 Saved"), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: save,
-        disabled: saving,
-        style: { ...th.pillBtn, fontSize: 13, padding: "6px 16px", fontWeight: 300, opacity: saving ? 0.6 : 1 }
-      },
-      saving ? "Saving\u2026" : "Save"
-    ), /* @__PURE__ */ React.createElement("button", { onClick: onClose, style: { ...th.iconBtn, fontSize: 20 } }, "\u2715"))), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 20 } }, /* @__PURE__ */ React.createElement("div", null, section("GROUP IDENTITY"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 16, alignItems: "flex-start" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 } }, /* @__PURE__ */ React.createElement(GroupIcon, { group: g, size: 72, radius: 18 }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => fileRef.current?.click(),
-        style: {
-          fontSize: 11,
-          padding: "4px 8px",
-          borderRadius: 6,
-          border: `1px solid ${th.border}`,
-          background: "transparent",
-          color: th.text.color,
-          cursor: "pointer",
-          fontWeight: 300,
-          fontFamily: FONT
-        }
-      },
-      "\u{1F4F7} Photo"
-    ), g.icon && /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => set("icon", null),
-        style: {
-          fontSize: 11,
-          padding: "4px 8px",
-          borderRadius: 6,
-          border: `1px solid #D45F7A`,
-          background: "transparent",
-          color: "#D45F7A",
-          cursor: "pointer",
-          fontWeight: 300,
-          fontFamily: FONT
-        }
-      },
-      "Remove"
-    )), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        ref: fileRef,
-        type: "file",
-        accept: "image/*",
-        style: { display: "none" },
-        onChange: handleImageUpload
-      }
-    )), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, display: "flex", flexDirection: "column", gap: 8 } }, /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        style: inp,
-        placeholder: "Group name",
-        value: g.name,
-        onChange: (e) => {
-          set("name", e.target.value);
-          setNameErr("");
-        }
-      }
-    ), nameErr && /* @__PURE__ */ React.createElement("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300 } }, nameErr), !g.icon && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, GROUP_EMOJIS.map((em) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: em,
-        onClick: () => set("emoji", em),
-        style: {
-          width: 34,
-          height: 34,
-          borderRadius: 8,
-          fontSize: 18,
-          border: `2px solid ${g.emoji === em ? g.color : th.border}`,
-          background: g.emoji === em ? g.color + "22" : "transparent",
-          cursor: "pointer"
-        }
-      },
-      em
-    )))))), /* @__PURE__ */ React.createElement("div", null, section("GROUP COLOR"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } }, GROUP_COLORS.map((c) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: c,
-        onClick: () => set("color", c),
-        style: {
-          width: 34,
-          height: 34,
-          borderRadius: "50%",
-          background: c,
-          cursor: "pointer",
-          border: g.color === c ? "3px solid #fff" : "3px solid transparent",
-          boxShadow: g.color === c ? `0 0 0 2px ${c}` : "none"
-        }
-      }
-    )))), /* @__PURE__ */ React.createElement("div", null, section(`MEMBERS \xB7 ${g.members.length}`), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } }, g.members.map((m) => {
-      const isMe = m.id === me?.id;
-      const canRemove = isOwner && !isMe;
-      return /* @__PURE__ */ React.createElement("div", { key: m.id, style: {
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        ...th.card,
-        borderRadius: 12,
-        padding: "10px 14px"
-      } }, /* @__PURE__ */ React.createElement("div", { style: {
-        width: 38,
-        height: 38,
-        borderRadius: "50%",
-        background: g.color,
-        color: "#fff",
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        width: "100%",
+        maxWidth: 430,
+        ...th.bg,
+        borderRadius: "20px 20px 0 0",
+        maxHeight: "95vh",
+        overflowY: "auto",
+        paddingBottom: 32
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: "Group Settings" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center" }, children: [
+            saved && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "#5DBF8A", fontWeight: 300 }, children: "\u2713 Saved" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: save,
+                disabled: saving,
+                style: { ...th.pillBtn, fontSize: 13, padding: "6px 16px", fontWeight: 300, opacity: saving ? 0.6 : 1 },
+                children: saving ? "Saving\u2026" : "Save"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
+          ] })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 20 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section("GROUP IDENTITY"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 16, alignItems: "flex-start" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6, flexShrink: 0 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupIcon, { group: g, size: 72, radius: 18 }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 6 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => fileRef.current?.click(),
+                      style: {
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        border: `1px solid ${th.border}`,
+                        background: "transparent",
+                        color: th.text.color,
+                        cursor: "pointer",
+                        fontWeight: 300,
+                        fontFamily: FONT
+                      },
+                      children: "\u{1F4F7} Photo"
+                    }
+                  ),
+                  g.icon && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => set("icon", null),
+                      style: {
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        border: `1px solid #D45F7A`,
+                        background: "transparent",
+                        color: "#D45F7A",
+                        cursor: "pointer",
+                        fontWeight: 300,
+                        fontFamily: FONT
+                      },
+                      children: "Remove"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    ref: fileRef,
+                    type: "file",
+                    accept: "image/*",
+                    style: { display: "none" },
+                    onChange: handleImageUpload
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, display: "flex", flexDirection: "column", gap: 8 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    style: inp,
+                    placeholder: "Group name",
+                    value: g.name,
+                    onChange: (e) => {
+                      set("name", e.target.value);
+                      setNameErr("");
+                    }
+                  }
+                ),
+                nameErr && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300 }, children: nameErr }),
+                !g.icon && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: GROUP_EMOJIS.map((em) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => set("emoji", em),
+                    style: {
+                      width: 34,
+                      height: 34,
+                      borderRadius: 8,
+                      fontSize: 18,
+                      border: `2px solid ${g.emoji === em ? g.color : th.border}`,
+                      background: g.emoji === em ? g.color + "22" : "transparent",
+                      cursor: "pointer"
+                    },
+                    children: em
+                  },
+                  em
+                )) })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section("GROUP COLOR"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" }, children: GROUP_COLORS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => set("color", c),
+                style: {
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: c,
+                  cursor: "pointer",
+                  border: g.color === c ? "3px solid #fff" : "3px solid transparent",
+                  boxShadow: g.color === c ? `0 0 0 2px ${c}` : "none"
+                }
+              },
+              c
+            )) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section(`MEMBERS \xB7 ${g.members.length}`),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: g.members.map((m) => {
+              const isMe = m.id === me?.id;
+              const canRemove = isOwner && !isMe;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                ...th.card,
+                borderRadius: 12,
+                padding: "10px 14px"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  background: g.color,
+                  color: "#fff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontWeight: 300,
+                  fontSize: 15,
+                  flexShrink: 0
+                }, children: m.avatar }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: [
+                    m.name,
+                    isMe && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, marginLeft: 6, fontWeight: 300 }, children: "(you)" })
+                  ] }),
+                  g.ownerId === m.id && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: g.color, fontWeight: 300 }, children: "Owner" })
+                ] }),
+                canRemove && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => setConfirm(`remove:${m.id}`),
+                    style: {
+                      background: "transparent",
+                      border: `1px solid #D45F7A44`,
+                      borderRadius: 8,
+                      color: "#D45F7A",
+                      fontSize: 12,
+                      padding: "5px 10px",
+                      cursor: "pointer",
+                      fontWeight: 300,
+                      fontFamily: FONT
+                    },
+                    children: "Remove"
+                  }
+                ),
+                isMe && !isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: "Member" }),
+                isMe && isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                  fontSize: 11,
+                  color: g.color,
+                  background: g.color + "22",
+                  padding: "3px 8px",
+                  borderRadius: 10,
+                  fontWeight: 300
+                }, children: "Owner" })
+              ] }, m.id);
+            }) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section("PENDING INVITES"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 22 }, children: "\u{1F4E8}" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, ...th.text, fontWeight: 300 }, children: "No pending invites" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: "Share an invite link from the group card to add members." })
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section("DANGER ZONE"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: `1px solid #D45F7A44`, borderRadius: 12, overflow: "hidden" }, children: [
+              isMember && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  onClick: () => setConfirm("leave"),
+                  style: {
+                    width: "100%",
+                    padding: "14px 16px",
+                    background: "transparent",
+                    border: "none",
+                    fontFamily: FONT,
+                    borderBottom: isOwner ? `1px solid #D45F7A44` : "none",
+                    color: "#D45F7A",
+                    fontSize: 14,
+                    fontWeight: 300,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u{1F6AA} Leave Group" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: "You'll lose access to shared events" })
+                  ]
+                }
+              ),
+              isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  onClick: () => setConfirm("delete"),
+                  style: {
+                    width: "100%",
+                    padding: "14px 16px",
+                    background: "#D45F7A11",
+                    border: "none",
+                    fontFamily: FONT,
+                    color: "#D45F7A",
+                    fontSize: 14,
+                    fontWeight: 300,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center"
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "\u{1F5D1} Delete Group" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "#D45F7A99", fontWeight: 300 }, children: "Permanent \u2014 cannot be undone" })
+                  ]
+                }
+              )
+            ] })
+          ] })
+        ] })
+      ] }),
+      confirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        zIndex: 300,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontWeight: 300,
-        fontSize: 15,
-        flexShrink: 0
-      } }, m.avatar), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 300, fontSize: 14, ...th.text } }, m.name, isMe && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: th.muted, marginLeft: 6, fontWeight: 300 } }, "(you)")), g.ownerId === m.id && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: g.color, fontWeight: 300 } }, "Owner")), canRemove && /* @__PURE__ */ React.createElement(
-        "button",
-        {
-          onClick: () => setConfirm(`remove:${m.id}`),
-          style: {
-            background: "transparent",
-            border: `1px solid #D45F7A44`,
-            borderRadius: 8,
-            color: "#D45F7A",
-            fontSize: 12,
-            padding: "5px 10px",
-            cursor: "pointer",
-            fontWeight: 300,
-            fontFamily: FONT
-          }
-        },
-        "Remove"
-      ), isMe && !isOwner && /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: th.muted, fontWeight: 300 } }, "Member"), isMe && isOwner && /* @__PURE__ */ React.createElement("span", { style: {
-        fontSize: 11,
-        color: g.color,
-        background: g.color + "22",
-        padding: "3px 8px",
-        borderRadius: 10,
-        fontWeight: 300
-      } }, "Owner"));
-    }))), /* @__PURE__ */ React.createElement("div", null, section("PENDING INVITES"), /* @__PURE__ */ React.createElement("div", { style: { ...th.card, borderRadius: 12, padding: "12px 14px", display: "flex", alignItems: "center", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 22 } }, "\u{1F4E8}"), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, ...th.text, fontWeight: 300 } }, "No pending invites"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 } }, "Share an invite link from the group card to add members.")))), /* @__PURE__ */ React.createElement("div", null, section("DANGER ZONE"), /* @__PURE__ */ React.createElement("div", { style: { border: `1px solid #D45F7A44`, borderRadius: 12, overflow: "hidden" } }, isMember && /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setConfirm("leave"),
-        style: {
-          width: "100%",
-          padding: "14px 16px",
-          background: "transparent",
-          border: "none",
-          fontFamily: FONT,
-          borderBottom: isOwner ? `1px solid #D45F7A44` : "none",
-          color: "#D45F7A",
-          fontSize: 14,
-          fontWeight: 300,
-          cursor: "pointer",
-          textAlign: "left",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }
-      },
-      /* @__PURE__ */ React.createElement("span", null, "\u{1F6AA} Leave Group"),
-      /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: th.muted, fontWeight: 300 } }, "You'll lose access to shared events")
-    ), isOwner && /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setConfirm("delete"),
-        style: {
-          width: "100%",
-          padding: "14px 16px",
-          background: "#D45F7A11",
-          border: "none",
-          fontFamily: FONT,
-          color: "#D45F7A",
-          fontSize: 14,
-          fontWeight: 300,
-          cursor: "pointer",
-          textAlign: "left",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center"
-        }
-      },
-      /* @__PURE__ */ React.createElement("span", null, "\u{1F5D1} Delete Group"),
-      /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: "#D45F7A99", fontWeight: 300 } }, "Permanent \u2014 cannot be undone")
-    ))))), confirm && /* @__PURE__ */ React.createElement("div", { style: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.75)",
-      zIndex: 300,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "0 24px"
-    } }, /* @__PURE__ */ React.createElement("div", { style: { ...th.bg, borderRadius: 20, padding: "24px", width: "100%", maxWidth: 360, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 36, marginBottom: 12 } }, confirm === "delete" ? "\u{1F5D1}" : confirm === "leave" ? "\u{1F6AA}" : "\u{1F464}"), /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 } }, confirm === "delete" ? "Delete Group?" : confirm === "leave" ? "Leave Group?" : `Remove ${g.members.find((m) => m.id === confirm.split(":")[1])?.name}?`), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 } }, confirm === "delete" && `"${g.name}" will be permanently removed for you.`, confirm === "leave" && `You'll be removed from "${g.name}" and lose access to shared events.`, confirm.startsWith("remove:") && `They will be removed from "${g.name}" and lose access to shared events.`), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setConfirm(null),
-        style: {
-          flex: 1,
-          padding: "12px",
-          borderRadius: 12,
-          border: `1px solid ${th.border}`,
-          fontFamily: FONT,
-          background: "transparent",
-          color: th.text.color,
-          fontSize: 14,
-          fontWeight: 300,
-          cursor: "pointer"
-        }
-      },
-      "Cancel"
-    ), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: confirmAction,
-        style: {
-          flex: 1,
-          padding: "12px",
-          borderRadius: 12,
-          border: "none",
-          fontFamily: FONT,
-          background: "#D45F7A",
-          color: "#fff",
-          fontSize: 14,
-          fontWeight: 300,
-          cursor: "pointer"
-        }
-      },
-      confirm === "delete" ? "Delete" : confirm === "leave" ? "Leave" : "Remove"
-    )))));
+        padding: "0 24px"
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.bg, borderRadius: 20, padding: "24px", width: "100%", maxWidth: 360, textAlign: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 36, marginBottom: 12 }, children: confirm === "delete" ? "\u{1F5D1}" : confirm === "leave" ? "\u{1F6AA}" : "\u{1F464}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 }, children: confirm === "delete" ? "Delete Group?" : confirm === "leave" ? "Leave Group?" : `Remove ${g.members.find((m) => m.id === confirm.split(":")[1])?.name}?` }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 }, children: [
+          confirm === "delete" && `"${g.name}" will be permanently removed for you.`,
+          confirm === "leave" && `You'll be removed from "${g.name}" and lose access to shared events.`,
+          confirm.startsWith("remove:") && `They will be removed from "${g.name}" and lose access to shared events.`
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => setConfirm(null),
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: `1px solid ${th.border}`,
+                fontFamily: FONT,
+                background: "transparent",
+                color: th.text.color,
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "Cancel"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: confirmAction,
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                fontFamily: FONT,
+                background: "#D45F7A",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: confirm === "delete" ? "Delete" : confirm === "leave" ? "Leave" : "Remove"
+            }
+          )
+        ] })
+      ] }) })
+    ] });
   }
   function NewGroupModal({ th, onClose, onAdd, me }) {
     const [step, setStep] = (0, import_react.useState)(1);
@@ -13643,7 +13925,7 @@
       outline: "none"
     };
     const steps = ["Details", "Invite", "Done"];
-    return /* @__PURE__ */ React.createElement("div", { style: {
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
       position: "fixed",
       inset: 0,
       background: "rgba(0,0,0,0.65)",
@@ -13651,7 +13933,7 @@
       display: "flex",
       alignItems: "flex-end",
       justifyContent: "center"
-    } }, /* @__PURE__ */ React.createElement("div", { style: {
+    }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       width: "100%",
       maxWidth: 430,
       ...th.bg,
@@ -13659,293 +13941,394 @@
       maxHeight: "94vh",
       overflowY: "auto",
       paddingBottom: 28
-    } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" } }, /* @__PURE__ */ React.createElement("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } })), /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 300, fontSize: 17, ...th.text } }, "New Peer Group"), /* @__PURE__ */ React.createElement("button", { onClick: onClose, style: { ...th.iconBtn, fontSize: 20 } }, "\u2715")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "16px 20px 4px" } }, steps.map((s, i) => {
-      const num = i + 1, done = step > num, active = step === num;
-      return /* @__PURE__ */ React.createElement("div", { key: s, style: { display: "flex", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement("div", { style: {
-        width: 28,
-        height: 28,
-        borderRadius: "50%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 300,
-        fontSize: 13,
-        background: done ? "#5DBF8A" : active ? th.accent : th.inputBg,
-        color: done || active ? "#fff" : th.muted,
-        border: `2px solid ${done ? "#5DBF8A" : active ? th.accent : th.border}`
-      } }, done ? "\u2713" : num), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10, color: active ? th.accent : th.muted, fontWeight: 300 } }, s)), i < steps.length - 1 && /* @__PURE__ */ React.createElement("div", { style: {
-        width: 40,
-        height: 2,
-        background: step > num ? "#5DBF8A" : th.border,
-        margin: "0 4px",
-        marginBottom: 16
-      } }));
-    })), /* @__PURE__ */ React.createElement("div", { style: { padding: "16px 20px 0" } }, step === 1 && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "8px 0" } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: 72,
-      height: 72,
-      borderRadius: 20,
-      background: color,
-      overflow: "hidden",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 32,
-      boxShadow: `0 4px 16px ${color}55`
-    } }, icon ? /* @__PURE__ */ React.createElement("img", { src: icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : emoji), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => fileRef.current?.click(),
-        style: {
-          fontSize: 12,
-          padding: "5px 12px",
-          borderRadius: 8,
-          border: `1px solid ${th.border}`,
-          background: "transparent",
-          color: th.text.color,
-          cursor: "pointer",
-          fontWeight: 300,
-          fontFamily: FONT
-        }
-      },
-      "\u{1F4F7} Upload Photo"
-    ), icon && /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setIcon(null),
-        style: {
-          fontSize: 12,
-          padding: "5px 12px",
-          borderRadius: 8,
-          border: `1px solid #D45F7A`,
-          background: "transparent",
-          color: "#D45F7A",
-          cursor: "pointer",
-          fontWeight: 300,
-          fontFamily: FONT
-        }
-      },
-      "Remove"
-    )), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        ref: fileRef,
-        type: "file",
-        accept: "image/*",
-        style: { display: "none" },
-        onChange: handleImageUpload
-      }
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Group Name"), /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        style: inp,
-        placeholder: "e.g. Smith Family",
-        maxLength: 40,
-        value: name,
-        onChange: (e) => {
-          setName(e.target.value);
-          setNameErr("");
-        }
-      }
-    ), nameErr && /* @__PURE__ */ React.createElement("div", { style: { color: "#D45F7A", fontSize: 12, marginTop: 4, fontWeight: 300 } }, nameErr)), !icon && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Group Icon"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 } }, GROUP_EMOJIS.map((em) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: em,
-        onClick: () => setEmoji(em),
-        style: {
-          width: 40,
-          height: 40,
-          borderRadius: 10,
-          fontSize: 20,
-          border: `2px solid ${emoji === em ? color : th.border}`,
-          background: emoji === em ? color + "22" : "transparent",
-          cursor: "pointer"
-        }
-      },
-      em
-    )))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Group Color"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" } }, GROUP_COLORS.map((c) => /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        key: c,
-        onClick: () => setColor(c),
-        style: {
-          width: 32,
-          height: 32,
-          borderRadius: "50%",
-          background: c,
-          cursor: "pointer",
-          border: color === c ? "3px solid #fff" : "3px solid transparent",
-          boxShadow: color === c ? `0 0 0 2px ${c}` : "none"
-        }
-      }
-    )))), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: handleCreate,
-        style: { ...th.pillBtn, width: "100%", padding: "13px", fontSize: 15, fontWeight: 300, marginTop: 4 }
-      },
-      "Create Group \u2192"
-    )), step === 2 && group && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 16 } }, /* @__PURE__ */ React.createElement("div", { style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 12,
-      ...th.card,
-      borderRadius: 12,
-      padding: "12px 14px",
-      borderLeft: `4px solid ${group.color}`
-    } }, /* @__PURE__ */ React.createElement(GroupIcon, { group, size: 40, radius: 10 }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 300, ...th.text } }, group.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 } }, "Just created \xB7 1 member (you)"))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement(Label, { th }, "Share Invite Link"), /* @__PURE__ */ React.createElement("div", { style: {
-      ...th.card,
-      borderRadius: 10,
-      padding: "10px 12px",
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-      border: `1px solid ${th.border}`,
-      marginTop: 6
-    } }, /* @__PURE__ */ React.createElement("span", { style: {
-      fontSize: 11,
-      color: th.muted,
-      flex: 1,
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      fontFamily: "monospace",
-      fontWeight: 300
-    } }, genInviteLink(group))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 8 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: copyInvite,
-        style: {
-          ...th.pillBtn,
-          flex: 1,
-          padding: "10px",
-          fontSize: 13,
-          fontWeight: 300,
-          background: copiedLink ? "#5DBF8A" : th.accent
-        }
-      },
-      copiedLink ? "\u2713 Copied!" : "\u{1F4CB} Copy Link"
-    ), /* @__PURE__ */ React.createElement("button", { style: {
-      flex: 1,
-      padding: "10px",
-      fontSize: 13,
-      fontWeight: 300,
-      fontFamily: FONT,
-      background: "transparent",
-      border: `1px solid ${th.border}`,
-      borderRadius: 10,
-      color: th.text.color,
-      cursor: "pointer"
-    } }, "\u{1F4E4} Share\u2026"))), /* @__PURE__ */ React.createElement("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 16 } }, /* @__PURE__ */ React.createElement(Label, { th }, "Or Add by Public Key"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginTop: 6 } }, /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        style: inp,
-        placeholder: "Display name (optional)",
-        value: pendingName,
-        onChange: (e) => setPendingName(e.target.value)
-      }
-    ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        style: { ...inp, flex: 1, fontFamily: "monospace", fontSize: 12 },
-        placeholder: "Paste public key\u2026",
-        value: pendingKey,
-        onChange: (e) => {
-          setPendingKey(e.target.value);
-          setKeyErr("");
-        }
-      }
-    ), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: addPending,
-        style: { ...th.pillBtn, padding: "9px 14px", fontSize: 13, fontWeight: 300, flexShrink: 0 }
-      },
-      "Add"
-    )), keyErr && /* @__PURE__ */ React.createElement("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300 } }, keyErr)), pendingMembers.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 } }, /* @__PURE__ */ React.createElement(Label, { th }, "Added (", pendingMembers.length, ")"), pendingMembers.map((m) => /* @__PURE__ */ React.createElement("div", { key: m.publicKey, style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      ...th.card,
-      borderRadius: 10,
-      padding: "8px 12px"
-    } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: 34,
-      height: 34,
-      borderRadius: "50%",
-      background: group.color,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      color: "#fff",
-      fontWeight: 300,
-      fontSize: 13
-    } }, m.avatar), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, fontWeight: 300, ...th.text } }, m.name), /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 10,
-      color: th.muted,
-      fontFamily: "monospace",
-      overflow: "hidden",
-      textOverflow: "ellipsis",
-      whiteSpace: "nowrap",
-      maxWidth: 180
-    } }, m.publicKey)), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setPendingMembers((p) => p.filter((x) => x.publicKey !== m.publicKey)),
-        style: { background: "none", border: "none", color: th.muted, cursor: "pointer", fontSize: 16 }
-      },
-      "\u2715"
-    ))))), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 4 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => setStep(1),
-        style: {
-          flex: 1,
-          padding: "12px",
-          fontSize: 14,
-          fontWeight: 300,
-          fontFamily: FONT,
-          background: "transparent",
-          border: `1px solid ${th.border}`,
-          borderRadius: 10,
-          color: th.text.color,
-          cursor: "pointer"
-        }
-      },
-      "\u2190 Back"
-    ), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: finish,
-        disabled: creating,
-        style: {
-          ...th.pillBtn,
-          flex: 2,
-          padding: "12px",
-          fontSize: 15,
-          fontWeight: 300,
-          opacity: creating ? 0.6 : 1
-        }
-      },
-      creating ? "Creating\u2026" : pendingMembers.length > 0 ? `Finish & Invite ${pendingMembers.length}` : "Finish"
-    ))), step === 3 && group && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "16px 0 8px" } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: 80,
-      height: 80,
-      borderRadius: 24,
-      background: group.color,
-      overflow: "hidden",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 38,
-      boxShadow: `0 6px 24px ${group.color}55`
-    } }, group.icon ? /* @__PURE__ */ React.createElement("img", { src: group.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : group.emoji), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 22, fontWeight: 300, ...th.text, marginBottom: 6 } }, group.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, color: th.muted, fontWeight: 300 } }, "Your group is ready \u{1F389}")), /* @__PURE__ */ React.createElement("div", { style: { ...th.card, borderRadius: 14, padding: "16px", width: "100%", display: "flex", flexDirection: "column", gap: 10 } }, /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Members", val: String(group.members.length + pendingMembers.length) }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Pending invites", val: String(pendingMembers.length) }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Sync", val: "Hyperswarm DHT" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Storage", val: "Local \xB7 Hyperbee" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Data collected", val: "None" })), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: onClose,
-        style: { ...th.pillBtn, width: "100%", padding: "13px", fontSize: 15, fontWeight: 300 }
-      },
-      "Go to Groups"
-    )))));
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "center", padding: "12px 0 0" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 36, height: 4, borderRadius: 2, background: th.border } }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: "New Peer Group" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: onClose, style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "16px 20px 4px" }, children: steps.map((s, i) => {
+        const num = i + 1, done = step > num, active = step === num;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              width: 28,
+              height: 28,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 300,
+              fontSize: 13,
+              background: done ? "#5DBF8A" : active ? th.accent : th.inputBg,
+              color: done || active ? "#fff" : th.muted,
+              border: `2px solid ${done ? "#5DBF8A" : active ? th.accent : th.border}`
+            }, children: done ? "\u2713" : num }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: active ? th.accent : th.muted, fontWeight: 300 }, children: s })
+          ] }),
+          i < steps.length - 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            width: 40,
+            height: 2,
+            background: step > num ? "#5DBF8A" : th.border,
+            margin: "0 4px",
+            marginBottom: 16
+          } })
+        ] }, s);
+      }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "16px 20px 0" }, children: [
+        step === 1 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 16 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "8px 0" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              width: 72,
+              height: 72,
+              borderRadius: 20,
+              background: color,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 32,
+              boxShadow: `0 4px 16px ${color}55`
+            }, children: icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : emoji }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: () => fileRef.current?.click(),
+                  style: {
+                    fontSize: 12,
+                    padding: "5px 12px",
+                    borderRadius: 8,
+                    border: `1px solid ${th.border}`,
+                    background: "transparent",
+                    color: th.text.color,
+                    cursor: "pointer",
+                    fontWeight: 300,
+                    fontFamily: FONT
+                  },
+                  children: "\u{1F4F7} Upload Photo"
+                }
+              ),
+              icon && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: () => setIcon(null),
+                  style: {
+                    fontSize: 12,
+                    padding: "5px 12px",
+                    borderRadius: 8,
+                    border: `1px solid #D45F7A`,
+                    background: "transparent",
+                    color: "#D45F7A",
+                    cursor: "pointer",
+                    fontWeight: 300,
+                    fontFamily: FONT
+                  },
+                  children: "Remove"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                ref: fileRef,
+                type: "file",
+                accept: "image/*",
+                style: { display: "none" },
+                onChange: handleImageUpload
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Group Name" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                style: inp,
+                placeholder: "e.g. Smith Family",
+                maxLength: 40,
+                value: name,
+                onChange: (e) => {
+                  setName(e.target.value);
+                  setNameErr("");
+                }
+              }
+            ),
+            nameErr && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, marginTop: 4, fontWeight: 300 }, children: nameErr })
+          ] }),
+          !icon && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Group Icon" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: GROUP_EMOJIS.map((em) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setEmoji(em),
+                style: {
+                  width: 40,
+                  height: 40,
+                  borderRadius: 10,
+                  fontSize: 20,
+                  border: `2px solid ${emoji === em ? color : th.border}`,
+                  background: emoji === em ? color + "22" : "transparent",
+                  cursor: "pointer"
+                },
+                children: em
+              },
+              em
+            )) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Group Color" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 10, marginTop: 6, flexWrap: "wrap" }, children: GROUP_COLORS.map((c) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setColor(c),
+                style: {
+                  width: 32,
+                  height: 32,
+                  borderRadius: "50%",
+                  background: c,
+                  cursor: "pointer",
+                  border: color === c ? "3px solid #fff" : "3px solid transparent",
+                  boxShadow: color === c ? `0 0 0 2px ${c}` : "none"
+                }
+              },
+              c
+            )) })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: handleCreate,
+              style: { ...th.pillBtn, width: "100%", padding: "13px", fontSize: 15, fontWeight: 300, marginTop: 4 },
+              children: "Create Group \u2192"
+            }
+          )
+        ] }),
+        step === 2 && group && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 16 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            ...th.card,
+            borderRadius: 12,
+            padding: "12px 14px",
+            borderLeft: `4px solid ${group.color}`
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupIcon, { group, size: 40, radius: 10 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, ...th.text }, children: group.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: "Just created \xB7 1 member (you)" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Share Invite Link" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              ...th.card,
+              borderRadius: 10,
+              padding: "10px 12px",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              border: `1px solid ${th.border}`,
+              marginTop: 6
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              fontSize: 11,
+              color: th.muted,
+              flex: 1,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              fontFamily: "monospace",
+              fontWeight: 300
+            }, children: genInviteLink(group) }) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, marginTop: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: copyInvite,
+                  style: {
+                    ...th.pillBtn,
+                    flex: 1,
+                    padding: "10px",
+                    fontSize: 13,
+                    fontWeight: 300,
+                    background: copiedLink ? "#5DBF8A" : th.accent
+                  },
+                  children: copiedLink ? "\u2713 Copied!" : "\u{1F4CB} Copy Link"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: {
+                flex: 1,
+                padding: "10px",
+                fontSize: 13,
+                fontWeight: 300,
+                fontFamily: FONT,
+                background: "transparent",
+                border: `1px solid ${th.border}`,
+                borderRadius: 10,
+                color: th.text.color,
+                cursor: "pointer"
+              }, children: "\u{1F4E4} Share\u2026" })
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 16 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Or Add by Public Key" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "input",
+                {
+                  style: inp,
+                  placeholder: "Display name (optional)",
+                  value: pendingName,
+                  onChange: (e) => setPendingName(e.target.value)
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    style: { ...inp, flex: 1, fontFamily: "monospace", fontSize: 12 },
+                    placeholder: "Paste public key\u2026",
+                    value: pendingKey,
+                    onChange: (e) => {
+                      setPendingKey(e.target.value);
+                      setKeyErr("");
+                    }
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: addPending,
+                    style: { ...th.pillBtn, padding: "9px 14px", fontSize: 13, fontWeight: 300, flexShrink: 0 },
+                    children: "Add"
+                  }
+                )
+              ] }),
+              keyErr && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300 }, children: keyErr })
+            ] }),
+            pendingMembers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(Label, { th, children: [
+                "Added (",
+                pendingMembers.length,
+                ")"
+              ] }),
+              pendingMembers.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                ...th.card,
+                borderRadius: 10,
+                padding: "8px 12px"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  width: 34,
+                  height: 34,
+                  borderRadius: "50%",
+                  background: group.color,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  fontWeight: 300,
+                  fontSize: 13
+                }, children: m.avatar }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: m.name }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                    fontSize: 10,
+                    color: th.muted,
+                    fontFamily: "monospace",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    maxWidth: 180
+                  }, children: m.publicKey })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => setPendingMembers((p) => p.filter((x) => x.publicKey !== m.publicKey)),
+                    style: { background: "none", border: "none", color: th.muted, cursor: "pointer", fontSize: 16 },
+                    children: "\u2715"
+                  }
+                )
+              ] }, m.publicKey))
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, marginTop: 4 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => setStep(1),
+                style: {
+                  flex: 1,
+                  padding: "12px",
+                  fontSize: 14,
+                  fontWeight: 300,
+                  fontFamily: FONT,
+                  background: "transparent",
+                  border: `1px solid ${th.border}`,
+                  borderRadius: 10,
+                  color: th.text.color,
+                  cursor: "pointer"
+                },
+                children: "\u2190 Back"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: finish,
+                disabled: creating,
+                style: {
+                  ...th.pillBtn,
+                  flex: 2,
+                  padding: "12px",
+                  fontSize: 15,
+                  fontWeight: 300,
+                  opacity: creating ? 0.6 : 1
+                },
+                children: creating ? "Creating\u2026" : pendingMembers.length > 0 ? `Finish & Invite ${pendingMembers.length}` : "Finish"
+              }
+            )
+          ] })
+        ] }),
+        step === 3 && group && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "16px 0 8px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            width: 80,
+            height: 80,
+            borderRadius: 24,
+            background: group.color,
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 38,
+            boxShadow: `0 6px 24px ${group.color}55`
+          }, children: group.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: group.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : group.emoji }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 300, ...th.text, marginBottom: 6 }, children: group.name }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, color: th.muted, fontWeight: 300 }, children: "Your group is ready \u{1F389}" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 14, padding: "16px", width: "100%", display: "flex", flexDirection: "column", gap: 10 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Members", val: String(group.members.length + pendingMembers.length) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Pending invites", val: String(pendingMembers.length) }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Sync", val: "Hyperswarm DHT" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Storage", val: "Local \xB7 Hyperbee" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Data collected", val: "None" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: onClose,
+              style: { ...th.pillBtn, width: "100%", padding: "13px", fontSize: 15, fontWeight: 300 },
+              children: "Go to Groups"
+            }
+          )
+        ] })
+      ] })
+    ] }) });
   }
   function ProfileTab({ th, profile, groups, onUpdateProfile }) {
     const [name, setName] = (0, import_react.useState)(profile?.name ?? "");
@@ -13958,68 +14341,100 @@
       setEditing(false);
     }
     const publicKey = profile?.publicKey ?? "\u2014";
-    return /* @__PURE__ */ React.createElement("div", { style: { padding: "24px 20px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 28 } }, /* @__PURE__ */ React.createElement("div", { style: {
-      width: 80,
-      height: 80,
-      borderRadius: "50%",
-      background: profile?.color ?? "#6C9BF5",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: 32,
-      color: "#fff",
-      fontWeight: 300
-    } }, (profile?.name ?? "?").slice(0, 1).toUpperCase()), editing ? /* @__PURE__ */ React.createElement(
-      "input",
-      {
-        autoFocus: true,
-        style: {
-          fontSize: 18,
-          fontWeight: 300,
-          textAlign: "center",
-          background: "transparent",
-          fontFamily: FONT,
-          border: `1px solid ${th.border}`,
-          borderRadius: 8,
-          padding: "6px 12px",
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 20px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 28 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          width: 80,
+          height: 80,
+          borderRadius: "50%",
+          background: profile?.color ?? "#6C9BF5",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 32,
+          color: "#fff",
+          fontWeight: 300
+        }, children: (profile?.name ?? "?").slice(0, 1).toUpperCase() }),
+        editing ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "input",
+          {
+            autoFocus: true,
+            style: {
+              fontSize: 18,
+              fontWeight: 300,
+              textAlign: "center",
+              background: "transparent",
+              fontFamily: FONT,
+              border: `1px solid ${th.border}`,
+              borderRadius: 8,
+              padding: "6px 12px",
+              color: th.text.color,
+              outline: "none"
+            },
+            value: name,
+            onChange: (e) => setName(e.target.value)
+          }
+        ) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20, fontWeight: 300, ...th.text }, children: profile?.name ?? "My Name" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: editing ? saveName : () => setEditing(true),
+            disabled: saving,
+            style: { ...th.pillBtn, fontSize: 13, padding: "5px 16px", fontWeight: 300, opacity: saving ? 0.6 : 1 },
+            children: saving ? "Saving\u2026" : editing ? "Save Name" : "Edit Name"
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 6, letterSpacing: "0.06em" }, children: "YOUR PUBLIC KEY" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          fontSize: 11,
           color: th.text.color,
-          outline: "none"
-        },
-        value: name,
-        onChange: (e) => setName(e.target.value)
-      }
-    ) : /* @__PURE__ */ React.createElement("span", { style: { fontSize: 20, fontWeight: 300, ...th.text } }, profile?.name ?? "My Name"), /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: editing ? saveName : () => setEditing(true),
-        disabled: saving,
-        style: { ...th.pillBtn, fontSize: 13, padding: "5px 16px", fontWeight: 300, opacity: saving ? 0.6 : 1 }
-      },
-      saving ? "Saving\u2026" : editing ? "Save Name" : "Edit Name"
-    )), /* @__PURE__ */ React.createElement("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 6, letterSpacing: "0.06em" } }, "YOUR PUBLIC KEY"), /* @__PURE__ */ React.createElement("div", { style: {
-      fontSize: 11,
-      color: th.text.color,
-      wordBreak: "break-all",
-      fontFamily: "monospace",
-      fontWeight: 300,
-      lineHeight: 1.6
-    } }, publicKey), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "center", marginTop: 10 } }, /* @__PURE__ */ React.createElement(
-      "button",
-      {
-        onClick: () => navigator.clipboard?.writeText(publicKey),
-        style: { ...th.pillBtn, fontSize: 12, padding: "5px 14px", fontWeight: 300 }
-      },
-      "Copy Key"
-    ))), /* @__PURE__ */ React.createElement("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px", marginBottom: 16 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 10, letterSpacing: "0.06em" } }, "MY PEER GROUPS"), groups.length === 0 && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300, padding: "8px 0" } }, "No groups yet."), groups.map((g) => /* @__PURE__ */ React.createElement("div", { key: g.id, style: {
-      display: "flex",
-      alignItems: "center",
-      gap: 10,
-      padding: "6px 0",
-      borderBottom: `1px solid ${th.border}`
-    } }, /* @__PURE__ */ React.createElement(GroupIcon, { group: g, size: 28, radius: 8 }), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14, fontWeight: 300, ...th.text, flex: 1 } }, g.name), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: th.muted, fontWeight: 300 } }, g.members.length, " members")))), /* @__PURE__ */ React.createElement("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 8, letterSpacing: "0.06em" } }, "ABOUT"), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "App", val: "PearCal v0.1.0" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Network", val: "Holepunch DHT" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Storage", val: "Local \xB7 Hyperbee" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Sync", val: "Autobase \xB7 Hyperswarm" }), /* @__PURE__ */ React.createElement(InfoRow, { th, label: "Data collected", val: "None" })));
+          wordBreak: "break-all",
+          fontFamily: "monospace",
+          fontWeight: 300,
+          lineHeight: 1.6
+        }, children: publicKey }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "center", marginTop: 10 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => navigator.clipboard?.writeText(publicKey),
+            style: { ...th.pillBtn, fontSize: 12, padding: "5px 14px", fontWeight: 300 },
+            children: "Copy Key"
+          }
+        ) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 10, letterSpacing: "0.06em" }, children: "MY PEER GROUPS" }),
+        groups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300, padding: "8px 0" }, children: "No groups yet." }),
+        groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          padding: "6px 0",
+          borderBottom: `1px solid ${th.border}`
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupIcon, { group: g, size: 28, radius: 8 }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text, flex: 1 }, children: g.name }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: [
+            g.members.length,
+            " members"
+          ] })
+        ] }, g.id))
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 8, letterSpacing: "0.06em" }, children: "ABOUT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "App", val: "PearCal v0.1.0" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Network", val: "Holepunch DHT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Storage", val: "Local \xB7 Hyperbee" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Sync", val: "Autobase \xB7 Hyperswarm" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(InfoRow, { th, label: "Data collected", val: "None" })
+      ] })
+    ] });
   }
 
   // src/ui/main.jsx
+  var import_jsx_runtime2 = __toESM(require_jsx_runtime());
   var _nextId = 1;
   var _pending = /* @__PURE__ */ new Map();
   window.__pearDB = {
@@ -14070,7 +14485,7 @@
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g)
   };
   var root = (0, import_client.createRoot)(document.getElementById("root"));
-  root.render(/* @__PURE__ */ React.createElement(App, { db, notifs, sync }));
+  root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));
 })();
 /*! Bundled license information:
 
@@ -14111,6 +14526,17 @@ react-dom/cjs/react-dom-client.production.js:
   (**
    * @license React
    * react-dom-client.production.js
+   *
+   * Copyright (c) Meta Platforms, Inc. and affiliates.
+   *
+   * This source code is licensed under the MIT license found in the
+   * LICENSE file in the root directory of this source tree.
+   *)
+
+react/cjs/react-jsx-runtime.production.js:
+  (**
+   * @license React
+   * react-jsx-runtime.production.js
    *
    * Copyright (c) Meta Platforms, Inc. and affiliates.
    *
