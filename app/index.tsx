@@ -125,6 +125,19 @@ export default function Root () {
       await FileSystem.makeDirectoryAsync(dataUri, { intermediates: true }).catch(() => {})
       const dataDir = dataUri.replace(/^file:\/\//, '')
 
+            // Request notification permission on first launch (Android 13+)
+            try {
+              const { PermissionsAndroid } = require('react-native')
+              await PermissionsAndroid.request(
+                'android.permission.POST_NOTIFICATIONS',
+                {
+                  title: 'PearCal Reminders',
+                  message: 'Allow PearCal to send event reminders',
+                  buttonPositive: 'Allow',
+                  buttonNegative: 'Deny',
+                }
+              )
+            } catch(e) { console.log('Permission request error:', e) }
       const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
       await jsAsset.downloadAsync()
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
