@@ -1,28 +1,151 @@
-import { useState, useEffect } from 'react'
-import { Text } from 'react-native'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { View, Text, StyleSheet } from 'react-native'
+import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
+import { Asset } from 'expo-asset'
+import * as FileSystem from 'expo-file-system/legacy'
 
-export default function () {
-  const [response, setResponse] = useState<string | null>(null)
+let _worklet: any = null
+let _nextId = 1
+const _pending = new Map<number, (msg: any) => void>()
+const _eventHandlers = new Map<string, ((data: any) => void)[]>()
 
-  useEffect(() => {
-    const worklet = new Worklet()
+function onEvent (event: string, fn: (data: any) => void) {
+  const handlers = _eventHandlers.get(event) ?? []
+  handlers.push(fn)
+  _eventHandlers.set(event, handlers)
+}
 
-    const source = `
-    const { IPC } = BareKit
+function sendToWorklet (msg: object) {
+  _worklet?.IPC.write(b4a.from(JSON.stringify(msg) + '\n'))
+}
 
-    IPC.on('data', (data) => console.log(data.toString()))
-    IPC.write(Buffer.from('Hello from Bare!'))
-    `
+function buildHtml (appBundleJs: string): string {
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; width: 100%; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>${appBundleJs}</script>
+</body>
+</html>`
+}
 
-    worklet.start('/app.js', source)
+export default function Root () {
+  const [dbReady,  setDbReady]  = useState(false)
+  const [error,    setError]    = useState<string | null>(null)
+  const [html,     setHtml]     = useState<string | null>(null)
+  const webViewRef = useRef<any>(null)
 
-    const { IPC } = worklet
-
-    IPC.on('data', (data: Uint8Array) => setResponse(b4a.toString(data)))
-    IPC.write(b4a.from('Hello from React Native!'))
+  const onWebViewMessage = useCallback((e: any) => {
+    try {
+      const msg = JSON.parse(e.nativeEvent.data)
+      const bareId = _nextId++
+      _pending.set(bareId, result => {
+        webViewRef.current?.injectJavaScript(
+          `window.__pearResponse(${JSON.stringify({ ...result, id: msg.id })});true;`
+        )
+      })
+      sendToWorklet({ ...msg, id: bareId })
+    } catch(err) { console.error('WebView msg error:', err) }
   }, [])
 
-  return <Text>{response}</Text>
+  useEffect(() => {
+    let buf = ''
+
+    async function start () {
+      const docDir = FileSystem.documentDirectory!
+      const dataUri = docDir + 'pearcal'
+      await FileSystem.makeDirectoryAsync(dataUri, { intermediates: true }).catch(() => {})
+      const dataDir = dataUri.replace(/^file:\/\//, '')
+
+      // Load app bundle JS as text
+      const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
+      await jsAsset.downloadAsync()
+      const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
+      setHtml(buildHtml(appBundleJs))
+
+      // Start Bare worklet
+      const bundleAsset = Asset.fromModule(require('../assets/bare.bundle'))
+      await bundleAsset.downloadAsync()
+      const source = await fetch(bundleAsset.localUri!).then(r => r.text())
+
+      _worklet = new Worklet()
+
+      _worklet.IPC.on('data', (chunk: Uint8Array) => {
+        buf += b4a.toString(chunk)
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+            if (msg.type === 'event') {
+              (_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
+            } else if (msg.type === 'response') {
+              const resolve = _pending.get(msg.id)
+              if (resolve) { _pending.delete(msg.id); resolve(msg) }
+            }
+          } catch(e) { console.error('IPC parse error:', e) }
+        }
+      })
+
+      onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
+      onEvent('ready', () => setDbReady(true))
+      onEvent('error', (msg: string) => setError(msg))
+      onEvent('sync', (groupId: string) => {
+        webViewRef.current?.injectJavaScript(
+          `window.__pearEvent('sync', ${JSON.stringify(groupId)});true;`
+        )
+      })
+
+      _worklet.start('/bare.bundle', source)
+    }
+
+    start().catch(e => setError(e.message))
+  }, [])
+
+  if (error) return (
+    <View style={styles.center}>
+      <Text style={styles.emoji}>⚠️</Text>
+      <Text style={styles.errorText}>Failed to start PearCal</Text>
+      <Text style={styles.errorDetail}>{error}</Text>
+    </View>
+  )
+
+  if (!dbReady || !html) return (
+    <View style={styles.center}>
+      <Text style={styles.emoji}>🍐</Text>
+      <Text style={styles.loadingText}>Loading PearCal…</Text>
+    </View>
+  )
+
+  return (
+    <WebView
+      ref={webViewRef}
+      source={{ html, baseUrl: 'https://localhost' }}
+      style={styles.webview}
+      onMessage={onWebViewMessage}
+      javaScriptEnabled
+      domStorageEnabled
+      originWhitelist={['*']}
+      onError={e => setError(e.nativeEvent.description)}
+    />
+  )
 }
+
+const styles = StyleSheet.create({
+  webview: { flex: 1, backgroundColor: '#111' },
+  center:  { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 12 },
+  emoji:       { fontSize: 48 },
+  loadingText: { color: '#888', fontSize: 14, fontWeight: '300', letterSpacing: 1 },
+  errorText:   { color: '#D45F7A', fontSize: 14 },
+  errorDetail: { color: '#888', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', padding: 16 },
+})
