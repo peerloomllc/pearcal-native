@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, StyleSheet } from 'react-native'
+import { View, Text, StyleSheet, NativeModules } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
 import { Asset } from 'expo-asset'
 import * as FileSystem from 'expo-file-system/legacy'
+
+const { PearCalNotifications } = NativeModules
 
 let _worklet: any = null
 let _nextId = 1
@@ -21,6 +23,53 @@ function sendToWorklet (msg: object) {
   _worklet?.IPC.write(b4a.from(JSON.stringify(msg) + '\n'))
 }
 
+function notifId (eventId: string): number {
+  let h = 0
+  for (const c of eventId) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0
+  return Math.abs(h)
+}
+
+function calcFireTime (event: any): number | null {
+  const [y, mo, d] = event.date.split('-').map(Number)
+  let h = 9, m = 0
+  if (!event.allDay && event.start) {
+    const parts = event.start.split(':').map(Number)
+    h = parts[0]; m = parts[1]
+  }
+  return new Date(y, mo - 1, d, h, m, 0, 0).getTime() - event.reminder * 60 * 1000
+}
+
+async function handleNotification (msg: any, webViewRef: any) {
+  try {
+    if (msg.method === 'scheduleForEvent') {
+      const ev = msg.args[0]
+      if (ev && ev.reminder && ev.reminder > 0) {
+        const fireAt = calcFireTime(ev)
+        if (fireAt && fireAt > Date.now()) {
+          await PearCalNotifications?.schedule?.({
+            id:      notifId(ev.id),
+            title:   'X ' + ev.title,
+            body:    ev.allDay ? 'All day reminder' : ev.start + ' to ' + ev.end,
+            fireAt,
+            eventId: ev.id,
+          })
+        }
+      } else if (ev) {
+        await PearCalNotifications?.cancel?.(notifId(ev.id))
+      }
+    } else if (msg.method === 'cancelForEvent') {
+      await PearCalNotifications?.cancel?.(notifId(msg.args[0]))
+    }
+    webViewRef.current?.injectJavaScript(
+      'window.__pearResponse(' + JSON.stringify({ id: msg.id, result: null }) + ');true;'
+    )
+  } catch (e: any) {
+    webViewRef.current?.injectJavaScript(
+      'window.__pearResponse(' + JSON.stringify({ id: msg.id, error: e.message }) + ');true;'
+    )
+  }
+}
+
 function buildHtml (appBundleJs: string): string {
   const html = [
     '<!DOCTYPE html>',
@@ -34,8 +83,7 @@ function buildHtml (appBundleJs: string): string {
     '</style>',
     '</head>',
     '<body>',
-    '<div id="root"><p id="err" style="color:red;font-size:14px;padding:8px"></p></div>',
-    '<script>window.onerror=function(m,s,l,c,e){document.getElementById("err").innerText=m+" "+l+":"+c+(e?" "+e.stack:"");return true};</script>',
+    '<div id="root"></div>',
     '<script>' + appBundleJs + '</script>',
     '</body>',
     '</html>',
@@ -44,14 +92,20 @@ function buildHtml (appBundleJs: string): string {
 }
 
 export default function Root () {
-  const [dbReady,  setDbReady]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
-  const [html,     setHtml]     = useState<string | null>(null)
+  const [dbReady, setDbReady] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+  const [html,    setHtml]    = useState<string | null>(null)
   const webViewRef = useRef<any>(null)
 
   const onWebViewMessage = useCallback((e: any) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data)
+
+      if (['scheduleForEvent', 'cancelForEvent', 'restoreAll'].includes(msg.method)) {
+        handleNotification(msg, webViewRef)
+        return
+      }
+
       const bareId = _nextId++
       _pending.set(bareId, result => {
         webViewRef.current?.injectJavaScript(
@@ -59,7 +113,7 @@ export default function Root () {
         )
       })
       sendToWorklet({ ...msg, id: bareId })
-    } catch(err) { console.error('WebView msg error:', err) }
+    } catch (err) { console.error('WebView msg error:', err) }
   }, [])
 
   useEffect(() => {
@@ -71,13 +125,11 @@ export default function Root () {
       await FileSystem.makeDirectoryAsync(dataUri, { intermediates: true }).catch(() => {})
       const dataDir = dataUri.replace(/^file:\/\//, '')
 
-      // Load UI bundle as text
       const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
       await jsAsset.downloadAsync()
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
       setHtml(buildHtml(appBundleJs))
 
-      // Start Bare worklet
       const bundleAsset = Asset.fromModule(require('../assets/bare.bundle'))
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
@@ -98,7 +150,7 @@ export default function Root () {
               const resolve = _pending.get(msg.id)
               if (resolve) { _pending.delete(msg.id); resolve(msg) }
             }
-          } catch(e) { console.error('IPC parse error:', e) }
+          } catch (e) { console.error('IPC parse error:', e) }
         }
       })
 
@@ -119,7 +171,7 @@ export default function Root () {
 
   if (error) return (
     <View style={styles.center}>
-      <Text style={styles.emoji}>⚠️</Text>
+      <Text style={styles.emoji}>warning</Text>
       <Text style={styles.errorText}>Failed to start PearCal</Text>
       <Text style={styles.errorDetail}>{error}</Text>
     </View>
@@ -127,8 +179,8 @@ export default function Root () {
 
   if (!dbReady || !html) return (
     <View style={styles.center}>
-      <Text style={styles.emoji}>🍐</Text>
-      <Text style={styles.loadingText}>Loading PearCal…</Text>
+      <Text style={styles.emoji}>pear</Text>
+      <Text style={styles.loadingText}>Loading PearCal</Text>
     </View>
   )
 
@@ -153,4 +205,4 @@ const styles = StyleSheet.create({
   loadingText: { color: '#888', fontSize: 14, fontWeight: '300', letterSpacing: 1 },
   errorText:   { color: '#D45F7A', fontSize: 14 },
   errorDetail: { color: '#888', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', padding: 16 },
-})// DEBUG - remove after
+})

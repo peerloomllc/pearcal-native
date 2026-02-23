@@ -163,3 +163,5 @@ async function init (dataDir) {
 }
 
 send({ type: 'event', event: 'bareReady' })
+// Notification stubs are already in the switch — they'll be handled
+// via RN NativeModules bridge from the UI side instead of Bare
