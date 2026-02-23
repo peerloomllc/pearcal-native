@@ -22,20 +22,24 @@ function sendToWorklet (msg: object) {
 }
 
 function buildHtml (appBundleJs: string): string {
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body, #root { height: 100%; width: 100%; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script>${appBundleJs}</script>
-</body>
-</html>`
+  const html = [
+    '<!DOCTYPE html>',
+    '<html lang="en">',
+    '<head>',
+    '<meta charset="UTF-8" />',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />',
+    '<style>',
+    '* { box-sizing: border-box; margin: 0; padding: 0; }',
+    'html, body, #root { height: 100%; width: 100%; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }',
+    '</style>',
+    '</head>',
+    '<body>',
+    '<div id="root"><p style="color:red;font-size:20px">HTML loaded</p></div>',
+    '<script>' + appBundleJs + '</script>',
+    '</body>',
+    '</html>',
+  ]
+  return html.join('\n')
 }
 
 export default function Root () {
@@ -50,7 +54,7 @@ export default function Root () {
       const bareId = _nextId++
       _pending.set(bareId, result => {
         webViewRef.current?.injectJavaScript(
-          `window.__pearResponse(${JSON.stringify({ ...result, id: msg.id })});true;`
+          'window.__pearResponse(' + JSON.stringify({ ...result, id: msg.id }) + ');true;'
         )
       })
       sendToWorklet({ ...msg, id: bareId })
@@ -66,7 +70,7 @@ export default function Root () {
       await FileSystem.makeDirectoryAsync(dataUri, { intermediates: true }).catch(() => {})
       const dataDir = dataUri.replace(/^file:\/\//, '')
 
-      // Load app bundle JS as text
+      // Load UI bundle as text
       const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
       await jsAsset.downloadAsync()
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
@@ -102,7 +106,7 @@ export default function Root () {
       onEvent('error', (msg: string) => setError(msg))
       onEvent('sync', (groupId: string) => {
         webViewRef.current?.injectJavaScript(
-          `window.__pearEvent('sync', ${JSON.stringify(groupId)});true;`
+          'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
         )
       })
 
@@ -148,4 +152,4 @@ const styles = StyleSheet.create({
   loadingText: { color: '#888', fontSize: 14, fontWeight: '300', letterSpacing: 1 },
   errorText:   { color: '#D45F7A', fontSize: 14 },
   errorDetail: { color: '#888', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', padding: 16 },
-})
+})// DEBUG - remove after
