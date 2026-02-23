@@ -74,7 +74,7 @@ async function updateProfile (updates) {
   await db.put(NS.profile, { ...current, ...updates, updatedAt: Date.now() })
 }
 
-async function listEvents (opts = {}) {
+async function listEvents (opts) { opts = opts || {}
   const { from, to, groupId } = opts
   const gt = NS.events + (from ?? '')
   const lt = NS.events + (to ? to + '\xff' : '\xff')
