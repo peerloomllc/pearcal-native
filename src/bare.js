@@ -1,6 +1,7 @@
 const Hypercore = require('hypercore')
 const Hyperbee = require('hyperbee')
-const { generateKeypair, keyToHex } = 
+const sodium = require('sodium-native')
+const b4a = require('b4a')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
@@ -33,18 +34,17 @@ async function dispatch (method, args, id) {
 async function handle (method, args) {
   switch (method) {
     case 'ping': return 'pong'
-    case 'getProfile':    return getProfile()
-    case 'updateProfile': return updateProfile(args[0])
-    case 'listEvents':    return listEvents(args[0])
-    case 'putEvent':      return putEvent(args[0])
-    case 'deleteEvent':   return deleteEvent(args[0], args[1])
-    case 'listGroups':    return listGroups()
-    case 'putGroup':      return putGroup(args[0])
-    case 'deleteGroup':   return deleteGroup(args[0])
-    case 'listMembers':   return listMembers(args[0])
-    case 'putMember':     return putMember(args[0], args[1])
-    case 'removeMember':  return removeMember(args[0], args[1])
-    // Stubs for notifs + sync (not yet implemented)
+    case 'getProfile':       return getProfile()
+    case 'updateProfile':    return updateProfile(args[0])
+    case 'listEvents':       return listEvents(args[0])
+    case 'putEvent':         return putEvent(args[0])
+    case 'deleteEvent':      return deleteEvent(args[0], args[1])
+    case 'listGroups':       return listGroups()
+    case 'putGroup':         return putGroup(args[0])
+    case 'deleteGroup':      return deleteGroup(args[0])
+    case 'listMembers':      return listMembers(args[0])
+    case 'putMember':        return putMember(args[0], args[1])
+    case 'removeMember':     return removeMember(args[0], args[1])
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
     case 'restoreAll':       return null
@@ -57,12 +57,11 @@ async function handle (method, args) {
   }
 }
 
-// ── DB helpers ──────────────────────────────────────────────────────────────
 const NS = {
-  profile:  'profile',
-  events:   'events:',
-  groups:   'groups:',
-  members:  'members:',
+  profile: 'profile',
+  events:  'events:',
+  groups:  'groups:',
+  members: 'members:',
 }
 
 async function getProfile () {
@@ -132,7 +131,6 @@ async function removeMember (groupId, memberId) {
   await db.del(NS.members + groupId + ':' + memberId)
 }
 
-// ── Init ────────────────────────────────────────────────────────────────────
 async function init (dataDir) {
   try {
     console.log('Init DB at', dataDir)
@@ -141,11 +139,8 @@ async function init (dataDir) {
     db = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
     await db.ready()
 
-    // Bootstrap profile on first run
     const existing = await db.get(NS.profile)
     if (!existing) {
-      const sodium = require('sodium-native')
-      const b4a = require('b4a')
       const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
       const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
       sodium.crypto_sign_keypair(pk, sk)
