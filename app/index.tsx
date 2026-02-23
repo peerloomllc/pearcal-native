@@ -40,19 +40,24 @@ function calcFireTime (event: any): number | null {
 }
 
 async function handleNotification (msg: any, webViewRef: any) {
+  console.log("handleNotification:", msg.method, JSON.stringify(msg.args?.[0]?.reminder))
+  console.log("PearCalNotifications available:", !!PearCalNotifications)
   try {
     if (msg.method === 'scheduleForEvent') {
       const ev = msg.args[0]
       if (ev && ev.reminder && ev.reminder > 0) {
         const fireAt = calcFireTime(ev)
-        if (fireAt && fireAt > Date.now()) {
-          await PearCalNotifications?.schedule?.({
+        console.log("fireAt:", fireAt, "now:", Date.now(), "diff mins:", ((fireAt - Date.now())/60000).toFixed(1))
+          if (fireAt && fireAt > Date.now()) {
+          console.log("Calling schedule...")
+          try { await PearCalNotifications?.schedule?.({
             id:      notifId(ev.id),
             title:   'X ' + ev.title,
             body:    ev.allDay ? 'All day reminder' : ev.start + ' to ' + ev.end,
             fireAt,
             eventId: ev.id,
-          })
+          }) } catch(schedErr) { console.log('Alarm schedule error (non-fatal):', schedErr?.message) }
+          console.log("Schedule call completed")
         }
       } else if (ev) {
         await PearCalNotifications?.cancel?.(notifId(ev.id))

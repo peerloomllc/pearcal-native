@@ -41,7 +41,10 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmMgr.canScheduleExactAlarms()) {
+                // Fallback to inexact alarm (within ~1 minute window)
+                alarmMgr.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pending)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pending)
             } else {
                 alarmMgr.setExact(AlarmManager.RTC_WAKEUP, fireAt, pending)
