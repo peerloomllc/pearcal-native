@@ -1,6 +1,6 @@
 const Hypercore = require('hypercore')
 const Hyperbee = require('hyperbee')
-const { generateKeypair, keyToHex } = require('./src/lib/crypto.js')
+const { generateKeypair, keyToHex } = 
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
