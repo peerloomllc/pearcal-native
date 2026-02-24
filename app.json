@@ -43,6 +43,9 @@
           }
         }
       ]
+    ],
+    "assets": [
+      "./assets/bare-x64.bundle"
     ]
   }
 }

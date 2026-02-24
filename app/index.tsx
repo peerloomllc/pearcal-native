@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, StyleSheet, NativeModules } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -148,7 +148,12 @@ export default function Root () {
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
       setHtml(buildHtml(appBundleJs))
 
-      const bundleAsset = Asset.fromModule(require('../assets/bare.bundle'))
+      const isX64 = (Platform.constants as any)?.utsname?.machine?.includes('x86')
+      const bundleAsset = Asset.fromModule(
+        isX64
+          ? require('../assets/bare-x64.bundle')
+          : require('../assets/bare.bundle')
+      )
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
