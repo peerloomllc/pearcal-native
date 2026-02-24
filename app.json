@@ -45,7 +45,7 @@
       ]
     ],
     "assets": [
-      "./assets/bare-x64.bundle"
+      "./assets/bare-universal.bundle"
     ]
   }
 }
