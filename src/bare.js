@@ -50,6 +50,7 @@ async function handle (method, args) {
     case 'listEvents':       return listEvents(args[0])
     case 'putEvent':         return putEvent(args[0])
     case 'deleteEvent':      return deleteEvent(args[0], args[1])
+    case 'getGroup':         return getGroup(args[0])
     case 'listGroups':       return listGroups()
     case 'putGroup':         return putGroup(args[0])
     case 'deleteGroup':      return deleteGroup(args[0])
@@ -108,6 +109,11 @@ async function putEvent (event) {
 
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
+}
+
+async function getGroup (id) {
+  const node = await db.get(NS.groups + id)
+  return node?.value ?? null
 }
 
 async function listGroups () {
