@@ -64,7 +64,6 @@ const sync = {
 window.__pearHandleInvite = async function(url) {
   console.log('__pearHandleInvite called:', url)
   handleInviteLink(url, db, sync, group => {
-    setGroups(prev => [...prev, group])
     emitter.emit('group:joined', group)
   })
 }

@@ -123,11 +123,21 @@ export default function App ({ db, notifs, sync }) {
 
     emitter.on('sync', onSync)
 
+    function onGroupJoined(group) {
+      setGroups(prev => {
+        if (prev.find(g => g.id === group.id)) return prev
+        return [...prev, group]
+      })
+      setTab('groups')
+    }
+    emitter.on('group:joined', onGroupJoined)
+
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
+    emitter.off('group:joined', onGroupJoined)
     emitter.off('groupKeyUpdated', onGroupKeyUpdated)
   }, [db])
 
