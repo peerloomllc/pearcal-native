@@ -188,19 +188,22 @@ export default function Root () {
 
       _worklet.start('/bare.bundle', source)
 
-      // Check for pending invite link (set by MainActivity before React loaded)
+      // Check for pending invite link - poll every 2s to catch links arriving while app is running
       const { PearCalLink } = NativeModules
-      if (PearCalLink) {
-        const link = await PearCalLink.getPendingLink()
-        if (link) {
-          console.log('Pending invite link found:', link)
-          setTimeout(() => {
+      const checkPendingLink = async () => {
+        if (!PearCalLink) return
+        try {
+          const link = await PearCalLink.getPendingLink()
+          if (link) {
+            console.log('Pending invite link found:', link)
             webViewRef.current?.injectJavaScript(
               'window.__pearHandleInvite(' + JSON.stringify(link) + ');true;'
             )
-          }, 1500)
-        }
+          }
+        } catch(e) {}
       }
+      await checkPendingLink()
+      setInterval(checkPendingLink, 2000)
     }
 
     start().catch(e => setError(e.message))
