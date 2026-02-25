@@ -159,8 +159,13 @@ async function joinGroup (group) {
 
   console.log('Joining group swarm:', group.id)
 
-  const bootstrap = b4a.from(group.groupKey, 'hex')
+  const profile = await getProfile()
+  const isOwner = group.ownerId === profile?.id
   const groupStore = store.namespace(group.id)
+
+  // Owner creates with null bootstrap to get a real Autobase key
+  // Joiner uses the groupKey (owner's real Autobase key) as bootstrap
+  const bootstrap = isOwner ? null : b4a.from(group.groupKey, 'hex')
 
   const base = new Autobase(groupStore, bootstrap, {
     valueEncoding: 'json',
@@ -169,14 +174,38 @@ async function joinGroup (group) {
     ackInterval: 1000,
   })
   await base.ready()
-  console.log("Autobase key:", b4a.toString(base.key, "hex"), "bootstrap:", group.groupKey)
+
+  const realKey = b4a.toString(base.key, 'hex')
+  console.log('Autobase key:', realKey.slice(0,16), 'isOwner:', isOwner)
+
+  // Owner: persist the real Autobase key and notify UI
+  if (isOwner && realKey !== group.groupKey) {
+    console.log('Updating groupKey to real key:', realKey.slice(0, 16))
+    group = { ...group, groupKey: realKey }
+    await putGroup(group)
+    send({ type: 'event', event: 'groupKeyUpdated', data: group })
+  }
+
+  // Owner must add self as writer to make the base writable
+  if (isOwner) {
+    try {
+      const writerKey = b4a.toString(base.local.key, 'hex')
+      console.log('Adding self as writer:', writerKey.slice(0, 16))
+      await base.append({ addWriter: writerKey })
+      console.log('Writer added successfully')
+    } catch(e) {
+      console.log('addWriter note:', e.message)
+    }
+  }
+
   bases.set(group.id, base)
 
-  // Announce on Hyperswarm using group key as topic
-  const topic = b4a.from(group.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+  // Use real key as swarm topic (owner's Autobase key)
+  const topicKey = isOwner ? realKey : group.groupKey
+  const topic = b4a.from(topicKey.slice(0, 64).padEnd(64, '0'), 'hex')
   swarm.join(topic, { server: true, client: true })
 
-  console.log('Joined group:', group.id)
+  console.log('Joined group swarm:', group.id, 'topic:', topicKey.slice(0,16))
 }
 
 async function leaveGroup (groupId) {
