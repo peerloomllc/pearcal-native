@@ -101,6 +101,7 @@ export default function Root () {
   const [error,   setError]   = useState<string | null>(null)
   const [html,    setHtml]    = useState<string | null>(null)
   const webViewRef = useRef<any>(null)
+  const dbReadyRef = useRef(false)
 
   const onWebViewMessage = useCallback((e: any) => {
     try {
@@ -173,7 +174,7 @@ export default function Root () {
       })
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
-      onEvent('ready', () => setDbReady(true))
+      onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
       onEvent('error', (msg: string) => setError(msg))
       onEvent('groupKeyUpdated', (group: any) => {
         webViewRef.current?.injectJavaScript(
