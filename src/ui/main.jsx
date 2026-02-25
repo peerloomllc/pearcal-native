@@ -1,3 +1,4 @@
+import { handleInviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 
@@ -60,7 +61,6 @@ const sync = {
 }
 
 window.__pearHandleInvite = async function(url) {
-  const { handleInviteLink } = await import('./invite.js')
   handleInviteLink(url, db, sync, group => {
     setGroups(prev => [...prev, group])
     emitter.emit('group:joined', group)
