@@ -100,8 +100,41 @@ export default function Root () {
   const [dbReady, setDbReady] = useState(false)
   const [error,   setError]   = useState<string | null>(null)
   const [html,    setHtml]    = useState<string | null>(null)
+  const [pendingInvite, setPendingInvite] = useState<string | null>(null)
   const webViewRef = useRef<any>(null)
   const dbReadyRef = useRef(false)
+
+  // Poll for pending invite links every 2 seconds
+  useEffect(() => {
+    if (!dbReady) return
+    const { PearCalLink } = NativeModules
+    if (!PearCalLink) return
+    const interval = setInterval(async () => {
+      try {
+        const link = await PearCalLink.getPendingLink()
+        if (link) {
+          console.log('Poll found invite link:', link)
+          setPendingInvite(link)
+        }
+      } catch(e) {}
+    }, 2000)
+    return () => clearInterval(interval)
+  }, [dbReady])
+
+  // Inject pending invite link when WebView and DB are ready
+  useEffect(() => {
+    console.log('invite useEffect fired, pendingInvite:', !!pendingInvite, 'dbReady:', dbReady, 'webView:', !!webViewRef.current)
+    if (pendingInvite && dbReady && webViewRef.current) {
+      console.log('Injecting invite into WebView:', pendingInvite)
+      const url = pendingInvite
+      setPendingInvite(null)
+      setTimeout(() => {
+        webViewRef.current?.injectJavaScript(
+          `window.__pearHandleInvite && window.__pearHandleInvite(${JSON.stringify(url)});true;`
+        )
+      }, 500)
+    }
+  }, [pendingInvite, dbReady])
 
   const onWebViewMessage = useCallback((e: any) => {
     try {
@@ -189,22 +222,17 @@ export default function Root () {
 
       _worklet.start('/bare.bundle', source)
 
-      // Check for pending invite link - poll every 2s to catch links arriving while app is running
+      // Initial check for link set before React loaded
       const { PearCalLink } = NativeModules
-      const checkPendingLink = async () => {
-        if (!PearCalLink) return
+      if (PearCalLink) {
         try {
           const link = await PearCalLink.getPendingLink()
           if (link) {
-            console.log('Pending invite link found:', link)
-            webViewRef.current?.injectJavaScript(
-              'window.__pearHandleInvite(' + JSON.stringify(link) + ');true;'
-            )
+            console.log('Startup invite link found:', link)
+            setPendingInvite(link)
           }
         } catch(e) {}
       }
-      await checkPendingLink()
-      setInterval(checkPendingLink, 2000)
     }
 
     start().catch(e => setError(e.message))
