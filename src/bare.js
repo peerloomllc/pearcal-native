@@ -163,6 +163,7 @@ async function joinGroup (group) {
     ackInterval: 1000,
   })
   await base.ready()
+  console.log("Autobase key:", b4a.toString(base.key, "hex"), "bootstrap:", group.groupKey)
   bases.set(group.id, base)
 
   // Announce on Hyperswarm using group key as topic

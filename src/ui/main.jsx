@@ -27,6 +27,10 @@ window.__pearEvent = function (event, data) {
   window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
 }
 
+// Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
+window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
+window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
+
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
   updateProfile: (u)         => window.__pearDB.call('updateProfile', u),
@@ -53,6 +57,14 @@ const sync = {
   putEvent:    (gid, ev)    => window.__pearDB.call('putEvent:sync', gid, ev),
   deleteEvent: (gid, id, d) => window.__pearDB.call('deleteEvent:sync', gid, id, d),
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
+}
+
+window.__pearHandleInvite = async function(url) {
+  const { handleInviteLink } = await import('./invite.js')
+  handleInviteLink(url, db, sync, group => {
+    setGroups(prev => [...prev, group])
+    emitter.emit('group:joined', group)
+  })
 }
 
 const root = createRoot(document.getElementById('root'))

@@ -122,7 +122,13 @@ export default function App ({ db, notifs, sync }) {
     }
 
     emitter.on('sync', onSync)
+
+    function onGroupKeyUpdated(group) {
+      setGroups(prev => prev.map(g => g.id === group.id ? group : g))
+    }
+    emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
+    emitter.off('groupKeyUpdated', onGroupKeyUpdated)
   }, [db])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────

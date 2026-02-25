@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, StyleSheet, NativeModules, Platform } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform, DeviceEventEmitter } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -175,6 +175,11 @@ export default function Root () {
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
       onEvent('ready', () => setDbReady(true))
       onEvent('error', (msg: string) => setError(msg))
+      onEvent('groupKeyUpdated', (group: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("groupKeyUpdated",' + JSON.stringify(group) + ');true;'
+        )
+      })
       onEvent('sync', (groupId: string) => {
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
@@ -182,6 +187,14 @@ export default function Root () {
       })
 
       _worklet.start('/bare.bundle', source)
+
+      // Handle pear:// deep links forwarded from MainActivity
+      DeviceEventEmitter.addListener('pearLink', (url: string) => {
+        console.log('pearLink received:', url)
+        webViewRef.current?.injectJavaScript(
+          'window.__pearHandleInvite(' + JSON.stringify(url) + ');true;'
+        )
+      })
     }
 
     start().catch(e => setError(e.message))
