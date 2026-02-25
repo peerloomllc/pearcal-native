@@ -1,18 +1,23 @@
 import { useEffect } from 'react'
-import { useLocalSearchParams, router } from 'expo-router'
-import { DeviceEventEmitter } from 'react-native'
+import { useLocalSearchParams } from 'expo-router'
+import { DeviceEventEmitter, View } from 'react-native'
 
 export default function JoinRoute() {
-  const params = useLocalSearchParams()
+  const params = useLocalSearchParams<Record<string, string>>()
 
   useEffect(() => {
-    // Reconstruct the full pear:// URL and emit it for our handler
-    const qs = new URLSearchParams(params as Record<string, string>).toString()
-    const url = `pear://pearcal/join?${qs}`
-    DeviceEventEmitter.emit('pearLink', url)
-    // Navigate back to main app
-    router.replace('/')
+    const entries = Object.entries(params)
+      .filter(([k]) => k !== 'screen')
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join('&')
+    const url = `pear://pearcal/join?${entries}`
+    console.log('JoinRoute emitting pearLink:', url)
+
+    // Delay to ensure WebView is mounted
+    setTimeout(() => {
+      DeviceEventEmitter.emit('pearLink', url)
+    }, 2000)
   }, [])
 
-  return null
+  return <View style={{ flex: 1, backgroundColor: '#111' }} />
 }

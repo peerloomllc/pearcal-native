@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { View, Text, StyleSheet, NativeModules, Platform, DeviceEventEmitter } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -188,13 +188,19 @@ export default function Root () {
 
       _worklet.start('/bare.bundle', source)
 
-      // Handle pear:// deep links forwarded from MainActivity
-      DeviceEventEmitter.addListener('pearLink', (url: string) => {
-        console.log('pearLink received:', url)
-        webViewRef.current?.injectJavaScript(
-          'window.__pearHandleInvite(' + JSON.stringify(url) + ');true;'
-        )
-      })
+      // Check for pending invite link (set by MainActivity before React loaded)
+      const { PearCalLink } = NativeModules
+      if (PearCalLink) {
+        const link = await PearCalLink.getPendingLink()
+        if (link) {
+          console.log('Pending invite link found:', link)
+          setTimeout(() => {
+            webViewRef.current?.injectJavaScript(
+              'window.__pearHandleInvite(' + JSON.stringify(link) + ');true;'
+            )
+          }, 1500)
+        }
+      }
     }
 
     start().catch(e => setError(e.message))

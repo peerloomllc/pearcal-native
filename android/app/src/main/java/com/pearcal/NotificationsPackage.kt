@@ -7,7 +7,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class NotificationsPackage : ReactPackage {
     override fun createNativeModules(ctx: ReactApplicationContext): List<NativeModule> =
-        listOf(NotificationsModule(ctx))
+        listOf(NotificationsModule(ctx), LinkModule(ctx))
 
     override fun createViewManagers(ctx: ReactApplicationContext): List<ViewManager<*, *>> =
         emptyList()

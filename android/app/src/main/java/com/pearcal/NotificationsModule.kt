@@ -88,3 +88,5 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun removeListeners(count: Int) {}
 }
+
+// Add to NotificationsModule companion object

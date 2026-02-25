@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -14,29 +15,24 @@ class MainActivity : ReactActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     setTheme(R.style.AppTheme)
+    val uri = intent?.data
+    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
+      Log.d("PearCal", "Storing link: $uri")
+      LinkModule.pendingLink = uri.toString()
+      intent = Intent(this, MainActivity::class.java)
+    }
     super.onCreate(null)
-    handleIntent(intent)
   }
 
   override fun onNewIntent(intent: Intent) {
-    super.onNewIntent(intent)
-    handleIntent(intent)
-  }
-
-  private fun handleIntent(intent: Intent?) {
-    if (intent?.action == Intent.ACTION_VIEW) {
-      val uri: Uri? = intent.data
-      if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
-        // Forward to JS after a short delay to ensure React is mounted
-        val uriString = uri.toString()
-        android.os.Handler(mainLooper).postDelayed({
-          reactInstanceManager?.currentReactContext
-            ?.getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-            ?.emit("pearLink", uriString)
-        }, 1000)
-        // Clear the intent so Expo Router doesn't also process it
-        setIntent(Intent(this, MainActivity::class.java))
-      }
+    val uri = intent.data
+    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
+      Log.d("PearCal", "onNewIntent storing link: $uri")
+      LinkModule.pendingLink = uri.toString()
+      setIntent(Intent(this, MainActivity::class.java))
+      super.onNewIntent(Intent(this, MainActivity::class.java))
+    } else {
+      super.onNewIntent(intent)
     }
   }
 
