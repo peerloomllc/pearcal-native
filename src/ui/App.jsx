@@ -142,7 +142,13 @@ export default function App ({ db, notifs, sync }) {
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
-      setGroup(prev => prev?.id === group.id ? group : prev)
+      setGroup(prev => {
+        if (prev?.id === group.id) {
+          setGroupKeyReady(true)
+          return group
+        }
+        return prev
+      })
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
@@ -1089,6 +1095,7 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
   const [icon,           setIcon]           = useState(null)
   const [nameErr,        setNameErr]        = useState('')
   const [group,          setGroup]          = useState(null)
+  const [groupKeyReady,  setGroupKeyReady]  = useState(false)
   const [copiedLink,     setCopiedLink]     = useState(false)
   const [pendingName,    setPendingName]    = useState('')
   const [pendingKey,     setPendingKey]     = useState('')
@@ -1115,6 +1122,7 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
       groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
     }
     setGroup(newG)
+    setGroupKeyReady(false)
     setStep(2)
     addGroup(newG)
   }
@@ -1285,10 +1293,11 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
                   </span>
                 </div>
                 <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                  <button onClick={copyInvite}
+                  <button onClick={groupKeyReady ? copyInvite : undefined}
                     style={{ ...th.pillBtn, flex:1, padding:'10px', fontSize:13, fontWeight:300,
-                      background:copiedLink ? '#5DBF8A' : th.accent }}>
-                    {copiedLink ? '✓ Copied!' : '📋 Copy Link'}
+                      background:copiedLink ? '#5DBF8A' : groupKeyReady ? th.accent : th.muted,
+                      opacity: groupKeyReady ? 1 : 0.5, cursor: groupKeyReady ? 'pointer' : 'not-allowed' }}>
+                    {copiedLink ? '✓ Copied!' : groupKeyReady ? '📋 Copy Link' : '⏳ Generating…'}
                   </button>
                   <button style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
                     background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
