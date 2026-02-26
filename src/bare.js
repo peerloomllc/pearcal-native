@@ -155,67 +155,15 @@ async function removeMember (groupId, memberId) {
 // ── Sync ──────────────────────────────────────────────────────────────────────
 
 
-// ── Writer rendezvous ────────────────────────────────────────────────────────
+// ── Writer handshake ─────────────────────────────────────────────────────────
+// When peers connect over Hyperswarm, they exchange a single length-prefixed
+// JSON message containing their Autobase writerKey and groupId(s).
+// The owner reads this and calls addWriter — no separate Hypercore needed.
+//
+// Protocol: 4-byte big-endian length header + JSON body, sent once on connect.
+//   { type: 'writerAnnounce', groupId, writerKey }
 
-async function announceJoinerKey (group, base) {
-  // Use the joiner's own profile keypair to open a writable rendezvous core.
-  // This core is unique to the joiner and always writable since it's their key.
-  const profile = await getProfile()
-  const pk = b4a.from(profile.publicKey, 'hex')
-  const sk = b4a.from(profile.secretKey, 'hex')
-
-  const rendezvousCore = store.get({ key: pk, secretKey: sk })
-  await rendezvousCore.ready()
-
-  const writerKey = b4a.toString(base.local.key, 'hex')
-  console.log('[JOINER] announcing writerKey:', writerKey.slice(0, 16), 'on core:', profile.publicKey.slice(0, 16))
-  await rendezvousCore.append(JSON.stringify({ writerKey, groupId: group.id }))
-}
-
-async function watchForJoiners (group, base) {
-  // For each member of the group (excluding self), open their rendezvous core
-  // read-only using their publicKey, and watch for their writerKey announcement.
-  const profile = await getProfile()
-  const addedWriters = new Set()
-  addedWriters.add(b4a.toString(base.local.key, 'hex'))
-
-  async function watchMember (memberPublicKey) {
-    const pk = b4a.from(memberPublicKey, 'hex')
-    const rendezvousCore = store.get({ key: pk })
-    await rendezvousCore.ready()
-    console.log('[OWNER] watching rendezvous core for member:', memberPublicKey.slice(0, 16))
-
-    async function processEntries () {
-      for (let i = 0; i < rendezvousCore.length; i++) {
-        try {
-          const block = await rendezvousCore.get(i)
-          const { writerKey, groupId } = JSON.parse(block)
-          if (groupId !== group.id) continue
-          if (!writerKey || addedWriters.has(writerKey)) continue
-          addedWriters.add(writerKey)
-          console.log('[OWNER] adding joiner as writer:', writerKey.slice(0, 16))
-          await base.append({ addWriter: writerKey })
-          console.log('[OWNER] addWriter appended')
-        } catch (e) {
-          console.error('[OWNER] processEntries error:', e.message)
-        }
-      }
-    }
-
-    await processEntries()
-    rendezvousCore.on('append', processEntries)
-  }
-
-  // Watch all current members except self
-  const members = await listMembers(group.id)
-  for (const m of members) {
-    if (m.publicKey && m.publicKey !== profile.publicKey) {
-      watchMember(m.publicKey).catch(e =>
-        console.error('[OWNER] watchMember error:', e.message)
-      )
-    }
-  }
-}
+const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
@@ -249,8 +197,7 @@ async function joinGroup (group) {
     send({ type: 'event', event: 'groupKeyUpdated', data: group })
   }
 
-  // Owner adds self as writer, then watches for joiners
-  // Joiner announces their writerKey on the rendezvous core
+  // Owner adds self as writer, then processes any pending joiner announcements
   if (isOwner) {
     try {
       const writerKey = b4a.toString(base.local.key, 'hex')
@@ -260,13 +207,18 @@ async function joinGroup (group) {
     } catch(e) {
       console.log('addWriter note:', e.message)
     }
-    watchForJoiners(group, base).catch(e =>
-      console.error('[OWNER] watchForJoiners error:', e.message)
-    )
-  } else {
-    announceJoinerKey(group, base).catch(e =>
-      console.error('[JOINER] announceJoinerKey error:', e.message)
-    )
+
+    // Process any writerAnnounce messages that arrived before joinGroup ran
+    const pending = pendingWriterAnnouncements.get(group.id)
+    if (pending) {
+      for (const writerKey of pending) {
+        console.log('[OWNER] processing pending writerKey:', writerKey.slice(0, 16))
+        base.append({ addWriter: writerKey }).catch(e =>
+          console.error('[OWNER] pending addWriter error:', e.message)
+        )
+      }
+      pendingWriterAnnouncements.delete(group.id)
+    }
   }
 
   bases.set(group.id, base)
@@ -372,7 +324,84 @@ async function init (dir) {
     swarm = new Hyperswarm()
     swarm.on('connection', async (conn, info) => {
       console.log('Swarm connection from peer')
-      store.replicate(conn)
+
+      // ── Handshake: exchange writerKey announcements ──
+      // Each side sends: [4-byte BE length][JSON body]
+      // After reading the peer's message, hand the rest to Corestore.
+
+      function encodeMessage (obj) {
+        const body = Buffer.from(JSON.stringify(obj))
+        const len = Buffer.alloc(4)
+        len.writeUInt32BE(body.length, 0)
+        return Buffer.concat([len, body])
+      }
+
+      // Send our writer keys for all groups we've joined
+      for (const [groupId, base] of bases) {
+        const writerKey = b4a.toString(base.local.key, 'hex')
+        conn.write(encodeMessage({ type: 'writerAnnounce', groupId, writerKey }))
+        console.log('[HANDSHAKE] sent writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
+      }
+
+      // Read the peer's announcement
+      let recvBuf = Buffer.alloc(0)
+      let handled = false
+
+      function onData (chunk) {
+        if (handled) return
+        recvBuf = Buffer.concat([recvBuf, chunk])
+
+        // Wait for 4-byte length header
+        if (recvBuf.length < 4) return
+        const bodyLen = recvBuf.readUInt32BE(0)
+
+        // Wait for full body
+        if (recvBuf.length < 4 + bodyLen) return
+
+        handled = true
+        const body = recvBuf.slice(4, 4 + bodyLen)
+        const remainder = recvBuf.slice(4 + bodyLen)
+        conn.removeListener('data', onData)
+
+        try {
+          const msg = JSON.parse(body.toString())
+          if (msg.type === 'writerAnnounce' && msg.groupId && msg.writerKey) {
+            console.log('[HANDSHAKE] received writerKey:', msg.writerKey.slice(0, 16), 'for group:', msg.groupId)
+            const base = bases.get(msg.groupId)
+            if (base) {
+              // Only the owner should addWriter
+              Promise.all([getProfile(), getGroup(msg.groupId)]).then(([profile, group]) => {
+                if (group && group.ownerId === profile.id) {
+                  const set = pendingWriterAnnouncements.get(msg.groupId) || new Set()
+                  if (!set.has(msg.writerKey)) {
+                    set.add(msg.writerKey)
+                    pendingWriterAnnouncements.set(msg.groupId, set)
+                    console.log('[OWNER] appending addWriter for:', msg.writerKey.slice(0, 16))
+                    base.append({ addWriter: msg.writerKey })
+                      .then(() => console.log('[OWNER] addWriter appended successfully'))
+                      .catch(e => console.error('[OWNER] addWriter error:', e.message))
+                  }
+                }
+              }).catch(e => console.error('[HANDSHAKE] ownership check error:', e.message))
+            } else {
+              // joinGroup hasn't run yet — store for later
+              const set = pendingWriterAnnouncements.get(msg.groupId) || new Set()
+              set.add(msg.writerKey)
+              pendingWriterAnnouncements.set(msg.groupId, set)
+              console.log('[HANDSHAKE] stored pending writerKey for group:', msg.groupId)
+            }
+          }
+        } catch (e) {
+          console.error('[HANDSHAKE] parse error:', e.message)
+        }
+
+        // Hand off to Corestore — push any buffered bytes back
+        store.replicate(conn)
+        if (remainder.length > 0) conn.emit('data', remainder)
+      }
+
+      conn.on('data', onData)
+      conn.on('error', e => console.error('[SWARM] conn error:', e.message))
     })
 
     // Bootstrap profile
