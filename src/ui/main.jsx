@@ -30,7 +30,10 @@ window.__pearEvent = function (event, data) {
 
 // Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
 window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
-window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
+window.addEventListener('pear:groupKeyUpdated', e => {
+  console.log('[WEBVIEW] groupKeyUpdated received, key:', e.detail?.groupKey?.slice(0,16))
+  emitter.emit('groupKeyUpdated', e.detail)
+})
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
