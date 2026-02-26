@@ -142,13 +142,7 @@ export default function App ({ db, notifs, sync }) {
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
-      setGroup(prev => {
-        if (prev?.id === group.id) {
-          setGroupKeyReady(true)
-          return group
-        }
-        return prev
-      })
+      if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
@@ -359,8 +353,9 @@ export default function App ({ db, notifs, sync }) {
             onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
         )}
         {newGroupOpen && (
-          <NewGroupModal th={th} onClose={() => setNewGroupOpen(false)}
-            onAdd={addGroup} me={profile} />
+          <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
+            onAdd={addGroup} me={profile}
+            onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile}
@@ -1088,7 +1083,7 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
-function NewGroupModal ({ th, onClose, onAdd, me }) {
+function NewGroupModal ({ th, onClose, onAdd, me, onGroupKeyUpdated }) {
   const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
@@ -1097,6 +1092,18 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
   const [nameErr,        setNameErr]        = useState('')
   const [group,          setGroup]          = useState(null)
   const [groupKeyReady,  setGroupKeyReady]  = useState(false)
+  React.useEffect(() => {
+    if (!onGroupKeyUpdated) return
+    onGroupKeyUpdated(updated => {
+      setGroup(prev => {
+        if (prev?.id === updated.id) {
+          setGroupKeyReady(true)
+          return updated
+        }
+        return prev
+      })
+    })
+  }, [onGroupKeyUpdated])
   const [copiedLink,     setCopiedLink]     = useState(false)
   const [pendingName,    setPendingName]    = useState('')
   const [pendingKey,     setPendingKey]     = useState('')
@@ -1125,7 +1132,6 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
     setGroup(newG)
     setGroupKeyReady(false)
     setStep(2)
-    onAdd(newG)
   }
 
   function genInviteLink (g) {
