@@ -142,6 +142,7 @@ export default function App ({ db, notifs, sync }) {
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
+      setGroup(prev => prev?.id === group.id ? group : prev)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
