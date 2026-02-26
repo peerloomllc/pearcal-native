@@ -325,6 +325,7 @@ async function init (dir) {
     swarm = new Hyperswarm()
     swarm.dht.on('ready', () => console.log('[DHT] ready'))
     swarm.dht.on('persistent', () => console.log('[DHT] persistent'))
+    swarm.on('update', () => console.log('[SWARM] update, connections:', swarm.connections.size))
     swarm.on('connection', async (conn, info) => {
       console.log('Swarm connection from peer')
 
