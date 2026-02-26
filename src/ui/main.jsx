@@ -64,12 +64,11 @@ const sync = {
 window.__pearHandleInvite = async function(url) {
   console.log('__pearHandleInvite called:', url)
   const result = await handleInviteLink(url, db, sync, group => {
-    emitter.emit('group:joined', group)
+    window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: group }))
   })
   console.log('handleInviteLink result:', JSON.stringify(result))
-  // Even if already_member, refresh the groups UI in case it's not showing
-  if (result && (result.ok || result.error === 'already_member')) {
-    emitter.emit('group:joined', result.group)
+  if (result && (result.ok || result.error === 'already_member') && result.group) {
+    window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: result.group }))
   }
 }
 

@@ -124,7 +124,6 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('sync', onSync)
 
     async function onGroupJoined(group) {
-      // Reload all groups from DB to ensure UI is in sync
       if (db) {
         const fresh = await db.listGroups()
         setGroups(fresh)
@@ -137,6 +136,9 @@ export default function App ({ db, notifs, sync }) {
       setTab('groups')
     }
     emitter.on('group:joined', onGroupJoined)
+    // Also listen for DOM event from __pearHandleInvite
+    const onDomGroupJoined = (e) => onGroupJoined(e.detail)
+    window.addEventListener('pear:groupJoined', onDomGroupJoined)
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
@@ -144,6 +146,7 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => emitter.off('sync', onSync)
     emitter.off('group:joined', onGroupJoined)
+    window.removeEventListener('pear:groupJoined', onDomGroupJoined)
     emitter.off('groupKeyUpdated', onGroupKeyUpdated)
   }, [db])
 
