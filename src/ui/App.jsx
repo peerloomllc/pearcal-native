@@ -77,6 +77,7 @@ export default function App ({ db, notifs, sync }) {
   })
   const [modal,         setModal]         = useState(null)
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
+  const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
 
   const th = themes(dark)
@@ -1092,7 +1093,7 @@ function NewGroupModal ({ th, onClose, onAdd, me, onGroupKeyUpdated }) {
   const [nameErr,        setNameErr]        = useState('')
   const [group,          setGroup]          = useState(null)
   const [groupKeyReady,  setGroupKeyReady]  = useState(false)
-  React.useEffect(() => {
+  useEffect(() => {
     if (!onGroupKeyUpdated) return
     onGroupKeyUpdated(updated => {
       setGroup(prev => {
