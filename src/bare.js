@@ -158,55 +158,63 @@ async function removeMember (groupId, memberId) {
 // ── Writer rendezvous ────────────────────────────────────────────────────────
 
 async function announceJoinerKey (group, base) {
-  const topicBuf = b4a.from(group.groupKey, 'hex')
-  const seed = b4a.allocUnsafe(sodium.crypto_sign_SEEDBYTES)
-  sodium.crypto_generichash(seed, b4a.from('pearcal-rendezvous'), topicBuf)
-
-  const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
-  const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
-  sodium.crypto_sign_seed_keypair(pk, sk, seed)
+  // Use the joiner's own profile keypair to open a writable rendezvous core.
+  // This core is unique to the joiner and always writable since it's their key.
+  const profile = await getProfile()
+  const pk = b4a.from(profile.publicKey, 'hex')
+  const sk = b4a.from(profile.secretKey, 'hex')
 
   const rendezvousCore = store.get({ key: pk, secretKey: sk })
   await rendezvousCore.ready()
 
   const writerKey = b4a.toString(base.local.key, 'hex')
-  console.log('[JOINER] announcing writerKey:', writerKey.slice(0, 16))
-  await rendezvousCore.append(JSON.stringify({ writerKey }))
+  console.log('[JOINER] announcing writerKey:', writerKey.slice(0, 16), 'on core:', profile.publicKey.slice(0, 16))
+  await rendezvousCore.append(JSON.stringify({ writerKey, groupId: group.id }))
 }
 
 async function watchForJoiners (group, base) {
-  const topicBuf = b4a.from(group.groupKey, 'hex')
-  const seed = b4a.allocUnsafe(sodium.crypto_sign_SEEDBYTES)
-  sodium.crypto_generichash(seed, b4a.from('pearcal-rendezvous'), topicBuf)
-
-  const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
-  const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
-  sodium.crypto_sign_seed_keypair(pk, sk, seed)
-
-  const rendezvousCore = store.get({ key: pk })
-  await rendezvousCore.ready()
-
+  // For each member of the group (excluding self), open their rendezvous core
+  // read-only using their publicKey, and watch for their writerKey announcement.
+  const profile = await getProfile()
   const addedWriters = new Set()
   addedWriters.add(b4a.toString(base.local.key, 'hex'))
 
-  async function processEntries () {
-    for (let i = 0; i < rendezvousCore.length; i++) {
-      try {
-        const block = await rendezvousCore.get(i)
-        const { writerKey } = JSON.parse(block)
-        if (!writerKey || addedWriters.has(writerKey)) continue
-        addedWriters.add(writerKey)
-        console.log('[OWNER] adding joiner as writer:', writerKey.slice(0, 16))
-        await base.append({ addWriter: writerKey })
-        console.log('[OWNER] addWriter appended')
-      } catch (e) {
-        console.error('[OWNER] processEntries error:', e.message)
+  async function watchMember (memberPublicKey) {
+    const pk = b4a.from(memberPublicKey, 'hex')
+    const rendezvousCore = store.get({ key: pk })
+    await rendezvousCore.ready()
+    console.log('[OWNER] watching rendezvous core for member:', memberPublicKey.slice(0, 16))
+
+    async function processEntries () {
+      for (let i = 0; i < rendezvousCore.length; i++) {
+        try {
+          const block = await rendezvousCore.get(i)
+          const { writerKey, groupId } = JSON.parse(block)
+          if (groupId !== group.id) continue
+          if (!writerKey || addedWriters.has(writerKey)) continue
+          addedWriters.add(writerKey)
+          console.log('[OWNER] adding joiner as writer:', writerKey.slice(0, 16))
+          await base.append({ addWriter: writerKey })
+          console.log('[OWNER] addWriter appended')
+        } catch (e) {
+          console.error('[OWNER] processEntries error:', e.message)
+        }
       }
     }
+
+    await processEntries()
+    rendezvousCore.on('append', processEntries)
   }
 
-  await processEntries()
-  rendezvousCore.on('append', processEntries)
+  // Watch all current members except self
+  const members = await getMembers(group.id)
+  for (const m of members) {
+    if (m.publicKey && m.publicKey !== profile.publicKey) {
+      watchMember(m.publicKey).catch(e =>
+        console.error('[OWNER] watchMember error:', e.message)
+      )
+    }
+  }
 }
 
 async function joinGroup (group) {
