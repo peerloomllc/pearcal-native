@@ -209,6 +209,7 @@ export default function Root () {
       onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
       onEvent('error', (msg: string) => setError(msg))
       onEvent('groupKeyUpdated', (group: any) => {
+        console.log('[NATIVE] groupKeyUpdated fired, webView ready:', !!webViewRef.current, 'key:', group?.groupKey?.slice(0,16))
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupKeyUpdated",' + JSON.stringify(group) + ');true;'
         )
