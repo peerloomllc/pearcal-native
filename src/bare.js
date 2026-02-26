@@ -207,7 +207,7 @@ async function watchForJoiners (group, base) {
   }
 
   // Watch all current members except self
-  const members = await getMembers(group.id)
+  const members = await listMembers(group.id)
   for (const m of members) {
     if (m.publicKey && m.publicKey !== profile.publicKey) {
       watchMember(m.publicKey).catch(e =>
