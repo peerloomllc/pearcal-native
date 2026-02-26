@@ -146,10 +146,12 @@ export default function App ({ db, notifs, sync }) {
       if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
-    return () => emitter.off('sync', onSync)
-    emitter.off('group:joined', onGroupJoined)
-    window.removeEventListener('pear:groupJoined', onDomGroupJoined)
-    emitter.off('groupKeyUpdated', onGroupKeyUpdated)
+    return () => {
+      emitter.off('sync', onSync)
+      emitter.off('group:joined', onGroupJoined)
+      window.removeEventListener('pear:groupJoined', onDomGroupJoined)
+      emitter.off('groupKeyUpdated', onGroupKeyUpdated)
+    }
   }, [db])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────
@@ -210,7 +212,7 @@ export default function App ({ db, notifs, sync }) {
       for (const m of g.members) await db.putMember(g.id, m)
       await sync?.joinGroup(g).catch(() => {})
     }
-    setGroups(prev => [...prev, g])
+    setGroups(prev => prev.some(x => x.id === g.id) ? prev : [...prev, g])
   }, [db, sync])
 
   const updateGroup = useCallback(async updated => {
@@ -1133,6 +1135,7 @@ function NewGroupModal ({ th, onClose, onAdd, me, onGroupKeyUpdated }) {
     setGroup(newG)
     setGroupKeyReady(false)
     setStep(2)
+    onAdd(newG)
   }
 
   function genInviteLink (g) {
