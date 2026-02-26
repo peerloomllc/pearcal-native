@@ -1116,6 +1116,7 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
     }
     setGroup(newG)
     setStep(2)
+    addGroup(newG)
   }
 
   function genInviteLink (g) {
