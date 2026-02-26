@@ -154,6 +154,61 @@ async function removeMember (groupId, memberId) {
 
 // ── Sync ──────────────────────────────────────────────────────────────────────
 
+
+// ── Writer rendezvous ────────────────────────────────────────────────────────
+
+async function announceJoinerKey (group, base) {
+  const topicBuf = b4a.from(group.groupKey, 'hex')
+  const seed = b4a.allocUnsafe(sodium.crypto_sign_SEEDBYTES)
+  sodium.crypto_generichash(seed, b4a.from('pearcal-rendezvous'), topicBuf)
+
+  const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
+  const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
+  sodium.crypto_sign_seed_keypair(pk, sk, seed)
+
+  const rendezvousCore = store.get({ key: pk, secretKey: sk })
+  await rendezvousCore.ready()
+
+  const writerKey = b4a.toString(base.local.key, 'hex')
+  console.log('[JOINER] announcing writerKey:', writerKey.slice(0, 16))
+  await rendezvousCore.append(JSON.stringify({ writerKey }))
+}
+
+async function watchForJoiners (group, base) {
+  const topicBuf = b4a.from(group.groupKey, 'hex')
+  const seed = b4a.allocUnsafe(sodium.crypto_sign_SEEDBYTES)
+  sodium.crypto_generichash(seed, b4a.from('pearcal-rendezvous'), topicBuf)
+
+  const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
+  const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
+  sodium.crypto_sign_seed_keypair(pk, sk, seed)
+
+  const rendezvousCore = store.get({ key: pk })
+  await rendezvousCore.ready()
+
+  const addedWriters = new Set()
+  addedWriters.add(b4a.toString(base.local.key, 'hex'))
+
+  async function processEntries () {
+    for (let i = 0; i < rendezvousCore.length; i++) {
+      try {
+        const block = await rendezvousCore.get(i)
+        const { writerKey } = JSON.parse(block)
+        if (!writerKey || addedWriters.has(writerKey)) continue
+        addedWriters.add(writerKey)
+        console.log('[OWNER] adding joiner as writer:', writerKey.slice(0, 16))
+        await base.append({ addWriter: writerKey })
+        console.log('[OWNER] addWriter appended')
+      } catch (e) {
+        console.error('[OWNER] processEntries error:', e.message)
+      }
+    }
+  }
+
+  await processEntries()
+  rendezvousCore.on('append', processEntries)
+}
+
 async function joinGroup (group) {
   if (bases.has(group.id)) return
 
@@ -186,7 +241,8 @@ async function joinGroup (group) {
     send({ type: 'event', event: 'groupKeyUpdated', data: group })
   }
 
-  // Owner must add self as writer to make the base writable
+  // Owner adds self as writer, then watches for joiners
+  // Joiner announces their writerKey on the rendezvous core
   if (isOwner) {
     try {
       const writerKey = b4a.toString(base.local.key, 'hex')
@@ -196,6 +252,13 @@ async function joinGroup (group) {
     } catch(e) {
       console.log('addWriter note:', e.message)
     }
+    watchForJoiners(group, base).catch(e =>
+      console.error('[OWNER] watchForJoiners error:', e.message)
+    )
+  } else {
+    announceJoinerKey(group, base).catch(e =>
+      console.error('[JOINER] announceJoinerKey error:', e.message)
+    )
   }
 
   bases.set(group.id, base)
