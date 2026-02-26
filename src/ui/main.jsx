@@ -67,6 +67,10 @@ window.__pearHandleInvite = async function(url) {
     emitter.emit('group:joined', group)
   })
   console.log('handleInviteLink result:', JSON.stringify(result))
+  // Even if already_member, refresh the groups UI in case it's not showing
+  if (result && (result.ok || result.error === 'already_member')) {
+    emitter.emit('group:joined', result.group)
+  }
 }
 
 const root = createRoot(document.getElementById('root'))
