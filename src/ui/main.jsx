@@ -63,9 +63,10 @@ const sync = {
 
 window.__pearHandleInvite = async function(url) {
   console.log('__pearHandleInvite called:', url)
-  handleInviteLink(url, db, sync, group => {
+  const result = await handleInviteLink(url, db, sync, group => {
     emitter.emit('group:joined', group)
   })
+  console.log('handleInviteLink result:', JSON.stringify(result))
 }
 
 const root = createRoot(document.getElementById('root'))
