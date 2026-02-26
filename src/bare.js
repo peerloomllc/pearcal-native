@@ -200,8 +200,9 @@ async function joinGroup (group) {
 
   bases.set(group.id, base)
 
-  // Use real key as swarm topic (owner's Autobase key)
-  const topicKey = isOwner ? realKey : group.groupKey
+  // Always use group.groupKey as swarm topic so both sides match
+  // (owner updates groupKey to realKey before this point)
+  const topicKey = group.groupKey
   const topic = b4a.from(topicKey.slice(0, 64).padEnd(64, '0'), 'hex')
   swarm.join(topic, { server: true, client: true })
 
