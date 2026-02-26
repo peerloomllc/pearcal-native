@@ -196,7 +196,8 @@ export default function Root () {
           try {
             const msg = JSON.parse(line)
             if (msg.type === 'event') {
-              (_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
+              console.log('[IPC] event:', msg.event, JSON.stringify(msg.data)?.slice(0,60))
+              ;(_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
             } else if (msg.type === 'response') {
               const resolve = _pending.get(msg.id)
               if (resolve) { _pending.delete(msg.id); resolve(msg) }
