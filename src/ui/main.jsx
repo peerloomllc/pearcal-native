@@ -1,6 +1,6 @@
 import { handleInviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
-import App from './App.jsx'
+import App, { emitter } from './App.jsx'
 
 // IPC bridge
 let _nextId = 1

@@ -762,6 +762,7 @@ function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
   function copyInvite (g, e) {
     e.stopPropagation()
     const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
+    console.log('[INVITE] groupKey:', g.groupKey, 'link:', link)
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -1124,7 +1125,7 @@ function NewGroupModal ({ th, onClose, onAdd, me }) {
     setGroup(newG)
     setGroupKeyReady(false)
     setStep(2)
-    addGroup(newG)
+    onAdd(newG)
   }
 
   function genInviteLink (g) {
