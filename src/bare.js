@@ -325,83 +325,76 @@ async function init (dir) {
     swarm.on('connection', async (conn, info) => {
       console.log('Swarm connection from peer')
 
-      // ── Handshake: exchange writerKey announcements ──
-      // Each side sends: [4-byte BE length][JSON body]
-      // After reading the peer's message, hand the rest to Corestore.
+      // Let Corestore set up replication first — this creates the protocol
+      // stream and installs a Protomux muxer at stream.noiseStream.userData
+      const stream = store.replicate(conn)
 
-      function encodeMessage (obj) {
-        const body = Buffer.from(JSON.stringify(obj))
-        const len = Buffer.alloc(4)
-        len.writeUInt32BE(body.length, 0)
-        return Buffer.concat([len, body])
+      // Wait for the noise handshake to complete so the muxer is ready
+      await stream.noiseStream.opened
+
+      const mux = stream.noiseStream.userData
+      if (!mux) {
+        console.error('[HANDSHAKE] no muxer found')
+        return
       }
 
-      // Send our writer keys for all groups we've joined
-      for (const [groupId, base] of bases) {
-        const writerKey = b4a.toString(base.local.key, 'hex')
-        conn.write(encodeMessage({ type: 'writerAnnounce', groupId, writerKey }))
-        console.log('[HANDSHAKE] sent writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
+      // Open a dedicated Protomux channel for writer key exchange
+      const channel = mux.createChannel({
+        protocol: 'pearcal/writer-announce',
+        onopen () {
+          console.log('[HANDSHAKE] channel opened')
+          // Send our writerKey for every group we've joined
+          for (const [groupId, base] of bases) {
+            const writerKey = b4a.toString(base.local.key, 'hex')
+            console.log('[HANDSHAKE] sending writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
+            msg.send(Buffer.from(JSON.stringify({ groupId, writerKey })))
+          }
+        },
+        onclose () {
+          console.log('[HANDSHAKE] channel closed')
+        }
+      })
+
+      if (!channel) {
+        console.log('[HANDSHAKE] channel already exists or mux closing')
+        return
       }
 
-      // Read the peer's announcement
-      let recvBuf = Buffer.alloc(0)
-      let handled = false
+      // Single message type: JSON buffer
+      const msg = channel.addMessage({
+        onmessage (buf) {
+          try {
+            const { groupId, writerKey } = JSON.parse(buf.toString())
+            console.log('[HANDSHAKE] received writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
 
-      function onData (chunk) {
-        if (handled) return
-        recvBuf = Buffer.concat([recvBuf, chunk])
-
-        // Wait for 4-byte length header
-        if (recvBuf.length < 4) return
-        const bodyLen = recvBuf.readUInt32BE(0)
-
-        // Wait for full body
-        if (recvBuf.length < 4 + bodyLen) return
-
-        handled = true
-        const body = recvBuf.slice(4, 4 + bodyLen)
-        const remainder = recvBuf.slice(4 + bodyLen)
-        conn.removeListener('data', onData)
-
-        try {
-          const msg = JSON.parse(body.toString())
-          if (msg.type === 'writerAnnounce' && msg.groupId && msg.writerKey) {
-            console.log('[HANDSHAKE] received writerKey:', msg.writerKey.slice(0, 16), 'for group:', msg.groupId)
-            const base = bases.get(msg.groupId)
+            const base = bases.get(groupId)
             if (base) {
-              // Only the owner should addWriter
-              Promise.all([getProfile(), getGroup(msg.groupId)]).then(([profile, group]) => {
+              Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
                 if (group && group.ownerId === profile.id) {
-                  const set = pendingWriterAnnouncements.get(msg.groupId) || new Set()
-                  if (!set.has(msg.writerKey)) {
-                    set.add(msg.writerKey)
-                    pendingWriterAnnouncements.set(msg.groupId, set)
-                    console.log('[OWNER] appending addWriter for:', msg.writerKey.slice(0, 16))
-                    base.append({ addWriter: msg.writerKey })
+                  const set = pendingWriterAnnouncements.get(groupId) || new Set()
+                  if (!set.has(writerKey)) {
+                    set.add(writerKey)
+                    pendingWriterAnnouncements.set(groupId, set)
+                    console.log('[OWNER] appending addWriter for:', writerKey.slice(0, 16))
+                    base.append({ addWriter: writerKey })
                       .then(() => console.log('[OWNER] addWriter appended successfully'))
                       .catch(e => console.error('[OWNER] addWriter error:', e.message))
                   }
                 }
               }).catch(e => console.error('[HANDSHAKE] ownership check error:', e.message))
             } else {
-              // joinGroup hasn't run yet — store for later
-              const set = pendingWriterAnnouncements.get(msg.groupId) || new Set()
-              set.add(msg.writerKey)
-              pendingWriterAnnouncements.set(msg.groupId, set)
-              console.log('[HANDSHAKE] stored pending writerKey for group:', msg.groupId)
+              const set = pendingWriterAnnouncements.get(groupId) || new Set()
+              set.add(writerKey)
+              pendingWriterAnnouncements.set(groupId, set)
+              console.log('[HANDSHAKE] stored pending writerKey for group:', groupId)
             }
+          } catch (e) {
+            console.error('[HANDSHAKE] parse error:', e.message)
           }
-        } catch (e) {
-          console.error('[HANDSHAKE] parse error:', e.message)
         }
+      })
 
-        // Hand off to Corestore — push any buffered bytes back
-        store.replicate(conn)
-        if (remainder.length > 0) conn.emit('data', remainder)
-      }
-
-      conn.on('data', onData)
-      conn.on('error', e => console.error('[SWARM] conn error:', e.message))
+      channel.open()
     })
 
     // Bootstrap profile
