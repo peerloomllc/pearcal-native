@@ -227,7 +227,8 @@ async function joinGroup (group) {
   // (owner updates groupKey to realKey before this point)
   const topicKey = group.groupKey
   const topic = b4a.from(topicKey.slice(0, 64).padEnd(64, '0'), 'hex')
-  swarm.join(topic, { server: true, client: true })
+  const discovery = swarm.join(topic, { server: true, client: true })
+  discovery.flushed().then(() => console.log('[DHT] topic flushed (announced):', topicKey.slice(0,16)))
 
   console.log('Joined group swarm:', group.id, 'topic:', topicKey.slice(0,16))
 }
@@ -322,6 +323,8 @@ async function init (dir) {
 
     // Hyperswarm
     swarm = new Hyperswarm()
+    swarm.dht.on('ready', () => console.log('[DHT] ready'))
+    swarm.dht.on('persistent', () => console.log('[DHT] persistent'))
     swarm.on('connection', async (conn, info) => {
       console.log('Swarm connection from peer')
 
