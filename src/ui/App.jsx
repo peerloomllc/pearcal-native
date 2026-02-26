@@ -357,7 +357,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
-            onAdd={addGroup} me={profile}
+            onAdd={addGroup} onUpdate={updateGroup} me={profile}
             onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
         )}
         {settingsGroup && (
@@ -1086,7 +1086,7 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
-function NewGroupModal ({ th, onClose, onAdd, me, onGroupKeyUpdated }) {
+function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated }) {
   const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
@@ -1163,7 +1163,10 @@ function NewGroupModal ({ th, onClose, onAdd, me, onGroupKeyUpdated }) {
   async function finish () {
     if (!group) return
     setCreating(true)
-    await onAdd({ ...group, members:[...group.members, ...pendingMembers] })
+    if (pendingMembers.length > 0) {
+      const updated = { ...group, members: [...group.members, ...pendingMembers] }
+      await onUpdate(updated)
+    }
     setCreating(false)
     setStep(3)
   }
