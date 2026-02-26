@@ -128,16 +128,10 @@ export default function Root () {
       console.log('Injecting invite into WebView:', pendingInvite)
       const url = pendingInvite
       setPendingInvite(null)
-      // Try multiple times in case WebView is briefly reloading
-      let attempts = 0
-      const tryInject = setInterval(() => {
-        attempts++
-        console.log('Inject attempt', attempts, 'webView:', !!webViewRef.current)
-        webViewRef.current?.injectJavaScript(
-          `console.log("WEBVIEW ALIVE, hasHandler:", typeof window.__pearHandleInvite); if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } else { console.log("HANDLER MISSING"); } true;`
-        )
-        if (attempts >= 5) clearInterval(tryInject)
-      }, 1000)
+      console.log('Injecting invite into WebView:', url)
+      webViewRef.current?.injectJavaScript(
+        `if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } true;`
+      )
     }
   }, [pendingInvite, dbReady])
 
