@@ -28,6 +28,7 @@
     "expo-system-ui": "^6.0.7",
     "hyperbee": "^2.27.3",
     "hypercore": "^11.26.0",
+    "hyperdht": "^6.29.0",
     "hyperswarm": "^4.17.0",
     "react": "^19.1.4",
     "react-dom": "^19.1.4",

@@ -341,6 +341,7 @@ async function init (dir, attempt = 0) {
 
     // Hyperswarm
     swarm = new Hyperswarm()
+
     swarm.on('connection', async (conn, info) => {
       console.log('Swarm connection from peer')
 
