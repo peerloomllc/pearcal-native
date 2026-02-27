@@ -244,7 +244,8 @@ async function leaveGroup (groupId) {
 async function syncPutEvent (groupId, event) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
-  await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value: event })
+  const value = { ...event, updatedAt: event.updatedAt || Date.now() }
+  await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
 async function syncDeleteEvent (groupId, eventId, date) {
@@ -273,9 +274,12 @@ function makeApply (groupId) {
 
       // Write to the shared Autobase view
       if (val.op === 'put') {
-        await view.put(val.key, val.value)
-        // Also mirror to local Hyperbee so UI sees it immediately
-        await mirrorToLocal(val.type, val.key, val.value, groupId)
+        // Last-write-wins: only apply if newer than existing
+        const existing = await view.get(val.key)
+        if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
+          await view.put(val.key, val.value)
+          await mirrorToLocal(val.type, val.key, val.value, groupId)
+        }
       } else if (val.op === 'del') {
         await view.del(val.key)
         await deleteFromLocal(val.type, val.key)
