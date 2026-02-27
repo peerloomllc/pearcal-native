@@ -22,6 +22,13 @@ class MainActivity : ReactActivity() {
       intent = Intent(this, MainActivity::class.java)
     }
     super.onCreate(null)
+    // Start foreground service to keep Bare worklet alive
+    val serviceIntent = Intent(this, BareService::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      startForegroundService(serviceIntent)
+    } else {
+      startService(serviceIntent)
+    }
   }
 
   override fun onNewIntent(intent: Intent) {
