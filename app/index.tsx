@@ -196,8 +196,7 @@ export default function Root () {
           try {
             const msg = JSON.parse(line)
             if (msg.type === 'event') {
-              console.log('[IPC] event:', msg.event, JSON.stringify(msg.data)?.slice(0,60))
-              ;(_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
+              (_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
             } else if (msg.type === 'response') {
               const resolve = _pending.get(msg.id)
               if (resolve) { _pending.delete(msg.id); resolve(msg) }
@@ -210,8 +209,7 @@ export default function Root () {
       onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
       onEvent('error', (msg: string) => setError(msg))
       onEvent('groupKeyUpdated', (group: any) => {
-        console.log('[NATIVE] groupKeyUpdated fired, webView ready:', !!webViewRef.current, 'key:', group?.groupKey?.slice(0,16))
-        webViewRef.current?.injectJavaScript(
+webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupKeyUpdated",' + JSON.stringify(group) + ');true;'
         )
       })
