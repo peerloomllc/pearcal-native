@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 const { PearCalNotifications } = NativeModules
 
 let _worklet: any = null
+let _workletStarted = false
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
 const _eventHandlers = new Map<string, ((data: any) => void)[]>()
@@ -185,6 +186,11 @@ export default function Root () {
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
+      if (_workletStarted) {
+        console.log('Worklet already started, skipping')
+        return
+      }
+      _workletStarted = true
       _worklet = new Worklet()
 
       _worklet.IPC.on('data', (chunk: Uint8Array) => {
@@ -241,6 +247,7 @@ webViewRef.current?.injectJavaScript(
         setTimeout(() => {
           try { _worklet?.terminate() } catch(e) {}
           _worklet = null
+          _workletStarted = false
         }, 1000)
       }
     }
