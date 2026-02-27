@@ -1,4 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+
+// Suppress non-fatal Bare runtime errors in dev mode
+const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
+;(global as any).ErrorUtils?.setGlobalHandler?.((error: any, isFatal: boolean) => {
+  if (!isFatal && error?.message?.includes('keep awake')) return
+  originalHandler?.(error, isFatal)
+})
 import { View, Text, StyleSheet, NativeModules, Platform } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
