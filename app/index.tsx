@@ -186,8 +186,9 @@ export default function Root () {
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
-      if (_workletStarted) {
-        console.log('Worklet already started, skipping')
+      if (_workletStarted && _worklet) {
+        console.log('Worklet already running, re-sending init')
+        sendToWorklet({ method: 'init', dataDir })
         return
       }
       _workletStarted = true
@@ -213,7 +214,10 @@ export default function Root () {
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
       onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
-      onEvent('error', (msg: string) => setError(msg))
+      onEvent('error', (msg: string) => {
+        if (msg && msg.includes('keep awake')) return // ignore second worklet startup error
+        setError(msg)
+      })
       onEvent('groupKeyUpdated', (group: any) => {
 webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupKeyUpdated",' + JSON.stringify(group) + ');true;'
