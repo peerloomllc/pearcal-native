@@ -305,10 +305,10 @@ async function deleteFromLocal (type, key) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-async function init (dir, attempt = 0) {
+async function init (dir) {
   try {
     dataDir = dir
-    console.log('Init DB at', dataDir, attempt > 0 ? '(attempt ' + (attempt+1) + ')' : '')
+    console.log('Init DB at', dataDir)
 
     // Main local DB
     const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
@@ -369,9 +369,6 @@ async function init (dir, attempt = 0) {
 
             const base = bases.get(groupId)
             if (base) {
-              base.update()
-                .then(() => console.log('[JOINER] base.update() complete for:', groupId))
-                .catch(e => console.error('[JOINER] base.update() error:', e.message))
               Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
                 if (group && group.ownerId === profile.id) {
                   const set = pendingWriterAnnouncements.get(groupId) || new Set()
@@ -429,11 +426,6 @@ async function init (dir, attempt = 0) {
     send({ type: 'event', event: 'ready' })
   } catch(e) {
     console.error('Init failed:', e.message)
-    if (e.message && e.message.includes('lock') && attempt < 5) {
-      console.log('DB locked, retrying in 1s...')
-      await new Promise(r => setTimeout(r, 1000))
-      return init(dir, attempt + 1)
-    }
     send({ type: 'event', event: 'error', data: e.message })
   }
 }

@@ -185,14 +185,6 @@ export default function Root () {
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
-      // Clear stale event handlers from previous mount
-      _eventHandlers.clear()
-      // Terminate any existing worklet
-      if (_worklet) {
-        try { _worklet.terminate() } catch(e) {}
-        _worklet = null
-        await new Promise(r => setTimeout(r, 500))
-      }
       _worklet = new Worklet()
 
       _worklet.IPC.on('data', (chunk: Uint8Array) => {
@@ -243,12 +235,6 @@ webViewRef.current?.injectJavaScript(
     }
 
     start().catch(e => setError(e.message))
-    return () => {
-      if (_worklet) {
-        try { _worklet.terminate() } catch(e) {}
-        _worklet = null
-      }
-    }
   }, [])
 
   if (error) return (
