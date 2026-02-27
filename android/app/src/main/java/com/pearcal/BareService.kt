@@ -38,6 +38,11 @@ class BareService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // App was swiped away — stop service so process dies and DB lock is released
+        stopSelf()
+    }
+
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
