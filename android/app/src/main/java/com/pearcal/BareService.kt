@@ -33,17 +33,10 @@ class BareService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Keep running if killed
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        // Restart if app is swiped away
-        val restartIntent = Intent(applicationContext, BareService::class.java)
-        startService(restartIntent)
-    }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
