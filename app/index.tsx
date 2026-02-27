@@ -186,6 +186,7 @@ export default function Root () {
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
+      _workletRunning = false
       _worklet = new Worklet()
 
       _worklet.IPC.on('data', (chunk: Uint8Array) => {
@@ -246,6 +247,7 @@ webViewRef.current?.injectJavaScript(
       if (_worklet) {
         try { _worklet.terminate() } catch(e) {}
         _worklet = null
+        _workletRunning = false
       }
     }
   }, [])
