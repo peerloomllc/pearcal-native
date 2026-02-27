@@ -53,6 +53,11 @@ class MainActivity : ReactActivity() {
     )
   }
 
+  override fun onDestroy() {
+    super.onDestroy()
+    stopService(Intent(this, BareService::class.java))
+  }
+
   override fun invokeDefaultOnBackPressed() {
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
       if (!moveTaskToBack(false)) super.invokeDefaultOnBackPressed()
