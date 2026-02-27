@@ -248,7 +248,7 @@ webViewRef.current?.injectJavaScript(
           try { _worklet?.terminate() } catch(e) {}
           _worklet = null
           _workletStarted = false
-        }, 1000)
+        }, 3000)
       }
     }
   }, [])

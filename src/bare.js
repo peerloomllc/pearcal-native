@@ -439,8 +439,8 @@ async function init (dir, attempt = 0) {
     send({ type: 'event', event: 'ready' })
   } catch(e) {
     console.error('Init failed:', e.message)
-    if (e.message && e.message.includes('lock') && attempt < 10) {
-      await new Promise(r => setTimeout(r, 500))
+    if (e.message && e.message.includes('lock') && attempt < 20) {
+      await new Promise(r => setTimeout(r, 1000))
       return init(dir, attempt + 1)
     }
     send({ type: 'event', event: 'error', data: e.message })
