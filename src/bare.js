@@ -305,10 +305,10 @@ async function deleteFromLocal (type, key) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-async function init (dir) {
+async function init (dir, attempt = 0) {
   try {
     dataDir = dir
-    console.log('Init DB at', dataDir)
+    console.log('Init DB at', dataDir, attempt > 0 ? '(attempt ' + (attempt+1) + ')' : '')
 
     // Main local DB
     const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
@@ -429,6 +429,11 @@ async function init (dir) {
     send({ type: 'event', event: 'ready' })
   } catch(e) {
     console.error('Init failed:', e.message)
+    if (e.message && e.message.includes('lock') && attempt < 5) {
+      console.log('DB locked, retrying in 1s...')
+      await new Promise(r => setTimeout(r, 1000))
+      return init(dir, attempt + 1)
+    }
     send({ type: 'event', event: 'error', data: e.message })
   }
 }
