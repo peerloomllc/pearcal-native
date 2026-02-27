@@ -12292,12 +12292,6 @@
     }
   });
 
-  // src/ui/main.jsx
-  var import_client = __toESM(require_client());
-
-  // src/ui/App.jsx
-  var import_react = __toESM(require_react());
-
   // src/invite.js
   var SCHEME = "pear://pearcal";
   var MAX_NAME = 64;
@@ -12409,7 +12403,11 @@
     return name.trim().split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?";
   }
 
+  // src/ui/main.jsx
+  var import_client = __toESM(require_client());
+
   // src/ui/App.jsx
+  var import_react = __toESM(require_react());
   var import_jsx_runtime = __toESM(require_jsx_runtime());
   var Emitter = class {
     constructor() {
@@ -12490,6 +12488,7 @@
     });
     const [modal, setModal] = (0, import_react.useState)(null);
     const [newGroupOpen, setNewGroupOpen] = (0, import_react.useState)(false);
+    const newGroupKeyUpdatedRef = (0, import_react.useRef)(null);
     const [settingsGroup, setSettingsGroup] = (0, import_react.useState)(null);
     const th = themes(dark);
     (0, import_react.useEffect)(() => {
@@ -12528,7 +12527,32 @@
         if (g) setGroups((prev) => prev.map((x) => x.id === groupId ? g : x));
       }
       emitter.on("sync", onSync);
-      return () => emitter.off("sync", onSync);
+      async function onGroupJoined(group) {
+        if (db2) {
+          const fresh = await db2.listGroups();
+          setGroups(fresh);
+        } else {
+          setGroups((prev) => {
+            if (prev.find((g) => g.id === group.id)) return prev;
+            return [...prev, group];
+          });
+        }
+        setTab("groups");
+      }
+      emitter.on("group:joined", onGroupJoined);
+      const onDomGroupJoined = (e) => onGroupJoined(e.detail);
+      window.addEventListener("pear:groupJoined", onDomGroupJoined);
+      function onGroupKeyUpdated(group) {
+        setGroups((prev) => prev.map((g) => g.id === group.id ? group : g));
+        if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group);
+      }
+      emitter.on("groupKeyUpdated", onGroupKeyUpdated);
+      return () => {
+        emitter.off("sync", onSync);
+        emitter.off("group:joined", onGroupJoined);
+        window.removeEventListener("pear:groupJoined", onDomGroupJoined);
+        emitter.off("groupKeyUpdated", onGroupKeyUpdated);
+      };
     }, [db2]);
     (0, import_react.useEffect)(() => {
       if (!db2 || !sync2) return;
@@ -12593,7 +12617,7 @@
         await sync2?.joinGroup(g).catch(() => {
         });
       }
-      setGroups((prev) => [...prev, g]);
+      setGroups((prev) => prev.some((x) => x.id === g.id) ? prev : [...prev, g]);
     }, [db2, sync2]);
     const updateGroup = (0, import_react.useCallback)(async (updated) => {
       if (db2) {
@@ -12793,9 +12817,16 @@
         NewGroupModal,
         {
           th,
-          onClose: () => setNewGroupOpen(false),
+          onClose: () => {
+            setNewGroupOpen(false);
+            newGroupKeyUpdatedRef.current = null;
+          },
           onAdd: addGroup,
-          me: profile
+          onUpdate: updateGroup,
+          me: profile,
+          onGroupKeyUpdated: (fn) => {
+            newGroupKeyUpdatedRef.current = fn;
+          }
         }
       ),
       settingsGroup && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -13357,6 +13388,7 @@
     function copyInvite(g, e) {
       e.stopPropagation();
       const link = buildInviteLink(g, profile?.publicKey ?? "unknown");
+      console.log("[INVITE] groupKey:", g.groupKey, "link:", link);
       navigator.clipboard?.writeText(link);
       setCopiedId(g.id);
       setTimeout(() => setCopiedId(null), 2e3);
@@ -13839,7 +13871,7 @@
       ] }) })
     ] });
   }
-  function NewGroupModal({ th, onClose, onAdd, me }) {
+  function NewGroupModal({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated }) {
     const [step, setStep] = (0, import_react.useState)(1);
     const [name, setName] = (0, import_react.useState)("");
     const [color, setColor] = (0, import_react.useState)(GROUP_COLORS[0]);
@@ -13847,6 +13879,19 @@
     const [icon, setIcon] = (0, import_react.useState)(null);
     const [nameErr, setNameErr] = (0, import_react.useState)("");
     const [group, setGroup] = (0, import_react.useState)(null);
+    const [groupKeyReady, setGroupKeyReady] = (0, import_react.useState)(false);
+    (0, import_react.useEffect)(() => {
+      if (!onGroupKeyUpdated) return;
+      onGroupKeyUpdated((updated) => {
+        setGroup((prev) => {
+          if (prev?.id === updated.id) {
+            setGroupKeyReady(true);
+            return updated;
+          }
+          return prev;
+        });
+      });
+    }, [onGroupKeyUpdated]);
     const [copiedLink, setCopiedLink] = (0, import_react.useState)(false);
     const [pendingName, setPendingName] = (0, import_react.useState)("");
     const [pendingKey, setPendingKey] = (0, import_react.useState)("");
@@ -13877,7 +13922,9 @@
         groupKey: Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("")
       };
       setGroup(newG);
+      setGroupKeyReady(false);
       setStep(2);
+      onAdd(newG);
     }
     function genInviteLink(g) {
       return buildInviteLink(g, me?.publicKey ?? "unknown");
@@ -13907,7 +13954,10 @@
     async function finish() {
       if (!group) return;
       setCreating(true);
-      await onAdd({ ...group, members: [...group.members, ...pendingMembers] });
+      if (pendingMembers.length > 0) {
+        const updated = { ...group, members: [...group.members, ...pendingMembers] };
+        await onUpdate(updated);
+      }
       setCreating(false);
       setStep(3);
     }
@@ -14145,16 +14195,18 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "button",
                 {
-                  onClick: copyInvite,
+                  onClick: groupKeyReady ? copyInvite : void 0,
                   style: {
                     ...th.pillBtn,
                     flex: 1,
                     padding: "10px",
                     fontSize: 13,
                     fontWeight: 300,
-                    background: copiedLink ? "#5DBF8A" : th.accent
+                    background: copiedLink ? "#5DBF8A" : groupKeyReady ? th.accent : th.muted,
+                    opacity: groupKeyReady ? 1 : 0.5,
+                    cursor: groupKeyReady ? "pointer" : "not-allowed"
                   },
-                  children: copiedLink ? "\u2713 Copied!" : "\u{1F4CB} Copy Link"
+                  children: copiedLink ? "\u2713 Copied!" : groupKeyReady ? "\u{1F4CB} Copy Link" : "\u23F3 Generating\u2026"
                 }
               ),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { style: {
@@ -14459,12 +14511,15 @@
   window.__pearEvent = function(event, data) {
     window.dispatchEvent(new CustomEvent("pear:" + event, { detail: data }));
   };
+  window.addEventListener("pear:sync", (e) => emitter.emit("sync", e.detail));
+  window.addEventListener("pear:groupKeyUpdated", (e) => emitter.emit("groupKeyUpdated", e.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),
     listEvents: (opts) => window.__pearDB.call("listEvents", opts),
     putEvent: (ev) => window.__pearDB.call("putEvent", ev),
     deleteEvent: (d, id) => window.__pearDB.call("deleteEvent", d, id),
+    getGroup: (id) => window.__pearDB.call("getGroup", id),
     listGroups: () => window.__pearDB.call("listGroups"),
     putGroup: (g) => window.__pearDB.call("putGroup", g),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup", id),
@@ -14483,6 +14538,16 @@
     putEvent: (gid, ev) => window.__pearDB.call("putEvent:sync", gid, ev),
     deleteEvent: (gid, id, d) => window.__pearDB.call("deleteEvent:sync", gid, id, d),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g)
+  };
+  window.__pearHandleInvite = async function(url) {
+    console.log("__pearHandleInvite called:", url);
+    const result = await handleInviteLink(url, db, sync, (group) => {
+      window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: group }));
+    });
+    console.log("handleInviteLink result:", JSON.stringify(result));
+    if (result && (result.ok || result.error === "already_member") && result.group) {
+      window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: result.group }));
+    }
   };
   var root = (0, import_client.createRoot)(document.getElementById("root"));
   root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));
