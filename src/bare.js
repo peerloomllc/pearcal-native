@@ -369,6 +369,9 @@ async function init (dir) {
 
             const base = bases.get(groupId)
             if (base) {
+              base.update()
+                .then(() => console.log('[JOINER] base.update() complete for:', groupId))
+                .catch(e => console.error('[JOINER] base.update() error:', e.message))
               Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
                 if (group && group.ownerId === profile.id) {
                   const set = pendingWriterAnnouncements.get(groupId) || new Set()
