@@ -66,6 +66,7 @@ async function handle (method, args) {
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
     case 'restoreAll':       return null
+    case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
 }
@@ -304,6 +305,18 @@ async function deleteFromLocal (type, key) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+
+async function shutdown () {
+  try {
+    if (swarm) { await swarm.destroy(); swarm = null }
+    if (store) { await store.close(); store = null }
+    if (db) { await db.close(); db = null }
+    bases.clear()
+    console.log('Shutdown complete')
+  } catch(e) {
+    console.error('Shutdown error:', e.message)
+  }
+}
 
 async function init (dir, attempt = 0) {
   try {

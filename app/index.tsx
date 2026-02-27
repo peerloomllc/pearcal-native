@@ -235,6 +235,15 @@ webViewRef.current?.injectJavaScript(
     }
 
     start().catch(e => setError(e.message))
+    return () => {
+      if (_worklet) {
+        sendToWorklet({ method: 'shutdown', args: [], id: -1 })
+        setTimeout(() => {
+          try { _worklet?.terminate() } catch(e) {}
+          _worklet = null
+        }, 1000)
+      }
+    }
   }, [])
 
   if (error) return (
