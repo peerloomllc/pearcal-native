@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
 import android.os.IBinder
+import android.os.PowerManager
 
 class BareService : Service() {
 
@@ -14,10 +15,21 @@ class BareService : Service() {
         const val NOTIFICATION_ID = 1001
     }
 
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+        val pm = getSystemService(PowerManager::class.java)
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PearCal:BareWakeLock")
+        wakeLock?.acquire()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        wakeLock?.release()
+        wakeLock = null
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
