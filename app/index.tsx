@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 const { PearCalNotifications } = NativeModules
 
 let _worklet: any = null
+let _workletRunning = false
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
 const _eventHandlers = new Map<string, ((data: any) => void)[]>()
@@ -185,10 +186,6 @@ export default function Root () {
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
-      if (_worklet) {
-        try { _worklet.terminate() } catch(e) {}
-        _worklet = null
-      }
       _worklet = new Worklet()
 
       _worklet.IPC.on('data', (chunk: Uint8Array) => {
@@ -223,7 +220,13 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
-      _worklet.start('/bare.bundle', source)
+      if (!_workletRunning) {
+        _workletRunning = true
+        _worklet.start('/bare.bundle', source)
+      } else {
+        // Worklet already running — just re-send init in case it missed it
+        sendToWorklet({ method: 'init', dataDir })
+      }
 
       // Initial check for link set before React loaded
       const { PearCalLink } = NativeModules
