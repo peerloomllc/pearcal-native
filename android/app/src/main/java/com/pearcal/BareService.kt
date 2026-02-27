@@ -40,6 +40,7 @@ class BareService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
+        android.util.Log.d("BareService", "onTaskRemoved fired")
         // Restart if app is swiped away
         val restartIntent = Intent(applicationContext, BareService::class.java)
         startService(restartIntent)
