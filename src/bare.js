@@ -277,8 +277,11 @@ function makeApply (groupId) {
         // Last-write-wins: only apply if newer than existing
         const existing = await view.get(val.key)
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
+          console.log('[CONFLICT] applying:', val.key, 'updatedAt:', val.value.updatedAt, 'existing:', existing?.value?.updatedAt)
           await view.put(val.key, val.value)
           await mirrorToLocal(val.type, val.key, val.value, groupId)
+        } else {
+          console.log('[CONFLICT] skipping older write:', val.key, 'incoming:', val.value.updatedAt, 'existing:', existing?.value?.updatedAt)
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
