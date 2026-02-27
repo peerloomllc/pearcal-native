@@ -319,6 +319,12 @@ async function shutdown () {
 }
 
 async function init (dir, attempt = 0) {
+  // If already initialized, just re-send ready event
+  if (db) {
+    console.log('DB already open, re-sending ready')
+    send({ type: 'event', event: 'ready' })
+    return
+  }
   try {
     dataDir = dir
     console.log('Init DB at', dataDir)
