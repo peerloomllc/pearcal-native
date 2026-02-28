@@ -25,6 +25,7 @@ window.__pearResponse = function (msg) {
 }
 
 window.__pearEvent = function (event, data) {
+  console.log('[PEAREVENT]', event, data)
   window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
 }
 
