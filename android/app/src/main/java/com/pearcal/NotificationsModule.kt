@@ -83,6 +83,55 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun postNow(opts: ReadableMap, promise: Promise) {
+        try {
+            val notifId = opts.getInt("id")
+            val title   = opts.getString("title") ?: "PearCal"
+            val body    = opts.getString("body") ?: ""
+
+            val nm = reactApplicationContext
+                .getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    "pearcal_sync", "Sync Updates",
+                    android.app.NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Updates from shared calendar members"
+                    enableVibration(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val tapIntent = android.content.Intent(
+                reactApplicationContext, MainActivity::class.java
+            ).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                        android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val tapPending = android.app.PendingIntent.getActivity(
+                reactApplicationContext, notifId, tapIntent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = androidx.core.app.NotificationCompat
+                .Builder(reactApplicationContext, "pearcal_sync")
+                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setContentIntent(tapPending)
+                .setAutoCancel(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+
+            nm.notify(notifId, notification)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("POST_NOW_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
     fun addListener(eventName: String) {}
 
     @ReactMethod
