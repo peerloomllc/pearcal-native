@@ -176,7 +176,14 @@ export default function App ({ db, notifs, sync }) {
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
   const saveEvent = useCallback(async ev => {
+    const { _prevDate, ...evClean } = ev
+    ev = evClean
     if (db) {
+      // If date changed, delete old local entry to avoid duplicate
+      if (_prevDate && _prevDate !== ev.date) {
+        await db.deleteEvent(_prevDate, ev.id).catch(() => {})
+        setEvents(prev => prev.filter(e => !(e.id === ev.id && e.date === _prevDate)))
+      }
       await db.putEvent(ev)
       await notifs?.scheduleForEvent(ev)
       // Propagate to each group this event belongs to
@@ -590,6 +597,7 @@ function EventCard ({ ev, th, onClick, compact }) {
 function EventModal ({ th, modal, setModal, groups, onSave, onDelete, REMINDER_OPTIONS }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
+  const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
   function toggleGroup (gid) {
@@ -615,7 +623,8 @@ function EventModal ({ th, modal, setModal, groups, onSave, onDelete, REMINDER_O
 
   async function handleSave () {
     setSaving(true)
-    await onSave(ev)
+    const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
+    await onSave(toSave)
     setSaving(false)
   }
 

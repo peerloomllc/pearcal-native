@@ -239,6 +239,11 @@ async function syncPutEvent (groupId, event) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   const value = { ...event, updatedAt: event.updatedAt || Date.now() }
+  // If date changed, delete the old key first so no duplicate remains
+  const oldNode = await db.get('events:' + event._prevDate + ':' + event.id).catch(() => null)
+  if (event._prevDate && event._prevDate !== event.date && oldNode) {
+    await base.append({ op: 'del', type: 'event', key: 'events:' + event._prevDate + ':' + event.id })
+  }
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
@@ -277,10 +282,25 @@ function makeApply (groupId) {
         // Last-write-wins: only apply if newer than existing
         const existing = await view.get(val.key)
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
+          // Fetch prev from local DB BEFORE mirroring so we can diff in notifySyncChange
+          const localPrev = isRemote && val.type === 'event'
+            ? await db.get(val.key).then(n => n?.value ?? null).catch(() => null)
+            : null
           await view.put(val.key, val.value)
           await mirrorToLocal(val.type, val.key, val.value, groupId)
           if (isRemote && val.type === 'event') {
-            notifySyncChange({ op: 'put', value: val.value, groupId })
+            // Skip notification if only color changed
+            const onlyColorChanged = localPrev &&
+              val.value.color !== localPrev.color &&
+              val.value.title === localPrev.title &&
+              val.value.date === localPrev.date &&
+              val.value.start === localPrev.start &&
+              val.value.end === localPrev.end &&
+              val.value.desc === localPrev.desc &&
+              JSON.stringify(val.value.groups) === JSON.stringify(localPrev.groups)
+            if (!onlyColorChanged) {
+              notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId })
+            }
           }
         } else {
           // Mirror the winning value to local DB so UI shows correct version
@@ -289,6 +309,7 @@ function makeApply (groupId) {
       } else if (val.op === 'del') {
         await view.del(val.key)
         await deleteFromLocal(val.type, val.key)
+        send({ type: 'event', event: 'sync', data: groupId })
         if (isRemote && val.type === 'event') {
           notifySyncChange({ op: 'del', key: val.key, groupId })
         }
@@ -297,7 +318,7 @@ function makeApply (groupId) {
   }
 }
 
-async function notifySyncChange ({ op, value, key, groupId }) {
+async function notifySyncChange ({ op, value, key, prev, groupId }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
@@ -310,11 +331,6 @@ async function notifySyncChange ({ op, value, key, groupId }) {
 
     } else if (op === 'put' && value) {
       const what = value.title || 'An event'
-
-      // Fetch the previous version from local DB to diff
-      const dbKey = 'events:' + value.date + ':' + value.id
-      const existing = await db.get(dbKey).catch(() => null)
-      const prev = existing?.value ?? null
 
       if (!prev) {
         // Brand new event
