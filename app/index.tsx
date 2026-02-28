@@ -236,7 +236,6 @@ webViewRef.current?.injectJavaScript(
 
       onEvent('syncNotify', (data: any) => {
         try {
-          console.log('[INDEX] syncNotify received:', JSON.stringify(data).slice(0, 120))
           const { op, value, key } = data
           let title = '\u{1F4C5} Calendar updated'
           let body  = ''
@@ -257,7 +256,6 @@ webViewRef.current?.injectJavaScript(
           const id = Math.floor(Math.random() * 2000000) + 1000000
           PearCalNotifications?.postNow?.({ id, title, body }).catch?.(() => {})
         } catch (e) {
-          console.log('[INDEX] syncNotify error:', e)
         }
       })
 
