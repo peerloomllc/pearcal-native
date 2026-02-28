@@ -231,6 +231,7 @@ webViewRef.current?.injectJavaScript(
         )
       })
       onEvent('sync', (groupId: string) => {
+        console.log('[SYNC] event received, webView ready:', !!webViewRef.current)
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
         )
