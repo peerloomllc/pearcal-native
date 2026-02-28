@@ -262,9 +262,25 @@ export default function App ({ db, notifs, sync }) {
   }, [db, sync])
 
   const updateProfile = useCallback(async updates => {
-    if (db) await db.updateProfile(updates)
+    if (db) {
+      await db.updateProfile(updates)
+      // Update member record in all groups where we appear
+      const updatedProfile = { ...profile, ...updates }
+      for (const g of groups) {
+        const isMember = g.members?.some(m => m.id === updatedProfile.id)
+        if (isMember) {
+          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: updatedProfile.avatar }
+          await db.putMember(g.id, updatedMember).catch(() => {})
+          await sync?.putGroup({ ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }).catch(() => {})
+        }
+      }
+    }
     setProfile(prev => ({ ...prev, ...updates }))
-  }, [db])
+    setGroups(prev => prev.map(g => ({
+      ...g,
+      members: g.members?.map(m => m.id === profile?.id ? { ...m, ...updates } : m) ?? []
+    })))
+  }, [db, profile, groups, sync])
 
   // ─── Calendar helpers ───────────────────────────────────────────────────────
   const calDays = useMemo(() => {

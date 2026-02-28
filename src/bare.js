@@ -279,9 +279,14 @@ function makeApply (groupId) {
         const existing = await view.get(val.key)
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
           // Fetch prev from local DB BEFORE mirroring so we can diff in notifySyncChange
-          const localPrev = isRemote && val.type === 'event'
-            ? await db.get(val.key).then(n => n?.value ?? null).catch(() => null)
-            : null
+          // If date changed, the old entry lives under _prevDate key, not the new key
+          let localPrev = null
+          if (isRemote && val.type === 'event') {
+            localPrev = await db.get(val.key).then(n => n?.value ?? null).catch(() => null)
+            if (!localPrev && val.value._prevDate) {
+              localPrev = await db.get('events:' + val.value._prevDate + ':' + val.value.id).then(n => n?.value ?? null).catch(() => null)
+            }
+          }
           await view.put(val.key, val.value)
           await mirrorToLocal(val.type, val.key, val.value, groupId)
           if (isRemote && val.type === 'event') {
