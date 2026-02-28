@@ -116,7 +116,7 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
 
             val notification = androidx.core.app.NotificationCompat
                 .Builder(reactApplicationContext, "pearcal_sync")
-                .setSmallIcon(android.R.drawable.ic_popup_sync)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setContentIntent(tapPending)
