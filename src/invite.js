@@ -50,6 +50,9 @@ export async function handleInviteLink (url, db, sync, onJoined) {
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
+  const myMember = { id: profile.id, name: profile.name, avatar: _initials(profile.name), publicKey: profile.publicKey }
+  const inviterMember = { id: inviterKey, name: 'Inviter', avatar: '?', publicKey: inviterKey }
+
   const group = {
     id:        groupId,
     name:      groupName,
@@ -58,11 +61,7 @@ export async function handleInviteLink (url, db, sync, onJoined) {
     icon:      null,
     ownerId:   inviterKey,               // inviter is the owner
     groupKey,
-    members: [
-      // Seed with ourselves + the inviter; full member list syncs over P2P
-      { id: profile.id,   name: profile.name, avatar: _initials(profile.name), publicKey: profile.publicKey },
-      { id: inviterKey,   name: 'Inviter',    avatar: '?',                     publicKey: inviterKey },
-    ],
+    members: [ myMember, inviterMember ],
     joinedAt: Date.now(),
   }
 
@@ -76,6 +75,17 @@ export async function handleInviteLink (url, db, sync, onJoined) {
   // 5. Join Hyperswarm topic — this triggers peer discovery and replication
   //    The inviter's device will connect and sync the full group state
   await sync.joinGroup(group)
+
+  // 5b. Broadcast our member record into the group so the owner sees us
+  //     Do this after joinGroup so Autobase is ready
+  setTimeout(async () => {
+    try {
+      const updatedGroup = { ...group, members: [ myMember, inviterMember ] }
+      await sync.putGroup(updatedGroup)
+    } catch (e) {
+      console.error('Member broadcast error:', e.message)
+    }
+  }, 3000)
 
   // 6. Notify UI
   onJoined?.(group)

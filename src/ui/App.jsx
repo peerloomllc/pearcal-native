@@ -187,9 +187,10 @@ export default function App ({ db, notifs, sync }) {
       const evWithAuthor = { ...ev, updatedByName: profile?.name ?? 'Someone' }
       await db.putEvent(evWithAuthor)
       await notifs?.scheduleForEvent(evWithAuthor)
-      // Propagate to each group this event belongs to
+      // Include _prevDate in sync payload so peers can clean up old date entry
+      const evToSync = _prevDate ? { ...evWithAuthor, _prevDate } : evWithAuthor
       for (const gid of evWithAuthor.groups ?? []) {
-        await sync?.putEvent(gid, evWithAuthor).catch(() => {})
+        await sync?.putEvent(gid, evToSync).catch(() => {})
       }
     }
     setEvents(prev => {
