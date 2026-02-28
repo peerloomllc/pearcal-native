@@ -403,7 +403,21 @@ async function mirrorToLocal (type, key, value, groupId) {
       const { _prevDate, ...clean } = value
       await db.put(key, { ...clean, updatedAt: value.updatedAt || Date.now() })
     } else if (type === 'group') {
-      await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
+      // Merge members from incoming group with existing local members
+      // so no device's member list overwrites another's
+      const existing = await db.get(key).catch(() => null)
+      const existingMembers = existing?.value?.members ?? []
+      const incomingMembers = value.members ?? []
+      const mergedMap = new Map()
+      for (const m of [...existingMembers, ...incomingMembers]) {
+        // Prefer the entry with a real name over 'Inviter' placeholder
+        const prev = mergedMap.get(m.id)
+        if (!prev || (prev.name === 'Inviter' && m.name !== 'Inviter')) {
+          mergedMap.set(m.id, m)
+        }
+      }
+      const merged = { ...value, members: [...mergedMap.values()], updatedAt: value.updatedAt || Date.now() }
+      await db.put(key, merged)
     }
     // Notify UI to refresh
     send({ type: 'event', event: 'sync', data: groupId })

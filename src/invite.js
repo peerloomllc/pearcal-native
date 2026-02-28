@@ -76,16 +76,19 @@ export async function handleInviteLink (url, db, sync, onJoined) {
   //    The inviter's device will connect and sync the full group state
   await sync.joinGroup(group)
 
-  // 5b. Broadcast our member record into the group so the owner sees us
-  //     Do this after joinGroup so Autobase is ready
-  setTimeout(async () => {
+  // 5b. Broadcast our real member record so the owner can update 'Inviter' placeholder
+  //     Retry a few times since Autobase may not be connected yet
+  let attempts = 0
+  const broadcastSelf = async () => {
     try {
-      const updatedGroup = { ...group, members: [ myMember, inviterMember ] }
+      // Send just ourselves — bare.js will merge with existing members
+      const updatedGroup = { ...group, members: [ myMember ], updatedAt: Date.now() }
       await sync.putGroup(updatedGroup)
     } catch (e) {
-      console.error('Member broadcast error:', e.message)
+      if (attempts++ < 5) setTimeout(broadcastSelf, 3000)
     }
-  }, 3000)
+  }
+  setTimeout(broadcastSelf, 2000)
 
   // 6. Notify UI
   onJoined?.(group)
