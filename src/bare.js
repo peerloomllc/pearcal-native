@@ -188,11 +188,9 @@ async function joinGroup (group) {
   await base.ready()
 
   const realKey = b4a.toString(base.key, 'hex')
-  console.log('Autobase key:', realKey.slice(0,16), 'isOwner:', isOwner)
 
   // Owner: persist the real Autobase key and notify UI
   if (isOwner && realKey !== group.groupKey) {
-    console.log('Updating groupKey to real key:', realKey.slice(0, 16))
     group = { ...group, groupKey: realKey }
     await putGroup(group)
     send({ type: 'event', event: 'groupKeyUpdated', data: group })
@@ -202,19 +200,15 @@ async function joinGroup (group) {
   if (isOwner) {
     try {
       const writerKey = b4a.toString(base.local.key, 'hex')
-      console.log('Adding self as writer:', writerKey.slice(0, 16))
       await base.append({ addWriter: writerKey })
-      console.log('Writer added successfully')
     } catch(e) {
-      console.log('addWriter note:', e.message)
     }
 
     // Process any writerAnnounce messages that arrived before joinGroup ran
     const pending = pendingWriterAnnouncements.get(group.id)
     if (pending) {
       for (const writerKey of pending) {
-        console.log('[OWNER] processing pending writerKey:', writerKey.slice(0, 16))
-        base.append({ addWriter: writerKey }).catch(e =>
+          base.append({ addWriter: writerKey }).catch(e =>
           console.error('[OWNER] pending addWriter error:', e.message)
         )
       }
@@ -328,7 +322,6 @@ async function shutdown () {
 async function init (dir, attempt = 0) {
   // If already initialized, just re-send ready event
   if (db) {
-    console.log('DB already open, re-sending ready')
     send({ type: 'event', event: 'ready' })
     return
   }
@@ -369,21 +362,17 @@ async function init (dir, attempt = 0) {
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         onopen () {
-          console.log('[HANDSHAKE] channel opened')
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
-            console.log('[HANDSHAKE] sending writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
             msg.send(Buffer.from(JSON.stringify({ groupId, writerKey })))
           }
         },
         onclose () {
-          console.log('[HANDSHAKE] channel closed')
         }
       })
 
       if (!channel) {
-        console.log('[HANDSHAKE] channel already exists or mux closing')
         return
       }
 
@@ -392,7 +381,6 @@ async function init (dir, attempt = 0) {
         onmessage (buf) {
           try {
             const { groupId, writerKey } = JSON.parse(buf.toString())
-            console.log('[HANDSHAKE] received writerKey:', writerKey.slice(0, 16), 'for group:', groupId)
 
             const base = bases.get(groupId)
             if (base) {
@@ -402,9 +390,7 @@ async function init (dir, attempt = 0) {
                   if (!set.has(writerKey)) {
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
-                    console.log('[OWNER] appending addWriter for:', writerKey.slice(0, 16))
                     base.append({ addWriter: writerKey })
-                      .then(() => console.log('[OWNER] addWriter appended successfully'))
                       .catch(e => console.error('[OWNER] addWriter error:', e.message))
                   }
                 }
@@ -413,8 +399,7 @@ async function init (dir, attempt = 0) {
               const set = pendingWriterAnnouncements.get(groupId) || new Set()
               set.add(writerKey)
               pendingWriterAnnouncements.set(groupId, set)
-              console.log('[HANDSHAKE] stored pending writerKey for group:', groupId)
-            }
+              }
           } catch (e) {
             console.error('[HANDSHAKE] parse error:', e.message)
           }

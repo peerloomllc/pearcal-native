@@ -13388,7 +13388,6 @@
     function copyInvite(g, e) {
       e.stopPropagation();
       const link = buildInviteLink(g, profile?.publicKey ?? "unknown");
-      console.log("[INVITE] groupKey:", g.groupKey, "link:", link);
       navigator.clipboard?.writeText(link);
       setCopiedId(g.id);
       setTimeout(() => setCopiedId(null), 2e3);
@@ -14540,11 +14539,9 @@
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g)
   };
   window.__pearHandleInvite = async function(url) {
-    console.log("__pearHandleInvite called:", url);
     const result = await handleInviteLink(url, db, sync, (group) => {
       window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: group }));
     });
-    console.log("handleInviteLink result:", JSON.stringify(result));
     if (result && (result.ok || result.error === "already_member") && result.group) {
       window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: result.group }));
     }

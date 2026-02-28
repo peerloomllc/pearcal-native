@@ -48,16 +48,12 @@ function calcFireTime (event: any): number | null {
 }
 
 async function handleNotification (msg: any, webViewRef: any) {
-  console.log("handleNotification:", msg.method, JSON.stringify(msg.args?.[0]?.reminder))
-  console.log("PearCalNotifications available:", !!PearCalNotifications)
   try {
     if (msg.method === 'scheduleForEvent') {
       const ev = msg.args[0]
       if (ev && ev.reminder && ev.reminder > 0) {
         const fireAt = calcFireTime(ev)
-        console.log("fireAt:", fireAt, "now:", Date.now(), "diff mins:", ((fireAt - Date.now())/60000).toFixed(1))
           if (fireAt && fireAt > Date.now()) {
-          console.log("Calling schedule...")
           try { await PearCalNotifications?.schedule?.({
             id:      notifId(ev.id),
             title:   'X ' + ev.title,
@@ -65,7 +61,6 @@ async function handleNotification (msg: any, webViewRef: any) {
             fireAt,
             eventId: ev.id,
           }) } catch(schedErr) { console.log('Alarm schedule error (non-fatal):', schedErr?.message) }
-          console.log("Schedule call completed")
         }
       } else if (ev) {
         await PearCalNotifications?.cancel?.(notifId(ev.id))
@@ -121,7 +116,6 @@ export default function Root () {
       try {
         const link = await PearCalLink.getPendingLink()
         if (link) {
-          console.log('Poll found invite link:', link)
           setPendingInvite(link)
         }
       } catch(e) {}
@@ -131,12 +125,9 @@ export default function Root () {
 
   // Inject pending invite link when WebView and DB are ready
   useEffect(() => {
-    console.log('invite useEffect fired, pendingInvite:', !!pendingInvite, 'dbReady:', dbReady, 'webView:', !!webViewRef.current)
     if (pendingInvite && dbReady && webViewRef.current) {
-      console.log('Injecting invite into WebView:', pendingInvite)
       const url = pendingInvite
       setPendingInvite(null)
-      console.log('Injecting invite into WebView:', url)
       webViewRef.current?.injectJavaScript(
         `if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } true;`
       )
@@ -194,7 +185,6 @@ export default function Root () {
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
       if (_workletStarted && _worklet) {
-        console.log('Worklet already running, re-sending init')
         sendToWorklet({ method: 'init', dataDir })
         return
       }
@@ -244,8 +234,7 @@ webViewRef.current?.injectJavaScript(
         try {
           const link = await PearCalLink.getPendingLink()
           if (link) {
-            console.log('Startup invite link found:', link)
-            setPendingInvite(link)
+              setPendingInvite(link)
           }
         } catch(e) {}
       }

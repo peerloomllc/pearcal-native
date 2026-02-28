@@ -62,11 +62,9 @@ const sync = {
 }
 
 window.__pearHandleInvite = async function(url) {
-  console.log('__pearHandleInvite called:', url)
   const result = await handleInviteLink(url, db, sync, group => {
     window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: group }))
   })
-  console.log('handleInviteLink result:', JSON.stringify(result))
   if (result && (result.ok || result.error === 'already_member') && result.group) {
     window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: result.group }))
   }
