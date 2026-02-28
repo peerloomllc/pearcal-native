@@ -7,6 +7,7 @@ const sodium     = require('sodium-native')
 const b4a        = require('b4a')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
+console.log('[BARE] bundle loaded v2')
 
 let db      = null   // main Hyperbee (local profile/events/groups)
 let store   = null   // Corestore for Autobase
@@ -256,9 +257,15 @@ async function syncPutGroup (group) {
 
 function makeApply (groupId) {
   return async function apply (nodes, view, host) {
+    const base = bases.get(groupId)
+    const localKey = base ? b4a.toString(base.local.key, 'hex') : null
+    console.log('[APPLY] nodes:', nodes.length, 'localKey:', localKey?.slice(0,8))
     for (const node of nodes) {
       const val = node.value
       if (!val) continue
+      console.log('[APPLY] node keys:', Object.keys(node).join(','))
+      console.log('[APPLY] node.key:', node.key ? b4a.toString(node.key,'hex').slice(0,8) : 'null')
+      console.log('[APPLY] val.op:', val.op, 'val.type:', val.type, 'addWriter:', !!val.addWriter)
 
       // Writer announcement — add them as a writer
       if (val.addWriter) {
