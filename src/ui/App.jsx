@@ -115,7 +115,6 @@ export default function App ({ db, notifs, sync }) {
     async function onSync (groupId) {
       // Reload events (group-filtered for efficiency on large datasets)
       const fresh = await db.listEvents()
-      console.log("[ONSYNC] events:", fresh.map(e => e.title + ":" + e.updatedAt).join(", "))
       setEvents(fresh)
 
       // Reload the updated group record (membership may have changed)
