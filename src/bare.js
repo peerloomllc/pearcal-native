@@ -298,9 +298,9 @@ function makeApply (groupId) {
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     if (type === 'event') {
-      await db.put(key, { ...value, updatedAt: Date.now() })
+      await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
     } else if (type === 'group') {
-      await db.put(key, { ...value, updatedAt: Date.now() })
+      await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
     }
     // Notify UI to refresh
     send({ type: 'event', event: 'sync', data: groupId })
