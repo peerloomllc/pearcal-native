@@ -184,11 +184,12 @@ export default function App ({ db, notifs, sync }) {
         await db.deleteEvent(_prevDate, ev.id).catch(() => {})
         setEvents(prev => prev.filter(e => !(e.id === ev.id && e.date === _prevDate)))
       }
-      await db.putEvent(ev)
-      await notifs?.scheduleForEvent(ev)
+      const evWithAuthor = { ...ev, updatedByName: profile?.name ?? 'Someone' }
+      await db.putEvent(evWithAuthor)
+      await notifs?.scheduleForEvent(evWithAuthor)
       // Propagate to each group this event belongs to
-      for (const gid of ev.groups ?? []) {
-        await sync?.putEvent(gid, ev).catch(() => {})
+      for (const gid of evWithAuthor.groups ?? []) {
+        await sync?.putEvent(gid, evWithAuthor).catch(() => {})
       }
     }
     setEvents(prev => {

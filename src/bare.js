@@ -238,12 +238,8 @@ async function leaveGroup (groupId) {
 async function syncPutEvent (groupId, event) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
+  // Carry _prevDate in the value so receiving devices can clean up the old key
   const value = { ...event, updatedAt: event.updatedAt || Date.now() }
-  // If date changed, delete the old key first so no duplicate remains
-  const oldNode = await db.get('events:' + event._prevDate + ':' + event.id).catch(() => null)
-  if (event._prevDate && event._prevDate !== event.date && oldNode) {
-    await base.append({ op: 'del', type: 'event', key: 'events:' + event._prevDate + ':' + event.id })
-  }
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
@@ -322,47 +318,57 @@ async function notifySyncChange ({ op, value, key, prev, groupId }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
+    const who  = value?.updatedByName || 'Someone'
 
     if (op === 'del') {
       const parts = (key ?? '').split(':')
       const date  = parts[1] ?? ''
-      title = 'Event removed'
-      body  = date ? 'An event on ' + formatDate(date) + ' was deleted' : 'A shared event was deleted'
+      title = who + ' removed an event'
+      body  = date ? 'On ' + formatDate(date) : ''
 
     } else if (op === 'put' && value) {
       const what = value.title || 'An event'
 
       if (!prev) {
         // Brand new event
-        title = what + ' added'
+        title = who + ' added ' + what
         body  = value.date ? 'On ' + formatDate(value.date) : ''
 
       } else {
-        // Diff fields
+        // Diff fields in priority order
+        const titleChanged = prev.title && prev.title !== value.title
         const dateChanged  = prev.date !== value.date || prev.start !== value.start || prev.end !== value.end || prev.allDay !== value.allDay
         const notesAdded   = !prev.desc && value.desc
+        const notesEdited  = prev.desc && value.desc && prev.desc !== value.desc
         const newGroups    = (value.groups ?? []).filter(gid => !(prev.groups ?? []).includes(gid))
 
-        if (newGroups.length > 0) {
-          // Look up group names
+        if (titleChanged) {
+          title = who + ' renamed “' + prev.title + '”'
+          body  = 'Now called “' + value.title + '”'
+
+        } else if (newGroups.length > 0) {
           const names = []
           for (const gid of newGroups) {
             const g = await db.get('groups:' + gid).catch(() => null)
             if (g?.value?.name) names.push(g.value.name)
           }
-          title = what + ' shared'
+          title = who + ' shared ' + what
           body  = names.length > 0 ? 'With ' + names.join(', ') : 'With a new group'
 
         } else if (dateChanged) {
-          title = what + ' rescheduled'
+          title = who + ' rescheduled ' + what
           body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + value.start) : ''
 
         } else if (notesAdded) {
-          title = 'Notes added'
-          body  = what
+          title = 'Notes added to ' + what
+          body  = value.desc
+
+        } else if (notesEdited) {
+          title = 'Notes for ' + what + ' updated by ' + who
+          body  = value.desc
 
         } else {
-          title = what + ' updated'
+          title = who + ' updated ' + what
           body  = value.date ? formatDate(value.date) : ''
         }
       }
@@ -374,7 +380,6 @@ async function notifySyncChange ({ op, value, key, prev, groupId }) {
     send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '' } })
   }
 }
-
 function formatDate (dateStr) {
   try {
     const [y, m, d] = dateStr.split('-').map(Number)
@@ -386,7 +391,12 @@ function formatDate (dateStr) {
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     if (type === 'event') {
-      await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
+      // If date changed, remove old local entry to prevent duplicate
+      if (value._prevDate && value._prevDate !== value.date) {
+        await db.del('events:' + value._prevDate + ':' + value.id).catch(() => {})
+      }
+      const { _prevDate, ...clean } = value
+      await db.put(key, { ...clean, updatedAt: value.updatedAt || Date.now() })
     } else if (type === 'group') {
       await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
     }
