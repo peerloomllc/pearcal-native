@@ -283,7 +283,9 @@ function makeApply (groupId) {
         } else {
           console.log('[CONFLICT] skipping older write:', val.key, 'incoming:', val.value.updatedAt, 'existing:', existing?.value?.updatedAt)
           // Mirror the winning value to local DB so UI shows correct version
+          console.log('[CONFLICT] mirroring winning value:', existing.value?.title || existing.value?.name)
           await mirrorToLocal(val.type, val.key, existing.value, groupId)
+          console.log('[CONFLICT] mirror complete')
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
