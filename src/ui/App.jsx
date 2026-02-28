@@ -190,7 +190,7 @@ export default function App ({ db, notifs, sync }) {
       // Include _prevDate in sync payload so peers can clean up old date entry
       const evToSync = _prevDate ? { ...evWithAuthor, _prevDate } : evWithAuthor
       for (const gid of evWithAuthor.groups ?? []) {
-        await sync?.putEvent(gid, evToSync).catch(() => {})
+        await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
       }
     }
     setEvents(prev => {
@@ -199,7 +199,7 @@ export default function App ({ db, notifs, sync }) {
       return [...prev, ev]
     })
     setModal(null)
-  }, [db, notifs, sync])
+  }, [db, notifs, sync, profile])
 
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
