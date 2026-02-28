@@ -305,6 +305,11 @@ function makeApply (groupId) {
   }
 }
 
+function notifySyncChange ({ op, value, key, groupId }) {
+  console.log('[SYNC-NOTIFY] sending op=' + op)
+  send({ type: 'event', event: 'syncNotify', data: { op, value: value ?? null, key: key ?? null, groupId } })
+}
+
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     console.log('[MIRROR] type=' + type + ' key=' + key)
