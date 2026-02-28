@@ -264,7 +264,7 @@ function makeApply (groupId) {
       const val = node.value
       if (!val) continue
       console.log('[APPLY] node keys:', Object.keys(node).join(','))
-      console.log('[APPLY] node.key:', node.key ? b4a.toString(node.key,'hex').slice(0,8) : 'null')
+      console.log('[APPLY] node.from.key:', node.from?.key ? b4a.toString(node.from.key,'hex').slice(0,8) : 'null')
       console.log('[APPLY] val.op:', val.op, 'val.type:', val.type, 'addWriter:', !!val.addWriter)
 
       // Writer announcement — add them as a writer
@@ -273,6 +273,11 @@ function makeApply (groupId) {
         continue
       }
 
+      // Detect remote writes via node.from.key
+      const nodeWriterKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
+      const isRemote = localKey && nodeWriterKey && nodeWriterKey !== localKey
+      console.log('[APPLY] isRemote:', isRemote, 'nodeWriterKey:', nodeWriterKey?.slice(0,8))
+
       // Write to the shared Autobase view
       if (val.op === 'put') {
         // Last-write-wins: only apply if newer than existing
@@ -280,6 +285,10 @@ function makeApply (groupId) {
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
           await view.put(val.key, val.value)
           await mirrorToLocal(val.type, val.key, val.value, groupId)
+          if (isRemote && val.type === 'event') {
+            console.log('[APPLY] firing syncNotify put')
+            notifySyncChange({ op: 'put', value: val.value, groupId })
+          }
         } else {
           // Mirror the winning value to local DB so UI shows correct version
           await mirrorToLocal(val.type, val.key, existing.value, groupId)
@@ -287,6 +296,10 @@ function makeApply (groupId) {
       } else if (val.op === 'del') {
         await view.del(val.key)
         await deleteFromLocal(val.type, val.key)
+        if (isRemote && val.type === 'event') {
+          console.log('[APPLY] firing syncNotify del')
+          notifySyncChange({ op: 'del', key: val.key, groupId })
+        }
       }
     }
   }
@@ -294,6 +307,7 @@ function makeApply (groupId) {
 
 async function mirrorToLocal (type, key, value, groupId) {
   try {
+    console.log('[MIRROR] type=' + type + ' key=' + key)
     if (type === 'event') {
       await db.put(key, { ...value, updatedAt: value.updatedAt || Date.now() })
     } else if (type === 'group') {
