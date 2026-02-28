@@ -31,14 +31,6 @@ function sendToWorklet (msg: object) {
   _worklet?.IPC.write(b4a.from(JSON.stringify(msg) + '\n'))
 }
 
-function formatSyncDate (dateStr: string): string {
-  try {
-    const [y, m, d] = dateStr.split('-').map(Number)
-    const dt = new Date(y, m - 1, d)
-    return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  } catch { return dateStr }
-}
-
 function notifId (eventId: string): number {
   let h = 0
   for (const c of eventId) h = (Math.imul(31, h) + c.charCodeAt(0)) | 0
@@ -236,27 +228,10 @@ webViewRef.current?.injectJavaScript(
 
       onEvent('syncNotify', (data: any) => {
         try {
-          const { op, value, key } = data
-          let title = '\u{1F4C5} Calendar updated'
-          let body  = ''
-
-          if (op === 'put' && value) {
-            const who  = value.createdByName || value.updatedByName || 'Someone'
-            const what = value.title || 'an event'
-            const when = value.date ? formatSyncDate(value.date) : ''
-            title = who + ' updated the calendar'
-            body  = when ? what + ' – ' + when : what
-          } else if (op === 'del') {
-            const parts = (key ?? '').split(':')
-            const date  = parts[1] ? formatSyncDate(parts[1]) : ''
-            title = 'Event removed'
-            body  = date ? 'An event on ' + date + ' was deleted' : 'A shared event was deleted'
-          }
-
+          const { title, body } = data
           const id = Math.floor(Math.random() * 2000000) + 1000000
-          PearCalNotifications?.postNow?.({ id, title, body }).catch?.(() => {})
-        } catch (e) {
-        }
+          PearCalNotifications?.postNow?.({ id, title: title ?? 'Calendar updated', body: body ?? '' }).catch?.(() => {})
+        } catch (e) {}
       })
 
       _worklet.start('/bare.bundle', source)

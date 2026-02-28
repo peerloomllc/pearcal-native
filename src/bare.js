@@ -297,8 +297,74 @@ function makeApply (groupId) {
   }
 }
 
-function notifySyncChange ({ op, value, key, groupId }) {
-  send({ type: 'event', event: 'syncNotify', data: { op, value: value ?? null, key: key ?? null, groupId } })
+async function notifySyncChange ({ op, value, key, groupId }) {
+  try {
+    let title = 'Calendar updated'
+    let body  = ''
+
+    if (op === 'del') {
+      const parts = (key ?? '').split(':')
+      const date  = parts[1] ?? ''
+      title = 'Event removed'
+      body  = date ? 'An event on ' + formatDate(date) + ' was deleted' : 'A shared event was deleted'
+
+    } else if (op === 'put' && value) {
+      const what = value.title || 'An event'
+
+      // Fetch the previous version from local DB to diff
+      const dbKey = 'events:' + value.date + ':' + value.id
+      const existing = await db.get(dbKey).catch(() => null)
+      const prev = existing?.value ?? null
+
+      if (!prev) {
+        // Brand new event
+        title = what + ' added'
+        body  = value.date ? 'On ' + formatDate(value.date) : ''
+
+      } else {
+        // Diff fields
+        const dateChanged  = prev.date !== value.date || prev.start !== value.start || prev.end !== value.end || prev.allDay !== value.allDay
+        const notesAdded   = !prev.desc && value.desc
+        const newGroups    = (value.groups ?? []).filter(gid => !(prev.groups ?? []).includes(gid))
+
+        if (newGroups.length > 0) {
+          // Look up group names
+          const names = []
+          for (const gid of newGroups) {
+            const g = await db.get('groups:' + gid).catch(() => null)
+            if (g?.value?.name) names.push(g.value.name)
+          }
+          title = what + ' shared'
+          body  = names.length > 0 ? 'With ' + names.join(', ') : 'With a new group'
+
+        } else if (dateChanged) {
+          title = what + ' rescheduled'
+          body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + value.start) : ''
+
+        } else if (notesAdded) {
+          title = 'Notes added'
+          body  = what
+
+        } else {
+          title = what + ' updated'
+          body  = value.date ? formatDate(value.date) : ''
+        }
+      }
+    }
+
+    send({ type: 'event', event: 'syncNotify', data: { title, body } })
+  } catch (e) {
+    console.error('notifySyncChange error:', e.message)
+    send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '' } })
+  }
+}
+
+function formatDate (dateStr) {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+    return months[m - 1] + ' ' + d
+  } catch (e) { return dateStr }
 }
 
 async function mirrorToLocal (type, key, value, groupId) {
