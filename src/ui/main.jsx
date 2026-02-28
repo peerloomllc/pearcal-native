@@ -29,7 +29,7 @@ window.__pearEvent = function (event, data) {
 }
 
 // Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
-window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
+window.addEventListener('pear:sync', e => { console.log('[MAIN] pear:sync received:', e.detail); emitter.emit('sync', e.detail) })
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 
 const db = {
