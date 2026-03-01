@@ -525,13 +525,23 @@ async function init (dir, attempt = 0) {
             const base = bases.get(groupId)
             if (base) {
               Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
-                if (group && group.ownerId === profile.id) {
+                const isOwner = group && group.ownerId === profile.id
+                if (isOwner) {
                   const set = pendingWriterAnnouncements.get(groupId) || new Set()
                   if (!set.has(writerKey)) {
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
                     base.append({ addWriter: writerKey })
-                      .catch(e => console.error('[OWNER] addWriter error:', e.message))
+                      .then(async () => {
+                        // Rebroadcast full group so joiner gets real member names
+                        try {
+                          const g = await getGroup(groupId)
+                          if (g) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
+                        } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
+                      })
+                      .catch(e => console.error('[ADDWRITER] error:', e.message))
+                  } else {
+                    console.log('[ADDWRITER] already processed this key')
                   }
                 }
               }).catch(e => console.error('[HANDSHAKE] ownership check error:', e.message))
