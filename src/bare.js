@@ -430,18 +430,6 @@ async function mirrorToLocal (type, key, value, groupId) {
       }
       const merged = { ...value, members: [...mergedMap.values()], updatedAt: value.updatedAt || Date.now() }
       await db.put(key, merged)
-      // If we're the owner and members changed, re-broadcast so joiners get the full merged list
-      const profile = await getProfile()
-      const isOwner = merged.ownerId === profile?.id
-      const membersChanged = merged.members.length !== existingMembers.length ||
-        merged.members.some(m => m.name !== existingMembers.find(e => e.id === m.id)?.name)
-      if (isOwner && membersChanged) {
-        const base = bases.get(merged.id)
-        if (base) {
-          base.append({ op: 'put', type: 'group', key: 'groups:' + merged.id, value: merged })
-            .catch(e => console.error('[GROUP] rebroadcast error:', e.message))
-        }
-      }
     }
     // Notify UI to refresh
     send({ type: 'event', event: 'sync', data: groupId })
@@ -570,13 +558,20 @@ async function init (dir, attempt = 0) {
       await db.put(NS.profile, {
         id:        b4a.toString(pk, 'hex'),
         name:      'My Name',
-        avatar:    '',
+        avatar:    'MN',
         publicKey: b4a.toString(pk, 'hex'),
         secretKey: b4a.toString(sk, 'hex'),
         createdAt: Date.now(),
       })
     }
 
+    // Fix empty avatar for existing profiles
+    const profileNode = await db.get(NS.profile)
+    if (profileNode?.value && !profileNode.value.avatar) {
+      const n = profileNode.value.name ?? 'My Name'
+      const initials = n.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
+      await db.put(NS.profile, { ...profileNode.value, avatar: initials })
+    }
     // Re-join all existing groups
     const groups = []
     for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
