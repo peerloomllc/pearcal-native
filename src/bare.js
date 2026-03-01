@@ -60,7 +60,7 @@ async function handle (method, args) {
     case 'joinGroup':        return joinGroup(args[0])
     case 'leaveGroup':       return leaveGroup(args[0])
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null

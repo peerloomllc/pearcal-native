@@ -272,7 +272,13 @@ export default function App ({ db, notifs, sync }) {
         if (isMember) {
           const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: updatedProfile.avatar }
           await db.putMember(g.id, updatedMember).catch(() => {})
-          await sync?.putGroup({ ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }).catch(() => {})
+          const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }
+          // Retry sync a few times in case Autobase isn't writable yet
+          const trySyncGroup = async (attempts = 0) => {
+            try { await sync?.putGroup(updatedGroup) }
+            catch(e) { if (attempts < 5) setTimeout(() => trySyncGroup(attempts + 1), 2000) }
+          }
+          trySyncGroup()
         }
       }
     }
