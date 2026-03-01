@@ -418,6 +418,18 @@ async function mirrorToLocal (type, key, value, groupId) {
       }
       const merged = { ...value, members: [...mergedMap.values()], updatedAt: value.updatedAt || Date.now() }
       await db.put(key, merged)
+      // If we're the owner and members changed, re-broadcast so joiners get the full merged list
+      const profile = await getProfile()
+      const isOwner = merged.ownerId === profile?.id
+      const membersChanged = merged.members.length !== existingMembers.length ||
+        merged.members.some(m => m.name !== existingMembers.find(e => e.id === m.id)?.name)
+      if (isOwner && membersChanged) {
+        const base = bases.get(merged.id)
+        if (base) {
+          base.append({ op: 'put', type: 'group', key: 'groups:' + merged.id, value: merged })
+            .catch(e => console.error('[GROUP] rebroadcast error:', e.message))
+        }
+      }
     }
     // Notify UI to refresh
     send({ type: 'event', event: 'sync', data: groupId })
@@ -470,7 +482,7 @@ async function init (dir, attempt = 0) {
     swarm = new Hyperswarm()
 
     swarm.on('connection', async (conn, info) => {
-      console.log('Swarm connection from peer')
+      console.log('[SWARM] connection from peer')
 
       // Let Corestore set up replication first — this creates the protocol
       // stream and installs a Protomux muxer at stream.noiseStream.userData
@@ -489,6 +501,7 @@ async function init (dir, attempt = 0) {
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         onopen () {
+          console.log('[SWARM] writer-announce channel opened, sending keys for', bases.size, 'groups')
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
@@ -507,6 +520,7 @@ async function init (dir, attempt = 0) {
       const msg = channel.addMessage({
         onmessage (buf) {
           try {
+            console.log('[SWARM] received writerAnnounce groupId=' + JSON.parse(buf.toString()).groupId?.slice(0,8))
             const { groupId, writerKey } = JSON.parse(buf.toString())
 
             const base = bases.get(groupId)
