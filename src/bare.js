@@ -416,10 +416,15 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existingMembers = existing?.value?.members ?? []
       const incomingMembers = value.members ?? []
       const mergedMap = new Map()
-      for (const m of [...existingMembers, ...incomingMembers]) {
-        // Prefer the entry with a real name over 'Inviter' placeholder
+      // First pass: seed with existing members
+      for (const m of existingMembers) mergedMap.set(m.id, m)
+      // Second pass: incoming members override existing
+      // - Always replace 'Inviter' placeholder
+      // - Always update name/avatar (profile name changes)
+      // - Add new members not yet in existing
+      for (const m of incomingMembers) {
         const prev = mergedMap.get(m.id)
-        if (!prev || (prev.name === 'Inviter' && m.name !== 'Inviter')) {
+        if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
           mergedMap.set(m.id, m)
         }
       }
