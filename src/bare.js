@@ -165,6 +165,7 @@ async function removeMember (groupId, memberId) {
 //   { type: 'writerAnnounce', groupId, writerKey }
 
 const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
+const activeChannels = new Set() // active writer-announce message objects
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
@@ -217,6 +218,12 @@ async function joinGroup (group) {
   }
 
   bases.set(group.id, base)
+
+  // Announce our writer key to any already-connected peers
+  const writerKey = b4a.toString(base.local.key, 'hex')
+  for (const ch of activeChannels) {
+    try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey }))) } catch(e) {}
+  }
 
   // Always use group.groupKey as swarm topic so both sides match
   // (owner updates groupKey to realKey before this point)
@@ -505,8 +512,10 @@ async function init (dir, attempt = 0) {
             const writerKey = b4a.toString(base.local.key, 'hex')
             msg.send(Buffer.from(JSON.stringify({ groupId, writerKey })))
           }
+          activeChannels.add(msg)
         },
         onclose () {
+          activeChannels.delete(msg)
         }
       })
 
