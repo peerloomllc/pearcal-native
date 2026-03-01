@@ -377,7 +377,7 @@ export default function App ({ db, notifs, sync }) {
 
         {/* Modals */}
         {modal && (
-          <EventModal th={th} modal={modal} setModal={setModal} groups={groups}
+          <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
             onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
         )}
         {newGroupOpen && (
@@ -612,7 +612,7 @@ function EventCard ({ ev, th, onClick, compact }) {
 }
 
 // ─── Event Modal ──────────────────────────────────────────────────────────────
-function EventModal ({ th, modal, setModal, groups, onSave, onDelete, REMINDER_OPTIONS }) {
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, REMINDER_OPTIONS }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
@@ -628,7 +628,7 @@ function EventModal ({ th, modal, setModal, groups, onSave, onDelete, REMINDER_O
     ev.groups.forEach(gid => {
       const g = groups.find(x => x.id === gid)
       if (g) g.members.forEach(m => {
-        if (!seen[m.id] && m.id !== 'u1') { seen[m.id] = true; res.push(m) }
+        if (!seen[m.id] && m.id !== 'u1' && m.id !== profile?.id) { seen[m.id] = true; res.push(m) }
       })
     })
     return res
