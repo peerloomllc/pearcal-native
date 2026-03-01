@@ -273,14 +273,14 @@ export default function App ({ db, notifs, sync }) {
           const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: updatedProfile.avatar }
           await db.putMember(g.id, updatedMember).catch(() => {})
           const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }
+          // Write updated group to local DB so sync reload gets correct data
+          await db.putGroup(updatedGroup).catch(() => {})
           // Retry sync a few times in case Autobase isn't writable yet
           const trySyncGroup = async (attempts = 0) => {
             try {
               await sync?.putGroup(updatedGroup)
-              console.log('[PROFILE] putGroup sync succeeded attempt=' + attempts)
-            }
+}
             catch(e) {
-              console.log('[PROFILE] putGroup sync failed attempt=' + attempts + ' err=' + e?.message)
               if (attempts < 5) setTimeout(() => trySyncGroup(attempts + 1), 2000)
             }
           }
@@ -289,7 +289,6 @@ export default function App ({ db, notifs, sync }) {
       }
     }
     const updatedProfile2 = { ...profile, ...updates }
-    console.log('[PROFILE] updating groups for id=' + updatedProfile2.id + ' name=' + updatedProfile2.name)
     setProfile(prev => ({ ...prev, ...updates }))
     setGroups(prev => prev.map(g => ({
       ...g,

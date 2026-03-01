@@ -77,13 +77,14 @@ export async function handleInviteLink (url, db, sync, onJoined) {
   await sync.joinGroup(group)
 
   // 5b. Broadcast our real member record so the owner can update 'Inviter' placeholder
-  //     Retry a few times since Autobase may not be connected yet
+  //     Retry a few times since Autobase may not be writable yet
   let attempts = 0
   const broadcastSelf = async () => {
     try {
-      // Send just ourselves — bare.js will merge with existing members
+      // Send just ourselves — bare.js will merge with existing members on owner's side
       const updatedGroup = { ...group, members: [ myMember ], updatedAt: Date.now() }
       await sync.putGroup(updatedGroup)
+      // Success — stop retrying
     } catch (e) {
       if (attempts++ < 5) setTimeout(broadcastSelf, 3000)
     }
