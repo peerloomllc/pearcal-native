@@ -264,13 +264,16 @@ export default function App ({ db, notifs, sync }) {
 
   const updateProfile = useCallback(async updates => {
     if (db) {
+      const nameInitials = updates.name ? (updates.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?' : null
+      if (nameInitials) updates = { ...updates, avatar: nameInitials }
       await db.updateProfile(updates)
       // Update member record in all groups where we appear
       const updatedProfile = { ...profile, ...updates }
       for (const g of groups) {
         const isMember = g.members?.some(m => m.id === updatedProfile.id)
         if (isMember) {
-          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: updatedProfile.avatar }
+          const newInitials = (updatedProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
+          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: newInitials }
           await db.putMember(g.id, updatedMember).catch(() => {})
           const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }
           // Write updated group to local DB so sync reload gets correct data
@@ -292,7 +295,7 @@ export default function App ({ db, notifs, sync }) {
     setProfile(prev => ({ ...prev, ...updates }))
     setGroups(prev => prev.map(g => ({
       ...g,
-      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: updatedProfile2.avatar } : m) ?? []
+      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: (updatedProfile2.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?' } : m) ?? []
     })))
   }, [db, profile, groups, sync])
 
