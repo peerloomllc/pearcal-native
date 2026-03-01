@@ -243,10 +243,10 @@ async function syncPutEvent (groupId, event) {
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date) {
+async function syncDeleteEvent (groupId, eventId, date, updatedByName) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
-  await base.append({ op: 'del', type: 'event', key: 'events:' + date + ':' + eventId })
+  await base.append({ op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone' })
 }
 
 async function syncPutGroup (group) {
@@ -312,18 +312,18 @@ function makeApply (groupId) {
         await deleteFromLocal(val.type, val.key)
         send({ type: 'event', event: 'sync', data: groupId })
         if (isRemote && val.type === 'event') {
-          notifySyncChange({ op: 'del', key: val.key, groupId })
+          notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
         }
       }
     }
   }
 }
 
-async function notifySyncChange ({ op, value, key, prev, groupId }) {
+async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
-    const who  = value?.updatedByName || 'Someone'
+    const who  = updatedByName || value?.updatedByName || 'Someone'
 
     if (op === 'del') {
       const parts = (key ?? '').split(':')
@@ -482,7 +482,6 @@ async function init (dir, attempt = 0) {
     swarm = new Hyperswarm()
 
     swarm.on('connection', async (conn, info) => {
-      console.log('[SWARM] connection from peer')
 
       // Let Corestore set up replication first — this creates the protocol
       // stream and installs a Protomux muxer at stream.noiseStream.userData
@@ -501,7 +500,6 @@ async function init (dir, attempt = 0) {
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         onopen () {
-          console.log('[SWARM] writer-announce channel opened, sending keys for', bases.size, 'groups')
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
@@ -520,7 +518,6 @@ async function init (dir, attempt = 0) {
       const msg = channel.addMessage({
         onmessage (buf) {
           try {
-            console.log('[SWARM] received writerAnnounce groupId=' + JSON.parse(buf.toString()).groupId?.slice(0,8))
             const { groupId, writerKey } = JSON.parse(buf.toString())
 
             const base = bases.get(groupId)

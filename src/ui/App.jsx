@@ -208,12 +208,12 @@ export default function App ({ db, notifs, sync }) {
       await db.deleteEvent(ev.date, id)
       await notifs?.cancelForEvent(id)
       for (const gid of ev.groups ?? []) {
-        await sync?.deleteEvent(gid, id, ev.date).catch(() => {})
+        await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone').catch(() => {})
       }
     }
     setEvents(prev => prev.filter(e => e.id !== id))
     setModal(null)
-  }, [db, notifs, sync, events])
+  }, [db, notifs, sync, events, profile])
 
   const addGroup = useCallback(async g => {
     if (db) {
@@ -276,10 +276,11 @@ export default function App ({ db, notifs, sync }) {
         }
       }
     }
+    const updatedProfile2 = { ...profile, ...updates }
     setProfile(prev => ({ ...prev, ...updates }))
     setGroups(prev => prev.map(g => ({
       ...g,
-      members: g.members?.map(m => m.id === profile?.id ? { ...m, ...updates } : m) ?? []
+      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: updatedProfile2.avatar } : m) ?? []
     })))
   }, [db, profile, groups, sync])
 
