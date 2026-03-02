@@ -62,6 +62,7 @@ async function handle (method, args) {
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
     case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])
     case 'putGroup:sync':    return syncPutGroup(args[0])
+    case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -262,6 +263,12 @@ async function syncPutGroup (group) {
   await base.append({ op: 'put', type: 'group', key: 'groups:' + group.id, value: group })
 }
 
+async function syncDeleteGroup (groupId) {
+  const base = bases.get(groupId)
+  if (!base) throw new Error('Not in group: ' + groupId)
+  await base.append({ op: 'del', type: 'group', key: 'groups:' + groupId })
+}
+
 function makeApply (groupId) {
   return async function apply (nodes, view, host) {
     const base = bases.get(groupId)
@@ -317,9 +324,16 @@ function makeApply (groupId) {
       } else if (val.op === 'del') {
         await view.del(val.key)
         await deleteFromLocal(val.type, val.key)
-        send({ type: 'event', event: 'sync', data: groupId })
-        if (isRemote && val.type === 'event') {
-          notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
+        if (val.type === 'group' && isRemote) {
+          // Owner deleted the group — clean up locally and notify UI
+          await deleteGroup(groupId)
+          await leaveGroup(groupId)
+          send({ type: 'event', event: 'groupDeleted', data: groupId })
+        } else {
+          send({ type: 'event', event: 'sync', data: groupId })
+          if (isRemote && val.type === 'event') {
+            notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
+          }
         }
       }
     }

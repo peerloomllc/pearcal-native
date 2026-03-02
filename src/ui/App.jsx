@@ -124,6 +124,12 @@ export default function App ({ db, notifs, sync }) {
 
     emitter.on('sync', onSync)
 
+    function onGroupDeleted (groupId) {
+      setGroups(prev => prev.filter(g => g.id !== groupId))
+      setEvents(prev => prev.map(e => ({ ...e, groups: e.groups.filter(gid => gid !== groupId) })))
+    }
+    emitter.on('groupDeleted', onGroupDeleted)
+
     async function onGroupJoined(group) {
       if (db) {
         const fresh = await db.listGroups()
@@ -148,6 +154,7 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => {
       emitter.off('sync', onSync)
+      emitter.off('groupDeleted', onGroupDeleted)
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
@@ -249,8 +256,20 @@ export default function App ({ db, notifs, sync }) {
     setSettingsGroup(updated)
   }, [db, sync, groups])
 
-  const deleteGroup = useCallback(async id => {
+  const deleteGroup = useCallback(async (id, action = 'delete') => {
     if (db) {
+      const g = groups.find(x => x.id === id)
+      const isOwner = g?.ownerId === profile?.id
+      if (action === 'delete' && isOwner) {
+        // Owner: broadcast delete to all members
+        await sync?.deleteGroup(id).catch(() => {})
+      } else if (action === 'leave' && !isOwner) {
+        // Non-owner leaving: remove self from group members and sync
+        const updatedMembers = (g?.members ?? []).filter(m => m.id !== profile?.id)
+        const updatedGroup = { ...g, members: updatedMembers, updatedAt: Date.now() }
+        await db.putGroup(updatedGroup).catch(() => {})
+        await sync?.putGroup(updatedGroup).catch(() => {})
+      }
       await db.deleteGroup(id)
       await sync?.leaveGroup(id).catch(() => {})
     }
@@ -260,7 +279,7 @@ export default function App ({ db, notifs, sync }) {
       ...e, groups: e.groups.filter(gid => gid !== id)
     })))
     setSettingsGroup(null)
-  }, [db, sync])
+  }, [db, sync, groups, profile])
 
   const updateProfile = useCallback(async updates => {
     if (db) {
@@ -911,7 +930,7 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
 
   async function confirmAction () {
     if (!confirm) return
-    if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id); return }
+    if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
     if (confirm.startsWith('remove:')) {
       const uid = confirm.split(':')[1]
       setG(prev => ({ ...prev, members:prev.members.filter(m => m.id !== uid) }))

@@ -236,6 +236,12 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
+      onEvent('groupDeleted', (groupId: string) => {
+        webViewRef.current?.injectJavaScript(`
+          window.__pearEvent('groupDeleted', ${JSON.stringify(groupId)})
+        `)
+      })
+
       onEvent('syncNotify', (data: any) => {
         try {
           const { title, body } = data
