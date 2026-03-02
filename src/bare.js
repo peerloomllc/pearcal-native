@@ -224,15 +224,6 @@ async function joinGroup (group) {
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey }))) } catch(e) {}
   }
-  // Also retry every 5s for up to 2 minutes in case peers connect later
-  let announceAttempts = 0
-  const retryAnnounce = setInterval(() => {
-    announceAttempts++
-    if (announceAttempts > 24) { clearInterval(retryAnnounce); return }
-    for (const ch of activeChannels) {
-      try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey }))) } catch(e) {}
-    }
-  }, 5000)
 
   // Always use group.groupKey as swarm topic so both sides match
   // (owner updates groupKey to realKey before this point)
@@ -550,8 +541,6 @@ async function init (dir, attempt = 0) {
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
                       .catch(e => console.error('[ADDWRITER] error:', e.message))
-                  } else {
-                    console.log('[ADDWRITER] already processed this key')
                   }
                 }
               }).catch(e => console.error('[HANDSHAKE] ownership check error:', e.message))
