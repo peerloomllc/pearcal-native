@@ -535,7 +535,16 @@ async function init (dir, attempt = 0) {
       const msg = channel.addMessage({
         onmessage (buf) {
           try {
-            const { groupId, writerKey } = JSON.parse(buf.toString())
+            const parsed = JSON.parse(buf.toString())
+            // Handle group delete broadcast from owner
+            if (parsed.groupDeleted) {
+              const gid = parsed.groupDeleted
+              await deleteGroup(gid)
+              await leaveGroup(gid)
+              send({ type: 'event', event: 'groupDeleted', data: gid })
+              return
+            }
+            const { groupId, writerKey } = parsed
 
             const base = bases.get(groupId)
             if (base) {
