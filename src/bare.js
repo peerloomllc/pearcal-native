@@ -167,6 +167,7 @@ async function removeMember (groupId, memberId) {
 
 const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
 const activeChannels = new Set() // active writer-announce message objects
+const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
@@ -264,9 +265,15 @@ async function syncPutGroup (group) {
 }
 
 async function syncDeleteGroup (groupId) {
-  const base = bases.get(groupId)
-  if (!base) throw new Error('Not in group: ' + groupId)
-  await base.append({ op: 'del', type: 'group', key: 'groups:' + groupId })
+  // Broadcast delete directly via Protomux to all connected peers
+  // (don't use Autobase — members may not be writers yet)
+  // Also store pending deletes so new connections get notified
+  pendingGroupDeletes.add(groupId)
+  for (const ch of activeChannels) {
+    try {
+      ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
+    } catch(e) {}
+  }
 }
 
 function makeApply (groupId) {
@@ -520,6 +527,10 @@ async function init (dir, attempt = 0) {
             const writerKey = b4a.toString(base.local.key, 'hex')
             msg.send(Buffer.from(JSON.stringify({ groupId, writerKey })))
           }
+          // Send any pending group deletes to this new peer
+          for (const groupId of pendingGroupDeletes) {
+            try { msg.send(Buffer.from(JSON.stringify({ groupDeleted: groupId }))) } catch(e) {}
+          }
           activeChannels.add(msg)
         },
         onclose () {
@@ -533,7 +544,7 @@ async function init (dir, attempt = 0) {
 
       // Single message type: JSON buffer
       const msg = channel.addMessage({
-        onmessage (buf) {
+        onmessage: async function (buf) {
           try {
             const parsed = JSON.parse(buf.toString())
             // Handle group delete broadcast from owner
