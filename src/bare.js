@@ -265,14 +265,13 @@ async function syncPutGroup (group) {
 }
 
 async function syncDeleteGroup (groupId) {
-  // Broadcast delete directly via Protomux to all connected peers
-  // (don't use Autobase — members may not be writers yet)
-  // Also store pending deletes so new connections get notified
   pendingGroupDeletes.add(groupId)
+  console.log('[DELETE] syncDeleteGroup channels=' + activeChannels.size)
   for (const ch of activeChannels) {
     try {
       ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
-    } catch(e) {}
+      console.log('[DELETE] sent groupDeleted to peer')
+    } catch(e) { console.error('[DELETE] send error:', e.message) }
   }
 }
 
@@ -550,9 +549,11 @@ async function init (dir, attempt = 0) {
             // Handle group delete broadcast from owner
             if (parsed.groupDeleted) {
               const gid = parsed.groupDeleted
+              console.log('[DELETE] received groupDeleted for', gid)
               await deleteGroup(gid)
               await leaveGroup(gid)
               send({ type: 'event', event: 'groupDeleted', data: gid })
+              console.log('[DELETE] processed groupDeleted for', gid)
               return
             }
             const { groupId, writerKey } = parsed
