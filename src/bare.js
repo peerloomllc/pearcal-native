@@ -266,12 +266,10 @@ async function syncPutGroup (group) {
 
 async function syncDeleteGroup (groupId) {
   pendingGroupDeletes.add(groupId)
-  console.log('[DELETE] syncDeleteGroup channels=' + activeChannels.size)
   for (const ch of activeChannels) {
     try {
       ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
-      console.log('[DELETE] sent groupDeleted to peer')
-    } catch(e) { console.error('[DELETE] send error:', e.message) }
+    } catch(e) {}
   }
 }
 
@@ -549,11 +547,9 @@ async function init (dir, attempt = 0) {
             // Handle group delete broadcast from owner
             if (parsed.groupDeleted) {
               const gid = parsed.groupDeleted
-              console.log('[DELETE] received groupDeleted for', gid)
               await deleteGroup(gid)
               await leaveGroup(gid)
               send({ type: 'event', event: 'groupDeleted', data: gid })
-              console.log('[DELETE] processed groupDeleted for', gid)
               return
             }
             const { groupId, writerKey } = parsed
