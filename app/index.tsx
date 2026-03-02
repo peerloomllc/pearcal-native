@@ -157,13 +157,19 @@ export default function Root () {
     let buf = ''
 
     async function start () {
-      // Clear old cached bundles so fresh builds always load
+      // Clear stale bundles — keep only the 2 most recent (bare + UI)
       try {
         const cacheDir = FileSystem.cacheDirectory!
         const cacheContents = await FileSystem.readDirectoryAsync(cacheDir)
-        for (const f of cacheContents) {
-          if (f.startsWith('ExponentAsset') && f.endsWith('.bundle')) {
-            await FileSystem.deleteAsync(cacheDir + f, { idempotent: true })
+        const bundles = cacheContents.filter(f => f.startsWith('ExponentAsset') && f.endsWith('.bundle'))
+        if (bundles.length > 2) {
+          const infos = await Promise.all(bundles.map(async f => {
+            const info = await FileSystem.getInfoAsync(cacheDir + f)
+            return { name: f, modificationTime: (info as any).modificationTime ?? 0 }
+          }))
+          infos.sort((a, b) => b.modificationTime - a.modificationTime)
+          for (const info of infos.slice(2)) {
+            await FileSystem.deleteAsync(cacheDir + info.name, { idempotent: true })
           }
         }
       } catch(e) {}
@@ -237,9 +243,9 @@ webViewRef.current?.injectJavaScript(
       })
 
       onEvent('groupDeleted', (groupId: string) => {
-        webViewRef.current?.injectJavaScript(`
-          window.__pearEvent('groupDeleted', ${JSON.stringify(groupId)})
-        `)
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("groupDeleted",' + JSON.stringify(groupId) + ');true;'
+        )
       })
 
       onEvent('syncNotify', (data: any) => {
