@@ -545,13 +545,12 @@ async function init (dir, attempt = 0) {
       }
 
       // Open a dedicated Protomux channel for writer key exchange
+      // Per-connection dedup set — scoped here so both onopen and onmessage can access it
+      const connSeenWriters = new Set()
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
         onopen () {
-          // Per-connection set so every new connection re-processes writer keys
-          // even if the same key was seen in a previous connection
-          const connSeenWriters = new Set()
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
