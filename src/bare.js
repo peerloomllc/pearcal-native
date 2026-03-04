@@ -636,6 +636,15 @@ async function init (dir, attempt = 0) {
       // stream and installs a Protomux muxer at stream.noiseStream.userData
       const stream = store.replicate(conn)
 
+      // Handle stream/conn errors silently — Hyperswarm will reconnect
+      stream.on('error', e => console.warn('[REPL] stream error:', e.message))
+      conn.on('error', e => console.warn('[REPL] conn error:', e.message))
+
+      // On close, trigger Hyperswarm flush so it reconnects promptly
+      stream.on('close', () => {
+        if (swarm) swarm.flush().catch(() => {})
+      })
+
       // Wait for the noise handshake to complete so the muxer is ready
       await stream.noiseStream.opened
 
@@ -652,6 +661,14 @@ async function init (dir, attempt = 0) {
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
         async onopen () {
+          // Reactively call base.update() when remote blocks arrive
+          // so apply() processes new events without needing a force-restart
+          for (const [groupId, base] of bases) {
+            const onAppend = () => base.update().catch(e => console.warn('[REPL] update error:', e.message))
+            base.on('append', onAppend)
+            stream.once('close', () => base.off('append', onAppend))
+          }
+
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
