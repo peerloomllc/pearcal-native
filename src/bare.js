@@ -278,6 +278,8 @@ async function syncDeleteGroup (groupId) {
 async function syncMemberLeft (groupId, memberId) {
   const key = JSON.stringify({ groupId, memberId })
   pendingMemberLeaves.add(key)
+  // Persist so it survives app restarts
+  await db.put('pendingLeave:' + groupId + ':' + memberId, { groupId, memberId, ts: Date.now() }).catch(() => {})
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
@@ -489,7 +491,14 @@ async function shutdown () {
 async function init (dir, attempt = 0) {
   // If already initialized, just re-send ready event
   if (db) {
-    send({ type: 'event', event: 'ready' })
+    // Reload any persisted pending member leaves from previous sessions
+  try {
+    for await (const entry of db.createReadStream({ gt: 'pendingLeave:', lt: 'pendingLeave:~' })) {
+      const { groupId, memberId } = entry.value
+      pendingMemberLeaves.add(JSON.stringify({ groupId, memberId }))
+    }
+  } catch(e) {}
+  send({ type: 'event', event: 'ready' })
     return
   }
   try {
@@ -567,6 +576,10 @@ async function init (dir, attempt = 0) {
                 if (group && profile && group.ownerId === profile.id) {
                   const updated = { ...group, members: (group.members ?? []).filter(m => m.id !== memberId), updatedAt: Date.now() }
                   await putGroup(updated)
+                  // Clear writer announcements for this group so the member can rejoin cleanly
+                  pendingWriterAnnouncements.delete(groupId)
+                  // Remove persisted pending leave now that it's been processed
+                  await db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
                   // Rebroadcast so other members see the updated list
                   const base = bases.get(groupId)
                   if (base) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: updated })
