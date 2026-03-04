@@ -127,7 +127,9 @@ export default function App ({ db, notifs, sync }) {
 
     function onGroupDeleted (groupId) {
       setGroups(prev => prev.filter(g => g.id !== groupId))
-      setEvents(prev => prev.map(e => ({ ...e, groups: e.groups.filter(gid => gid !== groupId) })))
+      setEvents(prev => prev
+        .map(e => ({ ...e, groups: e.groups.filter(gid => gid !== groupId) }))
+        .filter(e => e.groups.length > 0))
     }
     emitter.on('groupDeleted', onGroupDeleted)
 
@@ -275,10 +277,10 @@ export default function App ({ db, notifs, sync }) {
       await sync?.leaveGroup(id).catch(() => {})
     }
     setGroups(prev => prev.filter(g => g.id !== id))
-    // Scrub group from all events in local state
-    setEvents(prev => prev.map(e => ({
-      ...e, groups: e.groups.filter(gid => gid !== id)
-    })))
+    // Scrub group from events; remove events that now belong to no group
+    setEvents(prev => prev
+      .map(e => ({ ...e, groups: e.groups.filter(gid => gid !== id) }))
+      .filter(e => e.groups.length > 0))
     setSettingsGroup(null)
   }, [db, sync, groups, profile])
 
