@@ -714,6 +714,7 @@ async function init (dir, attempt = 0) {
                     connSeenWriters.add(connKey)
                     // Still track globally to handle duplicate announcements from same peer
                     const set = pendingWriterAnnouncements.get(groupId) || new Set()
+                    const alreadyKnown = set.has(writerKey)
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
                     base.append({ addWriter: writerKey })
@@ -723,14 +724,16 @@ async function init (dir, attempt = 0) {
                           const g = await getGroup(groupId)
                           if (g) {
                             await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
-                            // Notify owner: find the newly joined member (not Inviter placeholder, not owner)
-                            const realNewMember = (g.members ?? []).find(m => m.name && m.name !== 'Inviter' && m.id !== profile?.id)
-                            const memberName = realNewMember?.name || 'Someone'
-                            send({ type: 'event', event: 'syncNotify', data: {
-                              title: memberName + ' joined ' + (g.name || 'your group'),
-                              body: 'Tap to view the group',
-                              tab: 'groups'
-                            }})
+                            // Only notify if this is a genuine new join, not a reconnect
+                            if (!alreadyKnown) {
+                              const realNewMember = (g.members ?? []).find(m => m.name && m.name !== 'Inviter' && m.id !== profile?.id)
+                              const memberName = realNewMember?.name || 'Someone'
+                              send({ type: 'event', event: 'syncNotify', data: {
+                                title: memberName + ' joined ' + (g.name || 'your group'),
+                                body: 'Tap to view the group',
+                                tab: 'groups'
+                              }})
+                            }
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
