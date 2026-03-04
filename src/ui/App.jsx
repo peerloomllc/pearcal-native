@@ -354,9 +354,16 @@ export default function App ({ db, notifs, sync }) {
   const eventsOnDate = d => events.filter(e => e.date === d)
 
   function openCreate (date) {
+    const now = new Date()
+    const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 60000)
+    nextHour.setSeconds(0, 0)
+    const hh = String(nextHour.getHours()).padStart(2, '0')
+    const endHour = String((nextHour.getHours() + 1) % 24).padStart(2, '0')
+    const defaultStart = hh + ':00'
+    const defaultEnd   = endHour + ':00'
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
-      allDay:false, start:'09:00', end:'10:00', reminder:15,
+      allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
       groups:[], invitees:[], color:'#6C9BF5', desc:'',
     }})
   }
@@ -381,9 +388,10 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily:FONT, fontWeight:300, minHeight:'100vh', ...th.app,
-      display:'flex', flexDirection:'column', alignItems:'center' }}>
-      <div style={{ width:'100%', maxWidth:430, minHeight:'100vh', display:'flex', flexDirection:'column', ...th.bg }}>
+    <div style={{ fontFamily:FONT, fontWeight:300, height:'100dvh', ...th.app,
+      display:'flex', flexDirection:'column', alignItems:'center', overflow:'hidden' }}>
+      <div style={{ width:'100%', maxWidth:430, height:'100dvh', display:'flex', flexDirection:'column', ...th.bg,
+        paddingTop:'var(--sat)', paddingBottom:'var(--sab)' }}>
 
         {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -395,7 +403,7 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Content */}
-        <div style={{ flex:1, overflowY:'auto', paddingBottom:72 }}>
+        <div style={{ flex:1, overflowY:'auto', paddingBottom:72, minHeight:0 }}>
           {tab === 'calendar' && (
             <CalendarTab th={th} viewDate={viewDate} setViewDate={setViewDate}
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
@@ -571,7 +579,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   })
 
   return (
-    <div style={{ padding:'0 16px 16px' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+    <div style={{ padding:'0 16px 8px', flexShrink:0 }}>
       {/* Month / Year nav */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 8px' }}>
         <button onClick={prev} style={th.iconBtn}>◀</button>
@@ -660,8 +669,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         })}
       </div>
 
-      {/* Selected day */}
-      <div style={{ marginTop:20 }}>
+    </div>{/* end sticky top */}
+
+      {/* Scrollable event list */}
+      <div style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      <div style={{ marginTop:12 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
           <span style={{ fontWeight:300, fontSize:15, ...th.text }}>
             {selectedDate === todayStr ? 'Today ' : ''}
@@ -701,7 +713,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           }
         </div>
       </div>
-    </div>
+      </div>{/* end scrollable */}
+    </div>{/* end CalendarTab */}
   )
 }
 
@@ -795,7 +808,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
           {!ev.allDay && (
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               <div><Label th={th}>Start</Label>
-                <input type="time" style={inp} value={ev.start} onChange={e => set('start', e.target.value)} />
+                <input type="time" style={inp} value={ev.start} onChange={e => {
+                  const newStart = e.target.value
+                  set('start', newStart)
+                  // Auto-adjust end to 1 hour after new start
+                  const [h, mins] = newStart.split(':').map(Number)
+                  const endH = String((h + 1) % 24).padStart(2, '0')
+                  set('end', endH + ':' + String(mins).padStart(2, '0'))
+                }} />
               </div>
               <div><Label th={th}>End</Label>
                 <input type="time" style={inp} value={ev.end} onChange={e => set('end', e.target.value)} />
