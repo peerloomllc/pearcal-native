@@ -278,8 +278,9 @@ async function syncDeleteGroup (groupId) {
 async function syncMemberLeft (groupId, memberId) {
   const key = JSON.stringify({ groupId, memberId })
   pendingMemberLeaves.add(key)
-  // Persist so it survives app restarts
-  await db.put('pendingLeave:' + groupId + ':' + memberId, { groupId, memberId, ts: Date.now() }).catch(() => {})
+  // Persist including groupKey so we can rejoin swarm after restart to deliver
+  const group = await getGroup(groupId).catch(() => null)
+  await db.put('pendingLeave:' + groupId + ':' + memberId, { groupId, memberId, groupKey: group?.groupKey, ts: Date.now() }).catch(() => {})
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
@@ -492,10 +493,20 @@ async function init (dir, attempt = 0) {
   // If already initialized, just re-send ready event
   if (db) {
     // Reload any persisted pending member leaves from previous sessions
+  // and briefly rejoin those group swarms so we can deliver on next connection
   try {
     for await (const entry of db.createReadStream({ gt: 'pendingLeave:', lt: 'pendingLeave:~' })) {
-      const { groupId, memberId } = entry.value
+      const { groupId, memberId, groupKey } = entry.value
       pendingMemberLeaves.add(JSON.stringify({ groupId, memberId }))
+      // Rejoin swarm temporarily so Protomux onopen can deliver the leave message
+      if (groupKey && !bases.has(groupId)) {
+        try {
+          const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+          swarm.join(topic, { server: false, client: true })
+          // Leave after 90s — enough time to connect and deliver
+          setTimeout(() => swarm.leave(topic).catch(() => {}), 90000)
+        } catch(e) {}
+      }
     }
   } catch(e) {}
   send({ type: 'event', event: 'ready' })
@@ -538,6 +549,9 @@ async function init (dir, attempt = 0) {
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
         onopen () {
+          // Per-connection set so every new connection re-processes writer keys
+          // even if the same key was seen in a previous connection
+          const connSeenWriters = new Set()
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
@@ -547,9 +561,15 @@ async function init (dir, attempt = 0) {
           for (const groupId of pendingGroupDeletes) {
             try { msg.send(Buffer.from(JSON.stringify({ groupDeleted: groupId }))) } catch(e) {}
           }
-          // Send any pending member leaves to this new peer
+          // Send any pending member leaves to this new peer and clear from DB after sending
           for (const key of pendingMemberLeaves) {
-            try { const { groupId, memberId } = JSON.parse(key); msg.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
+            try {
+              const { groupId, memberId } = JSON.parse(key)
+              msg.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId })))
+              // Clear from DB — if Device 1 receives it they'll process it; if not we'll retry next connection
+              pendingMemberLeaves.delete(key)
+              db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
+            } catch(e) {}
           }
           activeChannels.add(msg)
         },
@@ -603,8 +623,11 @@ async function init (dir, attempt = 0) {
               Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
                 const isOwner = group && group.ownerId === profile.id
                 if (isOwner) {
-                  const set = pendingWriterAnnouncements.get(groupId) || new Set()
-                  if (!set.has(writerKey)) {
+                  const connKey = groupId + ':' + writerKey
+                  if (!connSeenWriters.has(connKey)) {
+                    connSeenWriters.add(connKey)
+                    // Still track globally to handle duplicate announcements from same peer
+                    const set = pendingWriterAnnouncements.get(groupId) || new Set()
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
                     base.append({ addWriter: writerKey })
