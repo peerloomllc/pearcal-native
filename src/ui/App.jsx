@@ -121,16 +121,6 @@ export default function App ({ db, notifs, sync }) {
       const g = await db.getGroup(groupId)
       if (g) setGroups(prev => prev.map(x => x.id === groupId ? g : x))
 
-      // If we are not the owner, re-broadcast our own member record.
-      // This fires after Autobase becomes writable on the joiner side,
-      // catching cases where the initial broadcastSelf retries all failed.
-      const myProfile = await db.getProfile()
-      if (g && myProfile && g.ownerId !== myProfile.id) {
-        const memberAvatar = myProfile.avatar ?? ((myProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?')
-        const selfMember = { id: myProfile.id, name: myProfile.name, avatar: memberAvatar }
-        const selfGroup = { ...g, members: [selfMember], updatedAt: Date.now() }
-        sync?.putGroup(selfGroup).catch(() => {})
-      }
     }
 
     emitter.on('sync', onSync)
