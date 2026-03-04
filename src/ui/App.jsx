@@ -429,15 +429,21 @@ export default function App ({ db, notifs, sync }) {
             { key:'calendar', icon:'📅', label:'Calendar' },
             { key:'groups',   icon:'👥', label:'Groups'   },
             { key:'profile',  icon:'👤', label:'Profile'  },
-          ].map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              style={{ flex:1, padding:'10px 0', background:'none', border:'none', cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT }}>
-              <span style={{ fontSize:22 }}>{t.icon}</span>
-              <span style={{ fontSize:11, fontWeight:tab===t.key?400:300,
-                color:tab===t.key ? th.accent : th.muted }}>{t.label}</span>
-            </button>
-          ))}
+          ].map(t => {
+            const isActive = tab === t.key
+            return (
+              <button key={t.key} onClick={() => setTab(t.key)}
+                style={{ flex:1, padding:'10px 0 8px', border:'none', cursor:'pointer',
+                  display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontFamily:FONT,
+                  background: isActive ? th.accent + '18' : 'none',
+                  borderTop: isActive ? `3px solid ${th.accent}` : '3px solid transparent',
+                  transition:'background 0.15s' }}>
+                <span style={{ fontSize:22 }}>{t.icon}</span>
+                <span style={{ fontSize:11, fontWeight:isActive ? 400 : 300,
+                  color:isActive ? th.accent : th.muted }}>{t.label}</span>
+              </button>
+            )
+          })}
         </div>
 
         {/* Modals */}
@@ -669,52 +675,63 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         })}
       </div>
 
-    </div>{/* end sticky top */}
+    </div>
 
       {/* Scrollable event list */}
       <div style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
-      <div style={{ marginTop:12 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+      {/* Day header for selected date */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+        <div>
           <span style={{ fontWeight:300, fontSize:15, ...th.text }}>
-            {selectedDate === todayStr ? 'Today ' : ''}
+            {selectedDate === todayStr ? 'Today · ' : ''}
             {selectedDate && new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',
               { weekday:'long', month:'short', day:'numeric' })}
           </span>
-          <button onClick={() => openCreate(selectedDate)}
-            style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
+          {selectedDate < todayStr && (
+            <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>
+          )}
         </div>
-        {selectedDate < todayStr && (
-          <div style={{ fontSize:11, color:th.muted, fontWeight:300, letterSpacing:'0.06em',
-            marginBottom:8, textAlign:'center' }}>PAST DATE</div>
-        )}
-        {selectedEvents.length === 0
-          ? <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'32px 0' }}>
-              No events — tap + to create one
-            </div>
-          : selectedEvents.map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} isPast={ev.date < todayStr}
-                onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
-            ))
-        }
+        <button onClick={() => openCreate(selectedDate)}
+          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
       </div>
+      {selectedEvents.length === 0
+        ? <div style={{ textAlign:'center', color:th.muted, fontSize:13, fontWeight:300, padding:'16px 0 24px' }}>
+            No events — tap + to create one
+          </div>
+        : selectedEvents.map(ev => (
+            <EventCard key={ev.id} ev={ev} th={th} isPast={ev.date < todayStr}
+              onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+          ))
+      }
 
-      {/* Upcoming */}
-      <div style={{ marginTop:24 }}>
-        <span style={{ fontWeight:300, fontSize:15, ...th.text }}>Upcoming</span>
-        <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:8 }}>
-          {events
-            .filter(e => e.date > selectedDate)
-            .sort((a, b) => a.date.localeCompare(b.date))
-            .slice(0, 4)
-            .map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} compact
+      {/* Upcoming events grouped by day */}
+      {(() => {
+        const upcoming = events
+          .filter(e => e.date > selectedDate)
+          .sort((a, b) => a.date.localeCompare(b.date))
+        const byDay = []
+        const seen = new Map()
+        for (const e of upcoming) {
+          if (!seen.has(e.date)) { seen.set(e.date, []); byDay.push(e.date) }
+          seen.get(e.date).push(e)
+        }
+        if (byDay.length === 0) return null
+        return byDay.map(date => (
+          <div key={date} style={{ marginTop:20 }}>
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+              {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
+                { weekday:'short', month:'short', day:'numeric' }).toUpperCase()}
+            </div>
+            {seen.get(date).map(ev => (
+              <EventCard key={ev.id} ev={ev} th={th} isPast={date < todayStr}
                 onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
-            ))
-          }
-        </div>
+            ))}
+          </div>
+        ))
+      })()}
       </div>
-      </div>{/* end scrollable */}
-    </div>{/* end CalendarTab */}
+    </div>
   )
 }
 
@@ -767,7 +784,11 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
       ? e.invitees.filter(x => x !== uid) : [...e.invitees, uid] }))
   }
 
+  const [titleErr, setTitleErr] = useState('')
+
   async function handleSave () {
+    if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
+    setTitleErr('')
     setSaving(true)
     const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
     await onSave(toSave)
@@ -793,8 +814,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
           <button onClick={() => setModal(null)} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
-          <input style={inp} placeholder="Event title" value={ev.title}
-            onChange={e => set('title', e.target.value)} />
+          <div>
+            <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
+              placeholder="Event title" value={ev.title}
+              onChange={e => { set('title', e.target.value); if (e.target.value.trim()) setTitleErr('') }} />
+            {titleErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300, marginTop:4 }}>{titleErr}</div>}
+          </div>
 
           <div><Label th={th}>Date</Label>
             <input type="date" style={inp} value={ev.date} onChange={e => set('date', e.target.value)} />
