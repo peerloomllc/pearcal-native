@@ -21,6 +21,10 @@ class MainActivity : ReactActivity() {
       LinkModule.pendingLink = uri.toString()
       intent = Intent(this, MainActivity::class.java)
     }
+    val tab = intent?.getStringExtra("pearTab")
+    if (!tab.isNullOrEmpty()) {
+      LinkModule.pendingTab = tab
+    }
     super.onCreate(null)
     // Start foreground service to keep Bare worklet alive
     val serviceIntent = Intent(this, BareService::class.java)
@@ -39,6 +43,8 @@ class MainActivity : ReactActivity() {
       setIntent(Intent(this, MainActivity::class.java))
       super.onNewIntent(Intent(this, MainActivity::class.java))
     } else {
+      val tab = intent.getStringExtra("pearTab")
+      if (!tab.isNullOrEmpty()) LinkModule.pendingTab = tab
       super.onNewIntent(intent)
     }
   }

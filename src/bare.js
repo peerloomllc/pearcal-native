@@ -379,7 +379,8 @@ function makeApply (groupId) {
                 const groupName = val.value.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
                   title: (m.name || 'Someone') + ' joined ' + groupName,
-                  body: groupName + ' now has ' + incomingMembers.length + ' member' + (incomingMembers.length !== 1 ? 's' : '')
+                  body: 'Tap to view the group',
+                  tab: 'groups'
                 }})
               }
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
@@ -677,6 +678,14 @@ async function init (dir, attempt = 0) {
                   pendingWriterAnnouncements.delete(groupId)
                   // Remove persisted pending leave now that it's been processed
                   await db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
+                  // Notify owner that member left
+                  const leavingMember = (group.members ?? []).find(m => m.id === memberId)
+                  const leavingName = leavingMember?.name || 'Someone'
+                  send({ type: 'event', event: 'syncNotify', data: {
+                    title: leavingName + ' left ' + (group.name || 'your group'),
+                    body: 'Tap to view the group',
+                    tab: 'groups'
+                  }})
                   // Rebroadcast so other members see the updated list
                   const base = bases.get(groupId)
                   if (base) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: updated })
@@ -719,7 +728,8 @@ async function init (dir, attempt = 0) {
                             const memberName = realNewMember?.name || 'Someone'
                             send({ type: 'event', event: 'syncNotify', data: {
                               title: memberName + ' joined ' + (g.name || 'your group'),
-                              body: 'Tap to view the group'
+                              body: 'Tap to view the group',
+                              tab: 'groups'
                             }})
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }

@@ -65,6 +65,10 @@ const sync = {
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
 }
 
+window.__pearSetTab = function(tab) {
+  window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
+}
+
 window.__pearHandleInvite = async function(url) {
   const result = await handleInviteLink(url, db, sync, group => {
     window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: group }))

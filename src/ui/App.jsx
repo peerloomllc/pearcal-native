@@ -154,6 +154,8 @@ export default function App ({ db, notifs, sync }) {
     // Also listen for DOM event from __pearHandleInvite
     const onDomGroupJoined = (e) => onGroupJoined(e.detail)
     window.addEventListener('pear:groupJoined', onDomGroupJoined)
+    const onDomSetTab = (e) => setTab(e.detail)
+    window.addEventListener('pear:setTab', onDomSetTab)
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
@@ -165,6 +167,7 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('groupDeleted', onGroupDeleted)
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
+      window.removeEventListener('pear:setTab', onDomSetTab)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
     }
   }, [db])

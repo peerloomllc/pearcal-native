@@ -10,6 +10,7 @@ class LinkModule(reactContext: ReactApplicationContext) :
     companion object {
         const val NAME = "PearCalLink"
         var pendingLink: String? = null
+        var pendingTab: String? = null
     }
 
     override fun getName() = NAME
@@ -18,6 +19,12 @@ class LinkModule(reactContext: ReactApplicationContext) :
     fun getPendingLink(promise: Promise) {
         promise.resolve(pendingLink)
         pendingLink = null  // consume it
+    }
+
+    @ReactMethod
+    fun getPendingTab(promise: Promise) {
+        promise.resolve(pendingTab)
+        pendingTab = null
     }
 
     @ReactMethod

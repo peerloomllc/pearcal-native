@@ -103,11 +103,13 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
                 nm.createNotificationChannel(channel)
             }
 
+            val tab = opts.getString("tab") ?: ""
             val tapIntent = android.content.Intent(
                 reactApplicationContext, MainActivity::class.java
             ).apply {
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                         android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+                if (tab.isNotEmpty()) putExtra("pearTab", tab)
             }
             val tapPending = android.app.PendingIntent.getActivity(
                 reactApplicationContext, notifId, tapIntent,

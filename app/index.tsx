@@ -108,6 +108,24 @@ export default function Root () {
   const webViewRef = useRef<any>(null)
   const dbReadyRef = useRef(false)
 
+  // Poll for pending tab navigation (from notification taps)
+  useEffect(() => {
+    if (!dbReady || !webViewReady) return
+    const { PearCalLink } = NativeModules
+    if (!PearCalLink) return
+    const interval = setInterval(async () => {
+      try {
+        const tab = await PearCalLink.getPendingTab()
+        if (tab && webViewRef.current) {
+          webViewRef.current.injectJavaScript(
+            `if(window.__pearSetTab) { window.__pearSetTab(${JSON.stringify(tab)}); } true;`
+          )
+        }
+      } catch(e) {}
+    }, 500)
+    return () => clearInterval(interval)
+  }, [dbReady, webViewReady])
+
   // Poll for pending invite links every 2 seconds
   useEffect(() => {
     if (!dbReady) return
@@ -251,9 +269,9 @@ webViewRef.current?.injectJavaScript(
 
       onEvent('syncNotify', (data: any) => {
         try {
-          const { title, body } = data
+          const { title, body, tab } = data
           const id = Math.floor(Math.random() * 2000000) + 1000000
-          PearCalNotifications?.postNow?.({ id, title: title ?? 'Calendar updated', body: body ?? '' }).catch?.(() => {})
+          PearCalNotifications?.postNow?.({ id, title: title ?? 'Calendar updated', body: body ?? '', tab: tab ?? '' }).catch?.(() => {})
         } catch (e) {}
       })
 
