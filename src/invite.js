@@ -50,7 +50,7 @@ export async function handleInviteLink (url, db, sync, onJoined) {
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
-  const myMember = { id: profile.id, name: profile.name, avatar: _initials(profile.name), publicKey: profile.publicKey }
+  const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey }
   const inviterMember = { id: inviterKey, name: 'Inviter', avatar: '?', publicKey: inviterKey }
 
   const group = {

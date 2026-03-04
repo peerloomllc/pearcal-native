@@ -1241,7 +1241,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
       id:      'g' + Math.random().toString(36).slice(2, 8),
       name:    name.trim(), color, emoji, icon,
       ownerId: me?.id ?? 'unknown',
-      members: [{ id:me?.id, name:me?.name, avatar:me?.name?.slice(0,2).toUpperCase() ?? '??' }],
+      members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
       groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
     }
     setGroup(newG)
