@@ -137,7 +137,9 @@ export default function App ({ db, notifs, sync }) {
       if (db) {
         const fresh = await db.listGroups()
         setGroups(fresh)
-        // Load any events already replicated by the time we join
+        // Re-mirror Autobase view → local DB in case we previously left
+        // and our event cleanup removed entries that Autobase won't re-apply
+        await db.resyncGroup(group.id).catch(() => {})
         const evts = await db.listEvents()
         setEvents(evts)
       } else {

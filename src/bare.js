@@ -64,6 +64,7 @@ async function handle (method, args) {
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
+    case 'resyncGroup':        return resyncGroup(args[0])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -298,6 +299,38 @@ async function syncMemberLeft (groupId, memberId) {
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
+}
+
+async function resyncGroup (groupId) {
+  const base = bases.get(groupId)
+  if (!base) return
+  // Re-mirror everything from the Autobase view to local DB.
+  // Needed after rejoin when local DB was cleaned up on leave
+  // but Autobase view already has entries and won't re-fire apply.
+  try {
+    await base.update()
+    const view = base.view
+    if (!view) return
+    for await (const { key, value } of view.createReadStream()) {
+      if (!value) continue
+      if (key.startsWith('events:')) {
+        await db.put(key, value)
+      } else if (key.startsWith('groups:')) {
+        // Merge members same way mirrorToLocal does
+        const existing = await db.get(key).catch(() => null)
+        const existingMembers = existing?.value?.members ?? []
+        const incomingMembers = value.members ?? []
+        const mergedMap = new Map()
+        for (const m of existingMembers) mergedMap.set(m.id, m)
+        for (const m of incomingMembers) {
+          const prev = mergedMap.get(m.id)
+          if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, m)
+        }
+        await db.put(key, { ...value, members: [...mergedMap.values()] })
+      }
+    }
+    send({ type: 'event', event: 'sync', data: groupId })
+  } catch(e) { console.error('[RESYNC] error:', e.message) }
 }
 
 function makeApply (groupId) {

@@ -46,6 +46,7 @@ const db = {
   listMembers:   (gid)       => window.__pearDB.call('listMembers', gid),
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),
   removeMember:  (gid, mid)  => window.__pearDB.call('removeMember', gid, mid),
+  resyncGroup:   (groupId)   => window.__pearDB.call('resyncGroup', groupId),
 }
 
 const notifs = {
