@@ -126,7 +126,7 @@ export default function App ({ db, notifs, sync }) {
       // catching cases where the initial broadcastSelf retries all failed.
       const myProfile = await db.getProfile()
       if (g && myProfile && g.ownerId !== myProfile.id) {
-        const memberAvatar = myProfile.avatar ?? (myProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
+        const memberAvatar = myProfile.avatar ?? ((myProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?')
         const selfMember = { id: myProfile.id, name: myProfile.name, avatar: memberAvatar }
         const selfGroup = { ...g, members: [selfMember], updatedAt: Date.now() }
         sync?.putGroup(selfGroup).catch(() => {})
