@@ -498,13 +498,12 @@ async function init (dir, attempt = 0) {
     for await (const entry of db.createReadStream({ gt: 'pendingLeave:', lt: 'pendingLeave:~' })) {
       const { groupId, memberId, groupKey } = entry.value
       pendingMemberLeaves.add(JSON.stringify({ groupId, memberId }))
-      // Rejoin swarm temporarily so Protomux onopen can deliver the leave message
+      // Rejoin swarm so Protomux onopen can deliver the leave message.
+      // We stay joined until delivery succeeds (leave happens in onopen after send).
       if (groupKey && !bases.has(groupId)) {
         try {
           const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
           swarm.join(topic, { server: false, client: true })
-          // Leave after 90s — enough time to connect and deliver
-          setTimeout(() => swarm.leave(topic).catch(() => {}), 90000)
         } catch(e) {}
       }
     }
@@ -565,9 +564,17 @@ async function init (dir, attempt = 0) {
             try {
               const { groupId, memberId } = JSON.parse(key)
               msg.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId })))
-              // Clear from DB — if Device 1 receives it they'll process it; if not we'll retry next connection
               pendingMemberLeaves.delete(key)
               db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
+              // Leave the temporary swarm rejoin now that delivery is done
+              if (!bases.has(groupId)) {
+                const group = await db.get('groups:' + groupId).catch(() => null)
+                const groupKey = group?.value?.groupKey
+                if (groupKey) {
+                  const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+                  swarm.leave(topic).catch(() => {})
+                }
+              }
             } catch(e) {}
           }
           activeChannels.add(msg)
