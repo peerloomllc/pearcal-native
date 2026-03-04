@@ -601,6 +601,13 @@ async function init (dir, attempt = 0) {
               try {
                 const group = await getGroup(groupId)
                 const profile = await getProfile()
+                // If we are the removed member, treat as group deletion
+                if (profile && memberId === profile.id) {
+                  await deleteGroup(groupId)
+                  await leaveGroup(groupId)
+                  send({ type: 'event', event: 'groupDeleted', data: groupId })
+                  return
+                }
                 if (group && profile && group.ownerId === profile.id) {
                   const updated = { ...group, members: (group.members ?? []).filter(m => m.id !== memberId), updatedAt: Date.now() }
                   await putGroup(updated)
