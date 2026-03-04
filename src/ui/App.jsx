@@ -434,6 +434,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile}
+            onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
             onClose={() => setSettingsGroup(null)}
             onUpdate={updateGroup} onDelete={deleteGroup} />
         )}
@@ -953,7 +954,7 @@ function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
+function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMemberLeft }) {
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
   const [confirm, setConfirm] = useState(null)
@@ -988,9 +989,12 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
     if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
     if (confirm.startsWith('remove:')) {
       const uid = confirm.split(':')[1]
-      setG(prev => ({ ...prev, members:prev.members.filter(m => m.id !== uid) }))
+      const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), updatedAt: Date.now() }
+      setG(updatedGroup)
       setConfirm(null)
       setSaved(false)
+      await onUpdate(updatedGroup)
+      await onMemberLeft(g.id, uid)
     }
   }
 
