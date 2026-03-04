@@ -374,7 +374,7 @@ function makeApply (groupId) {
               const existingMembers = existing?.value?.members ?? []
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
-              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && m.id !== val.value.ownerId && !existingIds.has(m.id))
+              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && m.name !== 'Inviter' && !existingIds.has(m.id))
               for (const m of newMembers) {
                 const groupName = val.value.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
@@ -724,16 +724,7 @@ async function init (dir, attempt = 0) {
                           const g = await getGroup(groupId)
                           if (g) {
                             await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
-                            // Only notify if this is a genuine new join, not a reconnect
-                            if (!alreadyKnown) {
-                              const realNewMember = (g.members ?? []).find(m => m.name && m.name !== 'Inviter' && m.id !== profile?.id)
-                              const memberName = realNewMember?.name || 'Someone'
-                              send({ type: 'event', event: 'syncNotify', data: {
-                                title: memberName + ' joined ' + (g.name || 'your group'),
-                                body: 'Tap to view the group',
-                                tab: 'groups'
-                              }})
-                            }
+                            // Notification handled in apply() where real member name is available
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
