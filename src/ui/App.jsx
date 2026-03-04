@@ -641,11 +641,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           const evs = eventsOnDate(ds)
           const isToday = ds === todayStr
           const isSel   = ds === selectedDate
+          const isPast  = ds < todayStr
           return (
             <button key={ds} onClick={() => setSelectedDate(ds)}
               style={{ background:isSel ? th.accent : isToday ? th.accentFaint : 'none',
                 border:'none', borderRadius:10, padding:'6px 2px', cursor:'pointer',
-                display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT }}>
+                display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
+                opacity: isPast && !isSel ? 0.45 : 1 }}>
               <span style={{ fontSize:14, fontWeight:isToday||isSel ? 400 : 300,
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
@@ -669,12 +671,17 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           <button onClick={() => openCreate(selectedDate)}
             style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
         </div>
+        {selectedDate < todayStr && (
+          <div style={{ fontSize:11, color:th.muted, fontWeight:300, letterSpacing:'0.06em',
+            marginBottom:8, textAlign:'center' }}>PAST DATE</div>
+        )}
         {selectedEvents.length === 0
           ? <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'32px 0' }}>
               No events — tap + to create one
             </div>
           : selectedEvents.map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+              <EventCard key={ev.id} ev={ev} th={th} isPast={ev.date < todayStr}
+                onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
             ))
         }
       </div>
@@ -698,13 +705,14 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   )
 }
 
-function EventCard ({ ev, th, onClick, compact }) {
+function EventCard ({ ev, th, onClick, compact, isPast }) {
   return (
     <div onClick={onClick}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,
-        borderLeft:`4px solid ${ev.color}`, marginBottom:compact ? 0 : 8 }}>
+        borderLeft:`4px solid ${ev.color}`, marginBottom:compact ? 0 : 8,
+        opacity: isPast ? 0.5 : 1 }}>
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
