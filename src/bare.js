@@ -320,6 +320,10 @@ async function resyncGroup (groupId) {
     for await (const { key, value } of view.createReadStream()) {
       if (!value) continue
       if (key.startsWith('events:')) {
+        // Respect local delete tombstone — never resurrect user-deleted events
+        const eventId = key.split(':').pop()
+        const tombstone = await db.get('deleted:' + eventId).catch(() => null)
+        if (tombstone) continue
         await db.put(key, value)
       } else if (key.startsWith('groups:')) {
         // Merge members same way mirrorToLocal does
@@ -406,8 +410,25 @@ function makeApply (groupId) {
             }
           }
         } else {
-          // Mirror the winning value to local DB so UI shows correct version
-          await mirrorToLocal(val.type, val.key, existing.value, groupId)
+          // Timestamp lost — mirror the winning (existing) value to local DB.
+          // BUT for groups, always merge members from the losing incoming record
+          // so a joiner's broadcastSelf is never silently dropped by a timestamp race.
+          if (val.type === 'group' && val.value?.members?.length > 0) {
+            const winningValue = existing.value
+            const existingMembers = winningValue.members ?? []
+            const incomingMembers = val.value.members ?? []
+            const mergedMap = new Map()
+            for (const m of existingMembers) mergedMap.set(m.id, m)
+            for (const m of incomingMembers) {
+              const prev = mergedMap.get(m.id)
+              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, m)
+            }
+            const merged = { ...winningValue, members: [...mergedMap.values()] }
+            await db.put(val.key, merged)
+            send({ type: 'event', event: 'sync', data: groupId })
+          } else {
+            await mirrorToLocal(val.type, val.key, existing.value, groupId)
+          }
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
