@@ -444,7 +444,11 @@ function makeApply (groupId) {
         } else {
           send({ type: 'event', event: 'sync', data: groupId })
           if (isRemote && val.type === 'event') {
-            notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
+            const eventId = val.key.split(':').pop()
+            const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
+            if (!delTombstone) {
+              notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
+            }
           }
         }
       }
