@@ -86,7 +86,7 @@ export async function handleInviteLink (url, db, sync, onJoined) {
       await sync.putGroup(updatedGroup)
       // Success — stop retrying
     } catch (e) {
-      if (attempts++ < 5) setTimeout(broadcastSelf, 3000)
+      if (attempts++ < 15) setTimeout(broadcastSelf, 3000)
     }
   }
   setTimeout(broadcastSelf, 2000)
