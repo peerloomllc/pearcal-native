@@ -367,6 +367,23 @@ function makeApply (groupId) {
           }
           await view.put(val.key, val.value)
           await mirrorToLocal(val.type, val.key, val.value, groupId)
+          // Notify when a new member joins — detected by diffing member lists on group update
+          if (isRemote && val.type === 'group') {
+            try {
+              const profile = await getProfile()
+              const existingMembers = existing?.value?.members ?? []
+              const incomingMembers = val.value.members ?? []
+              const existingIds = new Set(existingMembers.map(m => m.id))
+              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && !existingIds.has(m.id))
+              for (const m of newMembers) {
+                const groupName = val.value.name || 'a group'
+                send({ type: 'event', event: 'syncNotify', data: {
+                  title: (m.name || 'Someone') + ' joined ' + groupName,
+                  body: groupName + ' now has ' + incomingMembers.length + ' member' + (incomingMembers.length !== 1 ? 's' : '')
+                }})
+              }
+            } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
+          }
           if (isRemote && val.type === 'event') {
             // Skip notification if only color changed
             const onlyColorChanged = localPrev &&
@@ -695,7 +712,16 @@ async function init (dir, attempt = 0) {
                         // Rebroadcast full group so joiner gets real member names
                         try {
                           const g = await getGroup(groupId)
-                          if (g) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
+                          if (g) {
+                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
+                            // Notify owner: find the newly joined member (not Inviter placeholder, not owner)
+                            const realNewMember = (g.members ?? []).find(m => m.name && m.name !== 'Inviter' && m.id !== profile?.id)
+                            const memberName = realNewMember?.name || 'Someone'
+                            send({ type: 'event', event: 'syncNotify', data: {
+                              title: memberName + ' joined ' + (g.name || 'your group'),
+                              body: (g.name || 'Your group') + ' now has ' + (g.members ?? []).length + ' member' + ((g.members ?? []).length !== 1 ? 's' : '')
+                            }})
+                          }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
                       .catch(e => console.error('[ADDWRITER] error:', e.message))
