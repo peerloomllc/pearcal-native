@@ -1187,19 +1187,6 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
             </div>
           </div>
 
-          {/* Pending */}
-          <div>
-            {section('PENDING INVITES')}
-            <div style={{ ...th.card, borderRadius:12, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
-              <span style={{ fontSize:22 }}>📨</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, ...th.text, fontWeight:300 }}>No pending invites</div>
-                <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>
-                  Share an invite link from the group card to add members.
-                </div>
-              </div>
-            </div>
-          </div>
 
           {/* Danger zone */}
           <div>
@@ -1290,10 +1277,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
     })
   }, [onGroupKeyUpdated])
   const [copiedLink,     setCopiedLink]     = useState(false)
-  const [pendingName,    setPendingName]    = useState('')
-  const [pendingKey,     setPendingKey]     = useState('')
-  const [keyErr,         setKeyErr]         = useState('')
-  const [pendingMembers, setPendingMembers] = useState([])
+
   const [creating,       setCreating]       = useState(false)
   const fileRef = useRef()
 
@@ -1331,24 +1315,11 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
     setTimeout(() => setCopiedLink(false), 2500)
   }
 
-  function addPending () {
-    const k = pendingKey.trim(), n = pendingName.trim() || 'Member'
-    if (k.length < 16) { setKeyErr('Public key must be at least 16 characters.'); return }
-    if (pendingMembers.find(m => m.publicKey === k)) { setKeyErr('Already added.'); return }
-    setKeyErr('')
-    const initials = n.split(' ').map(w => w[0]).join('').toUpperCase().slice(0,2)
-    setPendingMembers(prev => [...prev, { id:'u_'+k.slice(0,8), name:n, avatar:initials, publicKey:k }])
-    setPendingName('')
-    setPendingKey('')
-  }
+
 
   async function finish () {
     if (!group) return
     setCreating(true)
-    if (pendingMembers.length > 0) {
-      const updated = { ...group, members: [...group.members, ...pendingMembers] }
-      await onUpdate(updated)
-    }
     setCreating(false)
     setStep(3)
   }
@@ -1503,46 +1474,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                 </div>
               </div>
 
-              <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:16 }}>
-                <Label th={th}>Or Add by Public Key</Label>
-                <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:6 }}>
-                  <input style={inp} placeholder="Display name (optional)"
-                    value={pendingName} onChange={e => setPendingName(e.target.value)} />
-                  <div style={{ display:'flex', gap:8 }}>
-                    <input style={{ ...inp, flex:1, fontFamily:'monospace', fontSize:12 }}
-                      placeholder="Paste public key…"
-                      value={pendingKey} onChange={e => { setPendingKey(e.target.value); setKeyErr('') }} />
-                    <button onClick={addPending}
-                      style={{ ...th.pillBtn, padding:'9px 14px', fontSize:13, fontWeight:300, flexShrink:0 }}>
-                      Add
-                    </button>
-                  </div>
-                  {keyErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300 }}>{keyErr}</div>}
-                </div>
 
-                {pendingMembers.length > 0 && (
-                  <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
-                    <Label th={th}>Added ({pendingMembers.length})</Label>
-                    {pendingMembers.map(m => (
-                      <div key={m.publicKey} style={{ display:'flex', alignItems:'center', gap:10,
-                        ...th.card, borderRadius:10, padding:'8px 12px' }}>
-                        <MemberAvatar avatar={m.avatar} name={m.name} color={group.color} size={34} fontSize={13} />
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{m.name}</div>
-                          <div style={{ fontSize:10, color:th.muted, fontFamily:'monospace',
-                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:180 }}>
-                            {m.publicKey}
-                          </div>
-                        </div>
-                        <button onClick={() => setPendingMembers(p => p.filter(x => x.publicKey !== m.publicKey))}
-                          style={{ background:'none', border:'none', color:th.muted, cursor:'pointer', fontSize:16 }}>
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
 
               <div style={{ display:'flex', gap:8, marginTop:4 }}>
                 <button onClick={() => setStep(1)}
@@ -1554,8 +1486,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                 <button onClick={finish} disabled={creating}
                   style={{ ...th.pillBtn, flex:2, padding:'12px', fontSize:15, fontWeight:300,
                     opacity:creating ? 0.6 : 1 }}>
-                  {creating ? 'Creating…' : pendingMembers.length > 0
-                    ? `Finish & Invite ${pendingMembers.length}` : 'Finish'}
+                  {creating ? 'Creating…' : 'Finish'}
                 </button>
               </div>
             </div>
@@ -1576,8 +1507,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                 <div style={{ fontSize:14, color:th.muted, fontWeight:300 }}>Your group is ready 🎉</div>
               </div>
               <div style={{ ...th.card, borderRadius:14, padding:'16px', width:'100%', display:'flex', flexDirection:'column', gap:10 }}>
-                <InfoRow th={th} label="Members" val={String(group.members.length + pendingMembers.length)} />
-                <InfoRow th={th} label="Pending invites" val={String(pendingMembers.length)} />
+                <InfoRow th={th} label="Members" val={String(group.members.length)} />
                 <InfoRow th={th} label="Sync" val="Hyperswarm DHT" />
                 <InfoRow th={th} label="Storage" val="Local · Hyperbee" />
                 <InfoRow th={th} label="Data collected" val="None" />
