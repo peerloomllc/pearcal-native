@@ -283,16 +283,24 @@ export default function App ({ db, notifs, sync }) {
 
   const updateProfile = useCallback(async updates => {
     if (db) {
-      const nameInitials = updates.name ? (updates.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?' : null
-      if (nameInitials) updates = { ...updates, avatar: nameInitials }
+      // Only generate initials if: (a) name changed AND (b) no photo is being set AND (c) no photo already stored
+      const hasPhoto = updates.avatar?.startsWith?.('data:') || profile?.avatar?.startsWith?.('data:')
+      const settingPhoto = updates.avatar?.startsWith?.('data:')
+      if (updates.name && !hasPhoto) {
+        updates = { ...updates, avatar: (updates.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?' }
+      }
       await db.updateProfile(updates)
       // Update member record in all groups where we appear
       const updatedProfile = { ...profile, ...updates }
       for (const g of groups) {
         const isMember = g.members?.some(m => m.id === updatedProfile.id)
         if (isMember) {
-          const newInitials = (updatedProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
-          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: newInitials }
+          // For member avatar: use photo if set, otherwise regenerate initials from current name
+          const memberAvatar = settingPhoto
+            ? updatedProfile.avatar
+            : (updatedProfile.avatar?.startsWith?.('data:') ? updatedProfile.avatar
+                : (updatedProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?')
+          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar }
           await db.putMember(g.id, updatedMember).catch(() => {})
           const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }
           // Write updated group to local DB so sync reload gets correct data
@@ -312,9 +320,12 @@ export default function App ({ db, notifs, sync }) {
     }
     const updatedProfile2 = { ...profile, ...updates }
     setProfile(prev => ({ ...prev, ...updates }))
+    const memberAvatarForState = updatedProfile2.avatar?.startsWith?.('data:')
+      ? updatedProfile2.avatar
+      : (updatedProfile2.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
     setGroups(prev => prev.map(g => ({
       ...g,
-      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: (updatedProfile2.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?' } : m) ?? []
+      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: memberAvatarForState } : m) ?? []
     })))
   }, [db, profile, groups, sync])
 
@@ -474,6 +485,55 @@ function GroupIcon ({ group, size = 42, radius = 12 }) {
         : group.emoji}
     </div>
   )
+}
+
+/**
+ * MemberAvatar — renders a member's avatar circle.
+ * If avatar is a base64/data URL, renders as an <img>.
+ * Otherwise renders initials text.
+ */
+function MemberAvatar ({ avatar, name = '?', color = '#6C9BF5', size = 34, fontSize = 13 }) {
+  const isPhoto = typeof avatar === 'string' && avatar.startsWith('data:')
+  return (
+    <div style={{ width:size, height:size, borderRadius:'50%', background:color,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      overflow:'hidden', flexShrink:0 }}>
+      {isPhoto
+        ? <img src={avatar} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+        : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{avatar || '?'}</span>
+      }
+    </div>
+  )
+}
+
+/**
+ * compressAvatar — resize & JPEG-compress a File to a base64 data URL.
+ * Target: 80×80px, JPEG quality 0.65 ≈ 10–20 KB.
+ */
+function compressAvatar (file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const img = new Image()
+      img.onload = () => {
+        const SIZE = 80
+        const canvas = document.createElement('canvas')
+        canvas.width = SIZE
+        canvas.height = SIZE
+        const ctx = canvas.getContext('2d')
+        // Centre-crop to square
+        const side = Math.min(img.width, img.height)
+        const sx = (img.width - side) / 2
+        const sy = (img.height - side) / 2
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE)
+        resolve(canvas.toDataURL('image/jpeg', 0.65))
+      }
+      img.onerror = reject
+      img.src = ev.target.result
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
 }
 
 // ─── Calendar Tab ─────────────────────────────────────────────────────────────
@@ -768,10 +828,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
                         padding:'5px 12px 5px 6px', borderRadius:20,
                         border:`2px solid ${col}`, background:sel ? col : 'transparent',
                         cursor:'pointer', fontFamily:FONT }}>
-                      <div style={{ width:24, height:24, borderRadius:'50%', background:col, color:'#fff',
-                        display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:300 }}>
-                        {m.avatar}
-                      </div>
+                      <MemberAvatar avatar={m.avatar} name={m.name} color={col} size={24} fontSize={11} />
                       <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.name}</span>
                     </button>
                   )
@@ -867,10 +924,7 @@ function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
               {g.members.map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <div style={{ width:34, height:34, borderRadius:'50%', background:g.color, color:'#fff',
-                    display:'flex', alignItems:'center', justifyContent:'center', fontWeight:300, fontSize:13 }}>
-                    {m.avatar}
-                  </div>
+                  <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={34} fontSize={13} />
                   <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.name}</span>
                 </div>
               ))}
@@ -1036,10 +1090,7 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete }) {
                 return (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <div style={{ width:38, height:38, borderRadius:'50%', background:g.color, color:'#fff',
-                      display:'flex', alignItems:'center', justifyContent:'center', fontWeight:300, fontSize:15, flexShrink:0 }}>
-                      {m.avatar}
-                    </div>
+                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>
                         {m.name}
@@ -1405,9 +1456,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                     {pendingMembers.map(m => (
                       <div key={m.publicKey} style={{ display:'flex', alignItems:'center', gap:10,
                         ...th.card, borderRadius:10, padding:'8px 12px' }}>
-                        <div style={{ width:34, height:34, borderRadius:'50%', background:group.color,
-                          display:'flex', alignItems:'center', justifyContent:'center',
-                          color:'#fff', fontWeight:300, fontSize:13 }}>{m.avatar}</div>
+                        <MemberAvatar avatar={m.avatar} name={m.name} color={group.color} size={34} fontSize={13} />
                         <div style={{ flex:1 }}>
                           <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{m.name}</div>
                           <div style={{ fontSize:10, color:th.muted, fontFamily:'monospace',
@@ -1477,9 +1526,11 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
 
 // ─── Profile Tab ──────────────────────────────────────────────────────────────
 function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
-  const [name,    setName]    = useState(profile?.name ?? '')
-  const [editing, setEditing] = useState(false)
-  const [saving,  setSaving]  = useState(false)
+  const [name,       setName]       = useState(profile?.name ?? '')
+  const [editing,    setEditing]    = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const fileRef = useRef()
 
   async function saveName () {
     setSaving(true)
@@ -1488,15 +1539,77 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
     setEditing(false)
   }
 
+  async function handlePhotoChange (e) {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setPhotoSaving(true)
+    try {
+      const compressed = await compressAvatar(file)
+      await onUpdateProfile({ avatar: compressed })
+    } catch (err) {
+      console.error('Photo compress failed', err)
+    }
+    setPhotoSaving(false)
+    // Reset input so same file can be picked again
+    e.target.value = ''
+  }
+
+  async function removePhoto () {
+    const initials = (profile?.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
+    setPhotoSaving(true)
+    await onUpdateProfile({ avatar: initials })
+    setPhotoSaving(false)
+  }
+
+  const hasPhoto = profile?.avatar?.startsWith?.('data:')
   const publicKey = profile?.publicKey ?? '—'
 
   return (
     <div style={{ padding:'24px 20px' }}>
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12, marginBottom:28 }}>
-        <div style={{ width:80, height:80, borderRadius:'50%', background:profile?.color ?? '#6C9BF5',
-          display:'flex', alignItems:'center', justifyContent:'center', fontSize:32, color:'#fff', fontWeight:300 }}>
-          {(profile?.name ?? '?').slice(0,1).toUpperCase()}
+
+        {/* Avatar — tap to change */}
+        <div style={{ position:'relative' }}>
+          <div style={{ width:88, height:88, borderRadius:'50%', background:profile?.color ?? '#6C9BF5',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            fontSize:36, color:'#fff', fontWeight:300, overflow:'hidden',
+            opacity: photoSaving ? 0.5 : 1, transition:'opacity 0.2s' }}>
+            {hasPhoto
+              ? <img src={profile.avatar} alt="avatar"
+                  style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+              : (profile?.name ?? '?').slice(0,1).toUpperCase()
+            }
+          </div>
+          {photoSaving && (
+            <div style={{ position:'absolute', inset:0, borderRadius:'50%',
+              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>
+              ⏳
+            </div>
+          )}
         </div>
+
+        {/* Photo action buttons */}
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
+            style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
+              border:`1px solid ${th.border}`, background:'transparent',
+              color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              opacity: photoSaving ? 0.5 : 1 }}>
+            📷 {hasPhoto ? 'Change Photo' : 'Add Photo'}
+          </button>
+          {hasPhoto && (
+            <button onClick={removePhoto} disabled={photoSaving}
+              style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
+                border:`1px solid #D45F7A`, background:'transparent',
+                color:'#D45F7A', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                opacity: photoSaving ? 0.5 : 1 }}>
+              Remove
+            </button>
+          )}
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
+          onChange={handlePhotoChange} />
+
         {editing
           ? <input autoFocus style={{ fontSize:18, fontWeight:300, textAlign:'center', background:'transparent',
               fontFamily:FONT, border:`1px solid ${th.border}`, borderRadius:8, padding:'6px 12px',
