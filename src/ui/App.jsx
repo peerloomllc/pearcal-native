@@ -137,6 +137,9 @@ export default function App ({ db, notifs, sync }) {
       if (db) {
         const fresh = await db.listGroups()
         setGroups(fresh)
+        // Load any events already replicated by the time we join
+        const evts = await db.listEvents()
+        setEvents(evts)
       } else {
         setGroups(prev => {
           if (prev.find(g => g.id === group.id)) return prev
