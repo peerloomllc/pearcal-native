@@ -1027,17 +1027,19 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
           <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Group Settings</span>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {saved && <span style={{ fontSize:12, color:'#5DBF8A', fontWeight:300 }}>✓ Saved</span>}
-            <button onClick={save} disabled={saving}
-              style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
-              {saving ? 'Saving…' : 'Save'}
-            </button>
+            {isOwner && (
+              <button onClick={save} disabled={saving}
+                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+            )}
             <button onClick={onClose} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
           </div>
         </div>
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
-          {/* Identity */}
-          <div>
+          {/* Identity — owner only */}
+          {isOwner && <div>
             {section('GROUP IDENTITY')}
             <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0 }}>
@@ -1077,10 +1079,10 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
                 )}
               </div>
             </div>
-          </div>
+          </div>}
 
-          {/* Color */}
-          <div>
+          {/* Color — owner only */}
+          {isOwner && <div>
             {section('GROUP COLOR')}
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
               {GROUP_COLORS.map(c => (
@@ -1090,7 +1092,7 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
                     boxShadow:g.color === c ? `0 0 0 2px ${c}` : 'none' }} />
               ))}
             </div>
-          </div>
+          </div>}
 
           {/* Members */}
           <div>
