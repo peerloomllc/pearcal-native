@@ -374,7 +374,7 @@ function makeApply (groupId) {
               const existingMembers = existing?.value?.members ?? []
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
-              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && !existingIds.has(m.id))
+              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && m.id !== val.value.ownerId && !existingIds.has(m.id))
               for (const m of newMembers) {
                 const groupName = val.value.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
@@ -719,7 +719,7 @@ async function init (dir, attempt = 0) {
                             const memberName = realNewMember?.name || 'Someone'
                             send({ type: 'event', event: 'syncNotify', data: {
                               title: memberName + ' joined ' + (g.name || 'your group'),
-                              body: (g.name || 'Your group') + ' now has ' + (g.members ?? []).length + ' member' + ((g.members ?? []).length !== 1 ? 's' : '')
+                              body: 'Tap to view the group'
                             }})
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
