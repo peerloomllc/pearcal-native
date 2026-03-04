@@ -278,9 +278,11 @@ async function syncDeleteGroup (groupId) {
 async function syncMemberLeft (groupId, memberId) {
   const key = JSON.stringify({ groupId, memberId })
   pendingMemberLeaves.add(key)
-  // Persist including groupKey so we can rejoin swarm after restart to deliver
+  // Persist including groupKey and topicHex so we can rejoin swarm after restart to deliver
   const group = await getGroup(groupId).catch(() => null)
+  const topicHex = group?.groupKey ? group.groupKey.slice(0, 64).padEnd(64, '0') : null
   await db.put('pendingLeave:' + groupId + ':' + memberId, { groupId, memberId, groupKey: group?.groupKey, ts: Date.now() }).catch(() => {})
+  if (topicHex) await db.put('pendingLeaveKey:' + groupId, { topicHex }).catch(() => {})
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
@@ -549,7 +551,7 @@ async function init (dir, attempt = 0) {
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
-        onopen () {
+        async onopen () {
           // Send our writerKey for every group we've joined
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
@@ -568,12 +570,12 @@ async function init (dir, attempt = 0) {
               db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
               // Leave the temporary swarm rejoin now that delivery is done
               if (!bases.has(groupId)) {
-                const group = await db.get('groups:' + groupId).catch(() => null)
-                const groupKey = group?.value?.groupKey
-                if (groupKey) {
-                  const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+                const leaveEntry = await db.get('pendingLeaveKey:' + groupId).catch(() => null)
+                if (leaveEntry?.value?.topicHex) {
+                  const topic = b4a.from(leaveEntry.value.topicHex, 'hex')
                   swarm.leave(topic).catch(() => {})
                 }
+                db.del('pendingLeaveKey:' + groupId).catch(() => {})
               }
             } catch(e) {}
           }
