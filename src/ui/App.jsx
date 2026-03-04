@@ -275,11 +275,11 @@ export default function App ({ db, notifs, sync }) {
         // Owner: broadcast delete to all members
         await sync?.deleteGroup(id).catch(() => {})
       } else if (action === 'leave' && !isOwner) {
-        // Non-owner leaving: remove self from group members and sync
+        // Non-owner leaving: update local DB then broadcast via Protomux (bypasses Autobase writability)
         const updatedMembers = (g?.members ?? []).filter(m => m.id !== profile?.id)
         const updatedGroup = { ...g, members: updatedMembers, updatedAt: Date.now() }
         await db.putGroup(updatedGroup).catch(() => {})
-        await sync?.putGroup(updatedGroup).catch(() => {})
+        await sync?.memberLeft(id, profile.id).catch(() => {})
       }
       await db.deleteGroup(id)
       await sync?.leaveGroup(id).catch(() => {})

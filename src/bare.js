@@ -63,6 +63,7 @@ async function handle (method, args) {
     case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
+    case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -168,6 +169,7 @@ async function removeMember (groupId, memberId) {
 const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
 const activeChannels = new Set() // active writer-announce message objects
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
+const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
@@ -270,6 +272,14 @@ async function syncDeleteGroup (groupId) {
     try {
       ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
     } catch(e) {}
+  }
+}
+
+async function syncMemberLeft (groupId, memberId) {
+  const key = JSON.stringify({ groupId, memberId })
+  pendingMemberLeaves.add(key)
+  for (const ch of activeChannels) {
+    try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
 }
 
@@ -528,6 +538,10 @@ async function init (dir, attempt = 0) {
           for (const groupId of pendingGroupDeletes) {
             try { msg.send(Buffer.from(JSON.stringify({ groupDeleted: groupId }))) } catch(e) {}
           }
+          // Send any pending member leaves to this new peer
+          for (const key of pendingMemberLeaves) {
+            try { const { groupId, memberId } = JSON.parse(key); msg.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
+          }
           activeChannels.add(msg)
         },
         onclose () {
@@ -544,6 +558,23 @@ async function init (dir, attempt = 0) {
         onmessage: async function (buf) {
           try {
             const parsed = JSON.parse(buf.toString())
+            // Handle member left broadcast from non-owner
+            if (parsed.memberLeft) {
+              const { memberLeft: memberId, groupId } = parsed
+              try {
+                const group = await getGroup(groupId)
+                const profile = await getProfile()
+                if (group && profile && group.ownerId === profile.id) {
+                  const updated = { ...group, members: (group.members ?? []).filter(m => m.id !== memberId), updatedAt: Date.now() }
+                  await putGroup(updated)
+                  // Rebroadcast so other members see the updated list
+                  const base = bases.get(groupId)
+                  if (base) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: updated })
+                  send({ type: 'event', event: 'sync', data: groupId })
+                }
+              } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
+              return
+            }
             // Handle group delete broadcast from owner
             if (parsed.groupDeleted) {
               const gid = parsed.groupDeleted

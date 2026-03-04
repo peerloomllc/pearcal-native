@@ -61,6 +61,7 @@ const sync = {
   putEvent:    (gid, ev)    => window.__pearDB.call('putEvent:sync', gid, ev),
   deleteEvent: (gid, id, d, who) => window.__pearDB.call('deleteEvent:sync', gid, id, d, who),
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
+  memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
 }
 
 window.__pearHandleInvite = async function(url) {
