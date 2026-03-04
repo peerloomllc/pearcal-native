@@ -30,11 +30,13 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
             val body    = opts.getString("body") ?: ""
             val eventId = if (opts.hasKey("eventId")) opts.getString("eventId") ?: "" else ""
 
+            val tab = if (opts.hasKey("tab")) opts.getString("tab") ?: "" else ""
             val intent = Intent(reactApplicationContext, NotificationReceiver::class.java).apply {
                 putExtra("notifId", notifId)
                 putExtra("title",   title)
                 putExtra("body",    body)
                 putExtra("eventId", eventId)
+                putExtra("tab",     tab)
             }
             val pending = PendingIntent.getBroadcast(
                 reactApplicationContext, notifId, intent,

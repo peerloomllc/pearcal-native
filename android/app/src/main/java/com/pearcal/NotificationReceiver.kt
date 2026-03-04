@@ -15,11 +15,13 @@ class NotificationReceiver : BroadcastReceiver() {
         val title   = intent.getStringExtra("title") ?: "PearCal Reminder"
         val body    = intent.getStringExtra("body") ?: ""
         val eventId = intent.getStringExtra("eventId") ?: ""
+        val tab     = intent.getStringExtra("tab") ?: "calendar"
 
         val tapIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             putExtra("action", "open_event")
             putExtra("eventId", eventId)
+            putExtra("pearTab", tab)
         }
         val tapPending = PendingIntent.getActivity(
             context, notifId, tapIntent,
