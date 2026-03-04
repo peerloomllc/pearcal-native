@@ -396,6 +396,9 @@ function makeApply (groupId) {
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
           }
           if (isRemote && val.type === 'event') {
+            // Skip notification if user locally deleted this event
+            const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
+            if (notifTombstone) continue
             // Skip notification if only color changed
             const onlyColorChanged = localPrev &&
               val.value.color !== localPrev.color &&
