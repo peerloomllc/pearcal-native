@@ -667,7 +667,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
-                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:e.color }} />
+                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:e.colors?.[0] ?? e.color }} />
                 ))}
               </div>
             </button>
@@ -741,7 +741,7 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,
-        borderLeft:`4px solid ${ev.color}`, marginBottom:compact ? 0 : 8,
+        borderLeft:`4px solid ${(ev.colors?.[0] ?? ev.color)}`, marginBottom:compact ? 0 : 8,
         opacity: isPast ? 0.5 : 1 }}>
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
@@ -751,7 +751,11 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
             { month:'short', day:'numeric' })}`}
         </div>
       </div>
-      <div style={{ width:10, height:10, borderRadius:'50%', background:ev.color, marginTop:4, flexShrink:0 }} />
+      <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
+        {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
+          <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:c }} />
+        ))}
+      </div>
     </div>
   )
 }
@@ -783,6 +787,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
     setEv(e => ({ ...e, invitees: e.invitees.includes(uid)
       ? e.invitees.filter(x => x !== uid) : [...e.invitees, uid] }))
   }
+
+  useEffect(() => {
+    const cols = ev.groups.map(gid => groups.find(x => x.id === gid)?.color).filter(Boolean)
+    if (cols.length > 0) setEv(e => ({ ...e, color: cols[0], colors: cols }))
+    else setEv(e => ({ ...e, colors: [] }))
+  }, [ev.groups, groups])
 
   const [titleErr, setTitleErr] = useState('')
 
@@ -901,16 +911,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
               </div>
             </div>
           )}
-
-          <div><Label th={th}>Color</Label>
-            <div style={{ display:'flex', gap:10, marginTop:6 }}>
-              {['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC'].map(c => (
-                <button key={c} onClick={() => set('color', c)}
-                  style={{ width:28, height:28, borderRadius:'50%', background:c, cursor:'pointer',
-                    border:ev.color === c ? '3px solid #fff' : '3px solid transparent' }} />
-              ))}
-            </div>
-          </div>
 
           <div><Label th={th}>Notes</Label>
             <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
