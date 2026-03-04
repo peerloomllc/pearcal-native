@@ -134,8 +134,20 @@ async function putGroup (group) {
 
 async function deleteGroup (id) {
   await db.del(NS.groups + id)
+  // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
     await db.del(key)
+  }
+  // Clean up events: remove this group from each event's groups array.
+  // If an event belongs to no other groups, delete it entirely.
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!value.groups?.includes(id)) continue
+    const remaining = (value.groups ?? []).filter(gid => gid !== id)
+    if (remaining.length === 0) {
+      await db.del(key)
+    } else {
+      await db.put(key, { ...value, groups: remaining, updatedAt: Date.now() })
+    }
   }
 }
 
