@@ -222,11 +222,19 @@ export default function App ({ db, notifs, sync }) {
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
     if (!ev) return
+    const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
     if (db) {
-      await db.deleteEvent(ev.date, id)
-      await notifs?.cancelForEvent(id)
-      for (const gid of ev.groups ?? []) {
-        await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+      if (isCreator) {
+        // Creator: delete for everyone via Autobase broadcast
+        await db.deleteEvent(ev.date, id)
+        await notifs?.cancelForEvent(id)
+        for (const gid of ev.groups ?? []) {
+          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+        }
+      } else {
+        // Non-creator: local-only delete + tombstone so resync never resurrects it
+        await db.localDeleteEvent(ev.date, id)
+        await notifs?.cancelForEvent(id)
       }
     }
     setEvents(prev => prev.filter(e => e.id !== id))
@@ -364,7 +372,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', creatorId: profile?.id ?? 'unknown',
     }})
   }
 
@@ -923,14 +931,17 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
             {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
           </button>
 
-          {modal.mode === 'edit' && (
-            <button onClick={() => onDelete(ev.id)}
-              style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
-                padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
-                fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-              Delete Event
-            </button>
-          )}
+          {modal.mode === 'edit' && (() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            return (
+              <button onClick={() => onDelete(ev.id)}
+                style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
+                  padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
+                  fontFamily:FONT, cursor:'pointer', width:'100%' }}>
+                {isCreator ? 'Delete for Everyone' : 'Delete for Me'}
+              </button>
+            )
+          })()}
         </div>
       </div>
     </div>

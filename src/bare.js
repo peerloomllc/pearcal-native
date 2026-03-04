@@ -50,6 +50,7 @@ async function handle (method, args) {
     case 'listEvents':       return listEvents(args[0])
     case 'putEvent':         return putEvent(args[0])
     case 'deleteEvent':      return deleteEvent(args[0], args[1])
+    case 'localDeleteEvent': return localDeleteEvent(args[0], args[1])
     case 'getGroup':         return getGroup(args[0])
     case 'listGroups':       return listGroups()
     case 'putGroup':         return putGroup(args[0])
@@ -113,6 +114,11 @@ async function putEvent (event) {
 
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
+}
+
+async function localDeleteEvent (date, id) {
+  await db.del(NS.events + date + ':' + id)
+  await db.put('deleted:' + id, { date, ts: Date.now() })
 }
 
 async function getGroup (id) {
@@ -499,6 +505,9 @@ function formatDate (dateStr) {
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     if (type === 'event') {
+      // If user locally deleted this event, don't resurrect it from sync
+      const tombstone = await db.get('deleted:' + value.id).catch(() => null)
+      if (tombstone) return
       // If date changed, remove old local entry to prevent duplicate
       if (value._prevDate && value._prevDate !== value.date) {
         await db.del('events:' + value._prevDate + ':' + value.id).catch(() => {})
