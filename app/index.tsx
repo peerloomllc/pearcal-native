@@ -100,9 +100,10 @@ function buildHtml (appBundleJs: string): string {
 }
 
 export default function Root () {
-  const [dbReady, setDbReady] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
-  const [html,    setHtml]    = useState<string | null>(null)
+  const [dbReady,      setDbReady]      = useState(false)
+  const [webViewReady, setWebViewReady] = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [html,         setHtml]         = useState<string | null>(null)
   const [pendingInvite, setPendingInvite] = useState<string | null>(null)
   const webViewRef = useRef<any>(null)
   const dbReadyRef = useRef(false)
@@ -123,16 +124,16 @@ export default function Root () {
     return () => clearInterval(interval)
   }, [dbReady])
 
-  // Inject pending invite link when WebView and DB are ready
+  // Inject pending invite link when WebView, DB, and WebView DOM are all ready
   useEffect(() => {
-    if (pendingInvite && dbReady && webViewRef.current) {
+    if (pendingInvite && dbReady && webViewReady && webViewRef.current) {
       const url = pendingInvite
       setPendingInvite(null)
       webViewRef.current?.injectJavaScript(
         `if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } true;`
       )
     }
-  }, [pendingInvite, dbReady])
+  }, [pendingInvite, dbReady, webViewReady])
 
   const onWebViewMessage = useCallback((e: any) => {
     try {
@@ -307,6 +308,7 @@ webViewRef.current?.injectJavaScript(
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
+      onLoadEnd={() => setWebViewReady(true)}
       onError={e => setError(e.nativeEvent.description)}
     />
   )
