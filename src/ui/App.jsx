@@ -656,14 +656,12 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       </div>
 
       {/* Today button */}
-      {(viewDate.y !== parseInt(todayStr.slice(0,4)) || viewDate.m !== parseInt(todayStr.slice(5,7)) - 1) && (
-        <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
-          <button onClick={() => {
-            setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
-            setSelectedDate(todayStr)
-          }} style={{ ...th.pillBtn, fontSize:12, padding:'4px 16px', fontWeight:300 }}>⬤ Today</button>
-        </div>
-      )}
+      <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
+        <button onClick={() => {
+          setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
+          setSelectedDate(todayStr)
+        }} style={{ ...th.pillBtn, fontSize:12, padding:'4px 16px', fontWeight:300 }}>⬤ Today</button>
+      </div>
 
       {/* Day headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:4 }}>
