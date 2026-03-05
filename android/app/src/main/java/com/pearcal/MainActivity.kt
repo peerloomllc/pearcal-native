@@ -16,7 +16,7 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     setTheme(R.style.AppTheme)
     val uri = intent?.data
-    if (uri != null && uri.scheme == "pearcal" && uri.host == "pearcal") {
+    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
       Log.d("PearCal", "Storing link: $uri")
       LinkModule.pendingLink = uri.toString()
       intent = Intent(this, MainActivity::class.java)
@@ -37,7 +37,7 @@ class MainActivity : ReactActivity() {
 
   override fun onNewIntent(intent: Intent) {
     val uri = intent.data
-    if (uri != null && uri.scheme == "pearcal" && uri.host == "pearcal") {
+    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
       Log.d("PearCal", "onNewIntent storing link: $uri")
       LinkModule.pendingLink = uri.toString()
       setIntent(Intent(this, MainActivity::class.java))
