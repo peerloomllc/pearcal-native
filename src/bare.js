@@ -805,7 +805,7 @@ async function init (dir, attempt = 0) {
                 await db.put('blockedFromGroup:' + gid, { ts: Date.now() }).catch(() => {})
                 await deleteGroup(gid).catch(() => {})
                 await leaveGroup(gid).catch(() => {})
-                send({ type: 'event', event: 'groupDeleted', data: gid })
+                send({ type: 'event', event: 'inviteBlocked', data: gid })
               }
               return
             }

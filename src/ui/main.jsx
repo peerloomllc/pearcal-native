@@ -32,7 +32,7 @@ window.__pearEvent = function (event, data) {
 window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
-window.addEventListener('pear:inviteBlocked', () => emitter.emit('inviteBlocked'))
+window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
