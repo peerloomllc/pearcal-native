@@ -1070,7 +1070,7 @@ function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
               <button onClick={e => {
                   e.stopPropagation()
                   const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
-                  if (navigator.share) navigator.share({ title: `Join ${g.name} on PearCal`, text: link }).catch(() => {})
+                  if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
                   else navigator.clipboard?.writeText(link)
                 }}
                 style={{ background:'transparent', border:`1px solid ${g.color}44`,
@@ -1190,7 +1190,7 @@ function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, o
                         await onUpdate(updated)
                         const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
                         if (!link) return
-                        if (navigator.share) navigator.share({ title: `Join ${g.name} on PearCal`, text: link }).catch(() => {})
+                        if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
                         else navigator.clipboard?.writeText(link)
                       }}
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
@@ -1577,12 +1577,8 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                   </button>
                   <button onClick={() => {
                       const link = genInviteLink(group)
-                      if (navigator.share) {
-                        navigator.share({ title: `Join ${group.name} on PearCal`, text: link })
-                          .catch(() => {})
-                      } else {
-                        navigator.clipboard?.writeText(link)
-                      }
+                      if (sync) sync.nativeShare(`Join ${group.name} on PearCal`, link)
+                      else navigator.clipboard?.writeText(link)
                     }}
                     style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
                       background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,

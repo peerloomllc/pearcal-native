@@ -68,6 +68,7 @@ const sync = {
   deleteEvent: (gid, id, d, who) => window.__pearDB.call('deleteEvent:sync', gid, id, d, who),
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
+  nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }

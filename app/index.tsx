@@ -14,6 +14,7 @@ import { Asset } from 'expo-asset'
 import * as FileSystem from 'expo-file-system/legacy'
 
 const { PearCalNotifications } = NativeModules
+const { PearCalShare } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -298,6 +299,14 @@ webViewRef.current?.injectJavaScript(
           const { title, body, tab } = data
           const id = Math.floor(Math.random() * 2000000) + 1000000
           PearCalNotifications?.postNow?.({ id, title: title ?? 'Calendar updated', body: body ?? '', tab: tab ?? '' }).catch?.(() => {})
+        } catch (e) {}
+      })
+
+      // Handle share requests from WebView
+      onEvent('nativeShare', (data: any) => {
+        try {
+          const { title, text } = data
+          PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
         } catch (e) {}
       })
 
