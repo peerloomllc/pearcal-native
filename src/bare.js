@@ -148,8 +148,9 @@ async function reinviteMember (groupId, memberId) {
   if (!group) return
   // Remove from removedMembers array
   const removedMembers = (group.removedMembers ?? []).filter(m => (m.id ?? m) !== memberId)
-  const updated = { ...group, removedMembers, updatedAt: Date.now() }
-  await putGroup(updated)
+  // Preserve existing updatedAt — do NOT bump timestamp here or it races with joiner's broadcastSelf
+  const updated = { ...group, removedMembers }
+  await db.put(NS.groups + group.id, updated).catch(() => {})
   // Clear all blockedWriter keys for this member
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
@@ -842,12 +843,13 @@ async function init (dir, attempt = 0) {
                     }
                     base.append({ addWriter: writerKey })
                       .then(async () => {
-                        // Rebroadcast full group so joiner gets real member names
+                        // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
+                        // so we can merge their real name into the group record
+                        await new Promise(r => setTimeout(r, 2000))
                         try {
                           const g = await getGroup(groupId)
                           if (g) {
                             await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
-                            // Notification handled in apply() where real member name is available
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
