@@ -789,7 +789,7 @@ async function init (dir, attempt = 0) {
 
             const base = bases.get(groupId)
             if (base) {
-              Promise.all([getProfile(), getGroup(groupId)]).then(([profile, group]) => {
+              Promise.all([getProfile(), getGroup(groupId)]).then(async ([profile, group]) => {
                 const isOwner = group && group.ownerId === profile.id
                 if (isOwner) {
                   const connKey = groupId + ':' + writerKey
