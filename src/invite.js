@@ -19,7 +19,7 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SCHEME   = 'pear://pearcal'
+const SCHEME   = 'pearcal://pearcal'
 const MAX_NAME = 64    // chars
 const KEY_LEN  = 64    // hex chars (32-byte public key)
 
@@ -127,7 +127,7 @@ export function parseInviteLink (url) {
   }
 
   // Strip the custom scheme so URL() can parse it
-  const normalised = url.replace(/^pear:\/\//, 'https://')
+  const normalised = url.replace(/^pearcal:\/\//, 'https://')
   let u
   try { u = new URL(normalised) } catch {
     return { ok: false, error: 'malformed_url' }
