@@ -1065,7 +1065,18 @@ function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
                 style={{ background:copiedId === g.id ? '#5DBF8A' : g.color, border:'none',
                   borderRadius:6, fontFamily:FONT, color:'#fff', fontSize:12, fontWeight:300,
                   padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
-                {copiedId === g.id ? 'Copied!' : 'Copy Invite'}
+                {copiedId === g.id ? 'Copied!' : 'Copy'}
+              </button>
+              <button onClick={e => {
+                  e.stopPropagation()
+                  const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
+                  if (navigator.share) navigator.share({ title: `Join ${g.name} on PearCal`, text: link }).catch(() => {})
+                  else navigator.clipboard?.writeText(link)
+                }}
+                style={{ background:'transparent', border:`1px solid ${g.color}44`,
+                  borderRadius:6, fontFamily:FONT, color:g.color, fontSize:12, fontWeight:300,
+                  padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
+                📤
               </button>
             </div>
           </div>
@@ -1178,12 +1189,14 @@ function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, o
                         setG(updated)
                         await onUpdate(updated)
                         const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
-                        if (link) navigator.clipboard?.writeText(link)
+                        if (!link) return
+                        if (navigator.share) navigator.share({ title: `Join ${g.name} on PearCal`, text: link }).catch(() => {})
+                        else navigator.clipboard?.writeText(link)
                       }}
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      Reinvite & Copy Link
+                      📤 Reinvite & Share
                     </button>
                   </div>
                 ))}
@@ -1562,9 +1575,18 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
                       opacity: groupKeyReady ? 1 : 0.5, cursor: groupKeyReady ? 'pointer' : 'not-allowed' }}>
                     {copiedLink ? '✓ Copied!' : groupKeyReady ? '📋 Copy Link' : '⏳ Generating…'}
                   </button>
-                  <button style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
-                    background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                    color:th.text.color, cursor:'pointer' }}>
+                  <button onClick={() => {
+                      const link = genInviteLink(group)
+                      if (navigator.share) {
+                        navigator.share({ title: `Join ${group.name} on PearCal`, text: link })
+                          .catch(() => {})
+                      } else {
+                        navigator.clipboard?.writeText(link)
+                      }
+                    }}
+                    style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
+                      background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
+                      color:th.text.color, cursor:'pointer' }}>
                     📤 Share…
                   </button>
                 </div>
