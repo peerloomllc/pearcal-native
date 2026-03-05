@@ -154,11 +154,6 @@ async function reinviteMember (groupId, memberId) {
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
   }
-  // Broadcast updated group (without this member in removedMembers) via Autobase
-  const base = bases.get(groupId)
-  if (base) {
-    await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...updated } }).catch(() => {})
-  }
 }
 
 async function deleteGroup (id) {
