@@ -448,7 +448,8 @@ export default function App ({ db, notifs, sync }) {
         {/* Bottom Nav */}
         <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
           width:'100%', maxWidth:430, ...th.navBg, display:'flex',
-          borderTop:`1px solid ${th.border}`, zIndex:50 }}>
+          borderTop:`1px solid ${th.border}`, zIndex:50,
+          paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
           {[
             { key:'calendar', icon:'📅', label:'Calendar' },
             { key:'groups',   icon:'👥', label:'Groups'   },
@@ -592,10 +593,34 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
+  const [slideDir,        setSlideDir]        = useState(0)
+  const [isSliding,       setIsSliding]       = useState(false)
+  const touchStartX = useRef(null)
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
 
-  function prev () { setViewDate(v => v.m === 0 ? { y:v.y-1, m:11 } : { y:v.y, m:v.m-1 }) }
-  function next () { setViewDate(v => v.m === 11 ? { y:v.y+1, m:0 } : { y:v.y, m:v.m+1 }) }
+  function navigate (dir) {
+    if (isSliding) return
+    setSlideDir(dir)
+    setIsSliding(true)
+    setTimeout(() => {
+      if (dir === -1) setViewDate(v => v.m === 11 ? { y:v.y+1, m:0 } : { y:v.y, m:v.m+1 })
+      else            setViewDate(v => v.m === 0  ? { y:v.y-1, m:11 } : { y:v.y, m:v.m-1 })
+      setSlideDir(0)
+      setIsSliding(false)
+    }, 220)
+  }
+
+  function prev () { navigate(1) }
+  function next () { navigate(-1) }
+
+  function onTouchStart (e) { touchStartX.current = e.touches[0].clientX }
+  function onTouchEnd (e) {
+    if (touchStartX.current === null) return
+    const dx = e.changedTouches[0].clientX - touchStartX.current
+    touchStartX.current = null
+    if (Math.abs(dx) < 40) return
+    if (dx < 0) next(); else prev()
+  }
 
   const dropStyle = { position:'absolute', top:'calc(100% + 6px)', left:'50%',
     transform:'translateX(-50%)', zIndex:80, borderRadius:12, padding:8,
@@ -663,6 +688,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         }} style={{ ...th.pillBtn, fontSize:12, padding:'4px 16px', fontWeight:300 }}>⬤ Today</button>
       </div>
 
+      <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+        style={{ overflow:'hidden', position:'relative' }}>
+      <div style={{
+        transform: slideDir === -1 ? 'translateX(-8%)' : slideDir === 1 ? 'translateX(8%)' : 'translateX(0)',
+        opacity: isSliding ? 0 : 1,
+        transition: isSliding ? 'transform 0.22s ease, opacity 0.22s ease' : 'none',
+      }}>
       {/* Day headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:4 }}>
         {DAYS.map(d => (
@@ -695,6 +727,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             </button>
           )
         })}
+      </div>
+      </div>
       </div>
 
     </div>
