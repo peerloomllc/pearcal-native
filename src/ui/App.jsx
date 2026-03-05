@@ -1145,11 +1145,13 @@ function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, o
                         const updated = { ...g, removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id), updatedAt: Date.now() }
                         setG(updated)
                         await onUpdate(updated)
+                        const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
+                        if (link) navigator.clipboard?.writeText(link)
                       }}
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      Reinvite
+                      Reinvite & Copy Link
                     </button>
                   </div>
                 ))}

@@ -48,9 +48,17 @@ export async function handleInviteLink (url, db, sync, onJoined) {
     return { ok: false, error: 'already_member', group: existing }
   }
 
-  // 2b. Clear any stale blockedFromGroup tombstone — owner controls blocklist,
-  // enforcement happens via Protomux blocked message on reconnect
-  await db.clearBlockedFromGroup(groupId).catch(() => {})
+  // 2b. Check if we were blocked from this group
+  // If link contains reinvite=1, owner has explicitly re-granted access — clear tombstone
+  const isReinvite = parsed.reinvite === true
+  if (isReinvite) {
+    await db.clearBlockedFromGroup(groupId).catch(() => {})
+  } else {
+    const isBlocked = await db.isBlockedFromGroup(groupId).catch(() => false)
+    if (isBlocked) {
+      return { ok: false, error: 'blocked_from_group' }
+    }
+  }
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
@@ -108,6 +116,17 @@ export async function handleInviteLink (url, db, sync, onJoined) {
  * @param {string} myPublicKey  — hex public key of the inviting user
  * @returns {string}
  */
+export function buildReinviteLink (group, myPublicKey) {
+  const params = new URLSearchParams({
+    group:   btoa(group.id),
+    name:    group.name,
+    key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
+    inviter: myPublicKey,
+    reinvite: '1',
+  })
+  return `${SCHEME}/join?${params.toString()}`
+}
+
 export function buildInviteLink (group, myPublicKey) {
   const params = new URLSearchParams({
     group:   btoa(group.id),
@@ -172,10 +191,12 @@ export function parseInviteLink (url) {
     return { ok: false, error: 'invalid_inviter' }
   }
 
+  const reinvite = u.searchParams.get('reinvite') === '1'
   return {
     ok: true,
     groupId,
     groupName,
+    reinvite,
     groupKey:   raw.key,
     inviterKey: raw.inviter,
   }

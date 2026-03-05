@@ -1,4 +1,4 @@
-import { handleInviteLink } from '../invite.js'
+import { handleInviteLink, buildReinviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
 
@@ -69,6 +69,8 @@ const sync = {
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
 }
+
+window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
 
 window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
