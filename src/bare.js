@@ -353,7 +353,11 @@ function makeApply (groupId) {
 
       // Writer announcement — add them as a writer
       if (val.addWriter) {
-        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        // Check if this writer was blocked by the owner — if so skip granting access
+        const writerBlocked = await db.get('blockedWriter:' + groupId + ':' + val.addWriter).catch(() => null)
+        if (!writerBlocked) {
+          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        }
         continue
       }
 
@@ -384,7 +388,12 @@ function makeApply (groupId) {
               const existingMembers = existing?.value?.members ?? []
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
-              const newMembers = incomingMembers.filter(m => m.id !== profile?.id && m.name !== 'Inviter' && !existingIds.has(m.id))
+              const newMembers = incomingMembers.filter(m =>
+                m.id !== profile?.id &&
+                m.name !== 'Inviter' &&
+                !existingIds.has(m.id) &&
+                m.id !== val.value.ownerId  // owner was always there, never a "new" joiner
+              )
               for (const m of newMembers) {
                 const groupName = val.value.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
@@ -754,6 +763,14 @@ async function init (dir, attempt = 0) {
             if (parsed.blocked) {
               const gid = parsed.groupId
               if (gid) {
+                const blockedGroup = await getGroup(gid).catch(() => null)
+                const blockedOwnerName = parsed.ownerName || 'The owner'
+                const blockedGroupName = blockedGroup?.name || 'a group'
+                send({ type: 'event', event: 'syncNotify', data: {
+                  title: blockedOwnerName + ' removed you from ' + blockedGroupName,
+                  body: 'You no longer have access to this group',
+                  tab: 'groups'
+                }})
                 await deleteGroup(gid).catch(() => {})
                 await leaveGroup(gid).catch(() => {})
                 send({ type: 'event', event: 'groupDeleted', data: gid })
@@ -787,7 +804,12 @@ async function init (dir, attempt = 0) {
                     const removedMembers = group.removedMembers ?? []
                     const parsed_memberId = parsed.memberId ?? null
                     if (parsed_memberId && removedMembers.includes(parsed_memberId)) {
-                      try { msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId }))) } catch(e) {}
+                      // Store writerKey so apply() can also block Autobase log replay
+                      await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
+                      try {
+                        const ownerProfile = await getProfile().catch(() => null)
+                        msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
+                      } catch(e) {}
                       return
                     }
                     base.append({ addWriter: writerKey })
