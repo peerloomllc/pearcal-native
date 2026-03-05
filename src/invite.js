@@ -48,6 +48,12 @@ export async function handleInviteLink (url, db, sync, onJoined) {
     return { ok: false, error: 'already_member', group: existing }
   }
 
+  // 2b. Check if we were blocked from this group by the owner
+  const isBlocked = await db.isBlockedFromGroup(groupId).catch(() => false)
+  if (isBlocked) {
+    return { ok: false, error: 'blocked_from_group' }
+  }
+
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
   const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey }

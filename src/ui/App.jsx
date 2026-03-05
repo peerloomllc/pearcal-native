@@ -133,6 +133,12 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('groupDeleted', onGroupDeleted)
 
+    function onInviteBlocked () {
+      setBlockedToast(true)
+      setTimeout(() => setBlockedToast(false), 4000)
+    }
+    emitter.on('inviteBlocked', onInviteBlocked)
+
     async function onGroupJoined(group) {
       if (db) {
         const fresh = await db.listGroups()
@@ -165,6 +171,7 @@ export default function App ({ db, notifs, sync }) {
     return () => {
       emitter.off('sync', onSync)
       emitter.off('groupDeleted', onGroupDeleted)
+      emitter.off('inviteBlocked', onInviteBlocked)
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
       window.removeEventListener('pear:setTab', onDomSetTab)
@@ -418,6 +425,14 @@ export default function App ({ db, notifs, sync }) {
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
               setModal={setModal} events={events} />
+          )}
+          {blockedToast && (
+            <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
+              background:'#D45F7A', color:'#fff', borderRadius:12, padding:'12px 18px',
+              fontSize:13, fontWeight:300, zIndex:200, whiteSpace:'nowrap',
+              boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+              You were removed from this group and cannot rejoin with this link.
+            </div>
           )}
           {tab === 'groups' && (
             <GroupsTab th={th} groups={groups} profile={profile}
@@ -1107,6 +1122,34 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
           {/* Identity — owner only */}
+          {isOwner && (g.removedMembers ?? []).length > 0 && (
+            <div>
+              {section('REMOVED MEMBERS')}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {(g.removedMembers ?? []).map(m => (
+                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
+                    ...th.card, borderRadius:12, padding:'10px 14px' }}>
+                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
+                      <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Removed</div>
+                    </div>
+                    <button onClick={async () => {
+                        await db.reinviteMember(g.id, m.id)
+                        const updated = { ...g, removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id), updatedAt: Date.now() }
+                        setG(updated)
+                        await onUpdate(updated)
+                      }}
+                      style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
+                        color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT }}>
+                      Reinvite
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {isOwner && <div>
             {section('GROUP IDENTITY')}
             <div style={{ display:'flex', gap:16, alignItems:'flex-start' }}>

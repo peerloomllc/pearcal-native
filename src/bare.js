@@ -55,6 +55,8 @@ async function handle (method, args) {
     case 'listGroups':       return listGroups()
     case 'putGroup':         return putGroup(args[0])
     case 'deleteGroup':      return deleteGroup(args[0])
+    case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
+    case 'reinviteMember':   return reinviteMember(args[0], args[1])
     case 'listMembers':      return listMembers(args[0])
     case 'putMember':        return putMember(args[0], args[1])
     case 'removeMember':     return removeMember(args[0], args[1])
@@ -137,6 +139,20 @@ async function listGroups () {
 async function putGroup (group) {
   await db.put(NS.groups + group.id, { ...group, updatedAt: Date.now() })
   return group
+}
+
+async function reinviteMember (groupId, memberId) {
+  const group = await getGroup(groupId)
+  if (!group) return
+  // Remove from removedMembers array
+  const removedMembers = (group.removedMembers ?? []).filter(m => (m.id ?? m) !== memberId)
+  const updated = { ...group, removedMembers, updatedAt: Date.now() }
+  await putGroup(updated)
+  // Clear all blockedWriter keys for this member
+  for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
+    if (value?.memberId === memberId) await db.del(key).catch(() => {})
+  }
+  // Clear blockedFromGroup on their side is done by them when they get the new invite
 }
 
 async function deleteGroup (id) {
@@ -731,6 +747,16 @@ async function init (dir, attempt = 0) {
                 const profile = await getProfile()
                 // If we are the removed member, treat as group deletion
                 if (profile && memberId === profile.id) {
+                  // Notify removed member before deleting group
+                  const ownerMember = (group?.members ?? []).find(m => m.id === group?.ownerId)
+                  const ownerName = ownerMember?.name || 'The owner'
+                  const groupName = group?.name || 'a group'
+                  send({ type: 'event', event: 'syncNotify', data: {
+                    title: ownerName + ' removed you from ' + groupName,
+                    body: 'You no longer have access to this group.',
+                    tab: 'groups'
+                  }})
+                  await db.put('blockedFromGroup:' + groupId, { ts: Date.now() }).catch(() => {})
                   await deleteGroup(groupId)
                   await leaveGroup(groupId)
                   send({ type: 'event', event: 'groupDeleted', data: groupId })
@@ -771,6 +797,7 @@ async function init (dir, attempt = 0) {
                   body: 'You no longer have access to this group',
                   tab: 'groups'
                 }})
+                await db.put('blockedFromGroup:' + gid, { ts: Date.now() }).catch(() => {})
                 await deleteGroup(gid).catch(() => {})
                 await leaveGroup(gid).catch(() => {})
                 send({ type: 'event', event: 'groupDeleted', data: gid })
@@ -803,7 +830,7 @@ async function init (dir, attempt = 0) {
                     // Check blocklist before granting write access
                     const removedMembers = group.removedMembers ?? []
                     const parsed_memberId = parsed.memberId ?? null
-                    if (parsed_memberId && removedMembers.includes(parsed_memberId)) {
+                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId)) {
                       // Store writerKey so apply() can also block Autobase log replay
                       await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
                       try {

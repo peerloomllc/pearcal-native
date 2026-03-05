@@ -32,6 +32,7 @@ window.__pearEvent = function (event, data) {
 window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
+window.addEventListener('pear:inviteBlocked', () => emitter.emit('inviteBlocked'))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -44,6 +45,8 @@ const db = {
   listGroups:    ()          => window.__pearDB.call('listGroups'),
   putGroup:      (g)         => window.__pearDB.call('putGroup', g),
   deleteGroup:   (id)        => window.__pearDB.call('deleteGroup', id),
+  isBlockedFromGroup: (id)   => window.__pearDB.call('isBlockedFromGroup', id),
+  reinviteMember: (gid, mid) => window.__pearDB.call('reinviteMember', gid, mid),
   listMembers:   (gid)       => window.__pearDB.call('listMembers', gid),
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),
   removeMember:  (gid, mid)  => window.__pearDB.call('removeMember', gid, mid),
@@ -76,6 +79,9 @@ window.__pearHandleInvite = async function(url) {
   })
   if (result && (result.ok || result.error === 'already_member') && result.group) {
     window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: result.group }))
+  }
+  if (result && result.error === 'blocked_from_group') {
+    window.dispatchEvent(new CustomEvent('pear:inviteBlocked', {}))
   }
 }
 
