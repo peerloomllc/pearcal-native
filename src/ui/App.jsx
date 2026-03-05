@@ -443,7 +443,7 @@ export default function App ({ db, notifs, sync }) {
             </div>
           )}
           {tab === 'groups' && (
-            <GroupsTab th={th} groups={groups} profile={profile} sync={sync} readyGroupKeys={readyGroupKeys}
+            <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })} />
           )}
@@ -1004,13 +1004,16 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, sync, readyGroupKeys, onNewGroup, onSettings }) {
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings }) {
   const [copiedId, setCopiedId] = useState(null)
 
-  function copyInvite (g, e) {
+  async function copyInvite (g, e) {
     e.stopPropagation()
     if (!readyGroupKeys.has(g.id)) return
-    const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
+    // Always fetch fresh from DB to get the real Autobase key, not the placeholder
+    const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
+    const src = fresh ?? g
+    const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -1077,11 +1080,13 @@ function GroupsTab ({ th, groups, profile, sync, readyGroupKeys, onNewGroup, onS
                   flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
                 {copiedId === g.id ? 'Copied!' : readyGroupKeys.has(g.id) ? 'Copy' : '⏳'}
               </button>
-              <button onClick={e => {
+              <button onClick={async e => {
                   e.stopPropagation()
                   if (!readyGroupKeys.has(g.id)) return
-                  const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
-                  if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
+                  const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
+                  const src = fresh ?? g
+                  const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
+                  if (sync) sync.nativeShare(`Join ${src.name} on PearCal`, link)
                   else navigator.clipboard?.writeText(link)
                 }}
                 disabled={!readyGroupKeys.has(g.id)}
