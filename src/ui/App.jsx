@@ -79,6 +79,7 @@ export default function App ({ db, notifs, sync }) {
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
+  const [blockedToast,  setBlockedToast]  = useState(false)
 
   const th = themes(dark)
 
