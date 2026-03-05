@@ -813,6 +813,9 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
+        {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
+          overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
+          lineHeight:'1.35' }}>{ev.desc}</div> : null}
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
         {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
