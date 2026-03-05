@@ -482,7 +482,7 @@ export default function App ({ db, notifs, sync }) {
             onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
         )}
         {settingsGroup && (
-          <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db}
+          <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
             onClose={() => setSettingsGroup(null)}
             onUpdate={updateGroup} onDelete={deleteGroup} />
@@ -1087,7 +1087,7 @@ function GroupsTab ({ th, groups, profile, sync, onNewGroup, onSettings }) {
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, onMemberLeft }) {
+function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft }) {
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
   const [confirm, setConfirm] = useState(null)
