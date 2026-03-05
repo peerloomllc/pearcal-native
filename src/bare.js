@@ -245,7 +245,7 @@ async function joinGroup (group) {
   // Announce our writer key to any already-connected peers
   const writerKey = b4a.toString(base.local.key, 'hex')
   for (const ch of activeChannels) {
-    try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey }))) } catch(e) {}
+    try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey, memberId: profile?.id ?? null }))) } catch(e) {}
   }
 
   // Always use group.groupKey as swarm topic so both sides match
@@ -670,9 +670,11 @@ async function init (dir, attempt = 0) {
           }
 
           // Send our writerKey for every group we've joined
+          const _announceProfile = await getProfile().catch(() => null)
+          const _announceMemberId = _announceProfile?.id ?? null
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
-            msg.send(Buffer.from(JSON.stringify({ groupId, writerKey })))
+            msg.send(Buffer.from(JSON.stringify({ groupId, writerKey, memberId: _announceMemberId })))
           }
           // Send any pending group deletes to this new peer
           for (const groupId of pendingGroupDeletes) {
@@ -748,6 +750,16 @@ async function init (dir, attempt = 0) {
               } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
               return
             }
+            // Handle blocked message — owner rejected our writer key (we were removed)
+            if (parsed.blocked) {
+              const gid = parsed.groupId
+              if (gid) {
+                await deleteGroup(gid).catch(() => {})
+                await leaveGroup(gid).catch(() => {})
+                send({ type: 'event', event: 'groupDeleted', data: gid })
+              }
+              return
+            }
             // Handle group delete broadcast from owner
             if (parsed.groupDeleted) {
               const gid = parsed.groupDeleted
@@ -771,6 +783,13 @@ async function init (dir, attempt = 0) {
                     const alreadyKnown = set.has(writerKey)
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
+                    // Check blocklist before granting write access
+                    const removedMembers = group.removedMembers ?? []
+                    const parsed_memberId = parsed.memberId ?? null
+                    if (parsed_memberId && removedMembers.includes(parsed_memberId)) {
+                      try { msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId }))) } catch(e) {}
+                      return
+                    }
                     base.append({ addWriter: writerKey })
                       .then(async () => {
                         // Rebroadcast full group so joiner gets real member names

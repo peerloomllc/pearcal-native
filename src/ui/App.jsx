@@ -1063,7 +1063,8 @@ function GroupSettingsModal ({ th, group, me, onClose, onUpdate, onDelete, onMem
     if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
     if (confirm.startsWith('remove:')) {
       const uid = confirm.split(':')[1]
-      const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), updatedAt: Date.now() }
+      const removedMembers = [...(g.removedMembers ?? []), uid]
+      const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
       setG(updatedGroup)
       setConfirm(null)
       setSaved(false)
@@ -1308,6 +1309,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated })
       ownerId: me?.id ?? 'unknown',
       members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
       groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
+      removedMembers: [],
     }
     setGroup(newG)
     setGroupKeyReady(false)
