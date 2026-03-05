@@ -56,6 +56,7 @@ async function handle (method, args) {
     case 'putGroup':         return putGroup(args[0])
     case 'deleteGroup':      return deleteGroup(args[0])
     case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
+    case 'clearBlockedFromGroup': return db.del('blockedFromGroup:' + args[0]).catch(() => {})
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
     case 'listMembers':      return listMembers(args[0])
     case 'putMember':        return putMember(args[0], args[1])
@@ -152,7 +153,11 @@ async function reinviteMember (groupId, memberId) {
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
   }
-  // Clear blockedFromGroup on their side is done by them when they get the new invite
+  // Broadcast updated group (without this member in removedMembers) via Autobase
+  const base = bases.get(groupId)
+  if (base) {
+    await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...updated } }).catch(() => {})
+  }
 }
 
 async function deleteGroup (id) {

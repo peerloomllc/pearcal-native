@@ -1079,7 +1079,12 @@ function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, o
     if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
     if (confirm.startsWith('remove:')) {
       const uid = confirm.split(':')[1]
-      const removedMembers = [...(g.removedMembers ?? []), uid]
+      const removedMember = g.members.find(m => m.id === uid)
+      const removedMembers = [...(g.removedMembers ?? []), {
+        id: uid,
+        name: removedMember?.name ?? 'Member',
+        avatar: removedMember?.avatar ?? '?'
+      }]
       const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
       setG(updatedGroup)
       setConfirm(null)

@@ -46,6 +46,7 @@ const db = {
   putGroup:      (g)         => window.__pearDB.call('putGroup', g),
   deleteGroup:   (id)        => window.__pearDB.call('deleteGroup', id),
   isBlockedFromGroup: (id)   => window.__pearDB.call('isBlockedFromGroup', id),
+  clearBlockedFromGroup: (id) => window.__pearDB.call('clearBlockedFromGroup', id),
   reinviteMember: (gid, mid) => window.__pearDB.call('reinviteMember', gid, mid),
   listMembers:   (gid)       => window.__pearDB.call('listMembers', gid),
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),

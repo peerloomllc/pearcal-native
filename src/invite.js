@@ -48,11 +48,9 @@ export async function handleInviteLink (url, db, sync, onJoined) {
     return { ok: false, error: 'already_member', group: existing }
   }
 
-  // 2b. Check if we were blocked from this group by the owner
-  const isBlocked = await db.isBlockedFromGroup(groupId).catch(() => false)
-  if (isBlocked) {
-    return { ok: false, error: 'blocked_from_group' }
-  }
+  // 2b. Clear any stale blockedFromGroup tombstone — owner controls blocklist,
+  // enforcement happens via Protomux blocked message on reconnect
+  await db.clearBlockedFromGroup(groupId).catch(() => {})
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
