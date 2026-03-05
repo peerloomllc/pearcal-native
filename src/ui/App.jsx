@@ -80,6 +80,7 @@ export default function App ({ db, notifs, sync }) {
   const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
+  const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
   const th = themes(dark)
 
@@ -98,6 +99,7 @@ export default function App ({ db, notifs, sync }) {
         if (cancelled) return
         setProfile(prof)
         setGroups(grps)
+        setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
         setReady(true)
       } catch (e) {
@@ -141,6 +143,7 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('inviteBlocked', onInviteBlocked)
 
     async function onGroupJoined(group) {
+      setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
       if (db) {
         const fresh = await db.listGroups()
         setGroups(fresh)
@@ -166,6 +169,7 @@ export default function App ({ db, notifs, sync }) {
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
+      setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
       if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
@@ -249,11 +253,14 @@ export default function App ({ db, notifs, sync }) {
     setModal(null)
   }, [db, notifs, sync, events, profile])
 
-  const addGroup = useCallback(async g => {
+  const addGroup = useCallback(async (g, opts) => {
     if (db) {
       await db.putGroup(g)
       for (const m of g.members) await db.putMember(g.id, m)
       await sync?.joinGroup(g).catch(() => {})
+    }
+    if (!opts?.pendingKey) {
+      setReadyGroupKeys(prev => { const s = new Set(prev); s.add(g.id); return s })
     }
     setGroups(prev => prev.some(x => x.id === g.id) ? prev : [...prev, g])
   }, [db, sync])
@@ -436,7 +443,7 @@ export default function App ({ db, notifs, sync }) {
             </div>
           )}
           {tab === 'groups' && (
-            <GroupsTab th={th} groups={groups} profile={profile} sync={sync}
+            <GroupsTab th={th} groups={groups} profile={profile} sync={sync} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })} />
           )}
@@ -997,11 +1004,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, sync, onNewGroup, onSettings }) {
+function GroupsTab ({ th, groups, profile, sync, readyGroupKeys, onNewGroup, onSettings }) {
   const [copiedId, setCopiedId] = useState(null)
 
   function copyInvite (g, e) {
     e.stopPropagation()
+    if (!readyGroupKeys.has(g.id)) return
     const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
@@ -1062,20 +1070,26 @@ function GroupsTab ({ th, groups, profile, sync, onNewGroup, onSettings }) {
                 {previewInvite(g)}
               </span>
               <button onClick={e => copyInvite(g, e)}
-                style={{ background:copiedId === g.id ? '#5DBF8A' : g.color, border:'none',
-                  borderRadius:6, fontFamily:FONT, color:'#fff', fontSize:12, fontWeight:300,
-                  padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
-                {copiedId === g.id ? 'Copied!' : 'Copy'}
+                disabled={!readyGroupKeys.has(g.id)}
+                style={{ background:copiedId === g.id ? '#5DBF8A' : readyGroupKeys.has(g.id) ? g.color : th.muted,
+                  border:'none', borderRadius:6, fontFamily:FONT, color:'#fff', fontSize:12, fontWeight:300,
+                  padding:'5px 10px', cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
+                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
+                {copiedId === g.id ? 'Copied!' : readyGroupKeys.has(g.id) ? 'Copy' : '⏳'}
               </button>
               <button onClick={e => {
                   e.stopPropagation()
+                  if (!readyGroupKeys.has(g.id)) return
                   const link = buildInviteLink(g, profile?.publicKey ?? 'unknown')
                   if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
                   else navigator.clipboard?.writeText(link)
                 }}
+                disabled={!readyGroupKeys.has(g.id)}
                 style={{ background:'transparent', border:`1px solid ${g.color}44`,
-                  borderRadius:6, fontFamily:FONT, color:g.color, fontSize:12, fontWeight:300,
-                  padding:'5px 10px', cursor:'pointer', flexShrink:0 }}>
+                  borderRadius:6, fontFamily:FONT, color:readyGroupKeys.has(g.id) ? g.color : th.muted,
+                  fontSize:12, fontWeight:300, padding:'5px 10px',
+                  cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
+                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
                 📤
               </button>
             </div>

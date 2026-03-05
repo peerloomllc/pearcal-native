@@ -299,6 +299,7 @@ async function syncDeleteEvent (groupId, eventId, date, updatedByName) {
 
 async function syncPutGroup (group) {
   const base = bases.get(group.id)
+  console.log('[SYNC_PUT_GROUP] groupId:', group.id, 'members:', JSON.stringify((group.members??[]).map(m=>m.name)), 'updatedAt:', group.updatedAt)
   if (!base) throw new Error('Not in group: ' + group.id)
   await base.append({ op: 'put', type: 'group', key: 'groups:' + group.id, value: group })
 }
@@ -387,6 +388,7 @@ function makeApply (groupId) {
       if (val.op === 'put') {
         // Last-write-wins: only apply if newer than existing
         const existing = await view.get(val.key)
+        console.log('[APPLY]', val.type, val.op, 'incoming:', val.value.updatedAt, 'existing:', existing?.value?.updatedAt, 'win:', !existing || val.value.updatedAt >= (existing?.value?.updatedAt??0))
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
           // Fetch prev from local DB BEFORE mirroring so we can diff in notifySyncChange
           // If date changed, the old entry lives under _prevDate key, not the new key
@@ -841,6 +843,7 @@ async function init (dir, attempt = 0) {
                       } catch(e) {}
                       return
                     }
+                    console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId)
                     base.append({ addWriter: writerKey })
                       .then(async () => {
                         // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
