@@ -436,7 +436,7 @@ export default function App ({ db, notifs, sync }) {
             </div>
           )}
           {tab === 'groups' && (
-            <GroupsTab th={th} groups={groups} profile={profile}
+            <GroupsTab th={th} groups={groups} profile={profile} sync={sync}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })} />
           )}
@@ -478,7 +478,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
-            onAdd={addGroup} onUpdate={updateGroup} me={profile}
+            onAdd={addGroup} onUpdate={updateGroup} me={profile} sync={sync}
             onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
         )}
         {settingsGroup && (
@@ -997,7 +997,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, onNewGroup, onSettings }) {
+function GroupsTab ({ th, groups, profile, sync, onNewGroup, onSettings }) {
   const [copiedId, setCopiedId] = useState(null)
 
   function copyInvite (g, e) {
@@ -1363,7 +1363,7 @@ function GroupSettingsModal ({ th, group, me, db, onClose, onUpdate, onDelete, o
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
-function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, onGroupKeyUpdated }) {
+function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpdated }) {
   const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
