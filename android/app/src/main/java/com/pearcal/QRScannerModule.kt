@@ -22,7 +22,7 @@ class QRScannerModule(reactContext: ReactApplicationContext) :
 
     @ReactMethod
     fun scan(promise: Promise) {
-        val activity = currentActivity
+        val activity = reactApplicationContext.currentActivity
         if (activity == null) { promise.reject("NO_ACTIVITY", "No activity"); return }
         scanPromise = promise
         val intent = Intent("com.google.zxing.client.android.SCAN").apply {
