@@ -870,28 +870,16 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 }
 
 function QRModal ({ th, link, onClose }) {
-  const canvasRef = React.useRef(null)
-  React.useEffect(() => {
-    if (!canvasRef.current || !link) return
-    QRCode.toCanvas(canvasRef.current, link, {
-      width: 260, margin: 2,
-      color: { dark: th.text.color, light: th.card.background || '#ffffff' }
-    }).catch(e => console.error('QR error', e))
-  }, [link])
   return (
-    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center',
-      justifyContent:'center', background:'rgba(0,0,0,0.55)' }} onClick={onClose}>
-      <button onClick={onClose} style={{ position:'fixed', top:16, right:16, zIndex:201,
-        background:'rgba(0,0,0,0.4)', border:'none', borderRadius:'50%', width:36, height:36,
-        color:'#fff', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center',
-        justifyContent:'center' }}>✕</button>
-      <div style={{ ...th.card, borderRadius:16, padding:24, display:'flex', flexDirection:'column',
-        alignItems:'center', gap:16, minWidth:300 }} onClick={e => e.stopPropagation()}>
-        <div style={{ fontWeight:400, fontSize:16, ...th.text }}>Scan to Join</div>
-        <canvas ref={canvasRef} style={{ borderRadius:8 }} />
-        <div style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'center',
-          maxWidth:240, wordBreak:'break-all' }}>{link}</div>
-        <button onClick={onClose} style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
+    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:9999,
+      background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ background:'#fff', borderRadius:16, padding:24, display:'flex',
+        flexDirection:'column', alignItems:'center', gap:16, width:280 }}>
+        <div style={{ fontSize:16, fontWeight:400, color:'#000' }}>Scan to Join</div>
+        <div style={{ fontSize:11, color:'#666', textAlign:'center', wordBreak:'break-all' }}>{link}</div>
+        <button onClick={onClose}
+          style={{ background:'#000', color:'#fff', border:'none', borderRadius:8,
+            padding:'10px 24px', fontSize:14, cursor:'pointer', width:'100%' }}>
           Close
         </button>
       </div>
