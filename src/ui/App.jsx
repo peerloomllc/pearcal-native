@@ -819,67 +819,22 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         <button onClick={() => openCreate(selectedDate)}
           style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
       </div>
-      {/* Scrollable event list */}
+      {/* Scrollable event list — flat, stable, never restructures */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
-      {/* Past 30 days */}
       {(() => {
-        const past = []
-        const seen = new Map()
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
         const cutoffStr = cutoff.toISOString().slice(0,10)
+        const seen = new Map()
+        const days = []
         events
-          .filter(e => e.date >= cutoffStr && e.date < selectedDate)
+          .filter(e => e.date >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
           .forEach(e => {
-            if (!seen.has(e.date)) { seen.set(e.date, []); past.push(e.date) }
+            if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
             seen.get(e.date).push(e)
           })
-        if (past.length === 0) return null
-        return past.map(date => (
+        return days.map(date => (
           <div key={date} data-date={date} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
-              {new Date(date + 'T12:00:00').toLocaleDateString('en-US',
-                { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
-            </div>
-            {seen.get(date).map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} isPast={true}
-                onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
-            ))}
-          </div>
-        ))
-      })()}
-      <div data-date={selectedDate} style={{ marginBottom:20 }}>
-        <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
-          marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
-          {selectedDate === todayStr ? 'TODAY' : new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',
-            { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
-        </div>
-      {selectedEvents.length === 0
-        ? <div style={{ textAlign:'center', color:th.muted, fontSize:13, fontWeight:300, padding:'16px 0 24px' }}>
-            No events — tap + to create one
-          </div>
-        : selectedEvents.map(ev => (
-            <EventCard key={ev.id} ev={ev} th={th} isPast={ev.date < todayStr}
-              onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
-          ))
-      }
-      </div>
-
-      {/* Upcoming events grouped by day */}
-      {(() => {
-        const upcoming = events
-          .filter(e => e.date > selectedDate)
-          .sort((a, b) => a.date.localeCompare(b.date))
-        const byDay = []
-        const seen = new Map()
-        for (const e of upcoming) {
-          if (!seen.has(e.date)) { seen.set(e.date, []); byDay.push(e.date) }
-          seen.get(e.date).push(e)
-        }
-        if (byDay.length === 0) return null
-        return byDay.map(date => (
-          <div key={date} data-date={date} style={{ marginTop:20 }}>
             <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
               marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
