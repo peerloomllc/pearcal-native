@@ -870,16 +870,30 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 }
 
 function QRModal ({ th, link, onClose }) {
+  const canvasRef = useRef(null)
+  const [qrError, setQrError] = useState(null)
+  useEffect(() => {
+    if (!canvasRef.current || !link) return
+    try {
+      QRCode.toCanvas(canvasRef.current, link, { width: 260, margin: 2 }, (err) => {
+        if (err) setQrError(err.message)
+      })
+    } catch(e) { setQrError(e.message) }
+  }, [link])
   return (
     <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:9999,
-      background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-      <div style={{ background:'#fff', borderRadius:16, padding:24, display:'flex',
-        flexDirection:'column', alignItems:'center', gap:16, width:280 }}>
-        <div style={{ fontSize:16, fontWeight:400, color:'#000' }}>Scan to Join</div>
-        <div style={{ fontSize:11, color:'#666', textAlign:'center', wordBreak:'break-all' }}>{link}</div>
-        <button onClick={onClose}
-          style={{ background:'#000', color:'#fff', border:'none', borderRadius:8,
-            padding:'10px 24px', fontSize:14, cursor:'pointer', width:'100%' }}>
+      background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={onClose}>
+      <div style={{ ...th.card, borderRadius:16, padding:24, display:'flex',
+        flexDirection:'column', alignItems:'center', gap:16, width:280 }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize:16, fontWeight:400, ...th.text }}>Scan to Join</div>
+        {qrError
+          ? <div style={{ fontSize:11, color:'red' }}>QR error: {qrError}</div>
+          : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
+        <div style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'center',
+          wordBreak:'break-all' }}>{link}</div>
+        <button onClick={onClose} style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
           Close
         </button>
       </div>
@@ -1164,14 +1178,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                 whiteSpace:'nowrap', flex:1, fontFamily:'monospace', fontWeight:300 }}>
                 {previewInvite(g)}
               </span>
-              <button onClick={e => copyInvite(g, e)}
-                disabled={!readyGroupKeys.has(g.id)}
-                style={{ background:copiedId === g.id ? '#5DBF8A' : readyGroupKeys.has(g.id) ? g.color : th.muted,
-                  border:'none', borderRadius:6, fontFamily:FONT, color:'#fff', fontSize:12, fontWeight:300,
-                  padding:'5px 10px', cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
-                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
-                {copiedId === g.id ? 'Copied!' : readyGroupKeys.has(g.id) ? 'Copy' : '⏳'}
-              </button>
+
               <button onClick={async e => {
                   e.stopPropagation()
                   if (!readyGroupKeys.has(g.id)) return
@@ -1693,12 +1700,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
                   </span>
                 </div>
                 <div style={{ display:'flex', gap:8, marginTop:8 }}>
-                  <button onClick={groupKeyReady ? copyInvite : undefined}
-                    style={{ ...th.pillBtn, flex:1, padding:'10px', fontSize:13, fontWeight:300,
-                      background:copiedLink ? '#5DBF8A' : groupKeyReady ? th.accent : th.muted,
-                      opacity: groupKeyReady ? 1 : 0.5, cursor: groupKeyReady ? 'pointer' : 'not-allowed' }}>
-                    {copiedLink ? '✓ Copied!' : groupKeyReady ? '📋 Copy Link' : '⏳ Generating…'}
-                  </button>
+
                   <button onClick={() => {
                       const link = genInviteLink(group)
                       if (sync) sync.nativeShare(`Join ${group.name} on PearCal`, link)
