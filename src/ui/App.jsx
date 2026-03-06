@@ -484,7 +484,8 @@ export default function App ({ db, notifs, sync }) {
           {tab === 'groups' && (
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
-              onSettings={g => setSettingsGroup({ ...g })} />
+              onSettings={g => setSettingsGroup({ ...g })}
+              onQrGroup={g => setQrGroup(g)} />
           )}
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
@@ -1103,7 +1104,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings }) {
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup }) {
   const [copiedId, setCopiedId] = useState(null)
 
   async function copyInvite (g, e) {
@@ -1195,6 +1196,15 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                   cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
                   flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
                 📤
+              </button>
+              <button onClick={e => { e.stopPropagation(); if (readyGroupKeys.has(g.id)) onQrGroup(g) }}
+                disabled={!readyGroupKeys.has(g.id)}
+                style={{ background:'transparent', border:`1px solid ${g.color}44`,
+                  borderRadius:6, fontFamily:FONT, color:readyGroupKeys.has(g.id) ? g.color : th.muted,
+                  fontSize:12, fontWeight:300, padding:'5px 10px',
+                  cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
+                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
+                ⬛
               </button>
             </div>
           </div>
@@ -1703,12 +1713,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
                       color:th.text.color, cursor:'pointer' }}>
                     📤 Share…
                   </button>
-                  <button onClick={() => setQrGroup(group)}
-                    style={{ padding:'10px 14px', fontSize:13, fontWeight:300, fontFamily:FONT,
-                      background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                      color:th.text.color, cursor:'pointer' }}>
-                    ⬛ QR
-                  </button>
+
                 </div>
               </div>
 
