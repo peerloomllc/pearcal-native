@@ -620,17 +620,29 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const [isSliding,       setIsSliding]       = useState(false)
   const touchStartX = useRef(null)
   const scrollRef = useRef(null)
+  const isProgrammaticScroll = useRef(false)
   const handleScroll = () => {
+    if (isProgrammaticScroll.current) return
     const container = scrollRef.current
     if (!container) return
+    const containerTop = container.getBoundingClientRect().top
     const sections = [...container.querySelectorAll('[data-date]')]
     let active = null
     for (const el of sections) {
-      if (el.offsetTop - container.scrollTop <= 40) active = el.dataset.date
+      if (el.getBoundingClientRect().top - containerTop <= 40) active = el.dataset.date
     }
     if (active && active !== selectedDate) setSelectedDate(active)
   }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
+  useEffect(() => {
+    const container = scrollRef.current
+    if (!container) return
+    const el = container.querySelector('[data-date="' + selectedDate + '"]')
+    if (!el) return
+    isProgrammaticScroll.current = true
+    container.scrollTo({ top: el.offsetTop - container.offsetTop, behavior: 'smooth' })
+    setTimeout(() => { isProgrammaticScroll.current = false }, 600)
+  }, [selectedDate])
 
   function navigate (dir) {
     if (isSliding) return
@@ -769,6 +781,34 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 
       {/* Scrollable event list */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      {/* Past 30 days */}
+      {(() => {
+        const past = []
+        const seen = new Map()
+        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
+        const cutoffStr = cutoff.toISOString().slice(0,10)
+        events
+          .filter(e => e.date >= cutoffStr && e.date < selectedDate)
+          .sort((a,b) => a.date.localeCompare(b.date))
+          .forEach(e => {
+            if (!seen.has(e.date)) { seen.set(e.date, []); past.push(e.date) }
+            seen.get(e.date).push(e)
+          })
+        if (past.length === 0) return null
+        return past.map(date => (
+          <div key={date} data-date={date} style={{ marginBottom:20 }}>
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+              {new Date(date + 'T12:00:00').toLocaleDateString('en-US',
+                { weekday:'short', month:'short', day:'numeric' }).toUpperCase()}
+            </div>
+            {seen.get(date).map(ev => (
+              <EventCard key={ev.id} ev={ev} th={th} isPast={true}
+                onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+            ))}
+          </div>
+        ))
+      })()}
       {/* Day header for selected date */}
       <div data-date={selectedDate} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
         <div>
