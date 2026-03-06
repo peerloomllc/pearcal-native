@@ -634,7 +634,16 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     if (active && active !== selectedDate) {
       setSelectedDate(active)
       const d = new Date(active + 'T12:00:00')
-      setViewDate({ y: d.getFullYear(), m: d.getMonth() })
+      const newY = d.getFullYear(); const newM = d.getMonth()
+      setViewDate(prev => {
+        if (prev.y === newY && prev.m === newM) return prev
+        const prevDate = new Date(prev.y, prev.m, 1)
+        const nextDate = new Date(newY, newM, 1)
+        const dir = nextDate > prevDate ? 1 : -1
+        setSlideDir(dir); setIsSliding(true)
+        setTimeout(() => setIsSliding(false), 320)
+        return { y: newY, m: newM }
+      })
     }
   }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
@@ -815,8 +824,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         if (past.length === 0) return null
         return past.map(date => (
           <div key={date} data-date={date} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
-              fontWeight:400, marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+            <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
@@ -852,10 +861,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         if (byDay.length === 0) return null
         return byDay.map(date => (
           <div key={date} data-date={date} style={{ marginTop:20 }}>
-            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
-              fontWeight:400, marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+            <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
-                { weekday:'short', month:'short', day:'numeric' }).toUpperCase()}
+                { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
             {seen.get(date).map(ev => (
               <EventCard key={ev.id} ev={ev} th={th} isPast={date < todayStr}
