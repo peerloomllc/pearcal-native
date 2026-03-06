@@ -382,11 +382,21 @@ export default function App ({ db, notifs, sync }) {
   // ─── Calendar helpers ───────────────────────────────────────────────────────
   const calDays = useMemo(() => {
     const { y, m } = viewDate
-    const first = new Date(y, m, 1).getDay()
-    const last  = new Date(y, m + 1, 0).getDate()
+    const first   = new Date(y, m, 1).getDay()
+    const last    = new Date(y, m + 1, 0).getDate()
+    const prevLast = new Date(y, m, 0).getDate()
     const cells = []
-    for (let i = 0; i < first; i++) cells.push(null)
-    for (let d = 1; d <= last; d++) cells.push(d)
+    const prevM = m === 0 ? 11 : m - 1
+    const prevY = m === 0 ? y - 1 : y
+    const nextM = m === 11 ? 0 : m + 1
+    const nextY = m === 11 ? y + 1 : y
+    for (let i = 0; i < first; i++)
+      cells.push({ d: prevLast - first + 1 + i, y: prevY, m: prevM, type: 'prev' })
+    for (let d = 1; d <= last; d++)
+      cells.push({ d, y, m, type: 'cur' })
+    let nextD = 1
+    while (cells.length < 42)
+      cells.push({ d: nextD++, y: nextY, m: nextM, type: 'next' })
     return cells
   }, [viewDate])
 
@@ -764,20 +774,20 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 
       {/* Calendar grid */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
-        {calDays.map((d, i) => {
-          if (!d) return <div key={'e' + i} />
-          const ds  = dateStr(y, m, d)
+        {calDays.map((cell, i) => {
+          const ds  = dateStr(cell.y, cell.m, cell.d)
           const evs = eventsOnDate(ds)
           const isToday = ds === todayStr
           const isSel   = ds === selectedDate
           const isPast  = ds < todayStr
+          const isCur   = cell.type === 'cur'
           return (
-            <button key={ds} onClick={() => setSelectedDate(ds)}
+            <button key={ds + i} onClick={() => setSelectedDate(ds)}
               style={{ background:isSel ? th.accent : isToday ? th.accentFaint : 'none',
                 border:'none', borderRadius:10, padding:'6px 2px', cursor:'pointer',
                 display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
-                opacity: isPast && !isSel ? 0.45 : 1 }}>
-              <span style={{ fontSize:14, fontWeight:isToday||isSel ? 400 : 300,
+                opacity: isSel ? 1 : !isCur ? 0.25 : isPast ? 0.45 : 1 }}>
+              <span style={{ fontSize:14, fontWeight:isToday||isSel ? 400 : isCur ? 300 : 200,
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
