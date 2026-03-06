@@ -80,6 +80,10 @@ export default function App ({ db, notifs, sync }) {
   const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
+  const tabHistoryRef  = useRef([])
+  const tabRef         = useRef('calendar')
+  const backHandlerRef = useRef(null)
+  const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
   const th = themes(dark)
@@ -183,6 +187,18 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
     }
   }, [db])
+  useEffect(() => { tabRef.current = tab }, [tab])
+  useEffect(() => {
+    backHandlerRef.current = () => {
+      if (modal)        { setModal(null);        return }
+      if (newGroupOpen) { setNewGroupOpen(false); return }
+      if (settingsGroup){ setSettingsGroup(null); return }
+      const prev = tabHistoryRef.current.pop()
+      if (prev) { tabRef.current = prev; setTab(prev); return }
+      window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
+    }
+  }, [modal, newGroupOpen, settingsGroup])
+  useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────
   useEffect(() => {
@@ -464,7 +480,7 @@ export default function App ({ db, notifs, sync }) {
           ].map(t => {
             const isActive = tab === t.key
             return (
-              <button key={t.key} onClick={() => setTab(t.key)}
+              <button key={t.key} onClick={() => goTab(t.key)}
                 style={{ flex:1, padding:'10px 0 8px', border:'none', cursor:'pointer',
                   display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontFamily:FONT,
                   background: isActive ? th.accent + '18' : 'none',

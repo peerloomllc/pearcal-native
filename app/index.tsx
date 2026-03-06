@@ -6,7 +6,7 @@ const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
   if (!isFatal && error?.message?.includes('keep awake')) return
   originalHandler?.(error, isFatal)
 })
-import { View, Text, StyleSheet, NativeModules, Platform } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform, BackHandler } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -188,6 +188,7 @@ export default function Root () {
         handleNotification(msg, webViewRef)
         return
       }
+      if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -335,6 +336,13 @@ webViewRef.current?.injectJavaScript(
         }, 3000)
       }
     }
+  }, [])
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      webViewRef.current?.injectJavaScript('if(window.__pearBack) window.__pearBack(); true;')
+      return true
+    })
+    return () => sub.remove()
   }, [])
 
   if (error) return (
