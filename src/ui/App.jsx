@@ -83,7 +83,7 @@ export default function App ({ db, notifs, sync }) {
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [onboardStep,   setOnboardStep]   = useState(0)
-  const showOnboarding = ready && (!profile?.name || !profile.name.trim() || profile.name === 'My Name')
+  const showOnboarding = ready && !profile?.onboardingComplete
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -910,7 +910,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       <div style={{ fontSize:56 }}>🍐</div>
       <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
       <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
-        A private family calendar that works without servers, accounts, or subscriptions.
+        A private shared calendar that works without servers, accounts, or subscriptions.
       </div>
       <button onClick={() => setStep(1)}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
@@ -926,7 +926,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
       </div>
       <div style={{ fontSize:13, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
-        Share invite links or QR codes to connect with family members.
+        Share invite links or QR codes to connect with group members.
       </div>
       <button onClick={() => setStep(2)}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
@@ -939,14 +939,17 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       <div style={{ fontSize:48 }}>👤</div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>What's your name?</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
-        This is how you'll appear to family members in shared groups.
+        This is how you'll appear to group members in shared groups.
       </div>
       <input value={name} onChange={e => setName(e.target.value)}
         placeholder="Your name"
         style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
           padding:'12px 16px', color:th.text.color, fontSize:16, fontWeight:300,
           fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none', textAlign:'center' }} />
-      <button onClick={saveName} disabled={!name.trim() || saving}
+      {name.trim().toLowerCase() === 'my name' && (
+        <div style={{ fontSize:12, color:'#E07070', fontWeight:300 }}>Please enter your real name</div>
+      )}
+      <button onClick={saveName} disabled={!name.trim() || name.trim().toLowerCase() === 'my name' || saving}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
           opacity: name.trim() ? 1 : 0.4 }}>
         {saving ? 'Saving…' : 'Continue'}
@@ -965,7 +968,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       </div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Add a photo</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
-        Optional — helps family members recognise you in shared groups.
+        Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
       <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
@@ -1012,7 +1015,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
           </div>
         </div>
       </div>
-      <button onClick={() => onUpdateProfile({ name: profile?.name ?? name.trim() })}
+      <button onClick={() => onUpdateProfile({ name: profile?.name ?? name.trim(), onboardingComplete: true })}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
       </button>
