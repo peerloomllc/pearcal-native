@@ -82,6 +82,8 @@ export default function App ({ db, notifs, sync }) {
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
+  const [onboardStep,   setOnboardStep]   = useState(0)
+  const showOnboarding = ready && (!profile?.name || !profile.name.trim())
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -522,6 +524,8 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Modals */}
+        {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
+          profile={profile} onUpdateProfile={updateProfile} db={db} />}
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
@@ -865,6 +869,176 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
+      </div>
+    </div>
+  )
+}
+
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
+  const [name, setName] = useState(profile?.name ?? '')
+  const [saving, setSaving] = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
+  const fileRef = useRef(null)
+  const total = 5
+
+  async function handlePhotoChange (e) {
+    const file = e.target.files?.[0]
+    if (!file || !file.type.startsWith('image/')) return
+    setPhotoSaving(true)
+    try {
+      const compressed = await compressAvatar(file)
+      await onUpdateProfile({ avatar: compressed })
+    } catch (err) { console.error('Photo compress failed', err) }
+    setPhotoSaving(false)
+    e.target.value = ''
+  }
+
+  async function saveName () {
+    if (!name.trim()) return
+    setSaving(true)
+    await onUpdateProfile({ name: name.trim() })
+    setSaving(false)
+    setStep(s => s + 1)
+  }
+
+  const hasPhoto = profile?.avatar?.startsWith?.('data:')
+  const dots = Array.from({ length: total }, (_, i) => i)
+
+  const slides = [
+    // Slide 0 — Welcome
+    <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+      <div style={{ fontSize:56 }}>🍐</div>
+      <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
+      <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
+        A private family calendar that works without servers, accounts, or subscriptions.
+      </div>
+      <button onClick={() => setStep(1)}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
+        Get Started
+      </button>
+    </div>,
+
+    // Slide 1 — How P2P works
+    <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+      <div style={{ fontSize:48 }}>🔗</div>
+      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>No servers. No accounts.</div>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.7', maxWidth:290 }}>
+        PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
+      </div>
+      <div style={{ fontSize:13, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+        Share invite links or QR codes to connect with family members.
+      </div>
+      <button onClick={() => setStep(2)}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
+        Next
+      </button>
+    </div>,
+
+    // Slide 2 — Name entry
+    <div key={2} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+      <div style={{ fontSize:48 }}>👤</div>
+      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>What's your name?</div>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+        This is how you'll appear to family members in shared groups.
+      </div>
+      <input value={name} onChange={e => setName(e.target.value)}
+        placeholder="Your name"
+        style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
+          padding:'12px 16px', color:th.text.color, fontSize:16, fontWeight:300,
+          fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none', textAlign:'center' }} />
+      <button onClick={saveName} disabled={!name.trim() || saving}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
+          opacity: name.trim() ? 1 : 0.4 }}>
+        {saving ? 'Saving…' : 'Continue'}
+      </button>
+    </div>,
+
+    // Slide 3 — Photo upload
+    <div key={3} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+      <div style={{ width:96, height:96, borderRadius:'50%', background:profile?.color ?? '#6C9BF5',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize:40, color:'#fff', fontWeight:300, overflow:'hidden',
+        opacity: photoSaving ? 0.5 : 1, transition:'opacity 0.2s' }}>
+        {hasPhoto
+          ? <img src={profile.avatar} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : (profile?.name ?? '?').slice(0,1).toUpperCase()}
+      </div>
+      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Add a photo</div>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+        Optional — helps family members recognise you in shared groups.
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
+      <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
+        {photoSaving ? 'Uploading…' : hasPhoto ? '📷 Change Photo' : '📷 Choose Photo'}
+      </button>
+      <button onClick={() => setStep(4)}
+        style={{ fontSize:14, fontWeight:300, color:th.muted, background:'none',
+          border:'none', cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
+        {hasPhoto ? 'Next →' : 'Skip for now'}
+      </button>
+    </div>,
+
+    // Slide 4 — Groups & Invites
+    <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+      <div style={{ fontSize:48 }}>👥</div>
+      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with family</div>
+      <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:300 }}>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22 }}>＋</span>
+          <div>
+            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4 }}>Create a group</div>
+            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
+              Tap the Groups tab and hit New Group to create a shared calendar with a name and colour.
+            </div>
+          </div>
+        </div>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22 }}>📤</span>
+          <div>
+            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4 }}>Invite people</div>
+            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
+              Share the invite link or QR code from the group card. Anyone who opens the link joins instantly.
+            </div>
+          </div>
+        </div>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22 }}>📅</span>
+          <div>
+            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4 }}>Add events</div>
+            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
+              Tap any day on the calendar and hit + Event. Assign it to one or more groups to share it.
+            </div>
+          </div>
+        </div>
+      </div>
+      <button onClick={() => onUpdateProfile({ name: profile?.name ?? name.trim() })}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
+        Let's go!
+      </button>
+    </div>
+  ]
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:500, ...th.bg,
+      display:'flex', flexDirection:'column', padding:'48px 28px 32px' }}>
+      {/* Back button */}
+      {step > 0 && (
+        <button onClick={() => setStep(s => s - 1)}
+          style={{ position:'absolute', top:48, left:24, background:'none', border:'none',
+            color:th.muted, fontSize:22, cursor:'pointer', fontFamily:FONT, padding:4 }}>
+          ‹
+        </button>
+      )}
+      {/* Slide content */}
+      {slides[step]}
+      {/* Dots */}
+      <div style={{ display:'flex', gap:6, justifyContent:'center', marginTop:16 }}>
+        {dots.map(i => (
+          <div key={i} style={{ width: i === step ? 18 : 6, height:6, borderRadius:3,
+            background: i === step ? th.accent : th.border,
+            transition:'width 0.2s, background 0.2s' }} />
+        ))}
       </div>
     </div>
   )
