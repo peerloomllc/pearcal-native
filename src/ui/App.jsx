@@ -83,7 +83,7 @@ export default function App ({ db, notifs, sync }) {
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [onboardStep,   setOnboardStep]   = useState(0)
-  const showOnboarding = ready && (!profile?.name || !profile.name.trim())
+  const showOnboarding = ready && (!profile?.name || !profile.name.trim() || profile.name === 'My Name')
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)

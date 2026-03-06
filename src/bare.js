@@ -897,18 +897,18 @@ async function init (dir, attempt = 0) {
       sodium.crypto_sign_keypair(pk, sk)
       await db.put(NS.profile, {
         id:        b4a.toString(pk, 'hex'),
-        name:      'My Name',
-        avatar:    'MN',
+        name:      '',
+        avatar:    '',
         publicKey: b4a.toString(pk, 'hex'),
         secretKey: b4a.toString(sk, 'hex'),
         createdAt: Date.now(),
       })
     }
 
-    // Fix empty avatar for existing profiles
+    // Fix empty avatar for existing profiles that have a name but no avatar
     const profileNode = await db.get(NS.profile)
-    if (profileNode?.value && !profileNode.value.avatar) {
-      const n = profileNode.value.name ?? 'My Name'
+    if (profileNode?.value && !profileNode.value.avatar && profileNode.value.name?.trim()) {
+      const n = profileNode.value.name
       const initials = n.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
       await db.put(NS.profile, { ...profileNode.value, avatar: initials })
     }
