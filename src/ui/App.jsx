@@ -1302,6 +1302,34 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
           {/* Identity — owner only */}
+          {isOwner && (g.pendingInvites ?? []).length > 0 && (
+            <div>
+              {section('PENDING INVITES')}
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {(g.pendingInvites ?? []).map(m => (
+                  <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
+                    ...th.card, borderRadius:12, padding:'10px 14px' }}>
+                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
+                      <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Invite sent</div>
+                    </div>
+                    <button onClick={() => {
+                        const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
+                        if (!link) return
+                        if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
+                        else navigator.clipboard?.writeText(link)
+                      }}
+                      style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
+                        color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT }}>
+                      📤 Share Again
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {isOwner && (g.removedMembers ?? []).length > 0 && (
             <div>
               {section('REMOVED MEMBERS')}
@@ -1316,7 +1344,10 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                     </div>
                     <button onClick={async () => {
                         await db.reinviteMember(g.id, m.id)
-                        const updated = { ...g, removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id), updatedAt: Date.now() }
+                        const memberRecord = (g.removedMembers ?? []).find(x => x.id === m.id)
+                        const updated = { ...g,
+                          removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id),
+                          pendingInvites: [...(g.pendingInvites ?? []), memberRecord] }
                         setG(updated)
                         await onUpdate(updated)
                         const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
@@ -1327,7 +1358,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      📤 Reinvite & Share
+                      📤 Reinvite
                     </button>
                   </div>
                 ))}

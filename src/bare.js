@@ -147,10 +147,15 @@ async function putGroup (group) {
 async function reinviteMember (groupId, memberId) {
   const group = await getGroup(groupId)
   if (!group) return
-  // Remove from removedMembers array
+  // Move from removedMembers → pendingInvites
+  const memberRecord = (group.removedMembers ?? []).find(m => (m.id ?? m) === memberId)
   const removedMembers = (group.removedMembers ?? []).filter(m => (m.id ?? m) !== memberId)
+  const pendingInvites = [...(group.pendingInvites ?? [])]
+  if (memberRecord && !pendingInvites.some(m => (m.id ?? m) === memberId)) {
+    pendingInvites.push(memberRecord)
+  }
   // Preserve existing updatedAt — do NOT bump timestamp here or it races with joiner's broadcastSelf
-  const updated = { ...group, removedMembers }
+  const updated = { ...group, removedMembers, pendingInvites }
   await db.put(NS.groups + group.id, updated).catch(() => {})
   // Clear all blockedWriter keys for this member
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
@@ -422,6 +427,13 @@ function makeApply (groupId) {
                   body: 'Tap to view the group',
                   tab: 'groups'
                 }})
+                // If rejoining member was in pendingInvites, remove them
+                const localGroup = await db.get(NS.groups + groupId).catch(() => null)
+                if (localGroup?.value?.pendingInvites?.some(p => p.id === m.id)) {
+                  const updatedPending = { ...localGroup.value,
+                    pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
+                  await db.put(NS.groups + groupId, updatedPending).catch(() => {})
+                }
               }
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
           }
