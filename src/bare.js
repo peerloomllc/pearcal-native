@@ -65,6 +65,9 @@ async function handle (method, args) {
     case 'leaveGroup':       return leaveGroup(args[0])
     case 'qrScan': ipc.emit('qrScan'); break
     case 'haptic': ipc.emit('haptic', args[0]); break
+    case 'openURL': ipc.emit('openURL', args[0]); break
+    case 'canOpenLightning': ipc.emit('canOpenLightning'); return null
+    case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
     case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])

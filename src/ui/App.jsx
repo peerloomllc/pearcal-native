@@ -495,6 +495,9 @@ export default function App ({ db, notifs, sync }) {
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
           )}
+          {tab === 'about' && (
+            <AboutTab th={th} sync={sync} />
+          )}
         </div>
 
         {/* Bottom Nav */}
@@ -506,6 +509,7 @@ export default function App ({ db, notifs, sync }) {
             { key:'calendar', icon:'📅', label:'Calendar' },
             { key:'groups',   icon:'👥', label:'Groups'   },
             { key:'profile',  icon:'👤', label:'Profile'  },
+            { key:'about',    icon:'ℹ️',  label:'About'    },
           ].map(t => {
             const isActive = tab === t.key
             return (
@@ -949,7 +953,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
 
       <button onClick={saveName} disabled={!name.trim() || name.trim().toLowerCase() === 'my name' || saving}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
-          opacity: name.trim() ? 1 : 0.4 }}>
+          opacity: name.trim() && name.trim().toLowerCase() !== 'my name' ? 1 : 0.4 }}>
         {saving ? 'Saving…' : 'Continue'}
       </button>
     </div>,
@@ -974,9 +978,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         {photoSaving ? 'Uploading…' : hasPhoto ? '📷 Change Photo' : '📷 Choose Photo'}
       </button>
       <button onClick={() => setStep(4)}
-        style={{ fontSize:14, fontWeight:300, color:th.muted, background:'none',
-          border:'none', cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
-        {hasPhoto ? 'Next →' : 'Skip for now'}
+        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
+        {hasPhoto ? 'Continue' : 'Skip for now'}
       </button>
     </div>,
 
@@ -1973,6 +1976,113 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
 }
 
 // ─── Profile Tab ──────────────────────────────────────────────────────────────
+function AboutTab ({ th, sync }) {
+  const LIGHTNING_ADDRESS = 'timmy2383@strike.me'
+  const [lightningModal, setLightningModal] = useState(false)
+
+  async function handleDonate () {
+    if (!sync) return
+    sync.canOpenLightning()
+    const result = await new Promise(resolve => {
+      const handler = (e) => {
+        window.removeEventListener('pear:canOpenLightning', handler)
+        resolve(e.detail)
+      }
+      window.addEventListener('pear:canOpenLightning', handler)
+      setTimeout(() => { window.removeEventListener('pear:canOpenLightning', handler); resolve(false) }, 3000)
+    })
+    if (result) {
+      sync.openLightning(LIGHTNING_ADDRESS)
+    } else {
+      setLightningModal(true)
+    }
+  }
+
+  const wallets = [
+    { name: 'Strike',   url: 'https://strike.me',          desc: 'Simple Lightning payments' },
+    { name: 'Cash App', url: 'https://cash.app',           desc: 'Send Bitcoin via Lightning' },
+    { name: 'Wallet of Satoshi', url: 'https://walletofsatoshi.com', desc: 'Beginner-friendly Lightning wallet' },
+    { name: 'Phoenix',  url: 'https://phoenix.acinq.co',   desc: 'Self-custodial Lightning wallet' },
+  ]
+
+  return (
+    <div style={{ padding:'24px 20px', overflowY:'auto', flex:1 }}>
+      {/* App info */}
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, marginBottom:28 }}>
+        <div style={{ fontSize:52 }}>🍐</div>
+        <div style={{ fontSize:22, fontWeight:400, ...th.text }}>PearCal</div>
+        <div style={{ fontSize:13, fontWeight:300, color:th.muted }}>Decentralized. Private. No servers.</div>
+      </div>
+
+      {/* P2P explainer */}
+      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' }}>HOW IT WORKS</div>
+        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
+          PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
+          Your calendar data never touches a server — it lives only on the devices in your groups.
+          No accounts. No subscriptions. No data collection.
+        </div>
+      </div>
+
+      {/* Donate */}
+      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' }}>SUPPORT DEVELOPMENT</div>
+        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
+          PearCal is free and open source. If you find it useful, consider sending a tip via Bitcoin Lightning.
+        </div>
+        <button onClick={handleDonate}
+          style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:15, fontWeight:300,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          ⚡ Donate with Lightning
+        </button>
+        <div style={{ fontSize:11, fontWeight:300, color:th.muted, marginTop:8, textAlign:'center' }}>
+          {LIGHTNING_ADDRESS}
+        </div>
+      </div>
+
+      {/* Lightning wallet info modal */}
+      {lightningModal && (
+        <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,0.6)',
+          display:'flex', alignItems:'flex-end', justifyContent:'center' }}
+          onClick={() => setLightningModal(false)}>
+          <div style={{ ...th.bg, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:430,
+            padding:'20px 20px 36px', maxHeight:'80vh', overflowY:'auto' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
+              <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
+            </div>
+            <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6 }}>⚡ Bitcoin Lightning</div>
+            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:20 }}>
+              No Lightning wallet was detected on your device. Bitcoin Lightning is a fast, low-fee payment network built on top of Bitcoin. To send a tip, install one of these wallets:
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {wallets.map(w => (
+                <button key={w.name} onClick={() => sync?.openURL(w.url)}
+                  style={{ ...th.card, borderRadius:12, padding:'12px 14px', border:`1px solid ${th.border}`,
+                    display:'flex', alignItems:'center', gap:12, cursor:'pointer', width:'100%',
+                    fontFamily:FONT, textAlign:'left' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:14, fontWeight:400, ...th.text }}>{w.name}</div>
+                    <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>{w.desc}</div>
+                  </div>
+                  <div style={{ fontSize:13, color:th.muted }}>↗</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', marginTop:16 }}>
+              After installing, return here and tap Donate again.
+            </div>
+            <button onClick={() => setLightningModal(false)}
+              style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:14, marginTop:16 }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)

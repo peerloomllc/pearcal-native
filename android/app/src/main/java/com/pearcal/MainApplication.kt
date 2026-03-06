@@ -29,6 +29,7 @@ class MainApplication : Application(), ReactApplication {
               add(SharePackage())
               add(QRScannerPackage())
               add(HapticPackage())
+              add(DeepLinkPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

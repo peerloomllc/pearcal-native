@@ -17,6 +17,7 @@ const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
 const { PearCalQRScanner } = NativeModules
 const { PearCalHaptic } = NativeModules
+const { PearCalDeepLink } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -192,6 +193,24 @@ export default function Root () {
       }
       if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
       if (msg.method === 'haptic') { PearCalHaptic?.impact?.(msg.args?.[0] ?? 'light'); return }
+      if (msg.method === 'openURL') {
+        PearCalDeepLink?.openURL?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
+      if (msg.method === 'canOpenLightning') {
+        PearCalDeepLink?.canOpenLightning?.().then((can: boolean) => {
+          webViewRef.current?.injectJavaScript(
+            'window.__pearEvent("canOpenLightning",' + JSON.stringify(can) + ');true;'
+          )
+        }).catch(() => {
+          webViewRef.current?.injectJavaScript('window.__pearEvent("canOpenLightning",false);true;')
+        })
+        return
+      }
+      if (msg.method === 'openLightning') {
+        PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
       if (msg.method === 'qrScan') {
         PearCalQRScanner?.scan?.()
           .then((result: string) => {
@@ -317,6 +336,11 @@ webViewRef.current?.injectJavaScript(
       })
 
       // Handle share requests from WebView
+      onEvent('canOpenLightning', (can: boolean) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("canOpenLightning",' + JSON.stringify(can) + ');true;'
+        )
+      })
       onEvent('haptic', (style: string) => {
         PearCalHaptic?.impact?.(style ?? 'light')
       })

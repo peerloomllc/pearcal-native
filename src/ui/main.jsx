@@ -71,6 +71,9 @@ const sync = {
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   qrScan: () => window.__pearDB.call('qrScan'),
   haptic: (style) => window.__pearDB.call('haptic', style),
+  openURL: (url) => window.__pearDB.call('openURL', url),
+  canOpenLightning: () => window.__pearDB.call('canOpenLightning'),
+  openLightning: (addr) => window.__pearDB.call('openLightning', addr),
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
@@ -81,6 +84,16 @@ document.addEventListener('click', e => {
     window.__pearSync?.haptic('light')
   }
 }, true)
+
+window.__pearEvent_handlers = window.__pearEvent_handlers || {}
+const _origPearEvent = window.__pearEvent
+window.__pearEvent = function(name, data) {
+  if (name === 'canOpenLightning') {
+    window.dispatchEvent(new CustomEvent('pear:canOpenLightning', { detail: data }))
+    return
+  }
+  _origPearEvent?.(name, data)
+}
 
 window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
