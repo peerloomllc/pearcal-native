@@ -80,6 +80,7 @@ export default function App ({ db, notifs, sync }) {
   const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
+  const [qrGroup,       setQrGroup]       = useState(null)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -199,6 +200,18 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [modal, newGroupOpen, settingsGroup])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
+  useEffect(() => {
+    function onQrScanResult(url) {
+      if (url && db && sync) {
+        handleInviteLink(url, db, sync, g => {
+          setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
+          setTab('groups')
+        })
+      }
+    }
+    emitter.on('qrScanResult', onQrScanResult)
+    return () => emitter.off('qrScanResult', onQrScanResult)
+  }, [db, sync])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────
   useEffect(() => {
@@ -505,6 +518,7 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Modals */}
+        {qrGroup && <QRModal th={th} link={genInviteLink(qrGroup)} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
             onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
@@ -847,6 +861,34 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
+      </div>
+    </div>
+  )
+}
+
+function QRModal ({ th, link, onClose }) {
+  const canvasRef = React.useRef(null)
+  React.useEffect(() => {
+    if (!canvasRef.current || !link) return
+    import('qrcode').then(QRCode => {
+      QRCode.toCanvas(canvasRef.current, link, {
+        width: 260, margin: 2,
+        color: { dark: th.text.color, light: th.card.background || '#ffffff' }
+      })
+    })
+  }, [link])
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center',
+      justifyContent:'center', background:'rgba(0,0,0,0.55)' }} onClick={onClose}>
+      <div style={{ ...th.card, borderRadius:16, padding:24, display:'flex', flexDirection:'column',
+        alignItems:'center', gap:16, minWidth:300 }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight:400, fontSize:16, ...th.text }}>Scan to Join</div>
+        <canvas ref={canvasRef} style={{ borderRadius:8 }} />
+        <div style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'center',
+          maxWidth:240, wordBreak:'break-all' }}>{link}</div>
+        <button onClick={onClose} style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
+          Close
+        </button>
       </div>
     </div>
   )
@@ -1660,6 +1702,12 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
                       background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
                       color:th.text.color, cursor:'pointer' }}>
                     📤 Share…
+                  </button>
+                  <button onClick={() => setQrGroup(group)}
+                    style={{ padding:'10px 14px', fontSize:13, fontWeight:300, fontFamily:FONT,
+                      background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
+                      color:th.text.color, cursor:'pointer' }}>
+                    ⬛ QR
                   </button>
                 </div>
               </div>

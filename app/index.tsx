@@ -15,6 +15,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
+const { PearCalQRScanner } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -189,6 +190,16 @@ export default function Root () {
         return
       }
       if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
+      if (msg.method === 'qrScan') {
+        PearCalQRScanner?.scan?.()
+          .then((result: string) => {
+            webViewRef.current?.injectJavaScript(
+              'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
+            )
+          })
+          .catch(() => {})
+        return
+      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -304,6 +315,11 @@ webViewRef.current?.injectJavaScript(
       })
 
       // Handle share requests from WebView
+      onEvent('qrScanResult', (result: string) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
+        )
+      })
       onEvent('nativeShare', (data: any) => {
         try {
           const { title, text } = data

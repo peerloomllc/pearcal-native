@@ -63,6 +63,7 @@ async function handle (method, args) {
     case 'removeMember':     return removeMember(args[0], args[1])
     case 'joinGroup':        return joinGroup(args[0])
     case 'leaveGroup':       return leaveGroup(args[0])
+    case 'qrScan': ipc.emit('qrScan'); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
     case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])

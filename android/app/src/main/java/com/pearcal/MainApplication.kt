@@ -27,6 +27,7 @@ class MainApplication : Application(), ReactApplication {
               // add(MyReactNativePackage())
               add(NotificationsPackage())
               add(SharePackage())
+              add(QRScannerPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
