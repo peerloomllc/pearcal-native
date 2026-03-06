@@ -832,8 +832,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         return past.map(date => (
           <div key={date} data-date={date} style={{ marginBottom:20 }}>
             <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border,
-              position:'sticky', top:0, zIndex:1, ...th.bg }}>
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
@@ -870,8 +869,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         return byDay.map(date => (
           <div key={date} data-date={date} style={{ marginTop:20 }}>
             <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border,
-              position:'sticky', top:0, zIndex:1, ...th.bg }}>
+              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
