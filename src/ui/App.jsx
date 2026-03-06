@@ -631,8 +631,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const touchStartX = useRef(null)
   const scrollRef = useRef(null)
   const isProgrammaticScroll = useRef(false)
+  const isUserScrolling = useRef(false)
+  const userScrollTimer = useRef(null)
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return
+    isUserScrolling.current = true
+    clearTimeout(userScrollTimer.current)
+    userScrollTimer.current = setTimeout(() => { isUserScrolling.current = false }, 400)
     const container = scrollRef.current
     if (!container) return
     const containerTop = container.getBoundingClientRect().top
@@ -659,6 +664,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     if (!container) return
     const el = container.querySelector('[data-date="' + selectedDate + '"]')
     if (!el) return
+    if (isUserScrolling.current) return
     isProgrammaticScroll.current = true
     const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
     container.scrollTo({ top, behavior: 'smooth' })
@@ -843,7 +849,12 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
-      <div data-date={selectedDate} style={{ height:0, overflow:"hidden" }} />
+      <div data-date={selectedDate} style={{ marginBottom:20 }}>
+        <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
+          marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+          {selectedDate === todayStr ? 'TODAY' : new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',
+            { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
+        </div>
       {selectedEvents.length === 0
         ? <div style={{ textAlign:'center', color:th.muted, fontSize:13, fontWeight:300, padding:'16px 0 24px' }}>
             No events — tap + to create one
@@ -853,6 +864,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
               onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
           ))
       }
+      </div>
 
       {/* Upcoming events grouped by day */}
       {(() => {
