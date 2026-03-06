@@ -1,4 +1,5 @@
 package com.pearcal
+
 import android.app.Activity
 import android.content.Intent
 import com.facebook.react.bridge.*
@@ -46,7 +47,8 @@ class QRScannerModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {}
+    override fun onNewIntent(intent: Intent) {}
+
     @ReactMethod fun addListener(eventName: String) {}
     @ReactMethod fun removeListeners(count: Int) {}
 }
