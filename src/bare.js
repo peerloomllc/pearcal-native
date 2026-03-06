@@ -433,6 +433,7 @@ function makeApply (groupId) {
                   const updatedPending = { ...localGroup.value,
                     pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
                   await db.put(NS.groups + groupId, updatedPending).catch(() => {})
+                  send({ type: 'event', event: 'sync', data: groupId })
                 }
               }
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
