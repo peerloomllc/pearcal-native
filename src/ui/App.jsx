@@ -904,7 +904,7 @@ function QRModal ({ th, link, onClose }) {
 
 function EventCard ({ ev, th, onClick, compact, isPast }) {
   return (
-    <div onClick={onClick}
+    <div onClick={() => { window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,
