@@ -1155,23 +1155,18 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
     setSaving(false)
   }
 
+  const bsCloseRef = useRef(null)
   const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
     padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
     fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.6)', zIndex:100,
-      display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-      <div style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
-        maxHeight:'92vh', overflowY:'auto', paddingBottom:24 }}>
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 0' }}>
-          <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
-        </div>
-        <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+    <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
+      <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontWeight:300, fontSize:17, ...th.text }}>
             {modal.mode === 'create' ? 'New Event' : 'Edit Event'}
           </span>
-          <button onClick={() => setModal(null)} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
           <div>
@@ -1190,8 +1185,9 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
             <Toggle val={ev.allDay} onChange={v => set('allDay', v)} accent={th.accent} />
           </div>
 
-          {!ev.allDay && (
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10,
+            opacity: ev.allDay ? 0.35 : 1, pointerEvents: ev.allDay ? 'none' : 'auto',
+            transition:'opacity 0.2s' }}>
               <div><Label th={th}>Start</Label>
                 <input type="time" style={inp} value={ev.start} onChange={e => {
                   const newStart = e.target.value
@@ -1206,7 +1202,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
                 <input type="time" style={inp} value={ev.end} onChange={e => set('end', e.target.value)} />
               </div>
             </div>
-          )}
 
           <div><Label th={th}>Reminder</Label>
             <select style={{ ...inp, appearance:'none' }} value={ev.reminder}
@@ -1285,8 +1280,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
             )
           })()}
         </div>
-      </div>
-    </div>
+    </BottomSheet>
   )
 }
 
@@ -1400,6 +1394,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
 function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft }) {
+  const bsCloseRef = useRef(null)
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
   const [confirm, setConfirm] = useState(null)
@@ -1460,14 +1455,8 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
   )
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:200,
-      display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-      <div style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
-        maxHeight:'95vh', overflowY:'auto', paddingBottom:32 }}>
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 0' }}>
-          <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
-        </div>
-        <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+    <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
+      <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Group Settings</span>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
             {saved && <span style={{ fontSize:12, color:'#5DBF8A', fontWeight:300 }}>✓ Saved</span>}
@@ -1477,7 +1466,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 {saving ? 'Saving…' : 'Save'}
               </button>
             )}
-            <button onClick={onClose} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+            <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
           </div>
         </div>
 
@@ -1665,7 +1654,6 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             </div>
           </div>
         </div>
-      </div>
 
       {/* Confirm dialog */}
       {confirm && (
@@ -1701,12 +1689,13 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           </div>
         </div>
       )}
-    </div>
+    </BottomSheet>
   )
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
 function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpdated }) {
+  const bsCloseRef = useRef(null)
   const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
@@ -1783,10 +1772,10 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
   const steps = ['Details','Invite','Done']
 
   return (
-    <BottomSheet th={th} onClose={onClose} zIndex={200}>
+    <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
-          <button onClick={onClose} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
 
         {/* Step indicator */}
@@ -1971,7 +1960,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
 }
 
 // ─── Profile Tab ──────────────────────────────────────────────────────────────
-function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
+function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
   const touchStartY = useRef(null)
@@ -1981,6 +1970,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
     const id = setTimeout(() => setVisible(true), 20)
     return () => clearTimeout(id)
   }, [])
+  useEffect(() => { if (closeRef) closeRef.current = close }, [closing])
 
   function close () {
     if (closing) return
@@ -2022,6 +2012,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
 
 function AboutTab ({ th, sync, closeSheetRef }) {
   const LIGHTNING_ADDRESS = 'timmy2383@strike.me'
+  const lsBsCloseRef = useRef(null)
   const [lightningModal, setLightningModal] = useState(false)
   useEffect(() => {
     if (closeSheetRef) closeSheetRef.current = () => {
@@ -2093,7 +2084,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* Lightning wallet info modal */}
       {lightningModal && (
-        <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300}>
+        <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300} closeRef={lsBsCloseRef}>
           <div style={{ padding:'8px 20px 0' }}>
             <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
               <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
@@ -2119,7 +2110,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
             <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', marginTop:16 }}>
               After installing, return here and tap Donate again.
             </div>
-            <button onClick={() => setLightningModal(false)}
+            <button onClick={() => lsBsCloseRef.current?.()}
               style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:14, marginTop:16 }}>
               Close
             </button>
