@@ -416,8 +416,9 @@ webViewRef.current?.injectJavaScript(
 }
 
 function PearLoadingScreen() {
-  const pulse = React.useRef(new Animated.Value(1)).current
-  React.useEffect(() => {
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  const pulse = pulseAnim
+  useEffect(() => {
     Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1.18, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
