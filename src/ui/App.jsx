@@ -81,7 +81,7 @@ export default function App ({ db, notifs, sync }) {
   const newGroupKeyUpdatedRef = useRef(null)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
-  const [qrGroup,       setQrGroup]       = useState(null)
+  const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -192,6 +192,7 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => { tabRef.current = tab }, [tab])
   useEffect(() => {
     backHandlerRef.current = () => {
+      if (qrGroup)      { setQrGroup(null);      return }
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
       if (settingsGroup){ setSettingsGroup(null); return }
@@ -199,7 +200,7 @@ export default function App ({ db, notifs, sync }) {
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup])
+  }, [modal, newGroupOpen, settingsGroup, qrGroup])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => {
     function onQrScanResult(url) {
@@ -520,7 +521,7 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Modals */}
-        {qrGroup && <QRModal th={th} link={genInviteLink(qrGroup)} onClose={() => setQrGroup(null)} />}
+        {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
             onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
@@ -1200,7 +1201,11 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                   flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
                 📤
               </button>
-              <button onClick={e => { e.stopPropagation(); if (readyGroupKeys.has(g.id)) onQrGroup(g) }}
+              <button onClick={async e => { e.stopPropagation(); if (!readyGroupKeys.has(g.id)) return
+                  const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
+                  const src = fresh ?? g
+                  const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
+                  onQrGroup({ group: src, link }) }}
                 disabled={!readyGroupKeys.has(g.id)}
                 style={{ background:'transparent', border:`1px solid ${g.color}44`,
                   borderRadius:6, fontFamily:FONT, color:readyGroupKeys.has(g.id) ? g.color : th.muted,
