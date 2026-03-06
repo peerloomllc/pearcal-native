@@ -27,6 +27,18 @@ class Emitter {
 export const emitter = new Emitter()
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
+if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
+  const style = document.createElement('style')
+  style.id = 'pear-anims'
+  style.textContent = `
+    @keyframes pearFadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+    @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
+    @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
+    @keyframes pearSkeletonPulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }
+  `
+  document.head.appendChild(style)
+}
+
 const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
@@ -473,6 +485,8 @@ export default function App ({ db, notifs, sync }) {
 
         {/* Content */}
         <div style={{ flex:1, overflowY:'auto', paddingBottom:72, minHeight:0 }}>
+          <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
+            animation:'pearFadeIn 0.22s ease' }}>
           {tab === 'calendar' && (
             <CalendarTab th={th} viewDate={viewDate} setViewDate={setViewDate}
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
@@ -500,6 +514,7 @@ export default function App ({ db, notifs, sync }) {
           {tab === 'about' && (
             <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} />
           )}
+          </div>
         </div>
 
         {/* Bottom Nav */}
@@ -886,6 +901,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
   const [photoSaving, setPhotoSaving] = useState(false)
   const fileRef = useRef(null)
   const total = 5
+  const [slideDir, setSlideDir] = useState(1)
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -904,7 +920,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
     setSaving(true)
     await onUpdateProfile({ name: name.trim() })
     setSaving(false)
-    setStep(s => s + 1)
+    setSlideDir(1); setStep(s => s + 1)
   }
 
   const hasPhoto = profile?.avatar?.startsWith?.('data:')
@@ -918,7 +934,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
         A private shared calendar that works without servers, accounts, or subscriptions.
       </div>
-      <button onClick={() => setStep(1)}
+      <button onClick={() => { setSlideDir(1); setStep(1) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
         Get Started
       </button>
@@ -934,7 +950,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       <div style={{ fontSize:13, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
         Share invite links or QR codes to connect with group members.
       </div>
-      <button onClick={() => setStep(2)}
+      <button onClick={() => { setSlideDir(1); setStep(2) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
         Next
       </button>
@@ -979,7 +995,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
         {photoSaving ? 'Uploading…' : hasPhoto ? '📷 Change Photo' : '📷 Choose Photo'}
       </button>
-      <button onClick={() => setStep(4)}
+      <button onClick={() => { setSlideDir(1); setStep(4) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
         {hasPhoto ? 'Continue' : 'Skip for now'}
       </button>
@@ -1030,14 +1046,17 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       display:'flex', flexDirection:'column', padding:'48px 28px 32px' }}>
       {/* Back button */}
       {step > 0 && (
-        <button onClick={() => setStep(s => s - 1)}
+        <button onClick={() => { setSlideDir(-1); setStep(s => s - 1) }}
           style={{ position:'absolute', top:48, left:24, background:'none', border:'none',
             color:th.muted, fontSize:22, cursor:'pointer', fontFamily:FONT, padding:4 }}>
           ‹
         </button>
       )}
       {/* Slide content */}
-      {slides[step]}
+      <div key={step} style={{ flex:1, display:'flex', flexDirection:'column',
+        animation: `${slideDir >= 0 ? 'pearSlideInRight' : 'pearSlideInLeft'} 0.22s ease` }}>
+        {slides[step]}
+      </div>
       {/* Dots */}
       <div style={{ display:'flex', gap:6, justifyContent:'center', marginTop:16 }}>
         {dots.map(i => (
@@ -1287,6 +1306,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
 function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup }) {
   const [copiedId, setCopiedId] = useState(null)
+  const [skeletonDone, setSkeletonDone] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setSkeletonDone(true), 600); return () => clearTimeout(t) }, [])
 
   async function copyInvite (g, e) {
     e.stopPropagation()
@@ -1313,7 +1334,9 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
         </button>
       </div>
 
-      {groups.length === 0 && (
+      {!skeletonDone && groups.length === 0 ? (
+        <SkeletonList th={th} count={2} height={80} />
+      ) : groups.length === 0 && (
         <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'48px 0' }}>
           No groups yet — create one!
         </div>
@@ -1913,7 +1936,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
 
 
               <div style={{ display:'flex', gap:8, marginTop:4 }}>
-                <button onClick={() => setStep(1)}
+                <button onClick={() => { setSlideDir(1); setStep(1) }}
                   style={{ flex:1, padding:'12px', fontSize:14, fontWeight:300, fontFamily:FONT,
                     background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
                     color:th.text.color, cursor:'pointer' }}>
@@ -1960,6 +1983,23 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
 }
 
 // ─── Profile Tab ──────────────────────────────────────────────────────────────
+function SkeletonCard ({ th, height = 64, radius = 12 }) {
+  return (
+    <div style={{ width:'100%', height, borderRadius:radius, background:th.border,
+      animation:'pearSkeletonPulse 1.4s ease-in-out infinite' }} />
+  )
+}
+
+function SkeletonList ({ th, count = 3, height = 64 }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:10, padding:'8px 0' }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonCard key={i} th={th} height={height} />
+      ))}
+    </div>
+  )
+}
+
 function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)

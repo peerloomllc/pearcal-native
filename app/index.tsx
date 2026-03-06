@@ -6,7 +6,7 @@ const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
   if (!isFatal && error?.message?.includes('keep awake')) return
   originalHandler?.(error, isFatal)
 })
-import { View, Text, StyleSheet, NativeModules, Platform, BackHandler } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform, BackHandler , Animated, Easing } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -398,12 +398,7 @@ webViewRef.current?.injectJavaScript(
     </View>
   )
 
-  if (!dbReady || !html) return (
-    <View style={styles.center}>
-      <Text style={styles.emoji}>pear</Text>
-      <Text style={styles.loadingText}>Loading PearCal</Text>
-    </View>
-  )
+  if (!dbReady || !html) return <PearLoadingScreen />
 
   return (
     <WebView
@@ -420,11 +415,31 @@ webViewRef.current?.injectJavaScript(
   )
 }
 
+function PearLoadingScreen() {
+  const pulse = React.useRef(new Animated.Value(1)).current
+  React.useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.18, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ])
+    ).start()
+  }, [])
+  return (
+    <View style={styles.center}>
+      <Animated.Text style={[styles.emoji, { transform: [{ scale: pulse }] }]}>🍐</Animated.Text>
+      <Text style={styles.loadingText}>PearCal</Text>
+      <Text style={styles.loadingSubtext}>Starting up…</Text>
+    </View>
+  )
+}
+
 const styles = StyleSheet.create({
   webview: { flex: 1, backgroundColor: '#111' },
   center:  { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 12 },
   emoji:       { fontSize: 48 },
-  loadingText: { color: '#888', fontSize: 14, fontWeight: '300', letterSpacing: 1 },
+  loadingText: { color: '#ccc', fontSize: 18, fontWeight: '300', letterSpacing: 2, marginTop: 8 },
+  loadingSubtext: { color: '#555', fontSize: 12, fontWeight: '300', letterSpacing: 1 },
   errorText:   { color: '#D45F7A', fontSize: 14 },
   errorDetail: { color: '#888', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', padding: 16 },
 })
