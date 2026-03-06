@@ -75,6 +75,13 @@ const sync = {
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
 
+// Global haptic on all button taps
+document.addEventListener('click', e => {
+  if (e.target.closest('button')) {
+    window.__pearSync?.haptic('light')
+  }
+}, true)
+
 window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
 }
