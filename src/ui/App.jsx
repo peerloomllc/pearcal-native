@@ -633,6 +633,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const isProgrammaticScroll = useRef(false)
   const isUserScrolling = useRef(false)
   const userScrollTimer = useRef(null)
+  const scrollToDateRef = useRef(null)
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return
     isUserScrolling.current = true
@@ -659,17 +660,16 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     }
   }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
-  useEffect(() => {
+  const scrollToDate = (date) => {
     const container = scrollRef.current
     if (!container) return
-    const el = container.querySelector('[data-date="' + selectedDate + '"]')
+    const el = container.querySelector('[data-date="' + date + '"]')
     if (!el) return
-    if (isUserScrolling.current) return
     isProgrammaticScroll.current = true
     const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
     container.scrollTo({ top, behavior: 'smooth' })
     setTimeout(() => { isProgrammaticScroll.current = false }, 600)
-  }, [selectedDate])
+  }
 
   function navigate (dir) {
     if (isSliding) return
@@ -757,7 +757,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
         <button onClick={() => {
           setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
-          setSelectedDate(todayStr)
+          setSelectedDate(todayStr); scrollToDate(todayStr)
         }} style={{ ...th.pillBtn, fontSize:12, padding:'4px 16px', fontWeight:300 }}>⬤ Today</button>
       </div>
 
@@ -785,7 +785,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           const isPast  = ds < todayStr
           const isCur   = cell.type === 'cur'
           return (
-            <button key={ds + i} onClick={() => setSelectedDate(ds)}
+            <button key={ds + i} onClick={() => { setSelectedDate(ds); scrollToDate(ds) }}
               style={{ background:isSel ? th.accent : isToday ? th.accentFaint : 'none',
                 border:'none', borderRadius:10, padding:'6px 2px', cursor:'pointer',
                 display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
