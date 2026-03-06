@@ -49,4 +49,10 @@
     </receiver>
       <service android:name=".BareService" android:foregroundServiceType="dataSync" android:exported="false"/>
   </application>
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="lightning" />
+        </intent>
+    </queries>
 </manifest>

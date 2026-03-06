@@ -194,6 +194,7 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => { tabRef.current = tab }, [tab])
   useEffect(() => {
     backHandlerRef.current = () => {
+      if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
@@ -202,9 +203,10 @@ export default function App ({ db, notifs, sync }) {
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup, qrGroup])
+  }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
+  const closeAboutSheetRef = useRef(null)
   useEffect(() => {
     function onQrScanResult(url) {
       if (url && db && sync) {
@@ -496,7 +498,7 @@ export default function App ({ db, notifs, sync }) {
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
           )}
           {tab === 'about' && (
-            <AboutTab th={th} sync={sync} />
+            <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} />
           )}
         </div>
 
@@ -1970,15 +1972,64 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
             </div>
           )}
         </div>
+    </BottomSheet>
+  )
+}
+
+// ─── Profile Tab ──────────────────────────────────────────────────────────────
+function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
+  const [visible, setVisible] = useState(false)
+  const [closing, setClosing] = useState(false)
+  const touchStartY = useRef(null)
+  const sheetRef = useRef(null)
+
+  useEffect(() => { requestAnimationFrame(() => setVisible(true)) }, [])
+
+  function close () {
+    setClosing(true)
+    setTimeout(() => onClose(), 280)
+  }
+
+  function onTouchStart (e) { touchStartY.current = e.touches[0].clientY }
+  function onTouchEnd (e) {
+    if (touchStartY.current === null) return
+    const dy = e.changedTouches[0].clientY - touchStartY.current
+    if (dy > 60) close()
+    touchStartY.current = null
+  }
+
+  const translateY = (!visible || closing) ? '100%' : '0%'
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex, display:'flex', alignItems:'flex-end',
+      justifyContent:'center', background: visible && !closing ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
+      transition:'background 0.28s ease' }} onClick={close}>
+      <div ref={sheetRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+        onClick={e => e.stopPropagation()}
+        style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
+          maxHeight:'92vh', overflowY:'auto', paddingBottom:32,
+          transform:`translateY(${translateY})`,
+          transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)' }}>
+        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px', cursor:'pointer' }}
+          onClick={close}>
+          <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
+        </div>
+        {children}
       </div>
     </div>
   )
 }
 
-// ─── Profile Tab ──────────────────────────────────────────────────────────────
-function AboutTab ({ th, sync }) {
+function AboutTab ({ th, sync, closeSheetRef }) {
   const LIGHTNING_ADDRESS = 'timmy2383@strike.me'
   const [lightningModal, setLightningModal] = useState(false)
+  useEffect(() => {
+    if (closeSheetRef) closeSheetRef.current = () => {
+      if (lightningModal) { setLightningModal(false); return true }
+      return false
+    }
+    return () => { if (closeSheetRef) closeSheetRef.current = null }
+  }, [lightningModal])
 
   async function handleDonate () {
     if (!sync) return
@@ -2077,7 +2128,7 @@ function AboutTab ({ th, sync }) {
               Close
             </button>
           </div>
-        </div>
+        </BottomSheet>
       )}
     </div>
   )
