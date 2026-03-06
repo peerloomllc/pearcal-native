@@ -202,6 +202,7 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [modal, newGroupOpen, settingsGroup, qrGroup])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
+  useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
     function onQrScanResult(url) {
       if (url && db && sync) {
@@ -506,7 +507,7 @@ export default function App ({ db, notifs, sync }) {
           ].map(t => {
             const isActive = tab === t.key
             return (
-              <button key={t.key} onClick={() => goTab(t.key)}
+              <button key={t.key} onClick={() => { if (sync) sync.haptic('light'); goTab(t.key) }}
                 style={{ flex:1, padding:'10px 0 8px', border:'none', cursor:'pointer',
                   display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontFamily:FONT,
                   background: isActive ? th.accent + '18' : 'none',
@@ -802,7 +803,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           const isPast  = ds < todayStr
           const isCur   = cell.type === 'cur'
           return (
-            <button key={ds + i} onClick={() => { setSelectedDate(ds); scrollToDate(ds) }}
+            <button key={ds + i} onClick={() => { if (sync) sync.haptic('light'); setSelectedDate(ds); scrollToDate(ds) }}
               style={{ background:isSel ? th.accent : isToday ? th.accentFaint : 'none',
                 border:'none', borderRadius:10, padding:'6px 2px', cursor:'pointer',
                 display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
@@ -903,7 +904,7 @@ function QRModal ({ th, link, onClose }) {
 
 function EventCard ({ ev, th, onClick, compact, isPast }) {
   return (
-    <div onClick={onClick}
+    <div onClick={() => { if (window.__pearSync) window.__pearSync.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,

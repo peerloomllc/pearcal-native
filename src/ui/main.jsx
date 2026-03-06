@@ -70,6 +70,7 @@ const sync = {
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   qrScan: () => window.__pearDB.call('qrScan'),
+  haptic: (style) => window.__pearDB.call('haptic', style),
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }

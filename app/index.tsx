@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
 const { PearCalQRScanner } = NativeModules
+const { PearCalHaptic } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -190,6 +191,7 @@ export default function Root () {
         return
       }
       if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
+      if (msg.method === 'haptic') { PearCalHaptic?.impact?.(msg.args?.[0] ?? 'light'); return }
       if (msg.method === 'qrScan') {
         PearCalQRScanner?.scan?.()
           .then((result: string) => {
@@ -315,6 +317,9 @@ webViewRef.current?.injectJavaScript(
       })
 
       // Handle share requests from WebView
+      onEvent('haptic', (style: string) => {
+        PearCalHaptic?.impact?.(style ?? 'light')
+      })
       onEvent('qrScanResult', (result: string) => {
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
