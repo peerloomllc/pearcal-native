@@ -631,7 +631,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     for (const el of sections) {
       if (el.getBoundingClientRect().top - containerTop <= 40) active = el.dataset.date
     }
-    if (active && active !== selectedDate) setSelectedDate(active)
+    if (active && active !== selectedDate) {
+      setSelectedDate(active)
+      const d = new Date(active + 'T12:00:00')
+      setViewDate({ y: d.getFullYear(), m: d.getMonth() })
+    }
   }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
   useEffect(() => {
@@ -640,7 +644,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     const el = container.querySelector('[data-date="' + selectedDate + '"]')
     if (!el) return
     isProgrammaticScroll.current = true
-    container.scrollTo({ top: el.offsetTop - container.offsetTop, behavior: 'smooth' })
+    const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
+    container.scrollTo({ top, behavior: 'smooth' })
     setTimeout(() => { isProgrammaticScroll.current = false }, 600)
   }, [selectedDate])
 
@@ -779,6 +784,19 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 
     </div>
 
+      {/* Static date header + add button */}
+      <div style={{ padding:'8px 16px 8px', borderTop:'1px solid ' + th.border,
+        display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <span style={{ fontWeight:400, fontSize:15, ...th.text }}>
+          {selectedDate === todayStr ? 'Today · ' : ''}
+          {selectedDate && new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',
+            { weekday:'long', month:'short', day:'numeric' })}
+          {selectedDate < todayStr &&
+            <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
+        </span>
+        <button onClick={() => openCreate(selectedDate)}
+          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
+      </div>
       {/* Scrollable event list */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
       {/* Past 30 days */}
@@ -798,9 +816,9 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         return past.map(date => (
           <div key={date} data-date={date} style={{ marginBottom:20 }}>
             <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+              fontWeight:400, marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {new Date(date + 'T12:00:00').toLocaleDateString('en-US',
-                { weekday:'short', month:'short', day:'numeric' }).toUpperCase()}
+                { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
             {seen.get(date).map(ev => (
               <EventCard key={ev.id} ev={ev} th={th} isPast={true}
@@ -809,21 +827,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
-      {/* Day header for selected date */}
-      <div data-date={selectedDate} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-        <div>
-          <span style={{ fontWeight:300, fontSize:15, ...th.text }}>
-            {selectedDate === todayStr ? 'Today · ' : ''}
-            {selectedDate && new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US',
-              { weekday:'long', month:'short', day:'numeric' })}
-          </span>
-          {selectedDate < todayStr && (
-            <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>
-          )}
-        </div>
-        <button onClick={() => openCreate(selectedDate)}
-          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
-      </div>
+      <div data-date={selectedDate} style={{ height:0, overflow:"hidden" }} />
       {selectedEvents.length === 0
         ? <div style={{ textAlign:'center', color:th.muted, fontSize:13, fontWeight:300, padding:'16px 0 24px' }}>
             No events — tap + to create one
@@ -849,7 +853,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         return byDay.map(date => (
           <div key={date} data-date={date} style={{ marginTop:20 }}>
             <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+              fontWeight:400, marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'short', month:'short', day:'numeric' }).toUpperCase()}
             </div>
