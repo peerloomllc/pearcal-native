@@ -946,9 +946,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
           padding:'12px 16px', color:th.text.color, fontSize:16, fontWeight:300,
           fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none', textAlign:'center' }} />
-      {name.trim().toLowerCase() === 'my name' && (
-        <div style={{ fontSize:12, color:'#E07070', fontWeight:300 }}>Please enter your real name</div>
-      )}
+
       <button onClick={saveName} disabled={!name.trim() || name.trim().toLowerCase() === 'my name' || saving}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
           opacity: name.trim() ? 1 : 0.4 }}>
@@ -985,7 +983,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
     // Slide 4 — Groups & Invites
     <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <div style={{ fontSize:48 }}>👥</div>
-      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with family</div>
+      <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:300 }}>
         <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start' }}>
           <span style={{ fontSize:22 }}>＋</span>
