@@ -87,6 +87,7 @@ export default function App ({ db, notifs, sync }) {
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
+  const closeAboutSheetRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -206,7 +207,6 @@ export default function App ({ db, notifs, sync }) {
   }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
-  const closeAboutSheetRef = useRef(null)
   useEffect(() => {
     function onQrScanResult(url) {
       if (url && db && sync) {
