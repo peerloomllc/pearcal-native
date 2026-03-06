@@ -1783,14 +1783,8 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
   const steps = ['Details','Invite','Done']
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.65)', zIndex:200,
-      display:'flex', alignItems:'flex-end', justifyContent:'center' }}>
-      <div style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
-        maxHeight:'94vh', overflowY:'auto', paddingBottom:28 }}>
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 0' }}>
-          <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
-        </div>
-        <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+    <BottomSheet th={th} onClose={onClose} zIndex={200}>
+      <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
           <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
           <button onClick={onClose} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
@@ -1981,21 +1975,26 @@ function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
   const touchStartY = useRef(null)
-  const sheetRef = useRef(null)
+  const DURATION = 420
 
-  useEffect(() => { requestAnimationFrame(() => setVisible(true)) }, [])
+  useEffect(() => {
+    const id = setTimeout(() => setVisible(true), 20)
+    return () => clearTimeout(id)
+  }, [])
 
   function close () {
+    if (closing) return
     setClosing(true)
-    setTimeout(() => onClose(), 280)
+    setTimeout(() => onClose(), DURATION)
   }
 
-  function onTouchStart (e) { touchStartY.current = e.touches[0].clientY }
-  function onTouchEnd (e) {
+  function onHandleTouchStart (e) {
+    touchStartY.current = e.touches[0].clientY
+  }
+  function onHandleTouchMove (e) {
     if (touchStartY.current === null) return
-    const dy = e.changedTouches[0].clientY - touchStartY.current
-    if (dy > 60) close()
-    touchStartY.current = null
+    const dy = e.touches[0].clientY - touchStartY.current
+    if (dy > 60) { touchStartY.current = null; close() }
   }
 
   const translateY = (!visible || closing) ? '100%' : '0%'
@@ -2003,16 +2002,17 @@ function BottomSheet ({ th, onClose, children, zIndex = 200 }) {
   return (
     <div style={{ position:'fixed', inset:0, zIndex, display:'flex', alignItems:'flex-end',
       justifyContent:'center', background: visible && !closing ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
-      transition:'background 0.28s ease' }} onClick={close}>
-      <div ref={sheetRef} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-        onClick={e => e.stopPropagation()}
+      transition:`background ${DURATION}ms ease` }}
+      onClick={close}>
+      <div onClick={e => e.stopPropagation()}
         style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
           maxHeight:'92vh', overflowY:'auto', paddingBottom:32,
           transform:`translateY(${translateY})`,
-          transition:'transform 0.28s cubic-bezier(0.32,0.72,0,1)' }}>
-        <div style={{ display:'flex', justifyContent:'center', padding:'12px 0 4px', cursor:'pointer' }}
+          transition:`transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)` }}>
+        <div onTouchStart={onHandleTouchStart} onTouchMove={onHandleTouchMove}
+          style={{ display:'flex', justifyContent:'center', padding:'16px 0 8px', cursor:'pointer' }}
           onClick={close}>
-          <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
+          <div style={{ width:40, height:5, borderRadius:3, background:th.border }} />
         </div>
         {children}
       </div>
@@ -2093,12 +2093,8 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* Lightning wallet info modal */}
       {lightningModal && (
-        <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,0.6)',
-          display:'flex', alignItems:'flex-end', justifyContent:'center' }}
-          onClick={() => setLightningModal(false)}>
-          <div style={{ ...th.bg, borderRadius:'20px 20px 0 0', width:'100%', maxWidth:430,
-            padding:'20px 20px 36px', maxHeight:'80vh', overflowY:'auto' }}
-            onClick={e => e.stopPropagation()}>
+        <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300}>
+          <div style={{ padding:'8px 20px 0' }}>
             <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
               <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
             </div>
