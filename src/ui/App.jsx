@@ -619,6 +619,17 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const [slideDir,        setSlideDir]        = useState(0)
   const [isSliding,       setIsSliding]       = useState(false)
   const touchStartX = useRef(null)
+  const scrollRef = useRef(null)
+  const handleScroll = () => {
+    const container = scrollRef.current
+    if (!container) return
+    const sections = [...container.querySelectorAll('[data-date]')]
+    let active = null
+    for (const el of sections) {
+      if (el.offsetTop - container.scrollTop <= 40) active = el.dataset.date
+    }
+    if (active && active !== selectedDate) setSelectedDate(active)
+  }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
 
   function navigate (dir) {
@@ -757,9 +768,9 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     </div>
 
       {/* Scrollable event list */}
-      <div style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
       {/* Day header for selected date */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+      <div data-date={selectedDate} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
         <div>
           <span style={{ fontWeight:300, fontSize:15, ...th.text }}>
             {selectedDate === todayStr ? 'Today · ' : ''}
@@ -796,7 +807,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         }
         if (byDay.length === 0) return null
         return byDay.map(date => (
-          <div key={date} style={{ marginTop:20 }}>
+          <div key={date} data-date={date} style={{ marginTop:20 }}>
             <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.05em',
               marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
