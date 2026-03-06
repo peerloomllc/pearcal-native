@@ -647,11 +647,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       const newY = d.getFullYear(); const newM = d.getMonth()
       setViewDate(prev => {
         if (prev.y === newY && prev.m === newM) return prev
-        const prevDate = new Date(prev.y, prev.m, 1)
-        const nextDate = new Date(newY, newM, 1)
-        const dir = nextDate > prevDate ? 1 : -1
-        setSlideDir(dir); setIsSliding(true)
-        setTimeout(() => setIsSliding(false), 320)
+        setSlideDir(0); setIsSliding(true)
+        setTimeout(() => setIsSliding(false), 220)
         return { y: newY, m: newM }
       })
     }
@@ -788,7 +785,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
                 display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
                 opacity: isSel ? 1 : !isCur ? 0.25 : isPast ? 0.45 : 1 }}>
               <span style={{ fontSize:14, fontWeight:isToday||isSel ? 400 : isCur ? 300 : 200,
-                color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d}</span>
+                color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{cell.d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
                   <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:e.colors?.[0] ?? e.color }} />
