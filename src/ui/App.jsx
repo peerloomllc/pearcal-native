@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
+import QRCode from 'qrcode'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
 // SyncManager calls emitter.emit('sync', groupId) whenever Autobase
@@ -871,16 +872,18 @@ function QRModal ({ th, link, onClose }) {
   const canvasRef = React.useRef(null)
   React.useEffect(() => {
     if (!canvasRef.current || !link) return
-    import('qrcode').then(QRCode => {
-      QRCode.toCanvas(canvasRef.current, link, {
-        width: 260, margin: 2,
-        color: { dark: th.text.color, light: th.card.background || '#ffffff' }
-      })
-    })
+    QRCode.toCanvas(canvasRef.current, link, {
+      width: 260, margin: 2,
+      color: { dark: th.text.color, light: th.card.background || '#ffffff' }
+    }).catch(e => console.error('QR error', e))
   }, [link])
   return (
     <div style={{ position:'fixed', inset:0, zIndex:200, display:'flex', alignItems:'center',
       justifyContent:'center', background:'rgba(0,0,0,0.55)' }} onClick={onClose}>
+      <button onClick={onClose} style={{ position:'fixed', top:16, right:16, zIndex:201,
+        background:'rgba(0,0,0,0.4)', border:'none', borderRadius:'50%', width:36, height:36,
+        color:'#fff', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center',
+        justifyContent:'center' }}>✕</button>
       <div style={{ ...th.card, borderRadius:16, padding:24, display:'flex', flexDirection:'column',
         alignItems:'center', gap:16, minWidth:300 }} onClick={e => e.stopPropagation()}>
         <div style={{ fontWeight:400, fontSize:16, ...th.text }}>Scan to Join</div>
