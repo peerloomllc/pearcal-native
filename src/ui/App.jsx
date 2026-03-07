@@ -576,7 +576,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
-          <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
+          <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
             onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
         )}
         {newGroupOpen && (
@@ -665,6 +665,15 @@ function MemberAvatar ({ avatar, name = '?', color = '#6C9BF5', size = 34, fontS
  * Target: 80×80px, JPEG quality 0.65 ≈ 10–20 KB.
  */
 function compressAvatar (file) {
+  // For animated formats, skip canvas compression (canvas strips animation)
+  if (file.type === 'image/gif' || file.type === 'image/webp') {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = e => resolve(e.target.result)
+      reader.onerror = reject
+      reader.readAsDataURL(file)
+    })
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = ev => {
@@ -1188,7 +1197,7 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
 }
 
 // ─── Event Modal ──────────────────────────────────────────────────────────────
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, REMINDER_OPTIONS }) {
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, REMINDER_OPTIONS, db }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
