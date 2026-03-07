@@ -1010,16 +1010,16 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
       <div style={{ fontSize:48 }}>👥</div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:300 }}>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'left' }}>
           <span style={{ fontSize:22 }}>＋</span>
           <div>
             <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'center' }}>Create a group</div>
             <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap the Groups tab and hit New Group to create a shared calendar with a name and colour.
+              Tap the Groups tab and hit +"New Group" to create a shared calendar with a name and colour.
             </div>
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'left' }}>
           <span style={{ fontSize:22 }}>📤</span>
           <div>
             <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'center' }}>Invite people</div>
@@ -1028,12 +1028,12 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
             </div>
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
+        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'left' }}>
           <span style={{ fontSize:22 }}>📅</span>
           <div>
             <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'center' }}>Add events</div>
             <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap any day on the calendar and hit + Event. Assign it to one or more groups to share it.
+              Tap any day on the calendar and hit "+Event". Assign it to one or more groups to share it.
             </div>
           </div>
         </div>
