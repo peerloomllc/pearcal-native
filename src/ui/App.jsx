@@ -476,7 +476,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'',
     }})
   }
 
@@ -1212,6 +1212,13 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
         {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
+        {!compact && ev.location ? (
+          <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
+            style={{ fontSize:12, color:'#6C9BF5', marginTop:4, fontWeight:300,
+              display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
+            📍 {ev.location}
+          </div>
+        ) : null}
       </div>
       <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
         {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
@@ -1465,6 +1472,11 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           <div><Label th={th}>Notes</Label>
             <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
               value={ev.desc} onChange={e => set('desc', e.target.value)} />
+          </div>
+
+          <div><Label th={th}>Location</Label>
+            <input style={inp} placeholder="Address, place, or landmark…"
+              value={ev.location ?? ''} onChange={e => set('location', e.target.value)} />
           </div>
 
           {modal.mode === 'edit' && ev.recurrenceId && (
