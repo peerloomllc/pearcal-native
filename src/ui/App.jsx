@@ -2193,18 +2193,19 @@ function AboutTab ({ th, sync, closeSheetRef }) {
   ]
 
   return (
-    <div style={{ padding:'24px 20px', overflowY:'auto', flex:1 }}>
+    <div style={{ padding:'16px 20px 0', overflowY:'auto', flex:1,
+      paddingBottom:'calc(16px + env(safe-area-inset-bottom))' }}>
       {/* App info */}
-      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, marginBottom:28 }}>
-        <div style={{ fontSize:52 }}>🍐</div>
-        <div style={{ fontSize:22, fontWeight:400, ...th.text }}>PearCal</div>
-        <div style={{ fontSize:13, fontWeight:300, color:th.muted }}>Decentralized. Private. No servers.</div>
+      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:16 }}>
+        <div style={{ fontSize:38 }}>🍐</div>
+        <div style={{ fontSize:18, fontWeight:400, ...th.text }}>PearCal</div>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>Decentralized. Private. No servers.</div>
       </div>
 
       {/* P2P explainer */}
-      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
-        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
+      <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+        <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
           No accounts. No subscriptions. No data collection.
@@ -2212,26 +2213,26 @@ function AboutTab ({ th, sync, closeSheetRef }) {
       </div>
 
       {/* Donate */}
-      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
-        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
+      <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+        <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal is free and open source. If you receive value from it, please consider returning value via Bitcoin Lightning.
         </div>
         <button onClick={handleDonate}
-          style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:15, fontWeight:300,
+          style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           ⚡ Donate with Lightning ⚡
         </button>
       </div>
 
       {/* Bitcoin learning card */}
-      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>LEARN ABOUT BITCOIN</div>
-        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
+      <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+        <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>LEARN ABOUT BITCOIN</div>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
           New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters.
         </div>
         <button onClick={() => sync?.openURL('https://nakamotoinstitute.org/crash-course/')}
-          style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:14, fontWeight:300,
+          style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           📖 Bitcoin Crash Course ↗
         </button>
