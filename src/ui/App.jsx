@@ -1213,10 +1213,14 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
         {!compact && ev.location ? (
-          <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
-            style={{ fontSize:12, color:'#6C9BF5', marginTop:4, fontWeight:300,
-              display:'flex', alignItems:'center', gap:4, cursor:'pointer' }}>
-            📍 {ev.location}
+          <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
+            display:'flex', alignItems:'center', gap:4 }}>
+            <span>📍 {ev.location}</span>
+            <button onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
+              style={{ background:'none', border:'none', padding:'2px 4px', cursor:'pointer',
+                fontSize:15, lineHeight:1, borderRadius:6 }}>
+              🧭
+            </button>
           </div>
         ) : null}
       </div>

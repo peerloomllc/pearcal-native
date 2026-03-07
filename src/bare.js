@@ -565,6 +565,14 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
           title = 'Notes for ' + what + ' updated by ' + who
           body  = value.desc
 
+        } else if (!prev.location && value.location) {
+          title = who + ' set location for ' + what
+          body  = value.location
+
+        } else if (prev.location && value.location && prev.location !== value.location) {
+          title = who + ' updated location for ' + what
+          body  = value.location
+
         } else {
           title = who + ' updated ' + what
           body  = value.date ? formatDate(value.date) : ''
