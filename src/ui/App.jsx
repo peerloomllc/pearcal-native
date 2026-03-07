@@ -261,25 +261,34 @@ export default function App ({ db, notifs, sync }) {
   const saveEvent = useCallback(async ev => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
+    // Expand recurring events into individual occurrences (new series only)
+    const occurrences = (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId)
+      ? expandRecurring(ev)
+      : [ev]
     if (db) {
       // If date changed, delete old local entry to avoid duplicate
       if (_prevDate && _prevDate !== ev.date) {
         await db.deleteEvent(_prevDate, ev.id).catch(() => {})
         setEvents(prev => prev.filter(e => !(e.id === ev.id && e.date === _prevDate)))
       }
-      const evWithAuthor = { ...ev, updatedByName: profile?.name ?? 'Someone' }
-      await db.putEvent(evWithAuthor)
-      await notifs?.scheduleForEvent(evWithAuthor)
-      // Include _prevDate in sync payload so peers can clean up old date entry
-      const evToSync = _prevDate ? { ...evWithAuthor, _prevDate } : evWithAuthor
-      for (const gid of evWithAuthor.groups ?? []) {
-        await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
+      for (const occ of occurrences) {
+        const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone' }
+        await db.putEvent(evWithAuthor)
+        await notifs?.scheduleForEvent(evWithAuthor)
+        const evToSync = (_prevDate && occ.id === ev.id) ? { ...evWithAuthor, _prevDate } : evWithAuthor
+        for (const gid of evWithAuthor.groups ?? []) {
+          await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
+        }
       }
     }
     setEvents(prev => {
-      const i = prev.findIndex(e => e.id === ev.id)
-      if (i >= 0) { const n = [...prev]; n[i] = ev; return n }
-      return [...prev, ev]
+      let next = [...prev]
+      for (const occ of occurrences) {
+        const i = next.findIndex(e => e.id === occ.id)
+        if (i >= 0) next[i] = occ
+        else next.push(occ)
+      }
+      return next
     })
     setModal(null)
   }, [db, notifs, sync, profile])
@@ -303,6 +312,23 @@ export default function App ({ db, notifs, sync }) {
       }
     }
     setEvents(prev => prev.filter(e => e.id !== id))
+    setModal(null)
+  }, [db, notifs, sync, events, profile])
+
+  const deleteEventSeries = useCallback(async recurrenceId => {
+    if (!recurrenceId || !db) return
+    await db.deleteEventSeries(recurrenceId).catch(() => {})
+    const seriesEvents = events.filter(e => e.recurrenceId === recurrenceId)
+    for (const ev of seriesEvents) {
+      await notifs?.cancelForEvent(ev.id)
+      const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+      if (isCreator) {
+        for (const gid of ev.groups ?? []) {
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+        }
+      }
+    }
+    setEvents(prev => prev.filter(e => e.recurrenceId !== recurrenceId))
     setModal(null)
   }, [db, notifs, sync, events, profile])
 
@@ -450,7 +476,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', creatorId: profile?.id ?? 'unknown',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'',
     }})
   }
 
@@ -577,7 +603,7 @@ export default function App ({ db, notifs, sync }) {
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
-            onSave={saveEvent} onDelete={deleteEvent} REMINDER_OPTIONS={REMINDER_OPTIONS} />
+            onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS} />
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
@@ -1197,7 +1223,29 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
 }
 
 // ─── Event Modal ──────────────────────────────────────────────────────────────
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, REMINDER_OPTIONS, db }) {
+function expandRecurring (ev) {
+  if (!ev.recurrence || ev.recurrence === 'none' || !ev.recurrenceEnd) return [ev]
+  const fmt = d => String(d.getFullYear()) + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
+  const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d) }
+  const end = parse(ev.recurrenceEnd)
+  let cur = parse(ev.date)
+  if (cur > end) return [ev]
+  const recurrenceId = ev.id
+  const out = []
+  let i = 0
+  while (cur <= end && i < 500) {
+    out.push({ ...ev, id: i === 0 ? ev.id : ev.id + '_r' + i, date: fmt(cur), recurrenceId })
+    if (ev.recurrence === 'daily')         cur.setDate(cur.getDate() + 1)
+    else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7)
+    else if (ev.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
+    else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
+    else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + 1)
+    i++
+  }
+  return out
+}
+
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
@@ -1337,6 +1385,36 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
             </select>
           </div>
 
+          {modal.mode === 'create' && (
+            <div><Label th={th}>Repeat</Label>
+              <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
+                onChange={e => {
+                  const val = e.target.value
+                  set('recurrence', val)
+                  if (val !== 'none' && !ev.recurrenceEnd) {
+                    const [y,m,d] = ev.date.split('-').map(Number)
+                    const end = new Date(y+1, m-1, d)
+                    const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
+                    set('recurrenceEnd', fmt(end))
+                  }
+                }}>
+                <option value="none">Does not repeat</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="biweekly">Every 2 weeks</option>
+                <option value="monthly">Monthly</option>
+                <option value="yearly">Yearly</option>
+              </select>
+            </div>
+          )}
+
+          {modal.mode === 'create' && ev.recurrence && ev.recurrence !== 'none' && (
+            <div><Label th={th}>Repeat until</Label>
+              <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
+                onChange={e => set('recurrenceEnd', e.target.value)} />
+            </div>
+          )}
+
           <div>
             <Label th={th}>Share with Peer Group(s)</Label>
             <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
@@ -1389,6 +1467,13 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
               value={ev.desc} onChange={e => set('desc', e.target.value)} />
           </div>
 
+          {modal.mode === 'edit' && ev.recurrenceId && (
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted,
+              display:'flex', alignItems:'center', gap:6 }}>
+              🔁 Recurring series — editing this occurrence only
+            </div>
+          )}
+
           <button onClick={handleSave} disabled={saving}
             style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
               marginTop:4, opacity:saving ? 0.6 : 1 }}>
@@ -1398,12 +1483,22 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
           {modal.mode === 'edit' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
-              <button onClick={() => onDelete(ev.id)}
-                style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
-                  padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
-                  fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-                {isCreator ? 'Delete for Everyone' : 'Delete for Me'}
-              </button>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <button onClick={() => onDelete(ev.id)}
+                  style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
+                    padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
+                    fontFamily:FONT, cursor:'pointer', width:'100%' }}>
+                  {isCreator ? 'Delete for Everyone' : 'Delete for Me'}
+                </button>
+                {ev.recurrenceId && (
+                  <button onClick={() => onDeleteSeries?.(ev.recurrenceId)}
+                    style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
+                      padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
+                      fontFamily:FONT, cursor:'pointer', width:'100%' }}>
+                    {isCreator ? 'Delete All in Series' : 'Remove All in Series'}
+                  </button>
+                )}
+              </div>
             )
           })()}
         </div>

@@ -40,6 +40,7 @@ const db = {
   listEvents:    (opts)      => window.__pearDB.call('listEvents', opts),
   putEvent:      (ev)        => window.__pearDB.call('putEvent', ev),
   deleteEvent:   (d, id)     => window.__pearDB.call('deleteEvent', d, id),
+  deleteEventSeries: (rid)   => window.__pearDB.call('deleteEventSeries', rid),
   localDeleteEvent: (d, id)  => window.__pearDB.call('localDeleteEvent', d, id),
   getGroup:      (id)        => window.__pearDB.call('getGroup', id),
   listGroups:    ()          => window.__pearDB.call('listGroups'),

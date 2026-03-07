@@ -50,6 +50,7 @@ async function handle (method, args) {
     case 'listEvents':       return listEvents(args[0])
     case 'putEvent':         return putEvent(args[0])
     case 'deleteEvent':      return deleteEvent(args[0], args[1])
+    case 'deleteEventSeries': return deleteEventSeries(args[0])
     case 'localDeleteEvent': return localDeleteEvent(args[0], args[1])
     case 'getGroup':         return getGroup(args[0])
     case 'listGroups':       return listGroups()
@@ -123,6 +124,14 @@ async function putEvent (event) {
 
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
+}
+
+async function deleteEventSeries (recurrenceId) {
+  const toDelete = []
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (value.recurrenceId === recurrenceId) toDelete.push(key)
+  }
+  for (const key of toDelete) await db.del(key)
 }
 
 async function localDeleteEvent (date, id) {
