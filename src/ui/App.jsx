@@ -931,12 +931,12 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
         <div style={{ fontSize:52 }}>⚡</div>
         <div style={{ fontSize:20, fontWeight:400, ...th.text }}>Enjoying PearCal?</div>
         <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
-          PearCal is free, open source, and has no ads or subscriptions. If it's been useful to you, consider sending a small tip via Bitcoin Lightning to support development.
+          PearCal is free and open source with no ads or subscriptions. If you've received value from it, consider returning value to support development.
         </div>
         <button onClick={onDonate}
           style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          Donate with Bitcoin over Lightning ⚡
+          Donate
         </button>
         <button onClick={onDismiss}
           style={{ background:'none', border:'none', color:th.muted, fontSize:13,
