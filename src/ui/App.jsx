@@ -2224,6 +2224,19 @@ function AboutTab ({ th, sync, closeSheetRef }) {
         </button>
       </div>
 
+      {/* Bitcoin learning card */}
+      <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>LEARN ABOUT BITCOIN</div>
+        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
+          New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters.
+        </div>
+        <button onClick={() => sync?.openURL('https://nakamotoinstitute.org/crash-course/')}
+          style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:14, fontWeight:300,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          📖 Bitcoin Crash Course ↗
+        </button>
+      </div>
+
       {/* Lightning wallet info modal */}
       {lightningModal && (
         <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300} closeRef={lsBsCloseRef}>
