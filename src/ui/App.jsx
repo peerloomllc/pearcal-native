@@ -207,6 +207,10 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => { tabRef.current = tab }, [tab])
   useEffect(() => {
     backHandlerRef.current = () => {
+      if (showOnboarding) {
+        if (onboardStep > 0) { setOnboardStep(s => s - 1); return }
+        return  // step 0 — do nothing, don't exit
+      }
       if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
       if (modal)        { setModal(null);        return }
@@ -216,7 +220,7 @@ export default function App ({ db, notifs, sync }) {
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef])
+  }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef, showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
@@ -1306,8 +1310,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
 function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup }) {
   const [copiedId, setCopiedId] = useState(null)
-  const [skeletonDone, setSkeletonDone] = useState(false)
-  useEffect(() => { const t = setTimeout(() => setSkeletonDone(true), 600); return () => clearTimeout(t) }, [])
+
 
   async function copyInvite (g, e) {
     e.stopPropagation()
@@ -1334,9 +1337,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
         </button>
       </div>
 
-      {!skeletonDone && groups.length === 0 ? (
-        <SkeletonList th={th} count={2} height={80} />
-      ) : groups.length === 0 && (
+      {groups.length === 0 && (
         <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'48px 0' }}>
           No groups yet — create one!
         </div>
