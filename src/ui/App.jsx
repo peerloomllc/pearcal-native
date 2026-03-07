@@ -2411,14 +2411,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
           </div>
         ))}
       </div>
-
-      <div style={{ ...th.card, borderRadius:12, padding:'14px 16px' }}>
-        <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:8, letterSpacing:'0.06em' }}>ABOUT</div>
-        <InfoRow th={th} label="App"            val="PearCal v0.1.0" />
-        <InfoRow th={th} label="Network"        val="Holepunch DHT" />
-        <InfoRow th={th} label="Storage"        val="Local · Hyperbee" />
-        <InfoRow th={th} label="Sync"           val="Autobase · Hyperswarm" />
-      </div>
     </div>
   )
 }
