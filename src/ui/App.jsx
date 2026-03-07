@@ -96,6 +96,7 @@ export default function App ({ db, notifs, sync }) {
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
+  const [showDonationReminder, setShowDonationReminder] = useState(false)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -463,6 +464,15 @@ export default function App ({ db, notifs, sync }) {
     </div>
   )
 
+  useEffect(() => {
+    if (!ready || !profile || !profile.onboardingComplete) return
+    if (profile.donationReminderShown) return
+    const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000
+    if (Date.now() - (profile.createdAt ?? Date.now()) >= TWO_WEEKS) {
+      setShowDonationReminder(true)
+    }
+  }, [ready, profile?.onboardingComplete, profile?.donationReminderShown])
+
   if (!ready) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100vh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
@@ -551,6 +561,19 @@ export default function App ({ db, notifs, sync }) {
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} />}
+        {showDonationReminder && !showOnboarding && (
+          <DonationReminderModal th={th} sync={sync}
+            onDonate={() => {
+              updateProfile({ donationReminderShown: true })
+              setShowDonationReminder(false)
+              goTab('about')
+            }}
+            onDismiss={() => {
+              updateProfile({ donationReminderShown: true })
+              setShowDonationReminder(false)
+            }}
+          />
+        )}
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile}
@@ -894,6 +917,37 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
+      </div>
+    </div>
+  )
+}
+
+function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:490, background:'rgba(0,0,0,0.75)',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'0 28px' }}>
+      <div style={{ ...th.bg, borderRadius:20, padding:'32px 24px', width:'100%', maxWidth:360,
+        display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
+        <div style={{ fontSize:52 }}>⚡</div>
+        <div style={{ fontSize:20, fontWeight:400, ...th.text }}>Enjoying PearCal?</div>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
+          PearCal is free, open source, and has no ads or subscriptions. If it's been useful to you, consider sending a small tip via Bitcoin Lightning to support development.
+        </div>
+        <button onClick={onDonate}
+          style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          Donate with Bitcoin over Lightning ⚡
+        </button>
+        <button onClick={onDismiss}
+          style={{ background:'none', border:'none', color:th.muted, fontSize:13,
+            fontWeight:300, cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
+          Maybe later
+        </button>
+        <button onClick={onDismiss}
+          style={{ background:'none', border:'none', color:th.muted, fontSize:13,
+            fontWeight:300, cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
+          Already donated ✓
+        </button>
       </div>
     </div>
   )
@@ -2099,7 +2153,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* P2P explainer */}
       <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' textAlign:'left' }}>HOW IT WORKS</div>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
         <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
@@ -2109,7 +2163,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* Donate */}
       <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' textAlign:'left' }}>SUPPORT DEVELOPMENT</div>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
         <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
           PearCal is free and open source. If you receive value from it, please consider returning value via Bitcoin Lightning.
         </div>
@@ -2127,7 +2181,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
             <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
               <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
             </div>
-            <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6 }}>⚡ Bitcoin Lightning</div>
+            <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6, textAlign:'center' }}>⚡ Bitcoin Lightning ⚡</div>
             <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:20 }}>
               No Lightning wallet was detected on your device. Bitcoin Lightning is a fast, low-fee payment network built on top of Bitcoin. To send a tip, install one of these wallets:
             </div>
