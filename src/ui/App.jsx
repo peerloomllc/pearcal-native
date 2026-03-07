@@ -1222,6 +1222,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
   }, [ev.groups, groups])
 
   const [titleErr, setTitleErr] = useState('')
+  const [pastTitles, setPastTitles] = useState([])
+  const [suggestions, setSuggestions] = useState([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  useEffect(() => {
+    db.listEvents().then(evts => {
+      const seen = new Set()
+      const titles = []
+      for (const e of (evts ?? [])) {
+        if (e.title && !seen.has(e.title)) { seen.add(e.title); titles.push(e.title) }
+      }
+      setPastTitles(titles)
+    }).catch(() => {})
+  }, [])
 
   async function handleSave () {
     if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
@@ -1246,10 +1259,38 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, R
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
-          <div>
+          <div style={{ position:'relative' }}>
             <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
               placeholder="Event title" value={ev.title}
-              onChange={e => { set('title', e.target.value); if (e.target.value.trim()) setTitleErr('') }} />
+              onChange={e => {
+                const val = e.target.value
+                set('title', val)
+                if (val.trim()) setTitleErr('')
+                if (val.trim().length >= 1) {
+                  const q = val.toLowerCase()
+                  const matches = pastTitles.filter(t => t.toLowerCase().includes(q) && t !== val).slice(0, 5)
+                  setSuggestions(matches)
+                  setShowSuggestions(matches.length > 0)
+                } else {
+                  setShowSuggestions(false)
+                }
+              }}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)} />
+            {showSuggestions && (
+              <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:50,
+                background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
+                marginTop:2, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,0.3)' }}>
+                {suggestions.map((s, i) => (
+                  <div key={i}
+                    onMouseDown={() => { set('title', s); setShowSuggestions(false) }}
+                    onClick={() => { set('title', s); setShowSuggestions(false) }}
+                    style={{ padding:'10px 12px', fontSize:14, fontWeight:300, color:th.text.color,
+                      cursor:'pointer', borderBottom: i < suggestions.length - 1 ? `1px solid ${th.border}` : 'none' }}>
+                    {s}
+                  </div>
+                ))}
+              </div>
+            )}
             {titleErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300, marginTop:4 }}>{titleErr}</div>}
           </div>
 
