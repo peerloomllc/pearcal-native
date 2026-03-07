@@ -2099,7 +2099,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* P2P explainer */}
       <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' }}>HOW IT WORKS</div>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' textAlign:'left' }}>HOW IT WORKS</div>
         <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7' }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
@@ -2109,18 +2109,15 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
       {/* Donate */}
       <div style={{ ...th.card, borderRadius:14, padding:'16px 18px', marginBottom:16 }}>
-        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' }}>SUPPORT DEVELOPMENT</div>
+        <div style={{ fontSize:13, fontWeight:400, ...th.text, marginBottom:8, letterSpacing:'0.04em' textAlign:'left' }}>SUPPORT DEVELOPMENT</div>
         <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.7', marginBottom:14 }}>
-          PearCal is free and open source. If you find it useful, consider sending a tip via Bitcoin Lightning.
+          PearCal is free and open source. If you receive value from it, please consider returning value via Bitcoin Lightning.
         </div>
         <button onClick={handleDonate}
           style={{ ...th.pillBtn, width:'100%', padding:'12px', fontSize:15, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          ⚡ Donate with Lightning
+          ⚡ Donate with Lightning ⚡
         </button>
-        <div style={{ fontSize:11, fontWeight:300, color:th.muted, marginTop:8, textAlign:'center' }}>
-          {LIGHTNING_ADDRESS}
-        </div>
       </div>
 
       {/* Lightning wallet info modal */}
@@ -2264,7 +2261,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
 
       <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
         <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:6, letterSpacing:'0.06em' }}>
-          YOUR PUBLIC KEY
+          MY PUBLIC KEY
         </div>
         <div style={{ fontSize:11, color:th.text.color, wordBreak:'break-all',
           fontFamily:'monospace', fontWeight:300, lineHeight:1.6 }}>
@@ -2303,7 +2300,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
         <InfoRow th={th} label="Network"        val="Holepunch DHT" />
         <InfoRow th={th} label="Storage"        val="Local · Hyperbee" />
         <InfoRow th={th} label="Sync"           val="Autobase · Hyperswarm" />
-        <InfoRow th={th} label="Data collected" val="None" />
       </div>
     </div>
   )
