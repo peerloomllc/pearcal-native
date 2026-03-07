@@ -1,6 +1,6 @@
 # 🍐 PearCal
 
-**A decentralized family calendar for Android.**
+**A decentralized calendar sharing app for Android.**
 
 PearCal syncs your calendar directly between devices — no accounts, no servers, no subscriptions. Your data lives only on the devices in your groups.
 
