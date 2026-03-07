@@ -108,6 +108,7 @@ async function handleNotification (msg: any, webViewRef: any) {
 }
 
 function buildHtml (appBundleJs: string): string {
+  const APP_VERSION: string = (require('../app.json') as any).expo.version
   const html = [
     '<!DOCTYPE html>',
     '<html lang="en">',
@@ -119,6 +120,7 @@ function buildHtml (appBundleJs: string): string {
     'html, body, #root { height: 100dvh; width: 100%; overflow: hidden; }',
     ':root { --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom); }',
     '</style>',
+    '<script>window.__PEARCAL_VERSION__="' + APP_VERSION + '"</script>',
     '</head>',
     '<body>',
     '<div id="root"></div>',

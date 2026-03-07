@@ -2273,6 +2273,11 @@ function AboutTab ({ th, sync, closeSheetRef }) {
           </div>
         </BottomSheet>
       )}
+
+      <div style={{ textAlign:'center', fontSize:11, fontWeight:300, color:th.muted,
+        paddingTop:16, paddingBottom:4 }}>
+        v{window.__PEARCAL_VERSION__ ?? '1.0.0'}
+      </div>
     </div>
   )
 }
