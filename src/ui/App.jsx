@@ -524,9 +524,9 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Content */}
-        <div style={{ flex:1, overflowY:'auto', paddingBottom:72, minHeight:0 }}>
+        <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0 }}>
           <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
-            animation:'pearFadeIn 0.22s ease' }}>
+            animation:'pearFadeIn 0.22s ease', height: tab === 'calendar' ? '100%' : 'auto' }}>
           {tab === 'calendar' && (
             <CalendarTab th={th} viewDate={viewDate} setViewDate={setViewDate}
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
