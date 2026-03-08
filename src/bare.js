@@ -555,7 +555,7 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
 
         } else if (dateChanged) {
           title = who + ' rescheduled ' + what
-          body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + value.start) : ''
+          body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + formatTime(value.start)) : ''
 
         } else if (notesAdded) {
           title = 'Notes added to ' + what
@@ -586,6 +586,15 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
     send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '' } })
   }
 }
+function formatTime (t) {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return h12 + ':' + mStr + ampm
+}
+
 function formatDate (dateStr) {
   try {
     const [y, m, d] = dateStr.split('-').map(Number)

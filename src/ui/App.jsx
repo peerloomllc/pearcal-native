@@ -40,6 +40,15 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
 }
 
 const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
+function formatTime (t) {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return h12 + ':' + mStr + ampm
+}
+
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -532,7 +541,7 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} />
+              setModal={setModal} events={events} groups={groups} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
@@ -727,7 +736,7 @@ function compressAvatar (file) {
 
 // ─── Calendar Tab ─────────────────────────────────────────────────────────────
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -739,6 +748,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const isUserScrolling = useRef(false)
   const userScrollTimer = useRef(null)
   const scrollToDateRef = useRef(null)
+  const [filterGroupIds, setFilterGroupIds] = useState(new Set())
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return
     isUserScrolling.current = true
@@ -924,6 +934,32 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         <button onClick={() => openCreate(selectedDate)}
           style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
       </div>
+      {/* Group filter pills */}
+      {groups && groups.length > 0 && (
+        <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
+          scrollbarWidth:'none', flexShrink:0 }}>
+          <button onClick={() => setFilterGroupIds(new Set())} style={{
+            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
+            background: filterGroupIds.size === 0 ? th.accent : 'transparent',
+            color: filterGroupIds.size === 0 ? '#fff' : th.muted, cursor:'pointer' }}>
+            All
+          </button>
+          {groups.map(g => (
+            <button key={g.id} onClick={() => setFilterGroupIds(prev => {
+              const next = new Set(prev)
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id)
+              return next
+            })} style={{
+              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : 'transparent',
+              color: filterGroupIds.has(g.id) ? '#fff' : th.muted, cursor:'pointer' }}>
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
       {/* Scrollable event list — flat, stable, never restructures */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
       {(() => {
@@ -931,7 +967,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
         const days = []
-        events
+        const filteredEvents = filterGroupIds.size > 0
+          ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+          : events
+        filteredEvents
           .filter(e => e.date >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
           .forEach(e => {
@@ -1205,25 +1244,29 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
-          {ev.allDay ? 'All day' : `${ev.start} – ${ev.end}`}
+          {ev.allDay ? 'All day' : `${formatTime(ev.start)} – ${formatTime(ev.end)}`}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
         {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
-        {!compact && ev.location ? (
-          <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
-            display:'flex', alignItems:'center', gap:4 }}>
-            <span>📍 {ev.location}</span>
-            <button onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
-              style={{ background:'none', border:'none', padding:'2px 4px', cursor:'pointer',
-                fontSize:15, lineHeight:1, borderRadius:6 }}>
-              🧭
-            </button>
-          </div>
-        ) : null}
       </div>
+      {!compact && ev.location ? (
+        <>
+          <div style={{ width:1, background:th.border, alignSelf:'stretch', marginTop:2, marginBottom:2, flexShrink:0 }} />
+          <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
+            style={{ width:96, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', flexShrink:0, padding:'0 6px', gap:4 }}>
+            <span style={{ fontSize:13, flexShrink:0 }}>📍</span>
+            <div style={{ fontSize:11, color:th.accent, fontWeight:300, textDecoration:'underline',
+              textAlign:'left', lineHeight:'1.35',
+              overflow:'hidden', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical' }}>
+              {ev.location}
+            </div>
+          </div>
+        </>
+      ) : null}
       <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
         {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
           <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:c }} />
