@@ -485,7 +485,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
     }})
   }
 
@@ -1293,6 +1293,15 @@ function expandRecurring (ev) {
     else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7)
     else if (ev.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
     else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
+    else if (ev.recurrence === 'monthly-nth') {
+      cur.setDate(1); cur.setMonth(cur.getMonth() + 1)
+      const wd = ev.recurrenceWeekday ?? 0; const nth = ev.recurrenceNth ?? 1
+      let count = 0
+      while (true) {
+        if (cur.getDay() === wd) { count++; if (count === nth) break }
+        cur.setDate(cur.getDate() + 1)
+      }
+    }
     else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + 1)
     i++
   }
@@ -1369,7 +1378,17 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           </span>
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
+                {(() => {
+          const _ro = modal.mode === 'edit' && ev.editPermission === 'creator' &&
+            !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
+          return null
+        })()}
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:14,
+            opacity: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 0.45 : 1,
+            pointerEvents: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 'none' : 'auto' }}>
           <div style={{ position:'relative' }}>
             <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
               placeholder="Event title" value={ev.title}
@@ -1439,12 +1458,35 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </select>
           </div>
 
+          {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
+            <div style={{ display:'flex', gap:8 }}>
+              {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                <button key={val} onClick={() => set('editPermission', val)}
+                  style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                    cursor:'pointer',
+                    border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                    background: ev.editPermission === val ? th.accent : 'transparent',
+                    color: ev.editPermission === val ? '#fff' : th.muted }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>}
+
           {modal.mode === 'create' && (
             <div><Label th={th}>Repeat</Label>
               <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
                 onChange={e => {
                   const val = e.target.value
                   set('recurrence', val)
+                  if (val === 'monthly-nth' && ev.date) {
+                    const d = new Date(ev.date + 'T12:00:00')
+                    const weekday = d.getDay()
+                    let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                    while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                    set('recurrenceNth', nth)
+                    set('recurrenceWeekday', weekday)
+                  }
                   if (val !== 'none' && !ev.recurrenceEnd) {
                     const [y,m,d] = ev.date.split('-').map(Number)
                     const end = new Date(y+1, m-1, d)
@@ -1456,7 +1498,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly</option>
+                <option value="monthly">Monthly (same date)</option>
+                <option value="monthly-nth">Monthly (same weekday)</option>
                 <option value="yearly">Yearly</option>
               </select>
             </div>
@@ -1533,11 +1576,46 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
-          <button onClick={handleSave} disabled={saving}
-            style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-              marginTop:4, opacity:saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
-          </button>
+          {modal.mode === 'edit' && (() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            if (isCreator) return (
+              <div><Label th={th}>Who can edit?</Label>
+                <div style={{ display:'flex', gap:8 }}>
+                  {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                    <button key={val} onClick={() => set('editPermission', val)}
+                      style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                        cursor:'pointer',
+                        border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                        background: ev.editPermission === val ? th.accent : 'transparent',
+                        color: ev.editPermission === val ? '#fff' : th.muted }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+            return null
+          })()}
+
+          </div>
+
+          {(() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+            if (isReadOnly) return (
+              <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
+                padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
+                🔒 Read only — only the creator can edit this event
+              </div>
+            )
+            return (
+              <button onClick={handleSave} disabled={saving}
+                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+                  marginTop:4, opacity:saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
+              </button>
+            )
+          })()}
 
           {modal.mode === 'edit' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
