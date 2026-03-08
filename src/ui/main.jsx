@@ -30,6 +30,7 @@ window.__pearEvent = function (event, data) {
 
 // Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
 window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
+window.addEventListener('pear:qrScanResult', e => emitter.emit('qrScanResult', e.detail))
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })

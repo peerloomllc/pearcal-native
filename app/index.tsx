@@ -213,16 +213,6 @@ export default function Root () {
         PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
-      if (msg.method === 'qrScan') {
-        PearCalQRScanner?.scan?.()
-          .then((result: string) => {
-            webViewRef.current?.injectJavaScript(
-              'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
-            )
-          })
-          .catch(() => {})
-        return
-      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -356,6 +346,15 @@ webViewRef.current?.injectJavaScript(
           const { title, text } = data
           PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
         } catch (e) {}
+      })
+      onEvent('qrScan', () => {
+        PearCalQRScanner?.scan?.()
+          .then((result: string) => {
+            webViewRef.current?.injectJavaScript(
+              'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
+            )
+          })
+          .catch(() => {})
       })
 
       _worklet.start('/bare.bundle', source)

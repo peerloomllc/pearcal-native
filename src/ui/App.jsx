@@ -103,6 +103,8 @@ export default function App ({ db, notifs, sync }) {
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
+  const [joinOpen,       setJoinOpen]       = useState(false)
+  const [joinPasteMode,  setJoinPasteMode]  = useState(false)
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
   const [showDonationReminder, setShowDonationReminder] = useState(false)
@@ -110,6 +112,7 @@ export default function App ({ db, notifs, sync }) {
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
   const closeAboutSheetRef = useRef(null)
+  const closeJoinSheetRef   = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -223,6 +226,7 @@ export default function App ({ db, notifs, sync }) {
       }
       if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
+      if (closeJoinSheetRef.current?.()) return
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
       if (settingsGroup){ setSettingsGroup(null); return }
@@ -555,7 +559,9 @@ export default function App ({ db, notifs, sync }) {
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })}
-              onQrGroup={g => setQrGroup(g)} />
+              onQrGroup={g => setQrGroup(g)}
+              onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])}
+              joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
@@ -613,6 +619,11 @@ export default function App ({ db, notifs, sync }) {
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS} />
+        )}
+        {joinOpen && (
+          <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
+            closeRef={closeJoinSheetRef} db={db} sync={sync}
+            onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])} />
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
@@ -1644,9 +1655,81 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup }) {
-  const [copiedId, setCopiedId] = useState(null)
+function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined }) {
+  const bsCloseRef = useRef(null)
+  const [pasteMode, setPasteMode] = useState(false)
+  const [pasteUrl,  setPasteUrl]  = useState('')
+  const [pasteErr,  setPasteErr]  = useState('')
+  const [joining,   setJoining]   = useState(false)
 
+  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+
+  async function handlePasteJoin () {
+    const url = pasteUrl.trim()
+    if (!url.startsWith('pear://pearcal/join')) { setPasteErr('Not a valid PearCal invite link.'); return }
+    setJoining(true); setPasteErr('')
+    const result = await handleInviteLink(url, db, sync, g => {
+      onJoined?.(g)
+      bsCloseRef.current?.()
+    })
+    if (!result.ok) {
+      setJoining(false)
+      if (result.error === 'already_member') setPasteErr('You are already in this group.')
+      else if (result.error === 'blocked_from_group') setPasteErr('You were removed from this group.')
+      else setPasteErr('Invalid invite link.')
+    }
+  }
+
+  return (
+    <BottomSheet th={th} onClose={onClose} zIndex={100} closeRef={bsCloseRef}>
+      <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+          <span style={{ fontSize:17, fontWeight:300, ...th.text }}>Join a Group</span>
+          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+        </div>
+        {!pasteMode ? (
+          <>
+            <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
+              style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <span style={{ fontSize:22 }}>📷</span> Scan QR Code
+            </button>
+            <button onClick={() => setPasteMode(true)}
+              style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <span style={{ fontSize:22 }}>🔗</span> Paste Invite Link
+            </button>
+          </>
+        ) : (
+          <>
+            <textarea value={pasteUrl} onChange={e => { setPasteUrl(e.target.value); setPasteErr('') }}
+              placeholder='Paste invite link here…'
+              style={{ width:'100%', minHeight:80, borderRadius:10, padding:'10px 12px',
+                fontSize:13, fontWeight:300, fontFamily:'inherit', resize:'none', boxSizing:'border-box',
+                background: th.input, border:'1px solid ' + (pasteErr ? '#D45F7A' : th.border),
+                color:'#111', outline:'none' }} />
+            {pasteErr && <div style={{ fontSize:12, color:'#D45F7A', fontWeight:300 }}>{pasteErr}</div>}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { setPasteMode(false); setPasteUrl(''); setPasteErr('') }}
+                style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, fontWeight:300,
+                  background:'transparent', border:'1px solid ' + th.border, color:th.muted, cursor:'pointer' }}>
+                Back
+              </button>
+              <button onClick={handlePasteJoin} disabled={!pasteUrl.trim() || joining}
+                style={{ flex:1, ...th.pillBtn, padding:'10px', fontSize:13, fontWeight:300,
+                  opacity: (!pasteUrl.trim() || joining) ? 0.5 : 1 }}>
+                {joining ? 'Joining…' : 'Join'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  )
+}
+
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen }) {
+  const [copiedId,  setCopiedId]  = useState(null)
 
   async function copyInvite (g, e) {
     e.stopPropagation()
@@ -1668,14 +1751,21 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
     <div style={{ padding:'16px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Peer Groups</span>
-        <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-          + New Group
-        </button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => setJoinOpen(true)}
+            style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
+            Join Group
+          </button>
+          <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
+            + New Group
+          </button>
+        </div>
       </div>
+
 
       {groups.length === 0 && (
         <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'48px 0' }}>
-          No groups yet — create one!
+          No groups yet — create one or join one!
         </div>
       )}
 
