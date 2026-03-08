@@ -1043,6 +1043,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
   const fileRef = useRef(null)
+  const cameraRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
 
@@ -1134,10 +1135,17 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
-      <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
-        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
-        {photoSaving ? 'Uploading…' : hasPhoto ? '📷 Change Photo' : '📷 Choose Photo'}
-      </button>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display:'none' }} onChange={handlePhotoChange} />
+      <div style={{ display:'flex', gap:10 }}>
+        <button onClick={() => cameraRef.current?.click()} disabled={photoSaving}
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
+          📷 Camera
+        </button>
+        <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
+          🖼️ Gallery
+        </button>
+      </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
         {hasPhoto ? 'Continue' : 'Skip for now'}
@@ -1148,32 +1156,23 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
     <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <div style={{ fontSize:48 }}>👥</div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:300 }}>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>＋</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Create a group</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap the Groups tab and hit "+New Group" to create a shared calendar with a name and colour.
-            </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0, ...th.text }}>＋</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Go to the <span style={{ ...th.text, fontWeight:400 }}>Groups tab</span> and tap <span style={{ ...th.text, fontWeight:400 }}>+ New Group</span> to create a group.
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>📤</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Invite people</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Share the invite link or QR code from the group card. Anyone who opens the link joins instantly.
-            </div>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📤</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Share the invite link or QR code from a group to let others join.
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>📅</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Add events</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap any day on the calendar and hit "+Event". Assign it to one or more groups to share it.
-            </div>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📅</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Tap any day on the calendar, hit <span style={{ ...th.text, fontWeight:400 }}>+ Event</span>, and assign it to a group to share it.
           </div>
         </div>
       </div>
