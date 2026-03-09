@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
 const { PearCalQRScanner } = NativeModules
+const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
 
@@ -213,16 +214,6 @@ export default function Root () {
         PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
-      if (msg.method === 'qrScan') {
-        PearCalQRScanner?.scan?.()
-          .then((result: string) => {
-            webViewRef.current?.injectJavaScript(
-              'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
-            )
-          })
-          .catch(() => {})
-        return
-      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -356,6 +347,26 @@ webViewRef.current?.injectJavaScript(
           const { title, text } = data
           PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
         } catch (e) {}
+      })
+      onEvent('takePhoto', () => {
+        PearCalCamera?.capture?.()
+          .then((base64: string) => {
+            setTimeout(() => {
+              webViewRef.current?.injectJavaScript(
+                'window.__pearEvent("cameraResult",' + JSON.stringify(base64) + ');true;'
+              )
+            }, 500)
+          })
+          .catch(() => {})
+      })
+      onEvent('qrScan', () => {
+        PearCalQRScanner?.scan?.()
+          .then((result: string) => {
+            webViewRef.current?.injectJavaScript(
+              'window.__pearEvent("qrScanResult",' + JSON.stringify(result) + ');true;'
+            )
+          })
+          .catch(() => {})
       })
 
       _worklet.start('/bare.bundle', source)

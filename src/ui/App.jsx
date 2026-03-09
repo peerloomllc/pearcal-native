@@ -40,6 +40,15 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
 }
 
 const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
+function formatTime (t) {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return h12 + ':' + mStr + ampm
+}
+
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -94,6 +103,8 @@ export default function App ({ db, notifs, sync }) {
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
+  const [joinOpen,       setJoinOpen]       = useState(false)
+  const [joinPasteMode,  setJoinPasteMode]  = useState(false)
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
   const [showDonationReminder, setShowDonationReminder] = useState(false)
@@ -101,6 +112,7 @@ export default function App ({ db, notifs, sync }) {
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
   const closeAboutSheetRef = useRef(null)
+  const closeJoinSheetRef   = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -214,6 +226,7 @@ export default function App ({ db, notifs, sync }) {
       }
       if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
+      if (closeJoinSheetRef.current?.()) return
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
       if (settingsGroup){ setSettingsGroup(null); return }
@@ -234,7 +247,11 @@ export default function App ({ db, notifs, sync }) {
       }
     }
     emitter.on('qrScanResult', onQrScanResult)
-    return () => emitter.off('qrScanResult', onQrScanResult)
+    function onCameraResult (base64) {
+      if (base64) updateProfile({ avatar: base64 }).catch(() => {})
+    }
+    emitter.on('cameraResult', onCameraResult)
+    return () => { emitter.off('qrScanResult', onQrScanResult); emitter.off('cameraResult', onCameraResult) }
   }, [db, sync])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────
@@ -476,7 +493,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
     }})
   }
 
@@ -532,7 +549,7 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} />
+              setModal={setModal} events={events} groups={groups} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
@@ -546,7 +563,9 @@ export default function App ({ db, notifs, sync }) {
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })}
-              onQrGroup={g => setQrGroup(g)} />
+              onQrGroup={g => setQrGroup(g)}
+              onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])}
+              joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
@@ -586,7 +605,8 @@ export default function App ({ db, notifs, sync }) {
 
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
-          profile={profile} onUpdateProfile={updateProfile} db={db} />}
+          profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
+          onComplete={async () => { await db.updateProfile({ onboardingComplete: true }); const p = await db.getProfile(); setProfile(p) }} />}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
             onDonate={() => {
@@ -604,6 +624,11 @@ export default function App ({ db, notifs, sync }) {
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS} />
+        )}
+        {joinOpen && (
+          <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
+            closeRef={closeJoinSheetRef} db={db} sync={sync}
+            onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])} />
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
@@ -727,7 +752,7 @@ function compressAvatar (file) {
 
 // ─── Calendar Tab ─────────────────────────────────────────────────────────────
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -739,6 +764,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const isUserScrolling = useRef(false)
   const userScrollTimer = useRef(null)
   const scrollToDateRef = useRef(null)
+  const [filterGroupIds, setFilterGroupIds] = useState(new Set())
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return
     isUserScrolling.current = true
@@ -924,6 +950,32 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         <button onClick={() => openCreate(selectedDate)}
           style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
       </div>
+      {/* Group filter pills */}
+      {groups && groups.length > 0 && (
+        <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
+          scrollbarWidth:'none', flexShrink:0 }}>
+          <button onClick={() => setFilterGroupIds(new Set())} style={{
+            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
+            background: filterGroupIds.size === 0 ? th.accent : 'transparent',
+            color: filterGroupIds.size === 0 ? '#fff' : th.muted, cursor:'pointer' }}>
+            All
+          </button>
+          {groups.map(g => (
+            <button key={g.id} onClick={() => setFilterGroupIds(prev => {
+              const next = new Set(prev)
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id)
+              return next
+            })} style={{
+              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : 'transparent',
+              color: filterGroupIds.has(g.id) ? '#fff' : th.muted, cursor:'pointer' }}>
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
       {/* Scrollable event list — flat, stable, never restructures */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
       {(() => {
@@ -931,7 +983,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
         const days = []
-        events
+        const filteredEvents = filterGroupIds.size > 0
+          ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+          : events
+        filteredEvents
           .filter(e => e.date >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
           .forEach(e => {
@@ -988,7 +1043,7 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
   )
 }
 
-function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, onComplete }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
@@ -1084,10 +1139,18 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
-      <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
-        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
-        {photoSaving ? 'Uploading…' : hasPhoto ? '📷 Change Photo' : '📷 Choose Photo'}
-      </button>
+      <div style={{ display:'flex', gap:10 }}>
+        <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
+          📷 Camera
+        </button>
+        <button onClick={() => {
+            if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
+          }} disabled={photoSaving}
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
+          🖼️ Gallery
+        </button>
+      </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
         {hasPhoto ? 'Continue' : 'Skip for now'}
@@ -1098,36 +1161,27 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
     <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <div style={{ fontSize:48 }}>👥</div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:12, width:'100%', maxWidth:300 }}>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>＋</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Create a group</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap the Groups tab and hit "+New Group" to create a shared calendar with a name and colour.
-            </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0, ...th.text }}>＋</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Go to the <span style={{ ...th.text, fontWeight:400 }}>Groups tab</span> and tap <span style={{ ...th.text, fontWeight:400 }}>+ New Group</span> to create a group.
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>📤</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Invite people</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Share the invite link or QR code from the group card. Anyone who opens the link joins instantly.
-            </div>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📤</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Share the invite link or QR code from a group to let others join.
           </div>
         </div>
-        <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', display:'flex', gap:12, alignItems:'center' }}>
-          <span style={{ fontSize:22 }}>📅</span>
-          <div>
-            <div style={{ fontSize:14, fontWeight:400, ...th.text, marginBottom:4, textAlign:'left' }}>Add events</div>
-            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.5' }}>
-              Tap any day on the calendar and hit "+Event". Assign it to one or more groups to share it.
-            </div>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <span style={{ fontSize:22, flexShrink:0 }}>📅</span>
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Tap any day on the calendar, hit <span style={{ ...th.text, fontWeight:400 }}>+ Event</span>, and assign it to a group to share it.
           </div>
         </div>
       </div>
-      <button onClick={() => onUpdateProfile({ name: profile?.name ?? name.trim(), onboardingComplete: true })}
+      <button onClick={() => { onComplete?.() }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
       </button>
@@ -1205,25 +1259,29 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
-          {ev.allDay ? 'All day' : `${ev.start} – ${ev.end}`}
+          {ev.allDay ? 'All day' : `${formatTime(ev.start)} – ${formatTime(ev.end)}`}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
         {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
-        {!compact && ev.location ? (
-          <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
-            display:'flex', alignItems:'center', gap:4 }}>
-            <span>📍 {ev.location}</span>
-            <button onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
-              style={{ background:'none', border:'none', padding:'2px 4px', cursor:'pointer',
-                fontSize:15, lineHeight:1, borderRadius:6 }}>
-              🧭
-            </button>
-          </div>
-        ) : null}
       </div>
+      {!compact && ev.location ? (
+        <>
+          <div style={{ width:1, background:th.border, alignSelf:'stretch', marginTop:2, marginBottom:2, flexShrink:0 }} />
+          <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
+            style={{ width:96, display:'flex', alignItems:'center', justifyContent:'center',
+              cursor:'pointer', flexShrink:0, padding:'0 6px', gap:4 }}>
+            <span style={{ fontSize:13, flexShrink:0 }}>📍</span>
+            <div style={{ fontSize:11, color:th.accent, fontWeight:300, textDecoration:'underline',
+              textAlign:'left', lineHeight:'1.35',
+              overflow:'hidden', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical' }}>
+              {ev.location}
+            </div>
+          </div>
+        </>
+      ) : null}
       <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
         {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
           <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:c }} />
@@ -1250,6 +1308,15 @@ function expandRecurring (ev) {
     else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7)
     else if (ev.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
     else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
+    else if (ev.recurrence === 'monthly-nth') {
+      cur.setDate(1); cur.setMonth(cur.getMonth() + 1)
+      const wd = ev.recurrenceWeekday ?? 0; const nth = ev.recurrenceNth ?? 1
+      let count = 0
+      while (true) {
+        if (cur.getDay() === wd) { count++; if (count === nth) break }
+        cur.setDate(cur.getDate() + 1)
+      }
+    }
     else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + 1)
     i++
   }
@@ -1326,7 +1393,17 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           </span>
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
+                {(() => {
+          const _ro = modal.mode === 'edit' && ev.editPermission === 'creator' &&
+            !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
+          return null
+        })()}
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div style={{ display:'flex', flexDirection:'column', gap:14,
+            opacity: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 0.45 : 1,
+            pointerEvents: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 'none' : 'auto' }}>
           <div style={{ position:'relative' }}>
             <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
               placeholder="Event title" value={ev.title}
@@ -1396,12 +1473,35 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </select>
           </div>
 
+          {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
+            <div style={{ display:'flex', gap:8 }}>
+              {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                <button key={val} onClick={() => set('editPermission', val)}
+                  style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                    cursor:'pointer',
+                    border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                    background: ev.editPermission === val ? th.accent : 'transparent',
+                    color: ev.editPermission === val ? '#fff' : th.muted }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>}
+
           {modal.mode === 'create' && (
             <div><Label th={th}>Repeat</Label>
               <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
                 onChange={e => {
                   const val = e.target.value
                   set('recurrence', val)
+                  if (val === 'monthly-nth' && ev.date) {
+                    const d = new Date(ev.date + 'T12:00:00')
+                    const weekday = d.getDay()
+                    let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                    while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                    set('recurrenceNth', nth)
+                    set('recurrenceWeekday', weekday)
+                  }
                   if (val !== 'none' && !ev.recurrenceEnd) {
                     const [y,m,d] = ev.date.split('-').map(Number)
                     const end = new Date(y+1, m-1, d)
@@ -1413,7 +1513,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 <option value="daily">Daily</option>
                 <option value="weekly">Weekly</option>
                 <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly</option>
+                <option value="monthly">Monthly (same date)</option>
+                <option value="monthly-nth">Monthly (same weekday)</option>
                 <option value="yearly">Yearly</option>
               </select>
             </div>
@@ -1490,11 +1591,46 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
-          <button onClick={handleSave} disabled={saving}
-            style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-              marginTop:4, opacity:saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
-          </button>
+          {modal.mode === 'edit' && (() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            if (isCreator) return (
+              <div><Label th={th}>Who can edit?</Label>
+                <div style={{ display:'flex', gap:8 }}>
+                  {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                    <button key={val} onClick={() => set('editPermission', val)}
+                      style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                        cursor:'pointer',
+                        border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                        background: ev.editPermission === val ? th.accent : 'transparent',
+                        color: ev.editPermission === val ? '#fff' : th.muted }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+            return null
+          })()}
+
+          </div>
+
+          {(() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+            if (isReadOnly) return (
+              <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
+                padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
+                🔒 Read only — only the creator can edit this event
+              </div>
+            )
+            return (
+              <button onClick={handleSave} disabled={saving}
+                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+                  marginTop:4, opacity:saving ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
+              </button>
+            )
+          })()}
 
           {modal.mode === 'edit' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
@@ -1523,9 +1659,81 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup }) {
-  const [copiedId, setCopiedId] = useState(null)
+function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined }) {
+  const bsCloseRef = useRef(null)
+  const [pasteMode, setPasteMode] = useState(false)
+  const [pasteUrl,  setPasteUrl]  = useState('')
+  const [pasteErr,  setPasteErr]  = useState('')
+  const [joining,   setJoining]   = useState(false)
 
+  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+
+  async function handlePasteJoin () {
+    const url = pasteUrl.trim()
+    if (!url.startsWith('pear://pearcal/join')) { setPasteErr('Not a valid PearCal invite link.'); return }
+    setJoining(true); setPasteErr('')
+    const result = await handleInviteLink(url, db, sync, g => {
+      onJoined?.(g)
+      bsCloseRef.current?.()
+    })
+    if (!result.ok) {
+      setJoining(false)
+      if (result.error === 'already_member') setPasteErr('You are already in this group.')
+      else if (result.error === 'blocked_from_group') setPasteErr('You were removed from this group.')
+      else setPasteErr('Invalid invite link.')
+    }
+  }
+
+  return (
+    <BottomSheet th={th} onClose={onClose} zIndex={100} closeRef={bsCloseRef}>
+      <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+          <span style={{ fontSize:17, fontWeight:300, ...th.text }}>Join a Group</span>
+          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+        </div>
+        {!pasteMode ? (
+          <>
+            <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
+              style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <span style={{ fontSize:22 }}>📷</span> Scan QR Code
+            </button>
+            <button onClick={() => setPasteMode(true)}
+              style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+              <span style={{ fontSize:22 }}>🔗</span> Paste Invite Link
+            </button>
+          </>
+        ) : (
+          <>
+            <textarea value={pasteUrl} onChange={e => { setPasteUrl(e.target.value); setPasteErr('') }}
+              placeholder='Paste invite link here…'
+              style={{ width:'100%', minHeight:80, borderRadius:10, padding:'10px 12px',
+                fontSize:13, fontWeight:300, fontFamily:'inherit', resize:'none', boxSizing:'border-box',
+                background: th.input, border:'1px solid ' + (pasteErr ? '#D45F7A' : th.border),
+                color:'#111', outline:'none' }} />
+            {pasteErr && <div style={{ fontSize:12, color:'#D45F7A', fontWeight:300 }}>{pasteErr}</div>}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { setPasteMode(false); setPasteUrl(''); setPasteErr('') }}
+                style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, fontWeight:300,
+                  background:'transparent', border:'1px solid ' + th.border, color:th.muted, cursor:'pointer' }}>
+                Back
+              </button>
+              <button onClick={handlePasteJoin} disabled={!pasteUrl.trim() || joining}
+                style={{ flex:1, ...th.pillBtn, padding:'10px', fontSize:13, fontWeight:300,
+                  opacity: (!pasteUrl.trim() || joining) ? 0.5 : 1 }}>
+                {joining ? 'Joining…' : 'Join'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  )
+}
+
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen }) {
+  const [copiedId,  setCopiedId]  = useState(null)
 
   async function copyInvite (g, e) {
     e.stopPropagation()
@@ -1547,14 +1755,21 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
     <div style={{ padding:'16px' }}>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Peer Groups</span>
-        <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-          + New Group
-        </button>
+        <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => setJoinOpen(true)}
+            style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
+            Join Group
+          </button>
+          <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
+            + New Group
+          </button>
+        </div>
       </div>
+
 
       {groups.length === 0 && (
         <div style={{ textAlign:'center', color:th.muted, fontSize:14, fontWeight:300, padding:'48px 0' }}>
-          No groups yet — create one!
+          No groups yet — create one or join one!
         </div>
       )}
 
@@ -2458,12 +2673,19 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
 
         {/* Photo action buttons */}
         <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => window.__pearSync?.takePhoto?.()} disabled={photoSaving}
+            style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
+              border:`1px solid ${th.border}`, background:'transparent',
+              color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              opacity: photoSaving ? 0.5 : 1 }}>
+            📷 Camera
+          </button>
           <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
             style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
               border:`1px solid ${th.border}`, background:'transparent',
               color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
               opacity: photoSaving ? 0.5 : 1 }}>
-            📷 {hasPhoto ? 'Change Photo' : 'Add Photo'}
+            🖼️ Gallery
           </button>
           {hasPhoto && (
             <button onClick={removePhoto} disabled={photoSaving}

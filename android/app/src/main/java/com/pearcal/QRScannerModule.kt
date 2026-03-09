@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
+import com.journeyapps.barcodescanner.ScanIntentResult
+import com.journeyapps.barcodescanner.ScanOptions
 
 @ReactModule(name = QRScannerModule.NAME)
 class QRScannerModule(reactContext: ReactApplicationContext) :
@@ -25,14 +27,19 @@ class QRScannerModule(reactContext: ReactApplicationContext) :
         val activity = reactApplicationContext.currentActivity
         if (activity == null) { promise.reject("NO_ACTIVITY", "No activity"); return }
         scanPromise = promise
-        val intent = Intent("com.google.zxing.client.android.SCAN").apply {
-            putExtra("SCAN_MODE", "QR_CODE_MODE")
-        }
+
+        val intent = ScanOptions()
+            .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setPrompt("Scan a PearCal invite QR code")
+            .setBeepEnabled(false)
+            .setOrientationLocked(false)
+            .createScanIntent(activity)
+
         try {
             activity.startActivityForResult(intent, SCAN_REQUEST)
         } catch (e: Exception) {
             scanPromise = null
-            promise.reject("NO_SCANNER", "No QR scanner app installed")
+            promise.reject("NO_SCANNER", e.message ?: "Failed to open scanner")
         }
     }
 
@@ -41,7 +48,8 @@ class QRScannerModule(reactContext: ReactApplicationContext) :
         val p = scanPromise ?: return
         scanPromise = null
         if (resultCode == Activity.RESULT_OK) {
-            p.resolve(data?.getStringExtra("SCAN_RESULT") ?: "")
+            val result = ScanIntentResult.parseActivityResult(resultCode, data)
+            p.resolve(result.contents ?: "")
         } else {
             p.reject("CANCELLED", "Scan cancelled")
         }

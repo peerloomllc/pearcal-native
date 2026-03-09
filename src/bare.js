@@ -64,7 +64,8 @@ async function handle (method, args) {
     case 'removeMember':     return removeMember(args[0], args[1])
     case 'joinGroup':        return joinGroup(args[0])
     case 'leaveGroup':       return leaveGroup(args[0])
-    case 'qrScan': ipc.emit('qrScan'); break
+    case 'qrScan': send({ type: 'event', event: 'qrScan', data: {} }); break
+    case 'takePhoto': send({ type: 'event', event: 'takePhoto', data: {} }); break
     case 'haptic': ipc.emit('haptic', args[0]); break
     case 'openURL': ipc.emit('openURL', args[0]); break
     case 'canOpenLightning': ipc.emit('canOpenLightning'); return null
@@ -555,7 +556,7 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
 
         } else if (dateChanged) {
           title = who + ' rescheduled ' + what
-          body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + value.start) : ''
+          body  = value.date ? 'Now on ' + formatDate(value.date) + (value.allDay ? '' : ' at ' + formatTime(value.start)) : ''
 
         } else if (notesAdded) {
           title = 'Notes added to ' + what
@@ -586,6 +587,15 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
     send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '' } })
   }
 }
+function formatTime (t) {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return h12 + ':' + mStr + ampm
+}
+
 function formatDate (dateStr) {
   try {
     const [y, m, d] = dateStr.split('-').map(Number)

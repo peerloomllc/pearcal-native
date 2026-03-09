@@ -30,6 +30,8 @@ window.__pearEvent = function (event, data) {
 
 // Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
 window.addEventListener('pear:sync', e => emitter.emit('sync', e.detail))
+window.addEventListener('pear:qrScanResult', e => emitter.emit('qrScanResult', e.detail))
+window.addEventListener('pear:cameraResult', e => emitter.emit('cameraResult', e.detail))
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
@@ -71,6 +73,7 @@ const sync = {
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   qrScan: () => window.__pearDB.call('qrScan'),
+  takePhoto: () => window.__pearDB.call('takePhoto'),
   haptic: (style) => window.__pearDB.call('haptic', style),
   openURL: (url) => window.__pearDB.call('openURL', url),
   canOpenLightning: () => window.__pearDB.call('canOpenLightning'),
