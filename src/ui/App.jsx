@@ -108,7 +108,6 @@ export default function App ({ db, notifs, sync }) {
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
   const [showDonationReminder, setShowDonationReminder] = useState(false)
-  const [pendingCameraPhoto, setPendingCameraPhoto] = useState(null)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -249,7 +248,7 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('qrScanResult', onQrScanResult)
     function onCameraResult (base64) {
-      if (base64) setPendingCameraPhoto(base64)
+      if (base64) updateProfile({ avatar: base64 }).catch(() => {})
     }
     emitter.on('cameraResult', onCameraResult)
     return () => { emitter.off('qrScanResult', onQrScanResult); emitter.off('cameraResult', onCameraResult) }
@@ -607,8 +606,7 @@ export default function App ({ db, notifs, sync }) {
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
-          pendingCameraPhoto={pendingCameraPhoto} onCameraPhotoConsumed={() => setPendingCameraPhoto(null)}
-          onComplete={() => { db.updateProfile({ onboardingComplete: true }); setProfile(prev => ({ ...prev, onboardingComplete: true })) }} />}
+          onComplete={async () => { await db.updateProfile({ onboardingComplete: true }); const p = await db.getProfile(); setProfile(p) }} />}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
             onDonate={() => {
@@ -1045,20 +1043,13 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
   )
 }
 
-function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, pendingCameraPhoto, onCameraPhotoConsumed, onComplete }) {
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, onComplete }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
-
-  useEffect(() => {
-    if (!pendingCameraPhoto || !onUpdateProfile || profile?.onboardingComplete) return
-    setPhotoSaving(true)
-    onUpdateProfile({ avatar: pendingCameraPhoto })
-      .finally(() => { setPhotoSaving(false); onCameraPhotoConsumed?.() })
-  }, [pendingCameraPhoto])
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -1190,7 +1181,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           </div>
         </div>
       </div>
-      <button onClick={() => { onCameraPhotoConsumed?.(); onComplete?.() }}
+      <button onClick={() => { onComplete?.() }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
       </button>
@@ -2682,12 +2673,19 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
 
         {/* Photo action buttons */}
         <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => window.__pearSync?.takePhoto?.()} disabled={photoSaving}
+            style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
+              border:`1px solid ${th.border}`, background:'transparent',
+              color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              opacity: photoSaving ? 0.5 : 1 }}>
+            📷 Camera
+          </button>
           <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
             style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
               border:`1px solid ${th.border}`, background:'transparent',
               color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
               opacity: photoSaving ? 0.5 : 1 }}>
-            📷 {hasPhoto ? 'Change Photo' : 'Add Photo'}
+            🖼️ Gallery
           </button>
           {hasPhoto && (
             <button onClick={removePhoto} disabled={photoSaving}
