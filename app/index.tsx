@@ -349,17 +349,15 @@ webViewRef.current?.injectJavaScript(
         } catch (e) {}
       })
       onEvent('takePhoto', () => {
-        console.log('[PEARCAL] takePhoto event received')
         PearCalCamera?.capture?.()
           .then((base64: string) => {
-            console.log('[PEARCAL] camera resolved length=' + base64?.length)
             setTimeout(() => {
-              const js = 'console.log("[PEARCAL] injecting cameraResult"); window.__pearEvent("cameraResult",' + JSON.stringify(base64) + ');true;'
-              console.log('[PEARCAL] calling injectJavaScript')
-              webViewRef.current?.injectJavaScript(js)
-            }, 800)
+              webViewRef.current?.injectJavaScript(
+                'window.__pearEvent("cameraResult",' + JSON.stringify(base64) + ');true;'
+              )
+            }, 500)
           })
-          .catch((e: any) => { console.log('[PEARCAL] camera error', String(e)) })
+          .catch(() => {})
       })
       onEvent('qrScan', () => {
         PearCalQRScanner?.scan?.()

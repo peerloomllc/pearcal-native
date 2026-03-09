@@ -106,7 +106,7 @@ export default function App ({ db, notifs, sync }) {
   const [joinOpen,       setJoinOpen]       = useState(false)
   const [joinPasteMode,  setJoinPasteMode]  = useState(false)
   const [onboardStep,   setOnboardStep]   = useState(0)
-  const showOnboarding = ready // TEMP: force onboarding for testing
+  const showOnboarding = ready && !profile?.onboardingComplete
   const [showDonationReminder, setShowDonationReminder] = useState(false)
   const [pendingCameraPhoto, setPendingCameraPhoto] = useState(null)
   const tabHistoryRef  = useRef([])
@@ -607,7 +607,8 @@ export default function App ({ db, notifs, sync }) {
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
-          pendingCameraPhoto={pendingCameraPhoto} onCameraPhotoConsumed={() => setPendingCameraPhoto(null)} />}
+          pendingCameraPhoto={pendingCameraPhoto} onCameraPhotoConsumed={() => setPendingCameraPhoto(null)}
+          onComplete={() => { db.updateProfile({ onboardingComplete: true }); setProfile(prev => ({ ...prev, onboardingComplete: true })) }} />}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
             onDonate={() => {
@@ -1044,7 +1045,7 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
   )
 }
 
-function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, pendingCameraPhoto, onCameraPhotoConsumed }) {
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, pendingCameraPhoto, onCameraPhotoConsumed, onComplete }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
@@ -1053,7 +1054,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const [slideDir, setSlideDir] = useState(1)
 
   useEffect(() => {
-    if (!pendingCameraPhoto || !onUpdateProfile) return
+    if (!pendingCameraPhoto || !onUpdateProfile || profile?.onboardingComplete) return
     setPhotoSaving(true)
     onUpdateProfile({ avatar: pendingCameraPhoto })
       .finally(() => { setPhotoSaving(false); onCameraPhotoConsumed?.() })
@@ -1189,7 +1190,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           </div>
         </div>
       </div>
-      <button onClick={() => { onCameraPhotoConsumed?.(); onUpdateProfile({ name: profile?.name ?? name.trim(), onboardingComplete: true }) }}
+      <button onClick={() => { onCameraPhotoConsumed?.(); onComplete?.() }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
       </button>
