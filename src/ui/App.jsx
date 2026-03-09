@@ -289,7 +289,7 @@ export default function App ({ db, notifs, sync }) {
         setEvents(prev => prev.filter(e => !(e.id === ev.id && e.date === _prevDate)))
       }
       for (const occ of occurrences) {
-        const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone' }
+        const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? '' }
         await db.putEvent(evWithAuthor)
         await notifs?.scheduleForEvent(evWithAuthor)
         const evToSync = (_prevDate && occ.id === ev.id) ? { ...evWithAuthor, _prevDate } : evWithAuthor
@@ -639,7 +639,13 @@ export default function App ({ db, notifs, sync }) {
           <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
             onClose={() => setSettingsGroup(null)}
-            onUpdate={updateGroup} onDelete={deleteGroup} />
+            onUpdate={updateGroup} onDelete={deleteGroup}
+            onNicknameChange={async (groupId, nick) => {
+              await db.setMemberNickname(groupId, nick).catch(() => {})
+              setGroups(prev => prev.map(g => g.id === groupId
+                ? { ...g, members: (g.members ?? []).map(m => m.id === profile?.id ? { ...m, nickname: nick } : m) }
+                : g))
+            }} />
         )}
       </div>
     </div>
@@ -1565,8 +1571,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                         padding:'5px 12px 5px 6px', borderRadius:20,
                         border:`2px solid ${col}`, background:sel ? col : 'transparent',
                         cursor:'pointer', fontFamily:FONT }}>
-                      <MemberAvatar avatar={m.avatar} name={m.name} color={col} size={24} fontSize={11} />
-                      <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.name}</span>
+                      <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
+                      <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.nickname || m.name}</span>
                     </button>
                   )
                 })}
@@ -1794,8 +1800,8 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
               {g.members.map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={34} fontSize={13} />
-                  <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.name}</span>
+                  <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={g.color} size={34} fontSize={13} />
+                  <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.nickname || m.name}</span>
                 </div>
               ))}
             </div>
@@ -1847,13 +1853,15 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft }) {
+function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange }) {
   const bsCloseRef = useRef(null)
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
   const [confirm, setConfirm] = useState(null)
   const [saved,   setSaved]   = useState(false)
   const [saving,  setSaving]  = useState(false)
+  const [nickInput, setNickInput] = useState(() => (group.members ?? []).find(m => m.id === me?.id)?.nickname ?? '')
+  const [nickSaved, setNickSaved] = useState(false)
   const fileRef = useRef()
   const isOwner  = g.ownerId === me?.id
   const isMember = g.members.some(m => m.id === me?.id)
@@ -2044,6 +2052,30 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             </div>
           </div>}
 
+          {/* My Nickname — visible to all members */}
+          <div>
+            {section('MY NICKNAME IN THIS GROUP')}
+            <div style={{ display:'flex', gap:8 }}>
+              <input style={{ ...inp, flex:1 }}
+                placeholder={me?.name ?? 'Your name'}
+                value={nickInput}
+                onChange={e => { setNickInput(e.target.value); setNickSaved(false) }} />
+              <button onClick={async () => {
+                  const nick = nickInput.trim()
+                  setG(prev => ({ ...prev, members: (prev.members ?? []).map(m => m.id === me?.id ? { ...m, nickname: nick } : m) }))
+                  await onNicknameChange?.(g.id, nick)
+                  setNickSaved(true)
+                  setTimeout(() => setNickSaved(false), 2000)
+                }}
+                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, flexShrink:0 }}>
+                {nickSaved ? '✓' : 'Save'}
+              </button>
+            </div>
+            <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:4 }}>
+              How you appear to others in this group
+            </div>
+          </div>
+
           {/* Members */}
           <div>
             {section(`MEMBERS · ${g.members.length}`)}
@@ -2057,9 +2089,10 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                     <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>
-                        {m.name}
+                        {m.nickname || m.name}
                         {isMe && <span style={{ fontSize:11, color:th.muted, marginLeft:6, fontWeight:300 }}>(you)</span>}
                       </div>
+                      {m.nickname && <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>{m.name}</div>}
                       {g.ownerId === m.id && <div style={{ fontSize:11, color:g.color, fontWeight:300 }}>Owner</div>}
                     </div>
                     {canRemove && (

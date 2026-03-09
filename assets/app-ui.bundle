@@ -14828,7 +14828,7 @@
           setEvents((prev) => prev.filter((e) => !(e.id === ev.id && e.date === _prevDate)));
         }
         for (const occ of occurrences) {
-          const evWithAuthor = { ...occ, updatedByName: profile?.name ?? "Someone" };
+          const evWithAuthor = { ...occ, updatedByName: profile?.name ?? "Someone", updatedById: profile?.id ?? "" };
           await db2.putEvent(evWithAuthor);
           await notifs2?.scheduleForEvent(evWithAuthor);
           const evToSync = _prevDate && occ.id === ev.id ? { ...evWithAuthor, _prevDate } : evWithAuthor;
@@ -15298,7 +15298,12 @@
           }),
           onClose: () => setSettingsGroup(null),
           onUpdate: updateGroup,
-          onDelete: deleteGroup
+          onDelete: deleteGroup,
+          onNicknameChange: async (groupId, nick) => {
+            await db2.setMemberNickname(groupId, nick).catch(() => {
+            });
+            setGroups((prev) => prev.map((g) => g.id === groupId ? { ...g, members: (g.members ?? []).map((m) => m.id === profile?.id ? { ...m, nickname: nick } : m) } : g));
+          }
         }
       )
     ] }) });
@@ -16611,8 +16616,8 @@
                     fontFamily: FONT
                   },
                   children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.name, color: col, size: 24, fontSize: 11 }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m.name })
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.nickname || m.name, color: col, size: 24, fontSize: 11 }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m.nickname || m.name })
                   ]
                 },
                 m.id
@@ -16959,8 +16964,8 @@
           )
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: g.members.map((m) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.name, color: g.color, size: 34, fontSize: 13 }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m.name })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.nickname || m.name, color: g.color, size: 34, fontSize: 13 }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m.nickname || m.name })
         ] }, m.id)) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
           background: th.inputBg,
@@ -17041,13 +17046,15 @@
       ] }, g.id)) })
     ] });
   }
-  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, onClose, onUpdate, onDelete, onMemberLeft }) {
+  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange }) {
     const bsCloseRef = (0, import_react.useRef)(null);
     const [g, setG] = (0, import_react.useState)({ ...group });
     const [nameErr, setNameErr] = (0, import_react.useState)("");
     const [confirm, setConfirm] = (0, import_react.useState)(null);
     const [saved, setSaved] = (0, import_react.useState)(false);
     const [saving, setSaving] = (0, import_react.useState)(false);
+    const [nickInput, setNickInput] = (0, import_react.useState)(() => (group.members ?? []).find((m) => m.id === me?.id)?.nickname ?? "");
+    const [nickSaved, setNickSaved] = (0, import_react.useState)(false);
     const fileRef = (0, import_react.useRef)();
     const isOwner = g.ownerId === me?.id;
     const isMember = g.members.some((m) => m.id === me?.id);
@@ -17325,6 +17332,38 @@
           )) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          section("MY NICKNAME IN THIS GROUP"),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                style: { ...inp, flex: 1 },
+                placeholder: me?.name ?? "Your name",
+                value: nickInput,
+                onChange: (e) => {
+                  setNickInput(e.target.value);
+                  setNickSaved(false);
+                }
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: async () => {
+                  const nick = nickInput.trim();
+                  setG((prev) => ({ ...prev, members: (prev.members ?? []).map((m) => m.id === me?.id ? { ...m, nickname: nick } : m) }));
+                  await onNicknameChange?.(g.id, nick);
+                  setNickSaved(true);
+                  setTimeout(() => setNickSaved(false), 2e3);
+                },
+                style: { ...th.pillBtn, fontSize: 13, padding: "6px 16px", fontWeight: 300, flexShrink: 0 },
+                children: nickSaved ? "\u2713" : "Save"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 4 }, children: "How you appear to others in this group" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           section(`MEMBERS \xB7 ${g.members.length}`),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: g.members.map((m) => {
             const isMe = m.id === me?.id;
@@ -17340,9 +17379,10 @@
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.name, color: g.color, size: 38, fontSize: 15 }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: [
-                  m.name,
+                  m.nickname || m.name,
                   isMe && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, marginLeft: 6, fontWeight: 300 }, children: "(you)" })
                 ] }),
+                m.nickname && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: m.name }),
                 g.ownerId === m.id && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: g.color, fontWeight: 300 }, children: "Owner" })
               ] }),
               canRemove && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -18367,7 +18407,8 @@
     listMembers: (gid) => window.__pearDB.call("listMembers", gid),
     putMember: (gid, m) => window.__pearDB.call("putMember", gid, m),
     removeMember: (gid, mid) => window.__pearDB.call("removeMember", gid, mid),
-    resyncGroup: (groupId) => window.__pearDB.call("resyncGroup", groupId)
+    resyncGroup: (groupId) => window.__pearDB.call("resyncGroup", groupId),
+    setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick)
   };
   var notifs = {
     scheduleForEvent: (ev) => window.__pearDB.call("scheduleForEvent", ev),
