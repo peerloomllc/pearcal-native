@@ -247,7 +247,13 @@ export default function App ({ db, notifs, sync }) {
       }
     }
     emitter.on('qrScanResult', onQrScanResult)
-    return () => emitter.off('qrScanResult', onQrScanResult)
+    function onCameraResult (base64) {
+      if (!base64 || !onUpdateProfile) return
+      setPhotoSaving(true)
+      onUpdateProfile({ avatar: base64 }).finally(() => setPhotoSaving(false))
+    }
+    emitter.on('cameraResult', onCameraResult)
+    return () => { emitter.off('qrScanResult', onQrScanResult); emitter.off('cameraResult', onCameraResult) }
   }, [db, sync])
 
   // ── Expose global bridge for Android → JS calls ────────────────────────────
@@ -1043,7 +1049,6 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
   const fileRef = useRef(null)
-  const cameraRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
 
@@ -1135,13 +1140,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
         Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display:'none' }} onChange={handlePhotoChange} />
       <div style={{ display:'flex', gap:10 }}>
-        <button onClick={() => cameraRef.current?.click()} disabled={photoSaving}
+        <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
           style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
           📷 Camera
         </button>
-        <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
+        <button onClick={() => {
+            if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
+          }} disabled={photoSaving}
           style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
           🖼️ Gallery
         </button>

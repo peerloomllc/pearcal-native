@@ -65,6 +65,7 @@ async function handle (method, args) {
     case 'joinGroup':        return joinGroup(args[0])
     case 'leaveGroup':       return leaveGroup(args[0])
     case 'qrScan': send({ type: 'event', event: 'qrScan', data: {} }); break
+    case 'takePhoto': send({ type: 'event', event: 'takePhoto', data: {} }); break
     case 'haptic': ipc.emit('haptic', args[0]); break
     case 'openURL': ipc.emit('openURL', args[0]); break
     case 'canOpenLightning': ipc.emit('canOpenLightning'); return null

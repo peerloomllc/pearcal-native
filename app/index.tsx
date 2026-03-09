@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy'
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
 const { PearCalQRScanner } = NativeModules
+const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
 
@@ -346,6 +347,15 @@ webViewRef.current?.injectJavaScript(
           const { title, text } = data
           PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
         } catch (e) {}
+      })
+      onEvent('takePhoto', () => {
+        PearCalCamera?.capture?.()
+          .then((base64: string) => {
+            webViewRef.current?.injectJavaScript(
+              'window.__pearEvent("cameraResult",' + JSON.stringify(base64) + ');true;'
+            )
+          })
+          .catch(() => {})
       })
       onEvent('qrScan', () => {
         PearCalQRScanner?.scan?.()
