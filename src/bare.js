@@ -741,6 +741,8 @@ async function init (dir, attempt = 0) {
             const onAppend = () => base.update().catch(e => console.warn('[REPL] update error:', e.message))
             base.on('append', onAppend)
             stream.once('close', () => base.off('append', onAppend))
+            // Process any blocks that replicated before onopen fired (race fix for late joiners)
+            base.update().catch(e => console.warn('[REPL] initial update error:', e.message))
           }
 
           // Send our writerKey for every group we've joined
