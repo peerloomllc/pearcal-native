@@ -106,8 +106,9 @@ export default function App ({ db, notifs, sync }) {
   const [joinOpen,       setJoinOpen]       = useState(false)
   const [joinPasteMode,  setJoinPasteMode]  = useState(false)
   const [onboardStep,   setOnboardStep]   = useState(0)
-  const showOnboarding = ready && !profile?.onboardingComplete
+  const showOnboarding = ready // TEMP: force onboarding for testing
   const [showDonationReminder, setShowDonationReminder] = useState(false)
+  const [pendingCameraPhoto, setPendingCameraPhoto] = useState(null)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -248,9 +249,7 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('qrScanResult', onQrScanResult)
     function onCameraResult (base64) {
-      if (!base64 || !onUpdateProfile) return
-      setPhotoSaving(true)
-      onUpdateProfile({ avatar: base64 }).finally(() => setPhotoSaving(false))
+      if (base64) setPendingCameraPhoto(base64)
     }
     emitter.on('cameraResult', onCameraResult)
     return () => { emitter.off('qrScanResult', onQrScanResult); emitter.off('cameraResult', onCameraResult) }
@@ -607,7 +606,8 @@ export default function App ({ db, notifs, sync }) {
 
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
-          profile={profile} onUpdateProfile={updateProfile} db={db} />}
+          profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
+          pendingCameraPhoto={pendingCameraPhoto} onCameraPhotoConsumed={() => setPendingCameraPhoto(null)} />}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
             onDonate={() => {
@@ -1044,13 +1044,20 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
   )
 }
 
-function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, pendingCameraPhoto, onCameraPhotoConsumed }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
+
+  useEffect(() => {
+    if (!pendingCameraPhoto || !onUpdateProfile) return
+    setPhotoSaving(true)
+    onUpdateProfile({ avatar: pendingCameraPhoto })
+      .finally(() => { setPhotoSaving(false); onCameraPhotoConsumed?.() })
+  }, [pendingCameraPhoto])
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -1182,7 +1189,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db }) {
           </div>
         </div>
       </div>
-      <button onClick={() => onUpdateProfile({ name: profile?.name ?? name.trim(), onboardingComplete: true })}
+      <button onClick={() => { onCameraPhotoConsumed?.(); onUpdateProfile({ name: profile?.name ?? name.trim(), onboardingComplete: true }) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
       </button>
