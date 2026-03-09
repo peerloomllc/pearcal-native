@@ -6,23 +6,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PearCal is a peer-to-peer calendar app for Android built with Expo (React Native). It uses a dual-runtime architecture: a React Native shell hosts a WebView that renders the UI, while a separate [Bare](https://github.com/nicolo-ribaudo/bare) runtime runs the P2P backend.
 
-## Commands
+## Build & Deploy
 
+Two test devices are connected via ADB:
+- Device 1: `53071FDAP00038` — Pixel/GrapheneOS (owner)
+- Device 2: `4H65K7MFZXSCSWPR` — TCL (joiner)
+
+Always use `adb install -r` — **never uninstall** (preserves user data).
+
+**UI-only changes** (`src/ui/App.jsx`, `src/ui/main.jsx`):
 ```bash
-# Start Expo dev server
-npm start
-
-# Build and run on Android device/emulator
-npm run android
-
-# Build the WebView UI bundle (src/ui/ → assets/app-ui.bundle)
-npm run bundle:ui
-
-# Build the Bare backend bundle (src/bare.js → assets/bare-universal.bundle)
-npm run bundle:bare
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+cd android && ./gradlew assembleDebug && cd ..
+adb -s 53071FDAP00038 install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb -s 4H65K7MFZXSCSWPR install -r android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
-**Important:** After editing any file under `src/`, you must rebuild the relevant bundle before the changes take effect. `src/ui/` → `bundle:ui`, `src/bare.js` or other `src/*.js` → `bundle:bare`.
+**bare.js changes** (also rebuild UI after):
+```bash
+node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+cd android && ./gradlew assembleDebug && cd ..
+adb -s 53071FDAP00038 install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb -s 4H65K7MFZXSCSWPR install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+**Release APK:**
+```bash
+cd android && ./gradlew assembleRelease && cd ..
+/home/tim/Android/Sdk/build-tools/36.1.0/apksigner verify --verbose android/app/build/outputs/apk/release/app-release.apk
+cp android/app/build/outputs/apk/release/app-release.apk ~/pearcal-release.apk
+```
+Keystore: `~/keystore.jks` — alias: `pearcal`
+
+## Patching Rules
+
+- Use `cat > /tmp/patchN.js << 'EOF' ... EOF` + `node /tmp/patchN.js` for in-place file edits
+- For patches containing backticks or JSX template expressions, use Python with triple-quoted strings (`python3 /tmp/patch.py`)
+- Always verify patch output shows "Patched" / exit 0 before building
+- Use `python3 -c "print(repr(open('file').read()[idx:idx+200]))"` to find exact byte strings when patches fail
 
 ## Architecture
 

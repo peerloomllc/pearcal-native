@@ -81,6 +81,7 @@ async function handle (method, args) {
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
     case 'restoreAll':       return null
+    case 'setMemberNickname': return setMemberNickname(args[0], args[1])
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -365,17 +366,25 @@ async function resyncGroup (groupId) {
         if (tombstone) continue
         await db.put(key, value)
       } else if (key.startsWith('groups:')) {
-        // Merge members same way mirrorToLocal does
         const existing = await db.get(key).catch(() => null)
-        const existingMembers = existing?.value?.members ?? []
-        const incomingMembers = value.members ?? []
-        const mergedMap = new Map()
-        for (const m of existingMembers) mergedMap.set(m.id, m)
-        for (const m of incomingMembers) {
-          const prev = mergedMap.get(m.id)
-          if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, m)
+        const localJoinedAt  = existing?.value?.joinedAt  ?? 0
+        const viewUpdatedAt  = value?.updatedAt ?? 0
+        // If the Autobase view state pre-dates our current join, the local members
+        // written by handleInviteLink are fresher — don't let stale pre-leave data
+        // (e.g. old keypair entries from a previous install) pollute the member list.
+        if (viewUpdatedAt < localJoinedAt) {
+          await db.put(key, { ...value, members: existing?.value?.members ?? [] })
+        } else {
+          const existingMembers = existing?.value?.members ?? []
+          const incomingMembers = value.members ?? []
+          const mergedMap = new Map()
+          for (const m of existingMembers) mergedMap.set(m.id, m)
+          for (const m of incomingMembers) {
+            const prev = mergedMap.get(m.id)
+            if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+          }
+          await db.put(key, { ...value, members: [...mergedMap.values()] })
         }
-        await db.put(key, { ...value, members: [...mergedMap.values()] })
       }
     }
     send({ type: 'event', event: 'sync', data: groupId })
@@ -481,7 +490,7 @@ function makeApply (groupId) {
             for (const m of existingMembers) mergedMap.set(m.id, m)
             for (const m of incomingMembers) {
               const prev = mergedMap.get(m.id)
-              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, m)
+              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
             }
             const merged = { ...winningValue, members: [...mergedMap.values()] }
             await db.put(val.key, merged)
@@ -517,7 +526,18 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId 
   try {
     let title = 'Calendar updated'
     let body  = ''
-    const who  = updatedByName || value?.updatedByName || 'Someone'
+    // Resolve sender name: prefer the nickname this receiver knows them by in the shared group.
+    // Look up in the group's members[] array (kept current by mirrorToLocal) rather than the
+    // members: namespace, which may still hold the 'Inviter' placeholder from join time.
+    const _senderId = value?.updatedById || null
+    let who = updatedByName || value?.updatedByName || 'Someone'
+    if (_senderId && groupId) {
+      const _groupNode = await db.get(NS.groups + groupId).catch(() => null)
+      const _member = (_groupNode?.value?.members ?? []).find(m => m.id === _senderId)
+      if (_member && _member.name !== 'Inviter') {
+        who = _member.nickname || _member.name || who
+      }
+    }
 
     if (op === 'del') {
       const parts = (key ?? '').split(':')
@@ -632,7 +652,7 @@ async function mirrorToLocal (type, key, value, groupId) {
       for (const m of incomingMembers) {
         const prev = mergedMap.get(m.id)
         if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
-          mergedMap.set(m.id, m)
+          mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
         }
       }
       const merged = { ...value, members: [...mergedMap.values()], updatedAt: value.updatedAt || Date.now() }
@@ -649,6 +669,31 @@ async function deleteFromLocal (type, key) {
   try {
     await db.del(key)
   } catch(e) {}
+}
+
+// ── Member nickname ──────────────────────────────────────────────────────────────
+
+async function setMemberNickname (groupId, nickname) {
+  const profile = await getProfile()
+  if (!profile) return
+  const memberId = profile.id
+  const group = await getGroup(groupId)
+  if (!group) return
+  const members = (group.members ?? []).map(m =>
+    m.id === memberId ? { ...m, nickname: nickname || '' } : m
+  )
+  const updatedGroup = { ...group, members, updatedAt: Date.now() }
+  await putGroup(updatedGroup)
+  const memberNode = await db.get(NS.members + groupId + ':' + memberId).catch(() => null)
+  if (memberNode?.value) {
+    await db.put(NS.members + groupId + ':' + memberId, { ...memberNode.value, nickname: nickname || '' }).catch(() => {})
+  }
+  const base = bases.get(groupId)
+  if (base) {
+    await base.append({ op: 'put', type: 'group', key: NS.groups + groupId, value: updatedGroup })
+      .catch(e => console.error('[NICKNAME] sync error:', e.message))
+  }
+  send({ type: 'event', event: 'sync', data: groupId })
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
