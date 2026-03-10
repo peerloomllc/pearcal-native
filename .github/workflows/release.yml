@@ -71,28 +71,34 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -1)
+          # Get published_at of the most recent release (current tag not yet created)
+          PREV_RELEASE_DATE=$(gh api repos/${{ github.repository }}/releases \
+            --jq '[.[] | select(.draft == false)] | .[0].published_at // ""')
+
           NOTES="## What's Changed\n\n"
 
-          if [ -z "$PREV_TAG" ]; then
+          if [ -z "$PREV_RELEASE_DATE" ]; then
             NOTES="${NOTES}Initial release.\n"
           else
-            PR_NUMBERS=$(git log ${PREV_TAG}..HEAD --merges --format="%s" \
-              | grep -oE '#[0-9]+' | tr -d '#' || true)
+            # Fetch merged PRs and filter to those merged after the previous release
+            ALL_PRS=$(gh pr list --state merged --limit 100 \
+              --json number,title,body,mergedAt)
+            FILTERED=$(echo "$ALL_PRS" | jq --arg since "$PREV_RELEASE_DATE" \
+              '[.[] | select(.mergedAt > $since)]')
 
-            if [ -z "$PR_NUMBERS" ]; then
-              NOTES="${NOTES}No merged PRs since ${PREV_TAG}.\n"
+            PR_COUNT=$(echo "$FILTERED" | jq 'length')
+
+            if [ "$PR_COUNT" = "0" ]; then
+              NOTES="${NOTES}No merged PRs since last release.\n"
             else
-              while IFS= read -r pr; do
-                [ -z "$pr" ] && continue
-                PR_DATA=$(gh api repos/${{ github.repository }}/pulls/$pr 2>/dev/null) || continue
-                TITLE=$(echo "$PR_DATA" | jq -r '.title // ""')
-                BODY=$(echo "$PR_DATA" | jq -r '.body // ""')
-                SUMMARY=$(echo "$BODY" | awk '/^## Summary/{f=1;next} /^## /{if(f)exit} f && /\S/{print}')
+              while IFS= read -r pr_json; do
+                TITLE=$(echo "$pr_json" | jq -r '.title')
+                BODY=$(echo "$pr_json" | jq -r '.body // ""')
+                SUMMARY=$(printf '%s' "$BODY" | awk '/^## Summary/{f=1;next} /^## /{if(f)exit} f && /\S/{print}')
                 NOTES="${NOTES}### ${TITLE}\n"
                 [ -n "$SUMMARY" ] && NOTES="${NOTES}${SUMMARY}\n"
                 NOTES="${NOTES}\n"
-              done <<< "$PR_NUMBERS"
+              done < <(echo "$FILTERED" | jq -c '.[]')
             fi
           fi
 
