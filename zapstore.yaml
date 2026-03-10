@@ -1,1 +1,26 @@
 repository: https://github.com/peerloomllc/pearcal-native
+
+name: PearCal
+summary: Peer-to-peer calendar — share events with people, not platforms
+description: |
+  PearCal is a private, peer-to-peer calendar app. Share events directly with
+  people you trust, with no server, no account, and no third party in the middle.
+
+  Features:
+  - Create and manage personal calendar events
+  - Share events with peer groups over a direct P2P connection
+  - Import public holidays for US, Canada, and UK
+  - Invite members via QR code or share link
+  - Fully offline-capable — your data stays on your device
+
+tags:
+  - calendar
+  - privacy
+  - p2p
+  - nostr
+
+license: MIT
+website: https://github.com/peerloomllc/pearcal-native
+
+metadata_sources:
+  - github
