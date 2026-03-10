@@ -17,6 +17,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
@@ -35,6 +36,15 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -52,8 +62,7 @@ jobs:
 
       - name: Rename APK with version
         run: |
-          VERSION=${GITHUB_REF_NAME}
-          cp android/app/build/outputs/apk/release/app-release.apk pearcal-${VERSION}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk pearcal-${{ github.ref_name }}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -72,4 +81,4 @@ jobs:
         env:
           SIGN_WITH: ${{ secrets.ZAPSTORE_NSEC }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: zsp publish zapstore.yaml
+        run: zsp publish -y zapstore.yaml
