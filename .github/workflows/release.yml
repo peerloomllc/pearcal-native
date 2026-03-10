@@ -29,10 +29,10 @@ jobs:
       - name: Build Bare bundle
         run: node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Set up Android SDK
