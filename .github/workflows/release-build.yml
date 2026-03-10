@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.10)'
+        required: true
+        type: string
 
 jobs:
   build:
@@ -60,14 +65,18 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          APP_VERSION: ${{ github.ref_name != '' && startsWith(github.ref_name, 'v') && github.ref_name || '1.0.0' }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          export APP_VERSION="${APP_VERSION#v}"
+          APP_VERSION="${RELEASE_TAG#v}"
+          [ -z "$APP_VERSION" ] || [ "$APP_VERSION" = "master" ] && APP_VERSION="1.0.0"
+          export APP_VERSION
           cd android && ./gradlew assembleRelease
 
       - name: Rename APK with version
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp android/app/build/outputs/apk/release/app-release.apk pearcal-${{ github.ref_name }}.apk
+          cp android/app/build/outputs/apk/release/app-release.apk pearcal-${RELEASE_TAG}.apk
 
       - name: Generate release notes from PR summaries
         env:
@@ -111,7 +120,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: pearcal-${{ github.ref_name }}.apk
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: pearcal-${{ inputs.tag || github.ref_name }}.apk
           body_path: release_notes.md
 
       - name: Install zsp (Zapstore publisher)
