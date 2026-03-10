@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build UI bundle
+        run: |
+          npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+            --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+
+      - name: Build Bare bundle
+        run: node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/pearcal-release.keystore
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_FILE: pearcal-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Rename APK with version
+        run: |
+          VERSION=${GITHUB_REF_NAME}
+          cp android/app/build/outputs/apk/release/app-release.apk pearcal-${VERSION}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: pearcal-${{ github.ref_name }}.apk
+          generate_release_notes: true
+
+      - name: Install zsp (Zapstore publisher)
+        run: |
+          curl -sL https://github.com/zapstore/zsp/releases/latest/download/zsp-linux-amd64 -o /usr/local/bin/zsp
+          chmod +x /usr/local/bin/zsp
+
+      - name: Publish to Zapstore
+        env:
+          SIGN_WITH: ${{ secrets.ZAPSTORE_NSEC }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zsp publish zapstore.yaml
