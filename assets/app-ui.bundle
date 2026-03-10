@@ -18329,6 +18329,7 @@ ${link}`;
     const [saving, setSaving] = (0, import_react.useState)(false);
     const [photoSaving, setPhotoSaving] = (0, import_react.useState)(false);
     const [holidayWorking, setHolidayWorking] = (0, import_react.useState)(false);
+    const [holidaysOpen, setHolidaysOpen] = (0, import_react.useState)((profile?.holidayCountries ?? []).length > 0);
     const fileRef = (0, import_react.useRef)();
     async function saveName() {
       setSaving(true);
@@ -18513,24 +18514,15 @@ ${link}`;
           }
         ) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, padding: "14px 16px", marginBottom: 16 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 10, letterSpacing: "0.06em" }, children: "MY PEER GROUPS" }),
-        groups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300, padding: "8px 0" }, children: "No groups yet." }),
-        groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          padding: "6px 0",
-          borderBottom: `1px solid ${th.border}`
-        }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(GroupIcon, { group: g, size: 28, radius: 8 }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text, flex: 1 }, children: g.name }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: [
-            g.members.length,
-            " members"
-          ] })
-        ] }, g.id))
-      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        fontSize: 12,
+        fontWeight: 300,
+        color: th.muted,
+        letterSpacing: "0.06em",
+        marginBottom: 12,
+        marginTop: 4,
+        textAlign: "center"
+      }, children: "SETTINGS" }),
       (() => {
         const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
         const slug = (t) => t.replace(/\s+/g, "-").toLowerCase();
@@ -18612,40 +18604,71 @@ ${link}`;
         return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
           ...th.card,
           borderRadius: 12,
-          padding: "14px 16px",
           marginBottom: 16,
+          overflow: "hidden",
           opacity: holidayWorking ? 0.6 : 1,
           transition: "opacity 0.2s"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em", marginBottom: 12 }, children: "HOLIDAYS" }),
-          allCountries.map(({ code, flag, label, fn }, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "10px 0",
-            borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : "none"
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20 }, children: flag }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: label }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: [
-                fn(thisYear).length,
-                " holidays \xB7 ",
-                thisYear,
-                "\u2013",
-                thisYear + 1
-              ] })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              Toggle,
-              {
-                val: activeCountries.has(code),
-                onChange: (v) => !holidayWorking && toggleCountry(code, fn, v),
-                accent: th.accent
-              }
-            )
-          ] }, code)),
-          anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
+            {
+              onClick: () => {
+                window.__pearSync?.haptic("light");
+                setHolidaysOpen((o) => !o);
+              },
+              style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "14px 16px",
+                cursor: "pointer"
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "HOLIDAYS" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                  fontSize: 16,
+                  color: th.muted,
+                  transition: "transform 0.3s",
+                  transform: holidaysOpen ? "rotate(90deg)" : "rotate(0deg)",
+                  display: "inline-block"
+                }, children: "\u203A" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            maxHeight: holidaysOpen ? "600px" : "0px",
+            overflow: "hidden",
+            transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
+            allCountries.map(({ code, flag, label, fn }, i) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 0",
+              borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : "none"
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20 }, children: flag }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: label }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: [
+                  fn(thisYear).length,
+                  " holidays \xB7 ",
+                  thisYear,
+                  "\u2013",
+                  thisYear + 1
+                ] })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                Toggle,
+                {
+                  val: activeCountries.has(code),
+                  onChange: (v) => !holidayWorking && toggleCountry(code, fn, v),
+                  accent: th.accent
+                }
+              )
+            ] }, code)),
+            anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
+          ] }) })
         ] });
       })()
     ] });

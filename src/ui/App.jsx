@@ -2822,6 +2822,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [saving,     setSaving]     = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
+  const [holidaysOpen,   setHolidaysOpen]   = useState((profile?.holidayCountries ?? []).length > 0)
   const fileRef = useRef()
 
   async function saveName () {
@@ -2940,23 +2941,9 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         </div>
       </div>
 
-      <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
-        <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:10, letterSpacing:'0.06em' }}>
-          MY PEER GROUPS
-        </div>
-        {groups.length === 0 && (
-          <div style={{ fontSize:13, color:th.muted, fontWeight:300, padding:'8px 0' }}>
-            No groups yet.
-          </div>
-        )}
-        {groups.map(g => (
-          <div key={g.id} style={{ display:'flex', alignItems:'center', gap:10,
-            padding:'6px 0', borderBottom:`1px solid ${th.border}` }}>
-            <GroupIcon group={g} size={28} radius={8} />
-            <span style={{ fontSize:14, fontWeight:300, ...th.text, flex:1 }}>{g.name}</span>
-            <span style={{ fontSize:12, color:th.muted, fontWeight:300 }}>{g.members.length} members</span>
-          </div>
-        ))}
+      <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em',
+        marginBottom:12, marginTop:4, textAlign:'center' }}>
+        SETTINGS
       </div>
 
       {/* Holidays */}
@@ -3028,30 +3015,47 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
 
         const anyEnabled = activeCountries.size > 0
         return (
-          <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', marginBottom:16,
+          <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden',
             opacity: holidayWorking ? 0.6 : 1, transition:'opacity 0.2s' }}>
-            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em', marginBottom:12 }}>
-              HOLIDAYS
+
+            {/* Collapsible header */}
+            <div onClick={() => { window.__pearSync?.haptic('light'); setHolidaysOpen(o => !o) }}
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                padding:'14px 16px', cursor:'pointer' }}>
+              <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+                HOLIDAYS
+              </div>
+              <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
+                transform: holidaysOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+                display:'inline-block' }}>›</span>
             </div>
-            {allCountries.map(({ code, flag, label, fn }, i) => (
-              <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
-                padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
-                <span style={{ fontSize:20 }}>{flag}</span>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
-                  <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
-                    {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
+
+            {/* Collapsible body */}
+            <div style={{ maxHeight: holidaysOpen ? '600px' : '0px', overflow:'hidden',
+              transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+              <div style={{ padding:'0 16px 14px' }}>
+                {allCountries.map(({ code, flag, label, fn }, i) => (
+                  <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
+                    padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
+                    <span style={{ fontSize:20 }}>{flag}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
+                      <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
+                        {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
+                      </div>
+                    </div>
+                    <Toggle val={activeCountries.has(code)}
+                      onChange={v => !holidayWorking && toggleCountry(code, fn, v)} accent={th.accent} />
                   </div>
-                </div>
-                <Toggle val={activeCountries.has(code)}
-                  onChange={v => !holidayWorking && toggleCountry(code, fn, v)} accent={th.accent} />
+                ))}
+                {anyEnabled && (
+                  <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:10 }}>
+                    Added to your personal calendar. Toggle off to remove.
+                  </div>
+                )}
               </div>
-            ))}
-            {anyEnabled && (
-              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:10 }}>
-                Added to your personal calendar. Toggle off to remove.
-              </div>
-            )}
+            </div>
+
           </div>
         )
       })()}
