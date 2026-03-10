@@ -571,7 +571,8 @@ export default function App ({ db, notifs, sync }) {
               joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
           {tab === 'profile' && (
-            <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile} />
+            <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile}
+              db={db} events={events} setEvents={setEvents} />
           )}
           {tab === 'about' && (
             <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} />
@@ -760,6 +761,144 @@ function compressAvatar (file) {
 }
 
 // ─── Calendar Tab ─────────────────────────────────────────────────────────────
+
+// ─── Holiday Helpers ──────────────────────────────────────────────────────────
+function computeEaster (year) {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return { month, day }
+}
+
+
+
+// ─── US Federal Holidays ──────────────────────────────────────────────────────
+function getUSFederalHolidays (year) {
+  function pad (n) { return String(n).padStart(2, '0') }
+  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
+  // Observed date: Sat→Fri, Sun→Mon
+  function observed (y, m, d) {
+    const dow = new Date(y, m - 1, d).getDay()
+    if (dow === 6) return ymd(y, m, d - 1)
+    if (dow === 0) return ymd(y, m, d + 1)
+    return ymd(y, m, d)
+  }
+  // Nth weekday of month: e.g. nthWeekday(year,1,1,3) = 3rd Monday of Jan
+  function nthWeekday (y, m, weekday, n) {
+    let d = 1
+    const first = new Date(y, m - 1, 1).getDay()
+    d += (weekday - first + 7) % 7
+    d += (n - 1) * 7
+    return ymd(y, m, d)
+  }
+  // Last weekday of month
+  function lastWeekday (y, m, weekday) {
+    const last = new Date(y, m, 0).getDate()
+    const lastDow = new Date(y, m - 1, last).getDay()
+    const d = last - ((lastDow - weekday + 7) % 7)
+    return ymd(y, m, d)
+  }
+  return [
+    { title: "New Year's Day",               date: observed(year, 1,  1)  },
+    { title: 'Martin Luther King Jr. Day',   date: nthWeekday(year, 1, 1, 3) },
+    { title: "Presidents' Day",              date: nthWeekday(year, 2, 1, 3) },
+    { title: 'Memorial Day',                 date: lastWeekday(year, 5, 1)   },
+    { title: 'Juneteenth',                   date: observed(year, 6, 19) },
+    { title: 'Independence Day',             date: observed(year, 7,  4) },
+    { title: 'Labor Day',                    date: nthWeekday(year, 9, 1, 1) },
+    { title: 'Columbus Day',                 date: nthWeekday(year, 10, 1, 2)},
+    { title: 'Veterans Day',                 date: observed(year, 11, 11) },
+    { title: 'Thanksgiving Day',             date: nthWeekday(year, 11, 4, 4)},
+    { title: 'Christmas Day',                date: observed(year, 12, 25) },
+  ]
+}
+
+function getCanadaHolidays (year) {
+  function pad (n) { return String(n).padStart(2, '0') }
+  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
+  function observed (y, m, d) {
+    const dow = new Date(y, m - 1, d).getDay()
+    if (dow === 6) return ymd(y, m, d - 1)
+    if (dow === 0) return ymd(y, m, d + 1)
+    return ymd(y, m, d)
+  }
+  function nthWeekday (y, m, weekday, n) {
+    const first = new Date(y, m - 1, 1).getDay()
+    let d = 1 + (weekday - first + 7) % 7 + (n - 1) * 7
+    return ymd(y, m, d)
+  }
+  const { month: em, day: ed } = computeEaster(year)
+  const easter = new Date(year, em - 1, ed)
+  function easterOffset (days) {
+    const d = new Date(easter); d.setDate(d.getDate() + days)
+    return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate())
+  }
+  function victoriaDay () {
+    const dow = new Date(year, 4, 24).getDay()
+    return ymd(year, 5, 24 - ((dow - 1 + 7) % 7))
+  }
+  return [
+    { title: "New Year's Day",                            date: observed(year, 1,  1)  },
+    { title: 'Good Friday',                               date: easterOffset(-2)       },
+    { title: 'Victoria Day',                              date: victoriaDay()          },
+    { title: 'Canada Day',                                date: observed(year, 7,  1)  },
+    { title: 'Labour Day',                                date: nthWeekday(year, 9, 1, 1) },
+    { title: 'National Day for Truth and Reconciliation', date: observed(year, 9, 30)  },
+    { title: 'Thanksgiving',                              date: nthWeekday(year, 10, 1, 2) },
+    { title: 'Remembrance Day',                           date: observed(year, 11, 11) },
+    { title: 'Christmas Day',                             date: observed(year, 12, 25) },
+    { title: 'Boxing Day',                                date: observed(year, 12, 26) },
+  ]
+}
+
+function getUKHolidays (year) {
+  function pad (n) { return String(n).padStart(2, '0') }
+  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
+  function observed (y, m, d) {
+    const dow = new Date(y, m - 1, d).getDay()
+    if (dow === 6) return ymd(y, m, d - 1)
+    if (dow === 0) return ymd(y, m, d + 1)
+    return ymd(y, m, d)
+  }
+  function nthWeekday (y, m, weekday, n) {
+    const first = new Date(y, m - 1, 1).getDay()
+    let d = 1 + (weekday - first + 7) % 7 + (n - 1) * 7
+    return ymd(y, m, d)
+  }
+  function lastWeekday (y, m, weekday) {
+    const last = new Date(y, m, 0).getDate()
+    const lastDow = new Date(y, m - 1, last).getDay()
+    return ymd(y, m, last - ((lastDow - weekday + 7) % 7))
+  }
+  const { month: em, day: ed } = computeEaster(year)
+  const easter = new Date(year, em - 1, ed)
+  function easterOffset (days) {
+    const d = new Date(easter); d.setDate(d.getDate() + days)
+    return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate())
+  }
+  return [
+    { title: "New Year's Day",          date: observed(year, 1, 1)     },
+    { title: 'Good Friday',             date: easterOffset(-2)         },
+    { title: 'Easter Monday',           date: easterOffset(1)          },
+    { title: 'Early May Bank Holiday',  date: nthWeekday(year, 5, 1, 1)},
+    { title: 'Spring Bank Holiday',     date: lastWeekday(year, 5, 1)  },
+    { title: 'Summer Bank Holiday',     date: lastWeekday(year, 8, 1)  },
+    { title: 'Christmas Day',           date: observed(year, 12, 25)   },
+    { title: 'Boxing Day',              date: observed(year, 12, 26)   },
+  ]
+}
+
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
   eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups }) {
   const { y, m } = viewDate
@@ -1017,6 +1156,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         ))
       })()}
       </div>
+
     </div>
   )
 }
@@ -1409,10 +1549,10 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
         })()}
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
           <div style={{ display:'flex', flexDirection:'column', gap:14,
-            opacity: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 0.45 : 1,
-            pointerEvents: (modal.mode === 'edit' && ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 'none' : 'auto' }}>
+            opacity: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
+            pointerEvents: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
+              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 'none' : 'auto' }}>
           <div style={{ position:'relative' }}>
             <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
               placeholder="Event title" value={ev.title}
@@ -1600,7 +1740,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
-          {modal.mode === 'edit' && (() => {
+          {modal.mode === 'edit' && ev.creatorId !== 'system' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             if (isCreator) return (
               <div><Label th={th}>Who can edit?</Label>
@@ -1625,7 +1765,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
           {(() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const isHoliday = modal.mode === 'edit' && ev.creatorId === 'system'
             const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+            if (isHoliday) return (
+              <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
+                padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
+                🗓 Public holiday — toggle off in Profile to remove all
+              </div>
+            )
             if (isReadOnly) return (
               <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
                 padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
@@ -2669,11 +2816,12 @@ function AboutTab ({ th, sync, closeSheetRef }) {
   )
 }
 
-function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
+function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
+  const [holidayWorking, setHolidayWorking] = useState(false)
   const fileRef = useRef()
 
   async function saveName () {
@@ -2810,6 +2958,103 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile }) {
           </div>
         ))}
       </div>
+
+      {/* Holidays */}
+      {(() => {
+        const thisYear = new Date().getFullYear()
+        const slug = t => t.replace(/\s+/g, '-').toLowerCase()
+        const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
+        const allCountries = [
+          { code:'us', flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
+          { code:'ca', flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
+          { code:'uk', flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
+        ]
+        // Toggle state tracked explicitly in profile to avoid shared-ID false positives
+        const activeCountries = new Set(profile?.holidayCountries ?? [])
+
+        async function toggleCountry (code, fn, on) {
+          setHolidayWorking(true)
+          const newActive = new Set(activeCountries)
+          if (on) {
+            newActive.add(code)
+            // Import holidays; skip any already in calendar by shared ID or same date+title
+            const existingIds = new Set((events ?? []).map(e => e.id))
+            const existingKeys = new Set((events ?? []).map(e => e.date + '|' + e.title))
+            for (const yr of [thisYear, thisYear + 1]) {
+              for (const h of fn(yr)) {
+                const id = makeId(h)
+                const key = h.date + '|' + h.title
+                if (existingIds.has(id) || existingKeys.has(key)) continue
+                const ev = {
+                  id, title: h.title, date: h.date, allDay: true,
+                  start: '00:00', end: '00:00', reminder: -1,
+                  groups: [], invitees: [], color: '#CF3535',
+                  desc: 'Public Holiday', location: '',
+                  creatorId: 'system', recurrence: 'none',
+                  recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,
+                  editPermission: 'everyone', updatedAt: Date.now(),
+                }
+                await db?.putEvent(ev).catch(() => {})
+                setEvents(prev => prev.find(e => e.id === ev.id) ? prev : [...prev, ev])
+                existingIds.add(id)
+                existingKeys.add(key)
+              }
+            }
+          } else {
+            newActive.delete(code)
+            // Keep IDs still needed by other still-active countries
+            const keepIds = new Set()
+            for (const { code: otherCode, fn: otherFn } of allCountries) {
+              if (otherCode === code || !newActive.has(otherCode)) continue
+              for (const yr of [thisYear, thisYear + 1]) {
+                for (const h of otherFn(yr)) keepIds.add(makeId(h))
+              }
+            }
+            for (const yr of [thisYear, thisYear + 1]) {
+              for (const h of fn(yr)) {
+                const id = makeId(h)
+                if (keepIds.has(id)) continue
+                const ev = (events ?? []).find(e => e.id === id)
+                if (ev) {
+                  await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
+                  setEvents(prev => prev.filter(e => e.id !== id))
+                }
+              }
+            }
+          }
+          await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {})
+          setHolidayWorking(false)
+        }
+
+        const anyEnabled = activeCountries.size > 0
+        return (
+          <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', marginBottom:16,
+            opacity: holidayWorking ? 0.6 : 1, transition:'opacity 0.2s' }}>
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em', marginBottom:12 }}>
+              HOLIDAYS
+            </div>
+            {allCountries.map(({ code, flag, label, fn }, i) => (
+              <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
+                padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
+                <span style={{ fontSize:20 }}>{flag}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
+                  <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
+                    {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
+                  </div>
+                </div>
+                <Toggle val={activeCountries.has(code)}
+                  onChange={v => !holidayWorking && toggleCountry(code, fn, v)} accent={th.accent} />
+              </div>
+            ))}
+            {anyEnabled && (
+              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:10 }}>
+                Added to your personal calendar. Toggle off to remove.
+              </div>
+            )}
+          </div>
+        )
+      })()}
     </div>
   )
 }
