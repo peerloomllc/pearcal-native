@@ -67,11 +67,44 @@ jobs:
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk pearcal-${{ github.ref_name }}.apk
 
+      - name: Generate release notes from PR summaries
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PREV_TAG=$(git tag --sort=-version:refname | grep -v "^${{ github.ref_name }}$" | head -1)
+          NOTES="## What's Changed\n\n"
+
+          if [ -z "$PREV_TAG" ]; then
+            NOTES="${NOTES}Initial release.\n"
+          else
+            PR_NUMBERS=$(git log ${PREV_TAG}..HEAD --merges --format="%s" \
+              | grep -oE '#[0-9]+' | tr -d '#' || true)
+
+            if [ -z "$PR_NUMBERS" ]; then
+              NOTES="${NOTES}No merged PRs since ${PREV_TAG}.\n"
+            else
+              while IFS= read -r pr; do
+                [ -z "$pr" ] && continue
+                PR_DATA=$(gh api repos/${{ github.repository }}/pulls/$pr 2>/dev/null) || continue
+                TITLE=$(echo "$PR_DATA" | jq -r '.title // ""')
+                BODY=$(echo "$PR_DATA" | jq -r '.body // ""')
+                SUMMARY=$(echo "$BODY" | awk '/^## Summary/{f=1;next} /^## /{if(f)exit} f && /\S/{print}')
+                NOTES="${NOTES}### ${TITLE}\n"
+                [ -n "$SUMMARY" ] && NOTES="${NOTES}${SUMMARY}\n"
+                NOTES="${NOTES}\n"
+              done <<< "$PR_NUMBERS"
+            fi
+          fi
+
+          printf "%b" "$NOTES" > release_notes.md
+          echo "--- Release notes ---"
+          cat release_notes.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: pearcal-${{ github.ref_name }}.apk
-          generate_release_notes: true
+          body_path: release_notes.md
 
       - name: Install zsp (Zapstore publisher)
         run: |
