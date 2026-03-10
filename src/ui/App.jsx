@@ -111,8 +111,9 @@ export default function App ({ db, notifs, sync }) {
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
-  const closeAboutSheetRef = useRef(null)
+  const closeAboutSheetRef  = useRef(null)
   const closeJoinSheetRef   = useRef(null)
+  const closeInviteSheetRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -226,6 +227,7 @@ export default function App ({ db, notifs, sync }) {
       }
       if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
+      if (closeInviteSheetRef.current?.()) return
       if (closeJoinSheetRef.current?.()) return
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
@@ -564,6 +566,7 @@ export default function App ({ db, notifs, sync }) {
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })}
               onQrGroup={g => setQrGroup(g)}
+              closeInviteSheetRef={closeInviteSheetRef}
               onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])}
               joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
@@ -1738,8 +1741,9 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined }) {
   )
 }
 
-function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen }) {
-  const [copiedId,  setCopiedId]  = useState(null)
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
+  const [copiedId,         setCopiedId]         = useState(null)
+  const [inviteModalGroup, setInviteModalGroup] = useState(null)
 
   async function copyInvite (g, e) {
     e.stopPropagation()
@@ -1751,10 +1755,6 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
     setTimeout(() => setCopiedId(null), 2000)
-  }
-
-  function previewInvite (g) {
-    return buildInviteLink(g, profile?.publicKey ?? 'unknown')
   }
 
   return (
@@ -1806,49 +1806,77 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
               ))}
             </div>
 
-            {/* Invite link row */}
-            <div style={{ background:th.inputBg, borderRadius:8, padding:'8px 10px',
-              display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:11, color:th.muted, overflow:'hidden', textOverflow:'ellipsis',
-                whiteSpace:'nowrap', flex:1, fontFamily:'monospace', fontWeight:300 }}>
-                {previewInvite(g)}
-              </span>
-
-              <button onClick={async e => {
-                  e.stopPropagation()
-                  if (!readyGroupKeys.has(g.id)) return
-                  const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
-                  const src = fresh ?? g
-                  const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
-                  if (sync) sync.nativeShare(`Join ${src.name} on PearCal`, link)
-                  else navigator.clipboard?.writeText(link)
-                }}
-                disabled={!readyGroupKeys.has(g.id)}
-                style={{ background:'transparent', border:`1px solid ${g.color}44`,
-                  borderRadius:6, fontFamily:FONT, color:readyGroupKeys.has(g.id) ? g.color : th.muted,
-                  fontSize:12, fontWeight:300, padding:'5px 10px',
-                  cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
-                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
-                📤
-              </button>
-              <button onClick={async e => { e.stopPropagation(); if (!readyGroupKeys.has(g.id)) return
-                  const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
-                  const src = fresh ?? g
-                  const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
-                  onQrGroup({ group: src, link }) }}
-                disabled={!readyGroupKeys.has(g.id)}
-                style={{ background:'transparent', border:`1px solid ${g.color}44`,
-                  borderRadius:6, fontFamily:FONT, color:readyGroupKeys.has(g.id) ? g.color : th.muted,
-                  fontSize:12, fontWeight:300, padding:'5px 10px',
-                  cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
-                  flexShrink:0, opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
-                ⬛
-              </button>
-            </div>
+            <button onClick={async e => {
+                e.stopPropagation()
+                if (!readyGroupKeys.has(g.id)) return
+                const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
+                setInviteModalGroup(fresh ?? g)
+              }}
+              disabled={!readyGroupKeys.has(g.id)}
+              style={{ width:'100%', padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
+                background:'transparent', border:`1px solid ${g.color}44`, borderRadius:10,
+                color:readyGroupKeys.has(g.id) ? g.color : th.muted,
+                cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
+                opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
+              📤 Share Group Invite
+            </button>
           </div>
         ))}
       </div>
+      {inviteModalGroup && (
+        <InviteOptionsModal
+          th={th}
+          group={inviteModalGroup}
+          profile={profile}
+          sync={sync}
+          onQrGroup={onQrGroup}
+          onClose={() => setInviteModalGroup(null)}
+          closeRef={closeInviteSheetRef}
+        />
+      )}
     </div>
+  )
+}
+
+// ─── Invite Options Modal ──────────────────────────────────────────────────────
+function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, closeRef }) {
+  const bsCloseRef = useRef(null)
+  const link = buildInviteLink(group, profile?.publicKey ?? 'unknown')
+  const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:\n\n${link}`
+
+  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+
+  const row = (icon, title, subtitle, onClick) => (
+    <button onClick={onClick}
+      style={{ background:'transparent', border:`1px solid ${th.border}`, borderRadius:12,
+        padding:'14px 16px', display:'flex', alignItems:'center', gap:12,
+        cursor:'pointer', fontFamily:FONT, width:'100%', textAlign:'left' }}>
+      <span style={{ fontSize:22, flexShrink:0 }}>{icon}</span>
+      <div>
+        <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{title}</div>
+        <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>{subtitle}</div>
+      </div>
+    </button>
+  )
+
+  return (
+    <BottomSheet th={th} onClose={onClose} zIndex={300} closeRef={bsCloseRef}>
+      <div style={{ padding:'0 16px 8px' }}>
+        <div style={{ fontWeight:300, fontSize:16, ...th.text, marginBottom:16 }}>
+          Invite to {group.name}
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {row('📤', 'Share Link…', 'Send via messages, email, etc.', () => {
+            bsCloseRef.current?.()
+            setTimeout(() => sync?.nativeShare(`Join ${group.name} on PearCal`, shareMsg), 50)
+          })}
+          {row('⬛', 'Show QR Code', 'Scan to join instantly', () => {
+            bsCloseRef.current?.()
+            setTimeout(() => onQrGroup({ group, link }), 50)
+          })}
+        </div>
+      </div>
+    </BottomSheet>
   )
 }
 

@@ -14630,6 +14630,7 @@
     const backHandlerRef = (0, import_react.useRef)(null);
     const closeAboutSheetRef = (0, import_react.useRef)(null);
     const closeJoinSheetRef = (0, import_react.useRef)(null);
+    const closeInviteSheetRef = (0, import_react.useRef)(null);
     const goTab = (t) => {
       tabHistoryRef.current.push(tabRef.current);
       tabRef.current = t;
@@ -14747,6 +14748,7 @@
           setQrGroup(null);
           return;
         }
+        if (closeInviteSheetRef.current?.()) return;
         if (closeJoinSheetRef.current?.()) return;
         if (modal) {
           setModal(null);
@@ -15152,6 +15154,7 @@
             onNewGroup: () => setNewGroupOpen(true),
             onSettings: (g) => setSettingsGroup({ ...g }),
             onQrGroup: (g) => setQrGroup(g),
+            closeInviteSheetRef,
             onJoined: (g) => setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]),
             joinOpen,
             setJoinOpen
@@ -16912,8 +16915,9 @@
       ] })
     ] }) });
   }
-  function GroupsTab({ th, groups, profile, sync: sync2, db: db2, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen }) {
+  function GroupsTab({ th, groups, profile, sync: sync2, db: db2, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
     const [copiedId, setCopiedId] = (0, import_react.useState)(null);
+    const [inviteModalGroup, setInviteModalGroup] = (0, import_react.useState)(null);
     async function copyInvite(g, e) {
       e.stopPropagation();
       if (!readyGroupKeys.has(g.id)) return;
@@ -16923,9 +16927,6 @@
       navigator.clipboard?.writeText(link);
       setCopiedId(g.id);
       setTimeout(() => setCopiedId(null), 2e3);
-    }
-    function previewInvite(g) {
-      return buildInviteLink(g, profile?.publicKey ?? "unknown");
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "16px" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }, children: [
@@ -16967,84 +16968,101 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m.avatar, name: m.nickname || m.name, color: g.color, size: 34, fontSize: 13 }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m.nickname || m.name })
         ] }, m.id)) }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-          background: th.inputBg,
-          borderRadius: 8,
-          padding: "8px 10px",
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: async (e) => {
+              e.stopPropagation();
+              if (!readyGroupKeys.has(g.id)) return;
+              const fresh = db2 ? await db2.getGroup(g.id).catch(() => null) : null;
+              setInviteModalGroup(fresh ?? g);
+            },
+            disabled: !readyGroupKeys.has(g.id),
+            style: {
+              width: "100%",
+              padding: "10px",
+              fontSize: 13,
+              fontWeight: 300,
+              fontFamily: FONT,
+              background: "transparent",
+              border: `1px solid ${g.color}44`,
+              borderRadius: 10,
+              color: readyGroupKeys.has(g.id) ? g.color : th.muted,
+              cursor: readyGroupKeys.has(g.id) ? "pointer" : "not-allowed",
+              opacity: readyGroupKeys.has(g.id) ? 1 : 0.5
+            },
+            children: "\u{1F4E4} Share Group Invite"
+          }
+        )
+      ] }, g.id)) }),
+      inviteModalGroup && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        InviteOptionsModal,
+        {
+          th,
+          group: inviteModalGroup,
+          profile,
+          sync: sync2,
+          onQrGroup,
+          onClose: () => setInviteModalGroup(null),
+          closeRef: closeInviteSheetRef
+        }
+      )
+    ] });
+  }
+  function InviteOptionsModal({ th, group, profile, sync: sync2, onQrGroup, onClose, closeRef }) {
+    const bsCloseRef = (0, import_react.useRef)(null);
+    const link = buildInviteLink(group, profile?.publicKey ?? "unknown");
+    const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:
+
+${link}`;
+    (0, import_react.useEffect)(() => {
+      if (closeRef) closeRef.current = () => {
+        bsCloseRef.current?.();
+        return true;
+      };
+    }, []);
+    const row = (icon, title, subtitle, onClick) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+      "button",
+      {
+        onClick,
+        style: {
+          background: "transparent",
+          border: `1px solid ${th.border}`,
+          borderRadius: 12,
+          padding: "14px 16px",
           display: "flex",
           alignItems: "center",
-          gap: 8
-        }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-            fontSize: 11,
-            color: th.muted,
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-            fontFamily: "monospace",
-            fontWeight: 300
-          }, children: previewInvite(g) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: async (e) => {
-                e.stopPropagation();
-                if (!readyGroupKeys.has(g.id)) return;
-                const fresh = db2 ? await db2.getGroup(g.id).catch(() => null) : null;
-                const src = fresh ?? g;
-                const link = buildInviteLink(src, profile?.publicKey ?? "unknown");
-                if (sync2) sync2.nativeShare(`Join ${src.name} on PearCal`, link);
-                else navigator.clipboard?.writeText(link);
-              },
-              disabled: !readyGroupKeys.has(g.id),
-              style: {
-                background: "transparent",
-                border: `1px solid ${g.color}44`,
-                borderRadius: 6,
-                fontFamily: FONT,
-                color: readyGroupKeys.has(g.id) ? g.color : th.muted,
-                fontSize: 12,
-                fontWeight: 300,
-                padding: "5px 10px",
-                cursor: readyGroupKeys.has(g.id) ? "pointer" : "not-allowed",
-                flexShrink: 0,
-                opacity: readyGroupKeys.has(g.id) ? 1 : 0.5
-              },
-              children: "\u{1F4E4}"
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: async (e) => {
-                e.stopPropagation();
-                if (!readyGroupKeys.has(g.id)) return;
-                const fresh = db2 ? await db2.getGroup(g.id).catch(() => null) : null;
-                const src = fresh ?? g;
-                const link = buildInviteLink(src, profile?.publicKey ?? "unknown");
-                onQrGroup({ group: src, link });
-              },
-              disabled: !readyGroupKeys.has(g.id),
-              style: {
-                background: "transparent",
-                border: `1px solid ${g.color}44`,
-                borderRadius: 6,
-                fontFamily: FONT,
-                color: readyGroupKeys.has(g.id) ? g.color : th.muted,
-                fontSize: 12,
-                fontWeight: 300,
-                padding: "5px 10px",
-                cursor: readyGroupKeys.has(g.id) ? "pointer" : "not-allowed",
-                flexShrink: 0,
-                opacity: readyGroupKeys.has(g.id) ? 1 : 0.5
-              },
-              children: "\u2B1B"
-            }
-          )
-        ] })
-      ] }, g.id)) })
-    ] });
+          gap: 12,
+          cursor: "pointer",
+          fontFamily: FONT,
+          width: "100%",
+          textAlign: "left"
+        },
+        children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 22, flexShrink: 0 }, children: icon }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: subtitle })
+          ] })
+        ]
+      }
+    );
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomSheet, { th, onClose, zIndex: 300, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 300, fontSize: 16, ...th.text, marginBottom: 16 }, children: [
+        "Invite to ",
+        group.name
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10 }, children: [
+        row("\u{1F4E4}", "Share Link\u2026", "Send via messages, email, etc.", () => {
+          bsCloseRef.current?.();
+          setTimeout(() => sync2?.nativeShare(`Join ${group.name} on PearCal`, shareMsg), 50);
+        }),
+        row("\u2B1B", "Show QR Code", "Scan to join instantly", () => {
+          bsCloseRef.current?.();
+          setTimeout(() => onQrGroup({ group, link }), 50);
+        })
+      ] })
+    ] }) });
   }
   function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange }) {
     const bsCloseRef = (0, import_react.useRef)(null);
