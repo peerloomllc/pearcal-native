@@ -12,6 +12,8 @@ expo-env.d.ts
 # Native
 *.orig.*
 *.jks
+*.keystore
+!android/app/debug.keystore
 *.p8
 *.p12
 *.key
