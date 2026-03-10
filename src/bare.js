@@ -372,19 +372,23 @@ async function resyncGroup (groupId) {
         // If the Autobase view state pre-dates our current join, the local members
         // written by handleInviteLink are fresher — don't let stale pre-leave data
         // (e.g. old keypair entries from a previous install) pollute the member list.
-        if (viewUpdatedAt < localJoinedAt) {
-          await db.put(key, { ...value, members: existing?.value?.members ?? [] })
-        } else {
-          const existingMembers = existing?.value?.members ?? []
-          const incomingMembers = value.members ?? []
-          const mergedMap = new Map()
-          for (const m of existingMembers) mergedMap.set(m.id, m)
-          for (const m of incomingMembers) {
-            const prev = mergedMap.get(m.id)
-            if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+        const existingMembers = existing?.value?.members ?? []
+        const incomingMembers = value.members ?? []
+        const mergedMap = new Map()
+        for (const m of existingMembers) mergedMap.set(m.id, m)
+        for (const m of incomingMembers) {
+          const prev = mergedMap.get(m.id)
+          if (viewUpdatedAt < localJoinedAt) {
+            // Autobase is older than our join — only replace Inviter placeholders,
+            // don't add new IDs (prevents stale entries from old profiles on rejoin)
+            if (prev && prev.name === 'Inviter' && m.name !== 'Inviter')
+              mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+          } else {
+            if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter')
+              mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
           }
-          await db.put(key, { ...value, members: [...mergedMap.values()] })
         }
+        await db.put(key, { ...value, members: [...mergedMap.values()] })
       }
     }
     send({ type: 'event', event: 'sync', data: groupId })
