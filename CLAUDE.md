@@ -41,6 +41,10 @@ cp android/app/build/outputs/apk/release/app-release.apk ~/pearcal-release.apk
 ```
 Keystore: `~/keystore.jks` — alias: `pearcal`
 
+## To-Do List
+
+Tracked in `TODO.md` at the repo root (unversioned, gitignored). When adding items, categorize by type, priority, and complexity. When completing items, mark as `- [x] Description — completed YYYY-MM-DD`.
+
 ## Patching Rules
 
 - Use `cat > /tmp/patchN.js << 'EOF' ... EOF` + `node /tmp/patchN.js` for in-place file edits
