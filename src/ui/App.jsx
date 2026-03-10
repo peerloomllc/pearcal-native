@@ -31,6 +31,7 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
   const style = document.createElement('style')
   style.id = 'pear-anims'
   style.textContent = `
+    * { -webkit-tap-highlight-color: transparent; }
     @keyframes pearFadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
     @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
@@ -40,9 +41,10 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
 }
 
 const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
-function formatTime (t) {
+function formatTime (t, use24h) {
   if (!t) return ''
   const [hStr, mStr] = t.split(':')
+  if (use24h) return hStr + ':' + mStr
   const h = parseInt(hStr, 10)
   const ampm = h >= 12 ? 'pm' : 'am'
   const h12 = h % 12 === 0 ? 12 : h % 12
@@ -118,6 +120,9 @@ export default function App ({ db, notifs, sync }) {
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
   const th = themes(dark)
+  const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
+  const use24h    = profile?.use24h ?? localeUse24h
+  const weekStart = profile?.weekStart ?? 0
 
   // ── Bootstrap: load everything from Hyperbee ────────────────────────────────
   useEffect(() => {
@@ -133,6 +138,7 @@ export default function App ({ db, notifs, sync }) {
         ])
         if (cancelled) return
         setProfile(prof)
+        if (prof?.dark !== undefined) setDark(prof.dark)
         setGroups(grps)
         setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
@@ -464,23 +470,24 @@ export default function App ({ db, notifs, sync }) {
   // ─── Calendar helpers ───────────────────────────────────────────────────────
   const calDays = useMemo(() => {
     const { y, m } = viewDate
-    const first   = new Date(y, m, 1).getDay()
-    const last    = new Date(y, m + 1, 0).getDate()
+    const first    = new Date(y, m, 1).getDay()
+    const firstAdj = (first - weekStart + 7) % 7
+    const last     = new Date(y, m + 1, 0).getDate()
     const prevLast = new Date(y, m, 0).getDate()
     const cells = []
     const prevM = m === 0 ? 11 : m - 1
     const prevY = m === 0 ? y - 1 : y
     const nextM = m === 11 ? 0 : m + 1
     const nextY = m === 11 ? y + 1 : y
-    for (let i = 0; i < first; i++)
-      cells.push({ d: prevLast - first + 1 + i, y: prevY, m: prevM, type: 'prev' })
+    for (let i = 0; i < firstAdj; i++)
+      cells.push({ d: prevLast - firstAdj + 1 + i, y: prevY, m: prevM, type: 'prev' })
     for (let d = 1; d <= last; d++)
       cells.push({ d, y, m, type: 'cur' })
     let nextD = 1
     while (cells.length < 42)
       cells.push({ d: nextD++, y: nextY, m: nextM, type: 'next' })
     return cells
-  }, [viewDate])
+  }, [viewDate, weekStart])
 
   const eventsOnDate = d => events.filter(e => e.date === d)
 
@@ -494,7 +501,7 @@ export default function App ({ db, notifs, sync }) {
     const defaultEnd   = endHour + ':00'
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
-      allDay:false, start:defaultStart, end:defaultEnd, reminder:15,
+      allDay:false, start:defaultStart, end:defaultEnd, reminder: profile?.defaultReminder ?? 15,
       groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
     }})
   }
@@ -537,9 +544,6 @@ export default function App ({ db, notifs, sync }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
           padding:'16px 20px 8px', ...th.headerBg }}>
           <span style={{ fontSize:20, fontWeight:300, ...th.text }}>🍐 PearCal</span>
-          <button onClick={() => setDark(d => !d)} style={{ ...th.iconBtn, fontSize:18 }}>
-            {dark ? '☀️' : '🌙'}
-          </button>
         </div>
 
         {/* Content */}
@@ -551,7 +555,7 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} groups={groups} />
+              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
@@ -572,7 +576,8 @@ export default function App ({ db, notifs, sync }) {
           )}
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile}
-              db={db} events={events} setEvents={setEvents} />
+              db={db} events={events} setEvents={setEvents} dark={dark}
+              onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
             <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} />
@@ -672,7 +677,7 @@ function Label ({ th, children }) {
 
 function Toggle ({ val, onChange, accent }) {
   return (
-    <div onClick={() => onChange(!val)}
+    <div onClick={() => { window.__pearSync?.haptic('light'); onChange(!val) }}
       style={{ width:44, height:24, borderRadius:12, background:val?accent:'#555',
         cursor:'pointer', position:'relative', transition:'background 0.2s' }}>
       <div style={{ position:'absolute', top:2, left:val?22:2, width:20, height:20,
@@ -900,7 +905,7 @@ function getUKHolidays (year) {
 }
 
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -1049,7 +1054,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       }}>
       {/* Day headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:4 }}>
-        {DAYS.map(d => (
+        {[...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)].map(d => (
           <div key={d} style={{ textAlign:'center', fontSize:12, fontWeight:300, color:th.muted, padding:'4px 0' }}>{d}</div>
         ))}
       </div>
@@ -1150,7 +1155,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             </div>
             {seen.get(date).map(ev => (
               <EventCard key={ev.id} ev={ev} th={th} isPast={date < todayStr}
-                onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
             ))}
           </div>
         ))
@@ -1397,7 +1402,7 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast }) {
+function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
   return (
     <div onClick={() => { window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
@@ -1408,7 +1413,7 @@ function EventCard ({ ev, th, onClick, compact, isPast }) {
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
-          {ev.allDay ? 'All day' : `${formatTime(ev.start)} – ${formatTime(ev.end)}`}
+          {ev.allDay ? 'All day' : `${formatTime(ev.start, use24h)} – ${formatTime(ev.end, use24h)}`}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
@@ -2294,11 +2299,10 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           <div>
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
-              {isMember && (
+              {isMember && !isOwner && (
                 <button onClick={() => setConfirm('leave')}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                    fontFamily:FONT, borderBottom:isOwner ? `1px solid #D45F7A44` : 'none',
-                    color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
+                    fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span>🚪 Leave Group</span>
                   <span style={{ fontSize:12, color:th.muted, fontWeight:300 }}>You'll lose access to shared events</span>
@@ -2816,13 +2820,20 @@ function AboutTab ({ th, sync, closeSheetRef }) {
   )
 }
 
-function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents }) {
+function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
-  const [holidayWorking, setHolidayWorking] = useState(false)
-  const [holidaysOpen,   setHolidaysOpen]   = useState((profile?.holidayCountries ?? []).length > 0)
+  const [holidayWorking,    setHolidayWorking]    = useState(false)
+  const [holidaysOpen,      setHolidaysOpen]      = useState((profile?.holidayCountries ?? []).length > 0)
+  const [appearanceOpen,    setAppearanceOpen]    = useState(false)
+  const [timeFormatOpen,    setTimeFormatOpen]    = useState(false)
+  const [weekStartOpen,     setWeekStartOpen]     = useState(false)
+  const [defaultRemOpen,    setDefaultRemOpen]    = useState(false)
+  const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
+  const use24h    = profile?.use24h    ?? localeUse24h
+  const weekStart = profile?.weekStart ?? 0
   const fileRef = useRef()
 
   async function saveName () {
@@ -2944,6 +2955,109 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em',
         marginBottom:12, marginTop:4, textAlign:'center' }}>
         SETTINGS
+      </div>
+
+      {/* Appearance */}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setAppearanceOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+            APPEARANCE
+          </div>
+          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
+            transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+        </div>
+        <div style={{ maxHeight: appearanceOpen ? '200px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
+            justifyContent:'space-between' }}>
+            <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Dark mode</div>
+            <Toggle val={dark} onChange={onToggleDark} accent={th.accent} />
+          </div>
+        </div>
+      </div>
+
+      {/* First Day of Week */}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setWeekStartOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+            FIRST DAY OF WEEK
+          </div>
+          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
+            transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+        </div>
+        <div style={{ maxHeight: weekStartOpen ? '200px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          <div style={{ padding:'0 16px 14px', display:'flex', gap:8 }}>
+            {[['Sunday', 0], ['Monday', 1]].map(([label, val]) => (
+              <button key={val} onClick={() => { window.__pearSync?.haptic('light'); onUpdateProfile({ weekStart: val }) }}
+                style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                  cursor:'pointer', fontFamily:FONT,
+                  border:'1.5px solid ' + (weekStart === val ? th.accent : th.border),
+                  background: weekStart === val ? th.accent : 'transparent',
+                  color: weekStart === val ? '#fff' : th.muted }}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Default Reminder */}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setDefaultRemOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+            DEFAULT REMINDER
+          </div>
+          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
+            transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+        </div>
+        <div style={{ maxHeight: defaultRemOpen ? '200px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          <div style={{ padding:'0 16px 14px' }}>
+            <select value={profile?.defaultReminder ?? 15}
+              onChange={e => { window.__pearSync?.haptic('light'); onUpdateProfile({ defaultReminder: Number(e.target.value) }) }}
+              style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
+                border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
+                fontFamily:FONT, appearance:'none' }}>
+              {REMINDER_OPTIONS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Time Format */}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setTimeFormatOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+            TIME FORMAT
+          </div>
+          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
+            transform: timeFormatOpen ? 'rotate(90deg)' : 'rotate(0deg)',
+            display:'inline-block' }}>›</span>
+        </div>
+        <div style={{ maxHeight: timeFormatOpen ? '200px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
+            justifyContent:'space-between' }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:300, ...th.text }}>24-hour time</div>
+              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+                {use24h ? 'e.g. 14:30' : 'e.g. 2:30pm'}
+              </div>
+            </div>
+            <Toggle val={use24h} onChange={v => onUpdateProfile({ use24h: v })} accent={th.accent} />
+          </div>
+        </div>
       </div>
 
       {/* Holidays */}

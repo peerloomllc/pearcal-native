@@ -14537,6 +14537,7 @@
     const style = document.createElement("style");
     style.id = "pear-anims";
     style.textContent = `
+    * { -webkit-tap-highlight-color: transparent; }
     @keyframes pearFadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
     @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
@@ -14545,9 +14546,10 @@
     document.head.appendChild(style);
   }
   var FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`;
-  function formatTime(t) {
+  function formatTime(t, use24h) {
     if (!t) return "";
     const [hStr, mStr] = t.split(":");
+    if (use24h) return hStr + ":" + mStr;
     const h = parseInt(hStr, 10);
     const ampm = h >= 12 ? "pm" : "am";
     const h12 = h % 12 === 0 ? 12 : h % 12;
@@ -14638,6 +14640,9 @@
     };
     const [readyGroupKeys, setReadyGroupKeys] = (0, import_react.useState)(() => /* @__PURE__ */ new Set());
     const th = themes(dark);
+    const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
+    const use24h = profile?.use24h ?? localeUse24h;
+    const weekStart = profile?.weekStart ?? 0;
     (0, import_react.useEffect)(() => {
       if (!db2) {
         setReady(true);
@@ -14653,6 +14658,7 @@
           ]);
           if (cancelled) return;
           setProfile(prof);
+          if (prof?.dark !== void 0) setDark(prof.dark);
           setGroups(grps);
           setReadyGroupKeys(new Set(grps.map((g) => g.id)));
           setEvents(evts);
@@ -14986,6 +14992,7 @@
     const calDays = (0, import_react.useMemo)(() => {
       const { y, m } = viewDate;
       const first = new Date(y, m, 1).getDay();
+      const firstAdj = (first - weekStart + 7) % 7;
       const last = new Date(y, m + 1, 0).getDate();
       const prevLast = new Date(y, m, 0).getDate();
       const cells = [];
@@ -14993,15 +15000,15 @@
       const prevY = m === 0 ? y - 1 : y;
       const nextM = m === 11 ? 0 : m + 1;
       const nextY = m === 11 ? y + 1 : y;
-      for (let i = 0; i < first; i++)
-        cells.push({ d: prevLast - first + 1 + i, y: prevY, m: prevM, type: "prev" });
+      for (let i = 0; i < firstAdj; i++)
+        cells.push({ d: prevLast - firstAdj + 1 + i, y: prevY, m: prevM, type: "prev" });
       for (let d = 1; d <= last; d++)
         cells.push({ d, y, m, type: "cur" });
       let nextD = 1;
       while (cells.length < 42)
         cells.push({ d: nextD++, y: nextY, m: nextM, type: "next" });
       return cells;
-    }, [viewDate]);
+    }, [viewDate, weekStart]);
     const eventsOnDate = (d) => events.filter((e) => e.date === d);
     function openCreate(date) {
       const now = /* @__PURE__ */ new Date();
@@ -15018,7 +15025,7 @@
         allDay: false,
         start: defaultStart,
         end: defaultEnd,
-        reminder: 15,
+        reminder: profile?.defaultReminder ?? 15,
         groups: [],
         invitees: [],
         color: "#6C9BF5",
@@ -15090,16 +15097,13 @@
       paddingTop: "var(--sat)",
       paddingBottom: "var(--sab)"
     }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         padding: "16px 20px 8px",
         ...th.headerBg
-      }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20, fontWeight: 300, ...th.text }, children: "\u{1F350} PearCal" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setDark((d) => !d), style: { ...th.iconBtn, fontSize: 18 }, children: dark ? "\u2600\uFE0F" : "\u{1F319}" })
-      ] }),
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20, fontWeight: 300, ...th.text }, children: "\u{1F350} PearCal" }) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, overflowY: tab === "calendar" ? "hidden" : "auto", paddingBottom: tab === "calendar" ? 0 : 72, minHeight: 0 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         flex: 1,
         display: "flex",
@@ -15124,7 +15128,9 @@
             openCreate,
             setModal,
             events,
-            groups
+            groups,
+            use24h,
+            weekStart
           }
         ),
         blockedToast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
@@ -15169,7 +15175,13 @@
             onUpdateProfile: updateProfile,
             db: db2,
             events,
-            setEvents
+            setEvents,
+            dark,
+            onToggleDark: () => {
+              const nd = !dark;
+              setDark(nd);
+              updateProfile({ dark: nd });
+            }
           }
         ),
         tab === "about" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AboutTab, { th, sync: sync2, closeSheetRef: closeAboutSheetRef })
@@ -15336,7 +15348,10 @@
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
       "div",
       {
-        onClick: () => onChange(!val),
+        onClick: () => {
+          window.__pearSync?.haptic("light");
+          onChange(!val);
+        },
         style: {
           width: 44,
           height: 24,
@@ -15579,7 +15594,9 @@
     openCreate,
     setModal,
     events,
-    groups
+    groups,
+    use24h,
+    weekStart
   }) {
     const { y, m } = viewDate;
     const [showMonthPicker, setShowMonthPicker] = (0, import_react.useState)(false);
@@ -15779,7 +15796,7 @@
               opacity: isSliding ? 0 : 1,
               transition: isSliding ? "transform 0.22s ease, opacity 0.22s ease" : "none"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }, children: DAYS.map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", fontSize: 12, fontWeight: 300, color: th.muted, padding: "4px 0" }, children: d }, d)) }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }, children: [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)].map((d) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { textAlign: "center", fontSize: 12, fontWeight: 300, color: th.muted, padding: "4px 0" }, children: d }, d)) }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }, children: calDays.map((cell, i) => {
                 const ds = dateStr2(cell.y, cell.m, cell.d);
                 const evs = eventsOnDate(ds);
@@ -15917,6 +15934,7 @@
               ev,
               th,
               isPast: date < todayStr2,
+              use24h,
               onClick: () => setModal({ mode: "edit", event: { ...ev } })
             },
             ev.id
@@ -16319,7 +16337,7 @@
       }
     );
   }
-  function EventCard({ ev, th, onClick, compact, isPast }) {
+  function EventCard({ ev, th, onClick, compact, isPast, use24h }) {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
@@ -16343,7 +16361,7 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text }, children: ev.title }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
-              ev.allDay ? "All day" : `${formatTime(ev.start)} \u2013 ${formatTime(ev.end)}`,
+              ev.allDay ? "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
               compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
                 "en-US",
                 { month: "short", day: "numeric" }
@@ -17597,7 +17615,7 @@ ${link}`;
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           section("DANGER ZONE"),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: `1px solid #D45F7A44`, borderRadius: 12, overflow: "hidden" }, children: [
-            isMember && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            isMember && !isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "button",
               {
                 onClick: () => setConfirm("leave"),
@@ -17607,7 +17625,6 @@ ${link}`;
                   background: "transparent",
                   border: "none",
                   fontFamily: FONT,
-                  borderBottom: isOwner ? `1px solid #D45F7A44` : "none",
                   color: "#D45F7A",
                   fontSize: 14,
                   fontWeight: 300,
@@ -18323,13 +18340,20 @@ ${link}`;
       ] })
     ] });
   }
-  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents }) {
+  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark }) {
     const [name, setName] = (0, import_react.useState)(profile?.name ?? "");
     const [editing, setEditing] = (0, import_react.useState)(false);
     const [saving, setSaving] = (0, import_react.useState)(false);
     const [photoSaving, setPhotoSaving] = (0, import_react.useState)(false);
     const [holidayWorking, setHolidayWorking] = (0, import_react.useState)(false);
     const [holidaysOpen, setHolidaysOpen] = (0, import_react.useState)((profile?.holidayCountries ?? []).length > 0);
+    const [appearanceOpen, setAppearanceOpen] = (0, import_react.useState)(false);
+    const [timeFormatOpen, setTimeFormatOpen] = (0, import_react.useState)(false);
+    const [weekStartOpen, setWeekStartOpen] = (0, import_react.useState)(false);
+    const [defaultRemOpen, setDefaultRemOpen] = (0, import_react.useState)(false);
+    const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
+    const use24h = profile?.use24h ?? localeUse24h;
+    const weekStart = profile?.weekStart ?? 0;
     const fileRef = (0, import_react.useRef)();
     async function saveName() {
       setSaving(true);
@@ -18523,6 +18547,201 @@ ${link}`;
         marginTop: 4,
         textAlign: "center"
       }, children: "SETTINGS" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setAppearanceOpen((o) => !o);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "APPEARANCE" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                fontSize: 16,
+                color: th.muted,
+                transition: "transform 0.3s",
+                transform: appearanceOpen ? "rotate(90deg)" : "rotate(0deg)",
+                display: "inline-block"
+              }, children: "\u203A" })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: appearanceOpen ? "200px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          padding: "0 16px 14px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "Dark mode" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: dark, onChange: onToggleDark, accent: th.accent })
+        ] }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setWeekStartOpen((o) => !o);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "FIRST DAY OF WEEK" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                fontSize: 16,
+                color: th.muted,
+                transition: "transform 0.3s",
+                transform: weekStartOpen ? "rotate(90deg)" : "rotate(0deg)",
+                display: "inline-block"
+              }, children: "\u203A" })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: weekStartOpen ? "200px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px", display: "flex", gap: 8 }, children: [["Sunday", 0], ["Monday", 1]].map(([label, val]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              onUpdateProfile({ weekStart: val });
+            },
+            style: {
+              flex: 1,
+              padding: "8px 0",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 300,
+              cursor: "pointer",
+              fontFamily: FONT,
+              border: "1.5px solid " + (weekStart === val ? th.accent : th.border),
+              background: weekStart === val ? th.accent : "transparent",
+              color: weekStart === val ? "#fff" : th.muted
+            },
+            children: label
+          },
+          val
+        )) }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setDefaultRemOpen((o) => !o);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "DEFAULT REMINDER" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                fontSize: 16,
+                color: th.muted,
+                transition: "transform 0.3s",
+                transform: defaultRemOpen ? "rotate(90deg)" : "rotate(0deg)",
+                display: "inline-block"
+              }, children: "\u203A" })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: defaultRemOpen ? "200px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "select",
+          {
+            value: profile?.defaultReminder ?? 15,
+            onChange: (e) => {
+              window.__pearSync?.haptic("light");
+              onUpdateProfile({ defaultReminder: Number(e.target.value) });
+            },
+            style: {
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 300,
+              border: `1px solid ${th.border}`,
+              background: th.inputBg,
+              color: th.text.color,
+              fontFamily: FONT,
+              appearance: "none"
+            },
+            children: REMINDER_OPTIONS.map((r) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r.value, children: r.label }, r.value))
+          }
+        ) }) })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setTimeFormatOpen((o) => !o);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "TIME FORMAT" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                fontSize: 16,
+                color: th.muted,
+                transition: "transform 0.3s",
+                transform: timeFormatOpen ? "rotate(90deg)" : "rotate(0deg)",
+                display: "inline-block"
+              }, children: "\u203A" })
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: timeFormatOpen ? "200px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          padding: "0 16px 14px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "24-hour time" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: use24h ? "e.g. 14:30" : "e.g. 2:30pm" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: use24h, onChange: (v) => onUpdateProfile({ use24h: v }), accent: th.accent })
+        ] }) })
+      ] }),
       (() => {
         const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
         const slug = (t) => t.replace(/\s+/g, "-").toLowerCase();
