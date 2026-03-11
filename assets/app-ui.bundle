@@ -16672,7 +16672,7 @@
               val
             )) })
           ] }),
-          modal.mode === "create" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          (modal.mode === "create" || !ev.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "select",
@@ -16713,7 +16713,7 @@
               }
             )
           ] }),
-          modal.mode === "create" && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          (modal.mode === "create" || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",

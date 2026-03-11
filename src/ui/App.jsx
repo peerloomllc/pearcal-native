@@ -1642,7 +1642,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           </div>}
 
-          {modal.mode === 'create' && (
+          {(modal.mode === 'create' || !ev.recurrenceId) && (
             <div><Label th={th}>Repeat</Label>
               <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
                 onChange={e => {
@@ -1674,7 +1674,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
-          {modal.mode === 'create' && ev.recurrence && ev.recurrence !== 'none' && (
+          {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && (
             <div><Label th={th}>Repeat until</Label>
               <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
                 onChange={e => set('recurrenceEnd', e.target.value)} />
