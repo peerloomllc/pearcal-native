@@ -21,15 +21,23 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
   set -a; source "$SCRIPT_DIR/.env"; set +a
 fi
 
-# --- Argument ---
-if [ -z "${1:-}" ]; then
-  echo "Usage: $0 <tag>  (e.g. $0 v1.0.11)"
-  exit 1
-fi
-RELEASE_TAG="$1"
-if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "Error: tag must be in format vX.Y.Z (got: $RELEASE_TAG)"
-  exit 1
+# --- Determine release tag ---
+if [ -n "${1:-}" ]; then
+  RELEASE_TAG="$1"
+  if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Error: tag must be in format vX.Y.Z (got: $RELEASE_TAG)"
+    exit 1
+  fi
+else
+  LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+  if [ -z "$LATEST" ]; then
+    echo "Error: could not determine latest release tag. Pass tag explicitly: $0 v1.0.0"
+    exit 1
+  fi
+  # Bump patch version
+  IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+  RELEASE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+  echo "==> Auto-detected next version: $RELEASE_TAG  (latest was $LATEST)"
 fi
 APP_VERSION="${RELEASE_TAG#v}"
 
