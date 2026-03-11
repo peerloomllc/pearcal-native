@@ -283,7 +283,7 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
-  const saveEvent = useCallback(async (ev, scope = 'one') => {
+  const saveEvent = useCallback(async (ev, scope = 'one', options = {}) => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
@@ -291,7 +291,8 @@ export default function App ({ db, notifs, sync }) {
       ? expandRecurring(ev)
       : scope === 'future' && ev.recurrenceId
         ? (() => {
-            const PROPAGATE = ['title','allDay','start','end','reminder','groups','invitees',
+            const PROPAGATE = ['title','allDay','start','end','reminder',
+                               ...(options.propagateGroups ? ['groups','invitees'] : []),
                                'color','desc','location','recurrence','recurrenceEnd',
                                'recurrenceNth','recurrenceWeekday','editPermission']
             const patch = {}
@@ -1548,7 +1549,16 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
     setTitleErr('')
     const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
-    if (modal.mode === 'edit' && ev.recurrenceId) { setScopePending(toSave); return }
+    if (modal.mode === 'edit' && ev.recurrenceId) {
+      const origGroups   = [...(modal.event.groups   ?? [])].sort().join(',')
+      const newGroups    = [...(toSave.groups         ?? [])].sort().join(',')
+      const origInvitees = [...(modal.event.invitees  ?? [])].sort().join(',')
+      const newInvitees  = [...(toSave.invitees       ?? [])].sort().join(',')
+      if (origGroups !== newGroups || origInvitees !== newInvitees) {
+        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }); setSaving(false); return
+      }
+      setScopePending(toSave); return
+    }
     setSaving(true)
     await onSave(toSave, 'one')
     setSaving(false)

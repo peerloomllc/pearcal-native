@@ -14825,7 +14825,7 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const saveEvent = (0, import_react.useCallback)(async (ev, scope = "one") => {
+    const saveEvent = (0, import_react.useCallback)(async (ev, scope = "one", options = {}) => {
       const { _prevDate, ...evClean } = ev;
       ev = evClean;
       const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : scope === "future" && ev.recurrenceId ? (() => {
@@ -14835,8 +14835,7 @@
           "start",
           "end",
           "reminder",
-          "groups",
-          "invitees",
+          ...options.propagateGroups ? ["groups", "invitees"] : [],
           "color",
           "desc",
           "location",
@@ -16542,6 +16541,16 @@
       setTitleErr("");
       const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev;
       if (modal.mode === "edit" && ev.recurrenceId) {
+        const origGroups = [...modal.event.groups ?? []].sort().join(",");
+        const newGroups = [...toSave.groups ?? []].sort().join(",");
+        const origInvitees = [...modal.event.invitees ?? []].sort().join(",");
+        const newInvitees = [...toSave.invitees ?? []].sort().join(",");
+        if (origGroups !== newGroups || origInvitees !== newInvitees) {
+          setSaving(true);
+          await onSave(toSave, "future", { propagateGroups: true });
+          setSaving(false);
+          return;
+        }
         setScopePending(toSave);
         return;
       }
