@@ -141,13 +141,21 @@ if ! command -v zsp &>/dev/null; then
   echo "==> Installing zsp..."
   ZSP_URL=$(curl -s https://api.github.com/repos/zapstore/zsp/releases/latest \
     | grep browser_download_url | grep linux-amd64 | cut -d '"' -f 4)
-  sudo curl -sL "$ZSP_URL" -o /usr/local/bin/zsp
-  sudo chmod +x /usr/local/bin/zsp
+  mkdir -p "$HOME/.local/bin"
+  curl -sL "$ZSP_URL" -o "$HOME/.local/bin/zsp"
+  chmod +x "$HOME/.local/bin/zsp"
+  export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # --- 9. Publish to Zapstore ---
 echo "==> Publishing to Zapstore..."
-GITHUB_TOKEN=$(gh auth token) zsp publish -y zapstore.yaml
-
-echo ""
-echo "==> Release $RELEASE_TAG complete."
+if GITHUB_TOKEN=$(gh auth token) SIGN_WITH="$SIGN_WITH" zsp publish -y zapstore.yaml; then
+  echo ""
+  echo "==> Release $RELEASE_TAG complete."
+else
+  echo ""
+  echo "WARNING: Zapstore publish failed. GitHub release was created successfully."
+  echo "Retry: source scripts/.env && GITHUB_TOKEN=\$(gh auth token) SIGN_WITH=\"\$SIGN_WITH\" ~/.local/bin/zsp publish -y zapstore.yaml"
+  echo ""
+  echo "==> Release $RELEASE_TAG partially complete (GitHub release created, Zapstore skipped)."
+fi
