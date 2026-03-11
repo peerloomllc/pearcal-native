@@ -16461,6 +16461,7 @@
   function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2 }) {
     const [ev, setEv] = (0, import_react.useState)(modal.event);
     const [saving, setSaving] = (0, import_react.useState)(false);
+    const [confirm, setConfirm] = (0, import_react.useState)(null);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e) => ({ ...e, [k]: v }));
     function toggleGroup(gid) {
@@ -16901,7 +16902,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => onDelete(ev.id),
+                onClick: () => isCreator ? setConfirm("delete") : onDelete(ev.id),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -16914,13 +16915,13 @@
                   cursor: "pointer",
                   width: "100%"
                 },
-                children: isCreator ? "Delete for Everyone" : "Delete for Me"
+                children: isCreator ? "Delete" : "Remove for Me"
               }
             ),
             ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => onDeleteSeries?.(ev.recurrenceId),
+                onClick: () => isCreator ? setConfirm("deleteSeries") : onDeleteSeries?.(ev.recurrenceId),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -16938,7 +16939,64 @@
             )
           ] });
         })()
-      ] })
+      ] }),
+      confirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        zIndex: 300,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 24px"
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.bg, borderRadius: 20, padding: "24px", width: "100%", maxWidth: 360, textAlign: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 36, marginBottom: 12 }, children: "\u{1F5D1}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 }, children: confirm === "delete" ? "Delete Event?" : "Delete All in Series?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 }, children: confirm === "delete" ? "This event will be permanently deleted for everyone. This cannot be undone." : "All events in this series will be permanently deleted for everyone. This cannot be undone." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => setConfirm(null),
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: `1px solid ${th.border}`,
+                fontFamily: FONT,
+                background: "transparent",
+                color: th.text.color,
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "Cancel"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => {
+                setConfirm(null);
+                confirm === "delete" ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId);
+              },
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                fontFamily: FONT,
+                background: "#D45F7A",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "Delete"
+            }
+          )
+        ] })
+      ] }) })
     ] });
   }
   function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined }) {

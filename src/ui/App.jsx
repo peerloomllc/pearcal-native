@@ -1480,6 +1480,7 @@ function expandRecurring (ev) {
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
+  const [confirm, setConfirm] = useState(null)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
@@ -1797,14 +1798,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <button onClick={() => onDelete(ev.id)}
+                <button onClick={() => isCreator ? setConfirm('delete') : onDelete(ev.id)}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-                  {isCreator ? 'Delete for Everyone' : 'Delete for Me'}
+                  {isCreator ? 'Delete' : 'Remove for Me'}
                 </button>
                 {ev.recurrenceId && (
-                  <button onClick={() => onDeleteSeries?.(ev.recurrenceId)}
+                  <button onClick={() => isCreator ? setConfirm('deleteSeries') : onDeleteSeries?.(ev.recurrenceId)}
                     style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                       padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                       fontFamily:FONT, cursor:'pointer', width:'100%' }}>
@@ -1815,6 +1816,36 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             )
           })()}
         </div>
+
+      {confirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>🗑</div>
+            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
+              {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
+            </div>
+            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
+              {confirm === 'delete'
+                ? 'This event will be permanently deleted for everyone. This cannot be undone.'
+                : 'All events in this series will be permanently deleted for everyone. This cannot be undone.'}
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setConfirm(null)}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
+                  fontFamily:FONT, background:'transparent', color:th.text.color,
+                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={() => { setConfirm(null); confirm === 'delete' ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId) }}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BottomSheet>
   )
 }
