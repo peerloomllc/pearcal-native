@@ -83,27 +83,31 @@ PREV_RELEASE_DATE=$(gh api "repos/$REPO/releases" \
   --jq '[.[] | select(.draft == false)] | .[0].published_at // ""')
 
 NOTES="## What's Changed\n\n"
+ALL_PRS=$(gh pr list --state merged --limit 100 \
+  --json number,title,body,mergedAt)
+
 if [ -z "$PREV_RELEASE_DATE" ]; then
-  NOTES="${NOTES}Initial release.\n"
+  # No previous release — include all merged PRs
+  FILTERED=$(echo "$ALL_PRS" | jq '[.[] | select(.title != "")]')
 else
-  ALL_PRS=$(gh pr list --state merged --limit 100 \
-    --json number,title,body,mergedAt)
   FILTERED=$(echo "$ALL_PRS" | jq --arg since "$PREV_RELEASE_DATE" \
     '[.[] | select(.mergedAt > $since)]')
-  PR_COUNT=$(echo "$FILTERED" | jq 'length')
+fi
 
-  if [ "$PR_COUNT" = "0" ]; then
-    NOTES="${NOTES}No merged PRs since last release.\n"
-  else
-    while IFS= read -r pr_json; do
-      TITLE=$(echo "$pr_json" | jq -r '.title')
-      BODY=$(echo "$pr_json" | jq -r '.body // ""')
-      SUMMARY=$(printf '%s' "$BODY" | awk '/^## Summary/{f=1;next} /^## /{if(f)exit} f && /\S/{print}')
-      NOTES="${NOTES}### ${TITLE}\n"
-      [ -n "$SUMMARY" ] && NOTES="${NOTES}${SUMMARY}\n"
-      NOTES="${NOTES}\n"
-    done < <(echo "$FILTERED" | jq -c '.[]')
-  fi
+PR_COUNT=$(echo "$FILTERED" | jq 'length')
+
+if [ "$PR_COUNT" = "0" ]; then
+  NOTES="${NOTES}No merged PRs since last release.\n"
+else
+  # Sort by mergedAt ascending so oldest PR appears first
+  while IFS= read -r pr_json; do
+    TITLE=$(echo "$pr_json" | jq -r '.title')
+    BODY=$(echo "$pr_json" | jq -r '.body // ""')
+    SUMMARY=$(printf '%s' "$BODY" | awk '/^## Summary/{f=1;next} /^## /{if(f)exit} f && /\S/{print}')
+    NOTES="${NOTES}### ${TITLE}\n"
+    [ -n "$SUMMARY" ] && NOTES="${NOTES}${SUMMARY}\n"
+    NOTES="${NOTES}\n"
+  done < <(echo "$FILTERED" | jq -c 'sort_by(.mergedAt) | .[]')
 fi
 printf "%b" "$NOTES" > release_notes.md
 echo "--- Release notes ---"
