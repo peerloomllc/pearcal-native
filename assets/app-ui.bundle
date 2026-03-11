@@ -14624,6 +14624,12 @@
     const [qrGroup, setQrGroup] = (0, import_react.useState)(null);
     const [joinOpen, setJoinOpen] = (0, import_react.useState)(false);
     const [joinPasteMode, setJoinPasteMode] = (0, import_react.useState)(false);
+    const [pendingJoin, setPendingJoin] = (0, import_react.useState)(null);
+    const closePendingJoinRef = (0, import_react.useRef)(null);
+    const groupsRef = (0, import_react.useRef)(groups);
+    (0, import_react.useEffect)(() => {
+      groupsRef.current = groups;
+    }, [groups]);
     const [onboardStep, setOnboardStep] = (0, import_react.useState)(0);
     const showOnboarding = ready && !profile?.onboardingComplete;
     const [showDonationReminder, setShowDonationReminder] = (0, import_react.useState)(false);
@@ -14717,6 +14723,8 @@
       window.addEventListener("pear:groupJoined", onDomGroupJoined);
       const onDomSetTab = (e) => setTab(e.detail);
       window.addEventListener("pear:setTab", onDomSetTab);
+      const onDomPendingJoin = (e) => openPendingJoin(e.detail);
+      window.addEventListener("pear:pendingJoin", onDomPendingJoin);
       function onGroupKeyUpdated(group) {
         setGroups((prev) => prev.map((g) => g.id === group.id ? group : g));
         setReadyGroupKeys((prev) => {
@@ -14734,6 +14742,7 @@
         emitter.off("group:joined", onGroupJoined);
         window.removeEventListener("pear:groupJoined", onDomGroupJoined);
         window.removeEventListener("pear:setTab", onDomSetTab);
+        window.removeEventListener("pear:pendingJoin", onDomPendingJoin);
         emitter.off("groupKeyUpdated", onGroupKeyUpdated);
       };
     }, [db2]);
@@ -14756,6 +14765,7 @@
         }
         if (closeInviteSheetRef.current?.()) return;
         if (closeJoinSheetRef.current?.()) return;
+        if (closePendingJoinRef.current?.()) return;
         if (modal) {
           setModal(null);
           return;
@@ -14776,7 +14786,7 @@
         }
         window.ReactNativeWebView?.postMessage(JSON.stringify({ method: "exitApp", id: -1 }));
       };
-    }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef, showOnboarding, onboardStep]);
+    }, [modal, newGroupOpen, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep]);
     (0, import_react.useEffect)(() => {
       window.__pearBack = () => backHandlerRef.current?.();
     }, []);
@@ -14785,12 +14795,7 @@
     }, [sync2]);
     (0, import_react.useEffect)(() => {
       function onQrScanResult(url) {
-        if (url && db2 && sync2) {
-          handleInviteLink(url, db2, sync2, (g) => {
-            setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]);
-            setTab("groups");
-          });
-        }
+        if (url && db2 && sync2) openPendingJoin(url);
       }
       emitter.on("qrScanResult", onQrScanResult);
       function onCameraResult(base64) {
@@ -14806,10 +14811,7 @@
     (0, import_react.useEffect)(() => {
       if (!db2 || !sync2) return;
       window.__pearCal = {
-        handleLink: (url) => handleInviteLink(url, db2, sync2, (g) => {
-          setGroups((prev) => [...prev, g]);
-          setTab("groups");
-        }),
+        handleLink: (url) => openPendingJoin(url),
         restoreNotifications: () => notifs2?.restoreAll(),
         navigateTo: (type, id) => {
           if (type === "event") {
@@ -14920,6 +14922,43 @@
       setEvents((prev) => prev.filter((e) => e.recurrenceId !== recurrenceId));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
+    function parseGroupIdFromUrl(url) {
+      try {
+        const u = new URL(url.replace(/^pear:\/\//, "https://"));
+        const raw = u.searchParams.get("group");
+        return raw ? atob(raw) : null;
+      } catch {
+        return null;
+      }
+    }
+    function openPendingJoin(url) {
+      const groupName = (() => {
+        try {
+          return new URL(url.replace(/^pear:\/\//, "https://")).searchParams.get("name") || "a group";
+        } catch {
+          return "a group";
+        }
+      })();
+      const gid = parseGroupIdFromUrl(url);
+      if (gid && groupsRef.current.find((g) => g.id === gid)) {
+        setTab("groups");
+        return;
+      }
+      setPendingJoin({ url, groupName });
+    }
+    const joinWithNickname = (0, import_react.useCallback)(async (url, nickname) => {
+      const result = await handleInviteLink(url, db2, sync2, (g) => {
+        setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]);
+        setTab("groups");
+      });
+      if (result?.ok && result.group && nickname && nickname !== profile?.name) {
+        await db2.setMemberNickname(result.group.id, nickname).catch(() => {
+        });
+      }
+      if (result?.error === "blocked_from_group") setBlockedToast(true);
+      setPendingJoin(null);
+      return result;
+    }, [db2, sync2, profile]);
     const addGroup = (0, import_react.useCallback)(async (g, opts) => {
       if (db2) {
         await db2.putGroup(g);
@@ -15318,7 +15357,22 @@
           closeRef: closeJoinSheetRef,
           db: db2,
           sync: sync2,
+          onPendingJoin: (pj) => {
+            setJoinOpen(false);
+            openPendingJoin(pj.url);
+          },
           onJoined: (g) => setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g])
+        }
+      ),
+      pendingJoin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        NicknameBeforeJoinSheet,
+        {
+          th,
+          groupName: pendingJoin.groupName,
+          defaultName: profile?.name ?? "",
+          closeRef: closePendingJoinRef,
+          onConfirm: (nickname) => joinWithNickname(pendingJoin.url, nickname),
+          onClose: () => setPendingJoin(null)
         }
       ),
       newGroupOpen && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -17122,36 +17176,32 @@
       ] }) })
     ] });
   }
-  function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined }) {
+  function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined, onPendingJoin }) {
     const bsCloseRef = (0, import_react.useRef)(null);
     const [pasteMode, setPasteMode] = (0, import_react.useState)(false);
     const [pasteUrl, setPasteUrl] = (0, import_react.useState)("");
     const [pasteErr, setPasteErr] = (0, import_react.useState)("");
-    const [joining, setJoining] = (0, import_react.useState)(false);
     (0, import_react.useEffect)(() => {
       if (closeRef) closeRef.current = () => {
         bsCloseRef.current?.();
         return true;
       };
     }, []);
-    async function handlePasteJoin() {
+    function handlePasteJoin() {
       const url = pasteUrl.trim();
       if (!url.startsWith("pear://pearcal/join")) {
         setPasteErr("Not a valid PearCal invite link.");
         return;
       }
-      setJoining(true);
-      setPasteErr("");
-      const result = await handleInviteLink(url, db2, sync2, (g) => {
-        onJoined?.(g);
-        bsCloseRef.current?.();
-      });
-      if (!result.ok) {
-        setJoining(false);
-        if (result.error === "already_member") setPasteErr("You are already in this group.");
-        else if (result.error === "blocked_from_group") setPasteErr("You were removed from this group.");
-        else setPasteErr("Invalid invite link.");
-      }
+      const groupName = (() => {
+        try {
+          return new URL(url).searchParams.get("name") || "a group";
+        } catch {
+          return "a group";
+        }
+      })();
+      bsCloseRef.current?.();
+      onPendingJoin?.({ url, groupName });
     }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomSheet, { th, onClose, zIndex: 100, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 20px 8px", display: "flex", flexDirection: "column", gap: 14 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
@@ -17259,20 +17309,97 @@
             "button",
             {
               onClick: handlePasteJoin,
-              disabled: !pasteUrl.trim() || joining,
+              disabled: !pasteUrl.trim(),
               style: {
                 flex: 1,
                 ...th.pillBtn,
                 padding: "10px",
                 fontSize: 13,
                 fontWeight: 300,
-                opacity: !pasteUrl.trim() || joining ? 0.5 : 1
+                opacity: !pasteUrl.trim() ? 0.5 : 1
               },
-              children: joining ? "Joining\u2026" : "Join"
+              children: "Join"
             }
           )
         ] })
       ] })
+    ] }) });
+  }
+  function NicknameBeforeJoinSheet({ th, groupName, defaultName, onConfirm, onClose, closeRef }) {
+    const bsCloseRef = (0, import_react.useRef)(null);
+    const [nickname, setNickname] = (0, import_react.useState)(defaultName);
+    const [joining, setJoining] = (0, import_react.useState)(false);
+    const [err, setErr] = (0, import_react.useState)("");
+    (0, import_react.useEffect)(() => {
+      if (closeRef) closeRef.current = () => {
+        bsCloseRef.current?.();
+        return true;
+      };
+    }, []);
+    async function handleJoin() {
+      setJoining(true);
+      setErr("");
+      const result = await onConfirm(nickname.trim());
+      if (result && !result.ok) {
+        setJoining(false);
+        if (result.error === "already_member") {
+          bsCloseRef.current?.();
+          return;
+        }
+        if (result.error === "blocked_from_group") {
+          bsCloseRef.current?.();
+          return;
+        }
+        setErr("Could not join group. Check the invite link and try again.");
+      }
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomSheet, { th, onClose, zIndex: 110, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 14 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 17, fontWeight: 300, ...th.text }, children: [
+          "Join ",
+          groupName
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300 }, children: "How should group members see your name?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "input",
+        {
+          value: nickname,
+          onChange: (e) => setNickname(e.target.value),
+          placeholder: "Your nickname",
+          style: {
+            background: th.inputBg,
+            border: `1px solid ${th.border}`,
+            borderRadius: 8,
+            padding: "9px 12px",
+            color: th.text.color,
+            fontSize: 14,
+            fontWeight: 300,
+            fontFamily: FONT,
+            width: "100%",
+            boxSizing: "border-box",
+            outline: "none"
+          }
+        }
+      ),
+      err ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "#e55", fontWeight: 300 }, children: err }) : null,
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          onClick: handleJoin,
+          disabled: joining || !nickname.trim(),
+          style: {
+            ...th.pillBtn,
+            width: "100%",
+            padding: "13px",
+            fontSize: 15,
+            fontWeight: 300,
+            opacity: joining || !nickname.trim() ? 0.5 : 1
+          },
+          children: joining ? "Joining\u2026" : "Join Group"
+        }
+      )
     ] }) });
   }
   function GroupsTab({ th, groups, profile, sync: sync2, db: db2, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
@@ -19215,16 +19342,9 @@ ${link}`;
   window.__pearSetTab = function(tab) {
     window.dispatchEvent(new CustomEvent("pear:setTab", { detail: tab }));
   };
-  window.__pearHandleInvite = async function(url) {
-    const result = await handleInviteLink(url, db, sync, (group) => {
-      window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: group }));
-    });
-    if (result && (result.ok || result.error === "already_member") && result.group) {
-      window.dispatchEvent(new CustomEvent("pear:groupJoined", { detail: result.group }));
-    }
-    if (result && result.error === "blocked_from_group") {
-      window.dispatchEvent(new CustomEvent("pear:inviteBlocked", {}));
-    }
+  window.__pearHandleInvite = function(url) {
+    if (!url) return;
+    window.dispatchEvent(new CustomEvent("pear:pendingJoin", { detail: url }));
   };
   var root = (0, import_client.createRoot)(document.getElementById("root"));
   root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));

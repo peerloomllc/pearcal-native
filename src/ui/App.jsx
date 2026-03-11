@@ -107,6 +107,10 @@ export default function App ({ db, notifs, sync }) {
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [joinOpen,       setJoinOpen]       = useState(false)
   const [joinPasteMode,  setJoinPasteMode]  = useState(false)
+  const [pendingJoin,    setPendingJoin]    = useState(null)  // { url, groupName }
+  const closePendingJoinRef = useRef(null)
+  const groupsRef = useRef(groups)
+  useEffect(() => { groupsRef.current = groups }, [groups])
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
   const [showDonationReminder, setShowDonationReminder] = useState(false)
@@ -207,6 +211,8 @@ export default function App ({ db, notifs, sync }) {
     window.addEventListener('pear:groupJoined', onDomGroupJoined)
     const onDomSetTab = (e) => setTab(e.detail)
     window.addEventListener('pear:setTab', onDomSetTab)
+    const onDomPendingJoin = (e) => openPendingJoin(e.detail)
+    window.addEventListener('pear:pendingJoin', onDomPendingJoin)
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
@@ -221,6 +227,7 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
       window.removeEventListener('pear:setTab', onDomSetTab)
+      window.removeEventListener('pear:pendingJoin', onDomPendingJoin)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
     }
   }, [db])
@@ -235,6 +242,7 @@ export default function App ({ db, notifs, sync }) {
       if (qrGroup)      { setQrGroup(null);      return }
       if (closeInviteSheetRef.current?.()) return
       if (closeJoinSheetRef.current?.()) return
+      if (closePendingJoinRef.current?.()) return
       if (modal)        { setModal(null);        return }
       if (newGroupOpen) { setNewGroupOpen(false); return }
       if (settingsGroup){ setSettingsGroup(null); return }
@@ -242,17 +250,12 @@ export default function App ({ db, notifs, sync }) {
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup, qrGroup, closeAboutSheetRef, showOnboarding, onboardStep])
+  }, [modal, newGroupOpen, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
     function onQrScanResult(url) {
-      if (url && db && sync) {
-        handleInviteLink(url, db, sync, g => {
-          setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
-          setTab('groups')
-        })
-      }
+      if (url && db && sync) openPendingJoin(url)
     }
     emitter.on('qrScanResult', onQrScanResult)
     function onCameraResult (base64) {
@@ -266,10 +269,7 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => {
     if (!db || !sync) return
     window.__pearCal = {
-      handleLink: url => handleInviteLink(url, db, sync, g => {
-        setGroups(prev => [...prev, g])
-        setTab('groups')
-      }),
+      handleLink: url => openPendingJoin(url),
       restoreNotifications: () => notifs?.restoreAll(),
       navigateTo: (type, id) => {
         if (type === 'event') {
@@ -374,6 +374,34 @@ export default function App ({ db, notifs, sync }) {
     setEvents(prev => prev.filter(e => e.recurrenceId !== recurrenceId))
     setModal(null)
   }, [db, notifs, sync, events, profile])
+
+  function parseGroupIdFromUrl(url) {
+    try {
+      const u = new URL(url.replace(/^pear:\/\//, 'https://'))
+      const raw = u.searchParams.get('group')
+      return raw ? atob(raw) : null
+    } catch { return null }
+  }
+
+  function openPendingJoin(url) {
+    const groupName = (() => { try { return new URL(url.replace(/^pear:\/\//, 'https://')).searchParams.get('name') || 'a group' } catch { return 'a group' } })()
+    const gid = parseGroupIdFromUrl(url)
+    if (gid && groupsRef.current.find(g => g.id === gid)) { setTab('groups'); return }
+    setPendingJoin({ url, groupName })
+  }
+
+  const joinWithNickname = useCallback(async (url, nickname) => {
+    const result = await handleInviteLink(url, db, sync, g => {
+      setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
+      setTab('groups')
+    })
+    if (result?.ok && result.group && nickname && nickname !== profile?.name) {
+      await db.setMemberNickname(result.group.id, nickname).catch(() => {})
+    }
+    if (result?.error === 'blocked_from_group') setBlockedToast(true)
+    setPendingJoin(null)
+    return result
+  }, [db, sync, profile])
 
   const addGroup = useCallback(async (g, opts) => {
     if (db) {
@@ -655,7 +683,14 @@ export default function App ({ db, notifs, sync }) {
         {joinOpen && (
           <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
             closeRef={closeJoinSheetRef} db={db} sync={sync}
+            onPendingJoin={pj => { setJoinOpen(false); openPendingJoin(pj.url) }}
             onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])} />
+        )}
+        {pendingJoin && (
+          <NicknameBeforeJoinSheet th={th} groupName={pendingJoin.groupName}
+            defaultName={profile?.name ?? ''} closeRef={closePendingJoinRef}
+            onConfirm={nickname => joinWithNickname(pendingJoin.url, nickname)}
+            onClose={() => setPendingJoin(null)} />
         )}
         {newGroupOpen && (
           <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
@@ -1910,29 +1945,20 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 }
 
 // ─── Groups Tab ───────────────────────────────────────────────────────────────
-function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined }) {
+function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJoin }) {
   const bsCloseRef = useRef(null)
   const [pasteMode, setPasteMode] = useState(false)
   const [pasteUrl,  setPasteUrl]  = useState('')
   const [pasteErr,  setPasteErr]  = useState('')
-  const [joining,   setJoining]   = useState(false)
 
   useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
 
-  async function handlePasteJoin () {
+  function handlePasteJoin () {
     const url = pasteUrl.trim()
     if (!url.startsWith('pear://pearcal/join')) { setPasteErr('Not a valid PearCal invite link.'); return }
-    setJoining(true); setPasteErr('')
-    const result = await handleInviteLink(url, db, sync, g => {
-      onJoined?.(g)
-      bsCloseRef.current?.()
-    })
-    if (!result.ok) {
-      setJoining(false)
-      if (result.error === 'already_member') setPasteErr('You are already in this group.')
-      else if (result.error === 'blocked_from_group') setPasteErr('You were removed from this group.')
-      else setPasteErr('Invalid invite link.')
-    }
+    const groupName = (() => { try { return new URL(url).searchParams.get('name') || 'a group' } catch { return 'a group' } })()
+    bsCloseRef.current?.()
+    onPendingJoin?.({ url, groupName })
   }
 
   return (
@@ -1970,14 +1996,64 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined }) {
                   background:'transparent', border:'1px solid ' + th.border, color:th.muted, cursor:'pointer' }}>
                 Back
               </button>
-              <button onClick={handlePasteJoin} disabled={!pasteUrl.trim() || joining}
+              <button onClick={handlePasteJoin} disabled={!pasteUrl.trim()}
                 style={{ flex:1, ...th.pillBtn, padding:'10px', fontSize:13, fontWeight:300,
-                  opacity: (!pasteUrl.trim() || joining) ? 0.5 : 1 }}>
-                {joining ? 'Joining…' : 'Join'}
+                  opacity: !pasteUrl.trim() ? 0.5 : 1 }}>
+                Join
               </button>
             </div>
           </>
         )}
+      </div>
+    </BottomSheet>
+  )
+}
+
+function NicknameBeforeJoinSheet ({ th, groupName, defaultName, onConfirm, onClose, closeRef }) {
+  const bsCloseRef = useRef(null)
+  const [nickname, setNickname] = useState(defaultName)
+  const [joining,  setJoining]  = useState(false)
+  const [err,      setErr]      = useState('')
+
+  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+
+  async function handleJoin () {
+    setJoining(true); setErr('')
+    const result = await onConfirm(nickname.trim())
+    if (result && !result.ok) {
+      setJoining(false)
+      if (result.error === 'already_member') { bsCloseRef.current?.(); return }
+      if (result.error === 'blocked_from_group') { bsCloseRef.current?.(); return }
+      setErr('Could not join group. Check the invite link and try again.')
+    }
+  }
+
+  return (
+    <BottomSheet th={th} onClose={onClose} zIndex={110} closeRef={bsCloseRef}>
+      <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+          <span style={{ fontSize:17, fontWeight:300, ...th.text }}>Join {groupName}</span>
+          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+        </div>
+        <div style={{ fontSize:13, color:th.muted, fontWeight:300 }}>
+          How should group members see your name?
+        </div>
+        <input
+          value={nickname}
+          onChange={e => setNickname(e.target.value)}
+          placeholder='Your nickname'
+          style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
+            padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
+            fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }}
+        />
+        {err ? <div style={{ fontSize:12, color:'#e55', fontWeight:300 }}>{err}</div> : null}
+        <button
+          onClick={handleJoin}
+          disabled={joining || !nickname.trim()}
+          style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+            opacity: (joining || !nickname.trim()) ? 0.5 : 1 }}>
+          {joining ? 'Joining…' : 'Join Group'}
+        </button>
       </div>
     </BottomSheet>
   )
