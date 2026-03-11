@@ -465,7 +465,7 @@ function makeApply (groupId) {
               for (const m of newMembers) {
                 const groupName = val.value.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
-                  title: (m.name || 'Someone') + ' joined ' + groupName,
+                  title: (m.nickname || m.name || 'Someone') + ' joined ' + groupName,
                   body: 'Tap to view the group',
                   tab: 'groups'
                 }})
