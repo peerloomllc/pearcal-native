@@ -101,6 +101,12 @@ printf "%b" "$NOTES" > release_notes.md
 echo "--- Release notes ---"
 cat release_notes.md
 echo "---"
+echo ""
+read -rp "Release notes look good? Push $RELEASE_TAG and publish? [y/N] " confirm
+if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+  echo "Aborted. Edit release_notes.md manually and re-run, or adjust PRs and retry."
+  exit 0
+fi
 
 # --- 6. Push tag to GitHub ---
 echo "==> Pushing tag $RELEASE_TAG..."
