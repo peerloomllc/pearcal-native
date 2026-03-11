@@ -31,13 +31,18 @@ if [ -n "${1:-}" ]; then
 else
   LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
   if [ -z "$LATEST" ]; then
-    echo "Error: could not determine latest release tag. Pass tag explicitly: $0 v1.0.0"
-    exit 1
+    # No releases yet — check git tags instead
+    LATEST=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "")
   fi
-  # Bump patch version
-  IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
-  RELEASE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-  echo "==> Auto-detected next version: $RELEASE_TAG  (latest was $LATEST)"
+  if [ -z "$LATEST" ]; then
+    RELEASE_TAG="v1.0.0"
+    echo "==> No prior releases found, starting at $RELEASE_TAG"
+  else
+    # Bump patch version
+    IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
+    RELEASE_TAG="v${MAJOR}.${MINOR}.$((PATCH + 1))"
+    echo "==> Auto-detected next version: $RELEASE_TAG  (latest was $LATEST)"
+  fi
 fi
 APP_VERSION="${RELEASE_TAG#v}"
 
