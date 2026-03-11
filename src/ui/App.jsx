@@ -2781,6 +2781,23 @@ function AboutTab ({ th, sync, closeSheetRef }) {
         </button>
       </div>
 
+      {/* Contact */}
+      <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+        <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:10, letterSpacing:'0.04em', textAlign:'center' }}>CONTACT</div>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <button onClick={() => sync?.openURL('mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback')}
+            style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            ✉ Send Email ↗
+          </button>
+          <button onClick={() => sync?.openURL('https://github.com/peerloomllc/pearcal-native/issues')}
+            style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+            🐛 Report Issue on GitHub ↗
+          </button>
+        </div>
+      </div>
+
       {/* Lightning wallet info modal */}
       {lightningModal && (
         <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300} closeRef={lsBsCloseRef}>
