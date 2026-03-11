@@ -14864,6 +14864,12 @@
           for (const gid of evWithAuthor.groups ?? []) {
             await sync2?.putEvent(gid, evToSync).catch((e) => console.warn("[SYNC-ERR]", e?.message));
           }
+          const original = events.find((e) => e.id === occ.id);
+          const removedGroups = (original?.groups ?? []).filter((g) => !(occ.groups ?? []).includes(g));
+          for (const gid of removedGroups) {
+            await sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            });
+          }
         }
       }
       setEvents((prev) => {
@@ -14886,7 +14892,7 @@
           await db2.deleteEvent(ev.date, id);
           await notifs2?.cancelForEvent(id);
           for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, id, ev.date, profile?.name ?? "Someone").catch(() => {
+            await sync2?.deleteEvent(gid, id, ev.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         } else {
@@ -14907,7 +14913,7 @@
         const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
         if (isCreator) {
           for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? "Someone").catch(() => {
+            await sync2?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         }
@@ -19169,7 +19175,7 @@ ${link}`;
     leaveGroup: (id) => window.__pearDB.call("leaveGroup", id),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup:sync", id),
     putEvent: (gid, ev) => window.__pearDB.call("putEvent:sync", gid, ev),
-    deleteEvent: (gid, id, d, who) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who),
+    deleteEvent: (gid, id, d, who, whoId) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g),
     memberLeft: (groupId, memberId) => window.__pearDB.call("memberLeft:sync", groupId, memberId),
     nativeShare: (title, text) => window.__pearDB.call("nativeShare", title, text),

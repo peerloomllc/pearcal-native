@@ -315,6 +315,12 @@ export default function App ({ db, notifs, sync }) {
         for (const gid of evWithAuthor.groups ?? []) {
           await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
         }
+        // Sync delete for any groups removed from this event
+        const original = events.find(e => e.id === occ.id)
+        const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
+        for (const gid of removedGroups) {
+          await sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        }
       }
     }
     setEvents(prev => {
@@ -339,7 +345,7 @@ export default function App ({ db, notifs, sync }) {
         await db.deleteEvent(ev.date, id)
         await notifs?.cancelForEvent(id)
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       } else {
         // Non-creator: local-only delete + tombstone so resync never resurrects it
@@ -360,7 +366,7 @@ export default function App ({ db, notifs, sync }) {
       const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
       if (isCreator) {
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       }
     }
