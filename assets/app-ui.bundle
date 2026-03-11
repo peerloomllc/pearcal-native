@@ -17681,7 +17681,10 @@ ${link}`;
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 36, marginBottom: 12 }, children: confirm === "delete" ? "\u{1F5D1}" : confirm === "leave" ? "\u{1F6AA}" : "\u{1F464}" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 }, children: confirm === "delete" ? "Delete Group?" : confirm === "leave" ? "Leave Group?" : `Remove ${g.members.find((m) => m.id === confirm.split(":")[1])?.name}?` }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 }, children: [
-          confirm === "delete" && `"${g.name}" will be permanently removed for you.`,
+          confirm === "delete" && (() => {
+            const otherCount = g.members.length - 1;
+            return otherCount > 0 ? `"${g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? "" : "s"}. This cannot be undone.` : `"${g.name}" and all its events will be permanently deleted. This cannot be undone.`;
+          })(),
           confirm === "leave" && `You'll be removed from "${g.name}" and lose access to shared events.`,
           confirm.startsWith("remove:") && `They will be removed from "${g.name}" and lose access to shared events.`
         ] }),

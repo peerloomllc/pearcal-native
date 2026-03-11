@@ -2335,7 +2335,12 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 : `Remove ${g.members.find(m => m.id === confirm.split(':')[1])?.name}?`}
             </div>
             <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              {confirm === 'delete' && `"${g.name}" will be permanently removed for you.`}
+              {confirm === 'delete' && (() => {
+                const otherCount = g.members.length - 1
+                return otherCount > 0
+                  ? `"${g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
+                  : `"${g.name}" and all its events will be permanently deleted. This cannot be undone.`
+              })()}
               {confirm === 'leave'  && `You'll be removed from "${g.name}" and lose access to shared events.`}
               {confirm.startsWith('remove:') && `They will be removed from "${g.name}" and lose access to shared events.`}
             </div>
