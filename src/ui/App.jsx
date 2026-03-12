@@ -271,6 +271,8 @@ export default function App ({ db, notifs, sync }) {
   const closeAboutSheetRef  = useRef(null)
   const closeJoinSheetRef   = useRef(null)
   const closeInviteSheetRef = useRef(null)
+  const closeNewGroupSheetRef = useRef(null)
+  const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -830,6 +832,16 @@ export default function App ({ db, notifs, sync }) {
           })}
         </div>
 
+        {groupCreatedToast && (
+          <GroupCreatedToast
+            group={groupCreatedToast.group}
+            me={profile}
+            sync={sync}
+            readyGroupKeys={readyGroupKeys}
+            onDismiss={() => setGroupCreatedToast(null)}
+          />
+        )}
+
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
@@ -865,9 +877,10 @@ export default function App ({ db, notifs, sync }) {
             onClose={() => setPendingJoin(null)} />
         )}
         {newGroupOpen && (
-          <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
+          <NewGroupModal th={th} onClose={() => setNewGroupOpen(false)}
             onAdd={addGroup} onUpdate={updateGroup} me={profile} sync={sync}
-            onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
+            onCreated={group => setGroupCreatedToast({ group })}
+            closeRef={closeNewGroupSheetRef} />
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
