@@ -1271,7 +1271,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
         <button onClick={() => openCreate(selectedDate)}
-          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
+          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300, display:'flex', alignItems:'center', gap:4 }}><Plus size={14} weight="thin" color="#fff" /> Event</button>
       </div>
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
@@ -2246,7 +2246,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
               </div>
               <button onClick={() => onSettings(g)}
                 style={{ ...th.iconBtn, fontSize:18, padding:'6px', borderRadius:10, border:`1px solid ${th.border}` }}>
-                ⚙️
+                <GearSix size={18} weight="thin" color="var(--color-muted)" />
               </button>
             </div>
 
@@ -3308,8 +3308,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             APPEARANCE
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: appearanceOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3329,8 +3329,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             FIRST DAY OF WEEK
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: weekStartOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3357,8 +3357,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             DEFAULT REMINDER
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: defaultRemOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3386,7 +3386,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
           <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
             transform: timeFormatOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            display:'inline-block' }}>›</span>
+            display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
         </div>
         <div style={{ maxHeight: timeFormatOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3484,7 +3484,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               </div>
               <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
                 transform: holidaysOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                display:'inline-block' }}>›</span>
+                display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
             </div>
 
             {/* Collapsible body */}
