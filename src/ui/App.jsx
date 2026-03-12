@@ -22,6 +22,7 @@ import {
   CaretRight, CaretLeft, QrCode, Plus, UserPlus,
   Check, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
+  Camera, Image,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -755,12 +756,6 @@ export default function App ({ db, notifs, sync }) {
       <div style={{ width:'100%', maxWidth:430, height:'100dvh', display:'flex', flexDirection:'column', ...th.bg,
         paddingTop:'var(--sat)', paddingBottom:'var(--sab)' }}>
 
-        {/* Header */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'16px 20px 8px', ...th.headerBg }}>
-          <span style={{ fontSize:20, fontWeight:300, ...th.text, display:'flex', alignItems:'center', gap:6 }}><PearIcon size={20} /> PearCal</span>
-        </div>
-
         {/* Content */}
         <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0, WebkitOverflowScrolling: 'touch' }}>
           <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
@@ -1431,8 +1426,15 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           {selectedDate < todayStr &&
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
-        <button onClick={() => openCreate(selectedDate)}
-          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300, display:'flex', alignItems:'center', gap:4 }}><Plus size={14} weight="thin" color="#fff" /> Event</button>
+        <button onClick={() => openCreate(selectedDate)} style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}>
+          <Plus size={18} weight="thin" color="var(--color-text)" />
+        </button>
       </div>
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
@@ -1584,7 +1586,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 1 — How P2P works
     <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>🔗</div>
+      <ShareNetwork size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>No servers. No accounts.</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.7', maxWidth:290 }}>
         PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
@@ -1600,7 +1602,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 2 — Name entry
     <div key={2} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>👤</div>
+      <User size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>What's your name?</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
         This is how you'll appear to group members in shared groups.
@@ -1635,14 +1637,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
       <div style={{ display:'flex', gap:10 }}>
         <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
-          📷 Camera
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
+          <Camera size={18} weight="thin" /> Camera
         </button>
         <button onClick={() => {
             if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
           }} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
-          🖼️ Gallery
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
+          <Image size={18} weight="thin" /> Gallery
         </button>
       </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
@@ -1653,7 +1655,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 4 — Groups & Invites
     <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>👥</div>
+      <Users size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
