@@ -1562,9 +1562,9 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0, ...th.text }}>＋</span>
+          <Plus size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Go to the <span style={{ ...th.text, fontWeight:400 }}>Groups tab</span> and tap <span style={{ ...th.text, fontWeight:400 }}>+ New Group</span> to create a group.
+            Tap the <span style={{ ...th.text, fontWeight:400 }}>+</span> button next to <span style={{ ...th.text, fontWeight:400 }}>Peer Groups</span> to create a new group.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
@@ -1574,7 +1574,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0 }}>📅</span>
+          <CalendarBlank size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
             Tap any day on the calendar, hit <span style={{ ...th.text, fontWeight:400 }}>+ Event</span>, and assign it to a group to share it.
           </div>
