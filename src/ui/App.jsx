@@ -1687,7 +1687,13 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <CalendarBlank size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap any day on the calendar, hit the <Plus size={14} weight="thin" color="var(--color-text)" style={{ display:'inline', verticalAlign:'middle' }} /> button, and assign the event to a group to share it.
+            Tap any day on the calendar, hit the{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+              verticalAlign:'middle', width:22, height:22, borderRadius:6,
+              background:'var(--color-surface)', border:'1px solid var(--color-border)' }}>
+              <Plus size={13} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}button, and assign the event to a group to share it.
           </div>
         </div>
       </div>
