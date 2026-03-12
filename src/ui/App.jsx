@@ -132,6 +132,20 @@ function extractURLs (text) {
   return [...new Set(text.match(re) ?? [])]
 }
 
+function PearIcon ({ size = 40, color = 'var(--color-accent)' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Stem */}
+      <path d="M20 6 C20 6 22 3 24 2" stroke={color} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+      {/* Small leaf on stem */}
+      <path d="M21 5 C23 3 26 4 24 6 C22 7 20 6 21 5Z" fill={color} opacity="0.7"/>
+      {/* Pear body — teardrop shape */}
+      <path d="M20 8 C20 8 14 10 13 17 C12 22 14 28 17 31 C18.5 32.5 21.5 32.5 23 31 C26 28 28 22 27 17 C26 10 20 8 20 8Z"
+        stroke={color} strokeWidth="1.2" fill="none" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
 function formatTime (t, use24h) {
   if (!t) return ''
   const [hStr, mStr] = t.split(':')
@@ -671,7 +685,7 @@ export default function App ({ db, notifs, sync }) {
   if (!ready) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100vh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
-      <span style={{ fontSize:36 }}>🍐</span>
+      <PearIcon size={36} />
       <span style={{ fontSize:14, fontWeight:300, letterSpacing:'0.06em' }}>Loading PearCal…</span>
     </div>
   )
@@ -686,7 +700,7 @@ export default function App ({ db, notifs, sync }) {
         {/* Header */}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
           padding:'16px 20px 8px', ...th.headerBg }}>
-          <span style={{ fontSize:20, fontWeight:300, ...th.text }}>🍐 PearCal</span>
+          <span style={{ fontSize:20, fontWeight:300, ...th.text, display:'flex', alignItems:'center', gap:6 }}><PearIcon size={20} /> PearCal</span>
         </div>
 
         {/* Content */}
@@ -1401,7 +1415,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const slides = [
     // Slide 0 — Welcome
     <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:56 }}>🍐</div>
+      <PearIcon size={56} />
+      <div style={{ marginBottom: 0 }} />
       <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
       <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
         A private shared calendar that works without servers, accounts, or subscriptions.
@@ -3061,7 +3076,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
       paddingBottom:'calc(16px + env(safe-area-inset-bottom))' }}>
       {/* App info */}
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:16 }}>
-        <div style={{ fontSize:38 }}>🍐</div>
+        <PearIcon size={44} />
         <div style={{ fontSize:18, fontWeight:400, ...th.text }}>PearCal</div>
         <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>Decentralized. Private. No servers.</div>
       </div>
