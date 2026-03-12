@@ -2115,8 +2115,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
       {confirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
+          display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'10dvh 24px 0' }}>
+          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center', maxHeight:'80dvh', overflowY:'auto' }}>
             <div style={{ fontSize:36, marginBottom:12 }}><Trash size={36} weight="thin" color="var(--color-destructive)" /></div>
             <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
               {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
@@ -2697,8 +2697,8 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
       {/* Confirm dialog */}
       {confirm && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
+          display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'10dvh 24px 0' }}>
+          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center', maxHeight:'80dvh', overflowY:'auto' }}>
             <div style={{ fontSize:36, marginBottom:12 }}>
               {confirm === 'delete' ? <Trash size={36} weight="thin" color="var(--color-destructive)" /> : confirm === 'leave' ? <SignOut size={36} weight="thin" color="var(--color-destructive)" /> : <User size={36} weight="thin" color="var(--color-muted)" />}
             </div>
