@@ -3031,6 +3031,60 @@ function SkeletonList ({ th, count = 3, height = 64 }) {
   )
 }
 
+// ─── Group Created Toast ───────────────────────────────────────────────────
+function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
+  const th = themes()
+  const [leaving, setLeaving] = useState(false)
+
+  useEffect(() => {
+    const id = setTimeout(() => setLeaving(true), 5000)
+    return () => clearTimeout(id)
+  }, [])
+
+  useEffect(() => {
+    if (leaving) setTimeout(() => onDismiss(), 150)
+  }, [leaving])
+
+  function handleShare () {
+    setLeaving(true)
+    setTimeout(() => onDismiss(), 150)
+    sync?.nativeShare('Join ' + group.name + ' on PearCal', buildInviteLink(group, me?.publicKey ?? 'unknown'))
+  }
+
+  const ready = readyGroupKeys.has(group.id)
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 'calc(53px + var(--safe-area-bottom) + 16px)',
+      left: '50%', transform: 'translateX(-50%)',
+      width: 'calc(100% - 32px)', maxWidth: 398,
+      background: 'var(--color-surface)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)',
+      padding: '12px 16px',
+      display: 'flex', alignItems: 'center', gap: 10,
+      zIndex: 400,
+      animation: leaving
+        ? 'pearFadeOut 150ms var(--easing) both'
+        : 'pearFadeUp 200ms var(--easing) both',
+    }}>
+      <GroupIcon group={group} size={28} radius={8} />
+      <span style={{ flex:1, fontWeight:300, color:'var(--color-text)', fontSize:14 }}>
+        "{group.name}" created
+      </span>
+      <button
+        disabled={!ready}
+        style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300,
+          opacity: ready ? 1 : 0.5 }}
+        onClick={handleShare}
+      >
+        Share →
+      </button>
+    </div>
+  )
+}
+
 function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
