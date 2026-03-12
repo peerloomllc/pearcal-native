@@ -1689,9 +1689,13 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   }
 
   const bsCloseRef = useRef(null)
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
+  }
 
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
@@ -2354,9 +2358,13 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
     }
   }
 
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
+  }
 
   const section = label => (
     <div style={{ fontSize:11, fontWeight:300, letterSpacing:'0.08em', color:th.muted, marginBottom:8, marginTop:4 }}>
@@ -2704,9 +2712,13 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
     setStep(3)
   }
 
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
+  }
 
   const steps = ['Details','Invite','Done']
 
