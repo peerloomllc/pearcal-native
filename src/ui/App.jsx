@@ -2967,6 +2967,39 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
   )
 }
 
+// ─── Confirm Sheet ────────────────────────────────────────────────────────────
+function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onConfirm, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+
+  useEffect(() => {
+    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+  }, [])
+
+  return (
+    <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        <div style={{ marginBottom:4 }}>{icon}</div>
+        <div style={{ fontWeight:300, fontSize:17, ...th.text }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
+        <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
+          <button onClick={() => bsCloseRef.current?.()}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
+              background:'transparent', color:'var(--color-text)', fontSize:14, fontWeight:300,
+              cursor:'pointer', fontFamily:FONT }}>
+            Cancel
+          </button>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(onConfirm, 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none',
+              background: dangerous ? 'var(--color-destructive)' : 'var(--color-accent)',
+              color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer', fontFamily:FONT }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
 function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
