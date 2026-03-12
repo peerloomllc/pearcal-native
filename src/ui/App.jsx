@@ -1493,7 +1493,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0 }}>📤</span>
+          <ShareNetwork size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
             Share the invite link or QR code from a group to let others join.
           </div>
@@ -1519,8 +1519,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       {step > 0 && (
         <button onClick={() => { setSlideDir(-1); setStep(s => s - 1) }}
           style={{ position:'absolute', top:48, left:24, background:'none', border:'none',
-            color:th.muted, fontSize:22, cursor:'pointer', fontFamily:FONT, padding:4 }}>
-          ‹
+            color:th.muted, cursor:'pointer', fontFamily:FONT, padding:4 }}>
+          <CaretLeft size={24} weight="thin" />
         </button>
       )}
       {/* Slide content */}
@@ -1597,7 +1597,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
           <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
             style={{ width:96, display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer', flexShrink:0, padding:'0 6px', gap:4 }}>
-            <span style={{ fontSize:13, flexShrink:0 }}>📍</span>
+            <MapPin size={13} weight="thin" color="var(--color-muted)" style={{ flexShrink: 0 }} />
             <div style={{ fontSize:11, color:th.accent, fontWeight:300, textDecoration:'underline',
               textAlign:'left', lineHeight:'1.35',
               overflow:'hidden', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical' }}>
@@ -1923,7 +1923,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
                   marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
                   border:`1px solid ${th.border}`, ...th.card }}>
-                <span style={{ fontSize:15, flexShrink:0 }}>🔗</span>
+                <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize:12, fontWeight:300, color:th.accent,
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {url}
@@ -1940,7 +1940,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           {modal.mode === 'edit' && ev.recurrenceId && (
             <div style={{ fontSize:12, fontWeight:300, color:th.muted,
               display:'flex', alignItems:'center', gap:6 }}>
-              🔁 Recurring series — editing this occurrence only
+              <Repeat size={13} weight="thin" color="var(--color-muted)" />
+              {' '}Recurring series — editing this occurrence only
             </div>
           )}
 
@@ -1980,7 +1981,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             if (isReadOnly) return (
               <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
                 padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
-                🔒 Read only — only the creator can edit this event
+                <Lock size={13} weight="thin" color="var(--color-muted)" />
+                {' '}Read only — only the creator can edit this event
               </div>
             )
             return (
@@ -2049,7 +2051,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
           display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
           <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>🗑</div>
+            <div style={{ fontSize:36, marginBottom:12 }}><Trash size={36} weight="thin" color="var(--color-destructive)" /></div>
             <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
               {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
             </div>
@@ -2112,7 +2114,7 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
             <button onClick={() => setPasteMode(true)}
               style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-              <span style={{ fontSize:22 }}>🔗</span> Paste Invite Link
+              <ArrowSquareOut size={20} weight="thin" color="#fff" /> Paste Invite Link
             </button>
           </>
         ) : (
@@ -2270,7 +2272,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                 color:readyGroupKeys.has(g.id) ? g.color : th.muted,
                 cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
                 opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
-              📤 Share Group Invite
+              <ShareNetwork size={16} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Group Invite
             </button>
           </div>
         ))}
@@ -2318,7 +2320,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
           Invite to {group.name}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {row('📤', 'Share Link…', 'Send via messages, email, etc.', () => {
+          {row(<ShareNetwork size={22} weight="thin" color="var(--color-text)" />, 'Share Link…', 'Send via messages, email, etc.', () => {
             bsCloseRef.current?.()
             setTimeout(() => sync?.nativeShare(`Join ${group.name} on PearCal`, shareMsg), 50)
           })}
@@ -2439,7 +2441,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      📤 Share Again
+                      <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Again
                     </button>
                   </div>
                 ))}
@@ -2474,7 +2476,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      📤 Reinvite
+                      <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Reinvite
                     </button>
                   </div>
                 ))}
@@ -2608,7 +2610,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span>🚪 Leave Group</span>
+                  <span style={{ display:'flex', alignItems:'center', gap:6 }}><SignOut size={16} weight="thin" /> Leave Group</span>
                   <span style={{ fontSize:12, color:th.muted, fontWeight:300 }}>You'll lose access to shared events</span>
                 </button>
               )}
@@ -2617,7 +2619,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                   style={{ width:'100%', padding:'14px 16px', background:'#D45F7A11', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span>🗑 Delete Group</span>
+                  <span style={{ display:'flex', alignItems:'center', gap:6 }}><Trash size={16} weight="thin" /> Delete Group</span>
                   <span style={{ fontSize:12, color:'#D45F7A99', fontWeight:300 }}>Permanent — cannot be undone</span>
                 </button>
               )}
@@ -2631,7 +2633,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
           <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
             <div style={{ fontSize:36, marginBottom:12 }}>
-              {confirm === 'delete' ? '🗑' : confirm === 'leave' ? '🚪' : '👤'}
+              {confirm === 'delete' ? <Trash size={36} weight="thin" color="var(--color-destructive)" /> : confirm === 'leave' ? <SignOut size={36} weight="thin" color="var(--color-destructive)" /> : <User size={36} weight="thin" color="var(--color-muted)" />}
             </div>
             <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
               {confirm === 'delete' ? 'Delete Group?'
@@ -2883,7 +2885,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
                     style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
                       background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
                       color:th.text.color, cursor:'pointer' }}>
-                    📤 Share…
+                    <ShareNetwork size={16} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share…
                   </button>
 
                 </div>
