@@ -274,6 +274,8 @@ export default function App ({ db, notifs, sync }) {
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
+  const closeEventModalRef = useRef(null)
+  const closeGroupSettingsRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -398,14 +400,14 @@ export default function App ({ db, notifs, sync }) {
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
       if (closeConfirmSheetRef.current?.()) return
-      if (modal)        { setModal(null);        return }
+      if (closeEventModalRef.current?.()) return
       if (closeNewGroupSheetRef.current?.()) return
-      if (settingsGroup){ setSettingsGroup(null); return }
+      if (closeGroupSettingsRef.current?.()) return
       const prev = tabHistoryRef.current.pop()
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
+  }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
@@ -890,6 +892,7 @@ export default function App ({ db, notifs, sync }) {
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
+            closeRef={closeEventModalRef}
             onRequestConfirm={req => {
               if (req.type === 'deleteEvent') {
                 setModal(null)
@@ -944,6 +947,7 @@ export default function App ({ db, notifs, sync }) {
                 ? { ...g, members: (g.members ?? []).map(m => m.id === profile?.id ? { ...m, nickname: nick } : m) }
                 : g))
             }}
+            closeRef={closeGroupSettingsRef}
             onRequestConfirm={req => {
               if (req.type === 'deleteGroup') {
                 setSettingsGroup(null)
@@ -1883,6 +1887,9 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   }
 
   const bsCloseRef = useRef(null)
+  useEffect(() => {
+    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+  }, [])
   const inp = {
     background: 'var(--color-bg)', border: '1px solid var(--color-border)',
     borderRadius: 'var(--radius-sm)', padding: '10px 14px',
@@ -2492,6 +2499,9 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
 function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
+  useEffect(() => {
+    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+  }, [])
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
   const [saved,   setSaved]   = useState(false)
