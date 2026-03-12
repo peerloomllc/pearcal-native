@@ -251,7 +251,6 @@ export default function App ({ db, notifs, sync }) {
   })
   const [modal,         setModal]         = useState(null)
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
-  const newGroupKeyUpdatedRef = useRef(null)
   const eventsReady = useRef(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
@@ -371,7 +370,6 @@ export default function App ({ db, notifs, sync }) {
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
-      if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => {
@@ -398,13 +396,13 @@ export default function App ({ db, notifs, sync }) {
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
       if (modal)        { setModal(null);        return }
-      if (newGroupOpen) { setNewGroupOpen(false); return }
+      if (closeNewGroupSheetRef.current?.()) return
       if (settingsGroup){ setSettingsGroup(null); return }
       const prev = tabHistoryRef.current.pop()
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
+  }, [modal, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
