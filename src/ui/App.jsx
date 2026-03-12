@@ -2960,7 +2960,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
   const touchStartY = useRef(null)
-  const DURATION = 420
+  const DURATION = 280
 
   useEffect(() => {
     const id = setTimeout(() => setVisible(true), 20)
@@ -2991,14 +2991,25 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
       transition:`background ${DURATION}ms ease` }}
       onClick={close}>
       <div onClick={e => e.stopPropagation()}
-        style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
-          maxHeight:'92vh', overflowY:'auto', paddingBottom:32,
-          transform:`translateY(${translateY})`,
-          transition:`transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)` }}>
+        style={{
+          width: '100%', maxWidth: 430,
+          background: 'var(--color-bg)',
+          borderRadius: '20px 20px 0 0',
+          maxHeight: '80dvh', overflowY: 'auto',
+          paddingBottom: 32,
+          transform: `translateY(${translateY})`,
+          transition: `transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)`,
+          WebkitOverflowScrolling: 'touch',
+        }}>
         <div onTouchStart={onHandleTouchStart} onTouchMove={onHandleTouchMove}
           style={{ display:'flex', justifyContent:'center', padding:'16px 0 8px', cursor:'pointer' }}
           onClick={close}>
-          <div style={{ width:40, height:5, borderRadius:3, background:th.border }} />
+          <div style={{
+            width: 32, height: 3, borderRadius: 2,
+            background: 'var(--color-border)',
+            margin: '12px auto 4px',
+            flexShrink: 0,
+          }} />
         </div>
         {children}
       </div>
