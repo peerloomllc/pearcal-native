@@ -2753,32 +2753,19 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
-function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpdated }) {
+function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, closeRef }) {
   const bsCloseRef = useRef(null)
-  const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
   const [emoji,          setEmoji]          = useState(GROUP_EMOJIS[0])
   const [icon,           setIcon]           = useState(null)
   const [nameErr,        setNameErr]        = useState('')
-  const [group,          setGroup]          = useState(null)
-  const [groupKeyReady,  setGroupKeyReady]  = useState(false)
-  useEffect(() => {
-    if (!onGroupKeyUpdated) return
-    onGroupKeyUpdated(updated => {
-      setGroup(prev => {
-        if (prev?.id === updated.id) {
-          setGroupKeyReady(true)
-          return updated
-        }
-        return prev
-      })
-    })
-  }, [onGroupKeyUpdated])
-  const [copiedLink,     setCopiedLink]     = useState(false)
-
   const [creating,       setCreating]       = useState(false)
   const fileRef = useRef()
+
+  useEffect(() => {
+    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+  }, [])
 
   function handleImageUpload (e) {
     const file = e.target.files?.[0]
@@ -2788,40 +2775,26 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
     reader.readAsDataURL(file)
   }
 
-  function handleCreate () {
-    if (!name.trim()) { setNameErr('Group name is required.'); return }
-    const newG = {
-      id:      'g' + Math.random().toString(36).slice(2, 8),
-      name:    name.trim(), color, emoji, icon,
-      ownerId: me?.id ?? 'unknown',
-      members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
-      groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
-      removedMembers: [],
-    }
-    setGroup(newG)
-    setGroupKeyReady(false)
-    setStep(2)
-    onAdd(newG)
-  }
-
-  function genInviteLink (g) {
-    return buildInviteLink(g, me?.publicKey ?? 'unknown')
-  }
-
-  function copyInvite () {
-    if (!group) return
-    navigator.clipboard?.writeText(genInviteLink(group))
-    setCopiedLink(true)
-    setTimeout(() => setCopiedLink(false), 2500)
-  }
-
-
-
-  async function finish () {
-    if (!group) return
+  async function handleCreate () {
+    if (!name.trim()) { setNameErr('Group name required'); return }
     setCreating(true)
-    setCreating(false)
-    setStep(3)
+    try {
+      const newG = {
+        id:      'g' + Math.random().toString(36).slice(2, 8),
+        name:    name.trim(), color, emoji, icon,
+        ownerId: me?.id ?? 'unknown',
+        members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
+        groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
+        removedMembers: [],
+      }
+      await onAdd(newG)
+      onCreated(newG)
+      bsCloseRef.current?.()
+    } catch (e) {
+      // inline error if needed
+    } finally {
+      setCreating(false)
+    }
   }
 
   const inp = {
@@ -2832,194 +2805,76 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
     transition: 'border-color var(--duration-fast) var(--easing)',
   }
 
-  const steps = ['Details','Invite','Done']
-
   return (
     <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
-          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
+        <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+      </div>
+      <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
+        {/* Name input */}
+        <div>
+          <input
+            placeholder="Group name"
+            value={name}
+            onChange={e => { setName(e.target.value); setNameErr('') }}
+            style={inp}
+          />
+          {nameErr && <div style={{ color:'var(--color-destructive)', fontSize:13, marginTop:4 }}>{nameErr}</div>}
         </div>
 
-        {/* Step indicator */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 20px 4px' }}>
-          {steps.map((s, i) => {
-            const num = i + 1, done = step > num, active = step === num
-            return (
-              <div key={s} style={{ display:'flex', alignItems:'center' }}>
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', display:'flex',
-                    alignItems:'center', justifyContent:'center', fontWeight:300, fontSize:13,
-                    background:done ? '#5DBF8A' : active ? th.accent : th.inputBg,
-                    color:done || active ? '#fff' : th.muted,
-                    border:`2px solid ${done ? '#5DBF8A' : active ? th.accent : th.border}` }}>
-                    {done ? '✓' : num}
-                  </div>
-                  <span style={{ fontSize:10, color:active ? th.accent : th.muted, fontWeight:300 }}>{s}</span>
-                </div>
-                {i < steps.length - 1 && (
-                  <div style={{ width:40, height:2, background:step > num ? '#5DBF8A' : th.border,
-                    margin:'0 4px', marginBottom:16 }} />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        <div style={{ padding:'16px 20px 0' }}>
-          {/* Step 1 */}
-          {step === 1 && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'8px 0' }}>
-                <div style={{ width:72, height:72, borderRadius:20, background:color, overflow:'hidden',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:32,
-                  boxShadow:`0 4px 16px ${color}55` }}>
-                  {icon ? <img src={icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : emoji}
-                </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={() => fileRef.current?.click()}
-                    style={{ fontSize:12, padding:'5px 12px', borderRadius:8, border:`1px solid ${th.border}`,
-                      background:'transparent', color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
-                    📷 Upload Photo
-                  </button>
-                  {icon && (
-                    <button onClick={() => setIcon(null)}
-                      style={{ fontSize:12, padding:'5px 12px', borderRadius:8, border:`1px solid #D45F7A`,
-                        background:'transparent', color:'#D45F7A', cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
-                  onChange={handleImageUpload} />
-              </div>
-
-              <div>
-                <Label th={th}>Group Name</Label>
-                <input style={inp} placeholder="e.g. Smith Family" maxLength={40}
-                  value={name} onChange={e => { setName(e.target.value); setNameErr('') }} />
-                {nameErr && <div style={{ color:'#D45F7A', fontSize:12, marginTop:4, fontWeight:300 }}>{nameErr}</div>}
-              </div>
-
-              {!icon && (
-                <div>
-                  <Label th={th}>Group Icon</Label>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
-                    {GROUP_EMOJIS.map(em => (
-                      <button key={em} onClick={() => setEmoji(em)}
-                        style={{ width:40, height:40, borderRadius:10, fontSize:20,
-                          border:`2px solid ${emoji === em ? color : th.border}`,
-                          background:emoji === em ? color + '22' : 'transparent', cursor:'pointer' }}>
-                        {em}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <Label th={th}>Group Color</Label>
-                <div style={{ display:'flex', gap:10, marginTop:6, flexWrap:'wrap' }}>
-                  {GROUP_COLORS.map(c => (
-                    <button key={c} onClick={() => setColor(c)}
-                      style={{ width:32, height:32, borderRadius:'50%', background:c, cursor:'pointer',
-                        border:color === c ? '3px solid #fff' : '3px solid transparent',
-                        boxShadow:color === c ? `0 0 0 2px ${c}` : 'none' }} />
-                  ))}
-                </div>
-              </div>
-
-              <button onClick={handleCreate} disabled={creating}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300, marginTop:4,
-                  opacity: creating ? 0.6 : 1,
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {creating ? <><Spinner /> {' Creating…'}</> : 'Create Group →'}
-              </button>
-            </div>
-          )}
-
-          {/* Step 2 */}
-          {step === 2 && group && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12, ...th.card,
-                borderRadius:12, padding:'12px 14px', borderLeft:`4px solid ${group.color}` }}>
-                <GroupIcon group={group} size={40} radius={10} />
-                <div>
-                  <div style={{ fontWeight:300, ...th.text }}>{group.name}</div>
-                  <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>Just created · 1 member (you)</div>
-                </div>
-              </div>
-
-              <div>
-                <Label th={th}>Share Invite Link</Label>
-                <div style={{ ...th.card, borderRadius:10, padding:'10px 12px', display:'flex',
-                  alignItems:'center', gap:8, border:`1px solid ${th.border}`, marginTop:6 }}>
-                  <span style={{ fontSize:11, color:th.muted, flex:1, overflow:'hidden',
-                    textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:'monospace', fontWeight:300 }}>
-                    {genInviteLink(group)}
-                  </span>
-                </div>
-                <div style={{ display:'flex', gap:8, marginTop:8 }}>
-
-                  <button onClick={() => {
-                      const link = genInviteLink(group)
-                      if (sync) sync.nativeShare(`Join ${group.name} on PearCal`, link)
-                      else navigator.clipboard?.writeText(link)
-                    }}
-                    style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
-                      background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                      color:th.text.color, cursor:'pointer' }}>
-                    <ShareNetwork size={16} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share…
-                  </button>
-
-                </div>
-              </div>
-
-
-
-              <div style={{ display:'flex', gap:8, marginTop:4 }}>
-                <button onClick={() => { setSlideDir(1); setStep(1) }}
-                  style={{ flex:1, padding:'12px', fontSize:14, fontWeight:300, fontFamily:FONT,
-                    background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                    color:th.text.color, cursor:'pointer' }}>
-                  ← Back
-                </button>
-                <button onClick={finish} disabled={creating}
-                  style={{ ...th.pillBtn, flex:2, padding:'12px', fontSize:15, fontWeight:300,
-                    opacity:creating ? 0.6 : 1 }}>
-                  {creating ? 'Creating…' : 'Finish'}
+        {/* Emoji / icon picker row */}
+        <div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Icon</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            {icon ? (
+              <div style={{ position:'relative', width:44, height:44, borderRadius:10, overflow:'hidden', flexShrink:0 }}>
+                <img src={icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <button onClick={() => setIcon(null)}
+                  style={{ position:'absolute', top:0, right:0, background:'rgba(0,0,0,0.55)',
+                    border:'none', color:'#fff', width:18, height:18, borderRadius:0, cursor:'pointer',
+                    display:'flex', alignItems:'center', justifyContent:'center', padding:0, fontSize:11 }}>
+                  <X size={10} weight="bold" />
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Step 3 */}
-          {step === 3 && group && (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, padding:'16px 0 8px' }}>
-              <div style={{ width:80, height:80, borderRadius:24, background:group.color, overflow:'hidden',
-                display:'flex', alignItems:'center', justifyContent:'center', fontSize:38,
-                boxShadow:`0 6px 24px ${group.color}55` }}>
-                {group.icon
-                  ? <img src={group.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  : group.emoji}
-              </div>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:22, fontWeight:300, ...th.text, marginBottom:6 }}>{group.name}</div>
-                <div style={{ fontSize:14, color:th.muted, fontWeight:300 }}>Your group is ready 🎉</div>
-              </div>
-              <div style={{ ...th.card, borderRadius:14, padding:'16px', width:'100%', display:'flex', flexDirection:'column', gap:10 }}>
-                <InfoRow th={th} label="Members" val={String(group.members.length)} />
-                <InfoRow th={th} label="Sync" val="Hyperswarm DHT" />
-                <InfoRow th={th} label="Storage" val="Local · Hyperbee" />
-                <InfoRow th={th} label="Data collected" val="None" />
-              </div>
-              <button onClick={onClose}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300 }}>
-                Go to Groups
+            ) : (
+              <button onClick={() => fileRef.current?.click()}
+                style={{ width:44, height:44, borderRadius:10, border:`1px dashed var(--color-border)`,
+                  background:'transparent', cursor:'pointer', display:'flex', alignItems:'center',
+                  justifyContent:'center', flexShrink:0, color:'var(--color-muted)', fontSize:20 }}>
+                +
               </button>
-            </div>
-          )}
+            )}
+            <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleImageUpload} />
+            {GROUP_EMOJIS.map(em => (
+              <button key={em} onClick={() => setEmoji(em)}
+                style={{ width:44, height:44, borderRadius:10, border:`1px solid ${emoji === em && !icon ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  background: emoji === em && !icon ? 'var(--color-accent-faint)' : 'transparent',
+                  cursor:'pointer', fontSize:22, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {em}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Color picker */}
+        <div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Color</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            {GROUP_COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                style={{ width:28, height:28, borderRadius:'50%', background:c, border:`2px solid ${color === c ? 'var(--color-text)' : 'transparent'}`,
+                  cursor:'pointer', transition:'border-color var(--duration-fast) var(--easing)' }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Create button */}
+        <button onClick={handleCreate} disabled={creating}
+          style={{ ...th.pillBtn, padding:'13px', fontSize:15, fontWeight:300, opacity: creating ? 0.6 : 1 }}>
+          {creating ? 'Creating…' : 'Create Group'}
+        </button>
+      </div>
     </BottomSheet>
   )
 }
