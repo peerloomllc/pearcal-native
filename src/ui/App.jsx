@@ -15,6 +15,14 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
 import { FONT_CSS } from './fonts.js'
+import {
+  CalendarBlank, Users, User, Info,
+  ShareNetwork, ArrowSquareOut, MapPin, GearSix,
+  Trash, SignOut, Repeat, Lock, Key,
+  CaretRight, CaretLeft, QrCode, Plus,
+  Check, X, Eye, EyeSlash, Circle,
+  Warning, ArrowLeft, DotsThree,
+} from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
 // SyncManager calls emitter.emit('sync', groupId) whenever Autobase
@@ -721,27 +729,47 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Bottom Nav */}
-        <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
-          width:'100%', maxWidth:430, ...th.navBg, display:'flex',
-          borderTop:`1px solid ${th.border}`, zIndex:50,
-          paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+        <div style={{
+          position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+          width: '100%', maxWidth: 430,
+          background: 'var(--color-bg)',
+          display: 'flex',
+          borderTop: '1px solid var(--color-border)',
+          paddingBottom: 'var(--safe-area-bottom)',
+          zIndex: 50,
+        }}>
           {[
-            { key:'calendar', icon:'📅', label:'Calendar' },
-            { key:'groups',   icon:'👥', label:'Groups'   },
-            { key:'profile',  icon:'👤', label:'Profile'  },
-            { key:'about',    icon:'ℹ️',  label:'About'    },
+            { key: 'calendar', Icon: CalendarBlank, label: 'Calendar' },
+            { key: 'groups',   Icon: Users,         label: 'Groups'   },
+            { key: 'profile',  Icon: User,          label: 'Profile'  },
+            { key: 'about',    Icon: Info,          label: 'About'    },
           ].map(t => {
             const isActive = tab === t.key
             return (
               <button key={t.key} onClick={() => goTab(t.key)}
-                style={{ flex:1, padding:'10px 0 8px', border:'none', cursor:'pointer',
-                  display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontFamily:FONT,
-                  background: isActive ? th.accent + '18' : 'none',
-                  borderTop: isActive ? `3px solid ${th.accent}` : '3px solid transparent',
-                  transition:'background 0.15s' }}>
-                <span style={{ fontSize:22 }}>{t.icon}</span>
-                <span style={{ fontSize:11, fontWeight:isActive ? 400 : 300,
-                  color:isActive ? th.accent : th.muted }}>{t.label}</span>
+                style={{
+                  flex: 1, padding: '10px 0 8px', border: 'none', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  fontFamily: FONT, background: 'none', position: 'relative',
+                }}>
+                {isActive && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
+                    width: 24, height: 2, borderRadius: 1,
+                    background: 'var(--color-accent)',
+                  }} />
+                )}
+                <t.Icon
+                  size={20}
+                  weight="thin"
+                  color={isActive ? 'var(--color-accent)' : 'var(--color-muted)'}
+                />
+                <span style={{
+                  fontSize: 10, fontWeight: 400,
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-muted)',
+                }}>
+                  {t.label}
+                </span>
               </button>
             )
           })}
