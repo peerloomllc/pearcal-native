@@ -19,7 +19,7 @@ import {
   CalendarBlank, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
   Trash, SignOut, Repeat, Lock, Key,
-  CaretRight, CaretLeft, QrCode, Plus,
+  CaretRight, CaretLeft, QrCode, Plus, UserPlus,
   Check, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
 } from '@phosphor-icons/react'
@@ -114,6 +114,10 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) 
     @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSkeletonPulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }
+    @keyframes pearFadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
   `
   document.head.appendChild(style)
 }
