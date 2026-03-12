@@ -110,7 +110,13 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) 
   document.head.appendChild(style)
 }
 
-const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
+const FONT = `'Manrope', -apple-system, BlinkMacSystemFont, sans-serif`
+
+function setTheme (dark) {
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  }
+}
 
 function extractURLs (text) {
   if (!text) return []
@@ -138,33 +144,39 @@ const REMINDER_OPTIONS = [
   {label:'1 hour before',value:60},{label:'2 hours before',value:120},{label:'1 day before',value:1440},
 ]
 
-function themes (dark) {
-  const accent = '#6C9BF5'
-  const base = {
-    accent,
-    accentFaint: 'rgba(108,155,245,0.15)',
-    iconBtn: { background:'none',border:'none',cursor:'pointer',padding:'4px 8px',borderRadius:8,fontFamily:FONT,fontWeight:300 },
-    pillBtn: { background:accent,border:'none',borderRadius:10,color:'#fff',cursor:'pointer',fontFamily:FONT },
-  }
-  return dark ? {
-    ...base,
-    app:{background:'#111'},bg:{background:'#111'},headerBg:{background:'#111'},
-    text:{color:'#F0F0F0'},muted:'#888',border:'#2A2A2A',
-    card:{background:'#1C1C1C'},inputBg:'#1C1C1C',navBg:{background:'#111'},
-    iconBtn:{...base.iconBtn,color:'#F0F0F0'},
-  } : {
-    ...base,
-    app:{background:'#F5F6FA'},bg:{background:'#F5F6FA'},headerBg:{background:'#fff'},
-    text:{color:'#111'},muted:'#999',border:'#E5E5E5',
-    card:{background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'},
-    inputBg:'#F5F6FA',navBg:{background:'#fff'},
-    iconBtn:{...base.iconBtn,color:'#111'},
+function themes () {
+  return {
+    accent:       'var(--color-accent)',
+    accentFaint:  'var(--color-accent-faint)',
+    muted:        'var(--color-muted)',
+    border:       'var(--color-border)',
+    inputBg:      'var(--color-bg)',
+    app:          { background: 'var(--color-bg)' },
+    bg:           { background: 'var(--color-bg)' },
+    headerBg:     { background: 'var(--color-bg)' },
+    navBg:        { background: 'var(--color-bg)' },
+    text:         { color: 'var(--color-text)' },
+    card:         { background: 'var(--color-surface)' },
+    iconBtn: {
+      background: 'none', border: 'none', cursor: 'pointer',
+      padding: '4px 8px', borderRadius: 8, fontFamily: FONT, fontWeight: 400,
+      color: 'var(--color-text)',
+    },
+    pillBtn: {
+      background: 'var(--color-accent)', border: 'none',
+      borderRadius: 'var(--radius-md)', color: '#fff',
+      cursor: 'pointer', fontFamily: FONT, fontWeight: 400,
+    },
   }
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App ({ db, notifs, sync }) {
-  const [dark,  setDark]  = useState(true)
+  const [dark,  setDark]  = useState(() => {
+    setTheme(true) // default dark until profile loads
+    return true
+  })
+  useEffect(() => { setTheme(dark) }, [dark])
   const [tab,   setTab]   = useState('calendar')
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(null)
@@ -200,7 +212,7 @@ export default function App ({ db, notifs, sync }) {
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
-  const th = themes(dark)
+  const th = themes()
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const use24h    = profile?.use24h ?? localeUse24h
   const weekStart = profile?.weekStart ?? 0
