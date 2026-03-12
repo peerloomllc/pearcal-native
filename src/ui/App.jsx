@@ -3067,7 +3067,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
           background: 'var(--color-bg)',
           borderRadius: '20px 20px 0 0',
           maxHeight: '80dvh', overflowY: 'auto',
-          paddingBottom: 32,
+          paddingBottom: 'calc(32px + 53px + var(--safe-area-bottom))',
           transform: `translateY(${translateY})`,
           transition: `transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)`,
           WebkitOverflowScrolling: 'touch',
