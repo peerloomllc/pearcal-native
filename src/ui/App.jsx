@@ -14,6 +14,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
+import { FONT_CSS } from './fonts.js'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
 // SyncManager calls emitter.emit('sync', groupId) whenever Autobase
@@ -27,12 +28,81 @@ class Emitter {
 export const emitter = new Emitter()
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
+if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
   const style = document.createElement('style')
-  style.id = 'pear-anims'
-  style.textContent = `
+  style.id = 'pear-styles'
+  style.textContent = FONT_CSS + `
+    [data-theme="dark"] {
+      --color-bg:                #0E0D0C;
+      --color-surface:           #1A1916;
+      --color-border:            #2C2A26;
+      --color-text:              #F2EFE8;
+      --color-muted:             #8A8478;
+      --color-accent:            #C8922A;
+      --color-accent-faint:      rgba(200,146,42,0.12);
+      --color-destructive:       #C0504A;
+      --color-destructive-faint: rgba(192,80,74,0.12);
+      --color-success:           #5DBF8A;
+    }
+    [data-theme="light"] {
+      --color-bg:                #F7F5F0;
+      --color-surface:           #FFFFFF;
+      --color-border:            #E5E1D8;
+      --color-text:              #1A1916;
+      --color-muted:             #9A9288;
+      --color-accent:            #B07D20;
+      --color-accent-faint:      rgba(176,125,32,0.10);
+      --color-destructive:       #C0504A;
+      --color-destructive-faint: rgba(192,80,74,0.08);
+      --color-success:           #4A9E6E;
+    }
+    :root {
+      --space-xs:  4px;
+      --space-sm:  8px;
+      --space-md:  16px;
+      --space-lg:  24px;
+      --space-xl:  32px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      --duration-fast:   120ms;
+      --duration-normal: 200ms;
+      --duration-slow:   280ms;
+      --easing: cubic-bezier(0.2, 0, 0, 1);
+      --safe-area-top:    env(safe-area-inset-top, 0px);
+      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
     * { -webkit-tap-highlight-color: transparent; }
-    @keyframes pearFadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+    input, textarea, select, button { font-family: var(--font-sans); }
+    input, textarea { font-size: 16px; }
+    button { transition: transform var(--duration-fast) var(--easing); }
+    button:active { transform: scale(0.97); }
+    input:focus, textarea:focus { border-color: var(--color-accent) !important; }
+    * { -webkit-overflow-scrolling: touch; }
+    @keyframes pearFadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+    @keyframes pearFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes pearPulse {
+      0%, 100% { opacity: 0.3; }
+      50%       { opacity: 0.7; }
+    }
+    @keyframes pearShake {
+      0%, 100% { transform: translateX(0);   }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px);  }
+    }
+    @keyframes pearSpin {
+      from { transform: rotate(0deg);   }
+      to   { transform: rotate(360deg); }
+    }
     @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSkeletonPulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }
