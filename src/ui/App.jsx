@@ -248,6 +248,7 @@ export default function App ({ db, notifs, sync }) {
   const [modal,         setModal]         = useState(null)
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const newGroupKeyUpdatedRef = useRef(null)
+  const eventsReady = useRef(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
@@ -292,6 +293,7 @@ export default function App ({ db, notifs, sync }) {
         setGroups(grps)
         setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
+        eventsReady.current = true
         setReady(true)
       } catch (e) {
         if (!cancelled) setError(e.message)
@@ -747,7 +749,7 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} />
+              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
@@ -1124,7 +1126,7 @@ function getUKHolidays (year) {
 }
 
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -1350,13 +1352,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       )}
       {/* Scrollable event list — flat, stable, never restructures */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0, WebkitOverflowScrolling: 'touch' }}>
-      {events.length === 0 ? (
+      {!eventsReady.current ? (
         <div style={{ paddingTop: 8 }}>
           {[0,1,2].map(i => <SkeletonEventCard key={i} />)}
         </div>
       ) : null}
       {(() => {
-        if (events.length === 0) return null
+        if (!eventsReady.current) return null
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
