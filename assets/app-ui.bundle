@@ -14825,10 +14825,30 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const saveEvent = (0, import_react.useCallback)(async (ev) => {
+    const saveEvent = (0, import_react.useCallback)(async (ev, scope = "one", options = {}) => {
       const { _prevDate, ...evClean } = ev;
       ev = evClean;
-      const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : [ev];
+      const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : scope === "future" && ev.recurrenceId ? (() => {
+        const PROPAGATE = [
+          "title",
+          "allDay",
+          "start",
+          "end",
+          "reminder",
+          ...options.propagateGroups ? ["groups", "invitees"] : [],
+          "color",
+          "desc",
+          "location",
+          "recurrence",
+          "recurrenceEnd",
+          "recurrenceNth",
+          "recurrenceWeekday",
+          "editPermission"
+        ];
+        const patch = {};
+        for (const k of PROPAGATE) patch[k] = ev[k];
+        return events.filter((e) => e.recurrenceId === ev.recurrenceId && e.date >= ev.date).map((e) => ({ ...e, ...patch }));
+      })() : [ev];
       if (db2) {
         if (_prevDate && _prevDate !== ev.date) {
           await db2.deleteEvent(_prevDate, ev.id).catch(() => {
@@ -14843,6 +14863,12 @@
           for (const gid of evWithAuthor.groups ?? []) {
             await sync2?.putEvent(gid, evToSync).catch((e) => console.warn("[SYNC-ERR]", e?.message));
           }
+          const original = events.find((e) => e.id === occ.id);
+          const removedGroups = (original?.groups ?? []).filter((g) => !(occ.groups ?? []).includes(g));
+          for (const gid of removedGroups) {
+            await sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            });
+          }
         }
       }
       setEvents((prev) => {
@@ -14855,7 +14881,7 @@
         return next;
       });
       setModal(null);
-    }, [db2, notifs2, sync2, profile]);
+    }, [db2, notifs2, sync2, profile, events]);
     const deleteEvent = (0, import_react.useCallback)(async (id) => {
       const ev = events.find((e) => e.id === id);
       if (!ev) return;
@@ -14865,7 +14891,7 @@
           await db2.deleteEvent(ev.date, id);
           await notifs2?.cancelForEvent(id);
           for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, id, ev.date, profile?.name ?? "Someone").catch(() => {
+            await sync2?.deleteEvent(gid, id, ev.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         } else {
@@ -14886,7 +14912,7 @@
         const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
         if (isCreator) {
           for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? "Someone").catch(() => {
+            await sync2?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         }
@@ -16461,6 +16487,8 @@
   function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2 }) {
     const [ev, setEv] = (0, import_react.useState)(modal.event);
     const [saving, setSaving] = (0, import_react.useState)(false);
+    const [confirm, setConfirm] = (0, import_react.useState)(null);
+    const [scopePending, setScopePending] = (0, import_react.useState)(null);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e) => ({ ...e, [k]: v }));
     function toggleGroup(gid) {
@@ -16511,9 +16539,23 @@
         return;
       }
       setTitleErr("");
-      setSaving(true);
       const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev;
-      await onSave(toSave);
+      if (modal.mode === "edit" && ev.recurrenceId) {
+        const origGroups = [...modal.event.groups ?? []].sort().join(",");
+        const newGroups = [...toSave.groups ?? []].sort().join(",");
+        const origInvitees = [...modal.event.invitees ?? []].sort().join(",");
+        const newInvitees = [...toSave.invitees ?? []].sort().join(",");
+        if (origGroups !== newGroups || origInvitees !== newInvitees) {
+          setSaving(true);
+          await onSave(toSave, "future", { propagateGroups: true });
+          setSaving(false);
+          return;
+        }
+        setScopePending(toSave);
+        return;
+      }
+      setSaving(true);
+      await onSave(toSave, "one");
       setSaving(false);
     }
     const bsCloseRef = (0, import_react.useRef)(null);
@@ -16672,7 +16714,7 @@
               val
             )) })
           ] }),
-          modal.mode === "create" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          (modal.mode === "create" || !ev.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "select",
@@ -16713,7 +16755,7 @@
               }
             )
           ] }),
-          modal.mode === "create" && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          (modal.mode === "create" || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
@@ -16901,7 +16943,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => onDelete(ev.id),
+                onClick: () => isCreator ? setConfirm("delete") : onDelete(ev.id),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -16914,13 +16956,13 @@
                   cursor: "pointer",
                   width: "100%"
                 },
-                children: isCreator ? "Delete for Everyone" : "Delete for Me"
+                children: isCreator ? "Delete" : "Remove for Me"
               }
             ),
             ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => onDeleteSeries?.(ev.recurrenceId),
+                onClick: () => isCreator ? setConfirm("deleteSeries") : onDeleteSeries?.(ev.recurrenceId),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -16938,7 +16980,146 @@
             )
           ] });
         })()
-      ] })
+      ] }),
+      scopePending && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        zIndex: 300,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 24px"
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.bg, borderRadius: 20, padding: "24px", width: "100%", maxWidth: 360, textAlign: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 }, children: "Edit recurring event" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 }, children: "Save changes to just this event, or this and all future events in the series?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, marginBottom: 8 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: async () => {
+                setSaving(true);
+                setScopePending(null);
+                await onSave(scopePending, "one");
+                setSaving(false);
+              },
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                fontFamily: FONT,
+                background: th.accent,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "This Event"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: async () => {
+                setSaving(true);
+                setScopePending(null);
+                await onSave(scopePending, "future");
+                setSaving(false);
+              },
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                fontFamily: FONT,
+                background: th.accent,
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "This & Future"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => setScopePending(null),
+            style: {
+              width: "100%",
+              padding: "12px",
+              borderRadius: 12,
+              border: `1px solid ${th.border}`,
+              fontFamily: FONT,
+              background: "transparent",
+              color: th.text.color,
+              fontSize: 14,
+              fontWeight: 300,
+              cursor: "pointer"
+            },
+            children: "Cancel"
+          }
+        )
+      ] }) }),
+      confirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        zIndex: 300,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "0 24px"
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.bg, borderRadius: 20, padding: "24px", width: "100%", maxWidth: 360, textAlign: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 36, marginBottom: 12 }, children: "\u{1F5D1}" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text, marginBottom: 8 }, children: confirm === "delete" ? "Delete Event?" : "Delete All in Series?" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, color: th.muted, marginBottom: 20, lineHeight: 1.5, fontWeight: 300 }, children: confirm === "delete" ? "This event will be permanently deleted for everyone. This cannot be undone." : "All events in this series will be permanently deleted for everyone. This cannot be undone." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => setConfirm(null),
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: `1px solid ${th.border}`,
+                fontFamily: FONT,
+                background: "transparent",
+                color: th.text.color,
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "Cancel"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => {
+                setConfirm(null);
+                confirm === "delete" ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId);
+              },
+              style: {
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                fontFamily: FONT,
+                background: "#D45F7A",
+                color: "#fff",
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer"
+              },
+              children: "Delete"
+            }
+          )
+        ] })
+      ] }) })
     ] });
   }
   function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined }) {
@@ -19003,7 +19184,7 @@ ${link}`;
     leaveGroup: (id) => window.__pearDB.call("leaveGroup", id),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup:sync", id),
     putEvent: (gid, ev) => window.__pearDB.call("putEvent:sync", gid, ev),
-    deleteEvent: (gid, id, d, who) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who),
+    deleteEvent: (gid, id, d, who, whoId) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g),
     memberLeft: (groupId, memberId) => window.__pearDB.call("memberLeft:sync", groupId, memberId),
     nativeShare: (title, text) => window.__pearDB.call("nativeShare", title, text),

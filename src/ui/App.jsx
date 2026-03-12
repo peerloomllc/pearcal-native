@@ -283,13 +283,25 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
-  const saveEvent = useCallback(async ev => {
+  const saveEvent = useCallback(async (ev, scope = 'one', options = {}) => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
     const occurrences = (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId)
       ? expandRecurring(ev)
-      : [ev]
+      : scope === 'future' && ev.recurrenceId
+        ? (() => {
+            const PROPAGATE = ['title','allDay','start','end','reminder',
+                               ...(options.propagateGroups ? ['groups','invitees'] : []),
+                               'color','desc','location','recurrence','recurrenceEnd',
+                               'recurrenceNth','recurrenceWeekday','editPermission']
+            const patch = {}
+            for (const k of PROPAGATE) patch[k] = ev[k]
+            return events
+              .filter(e => e.recurrenceId === ev.recurrenceId && e.date >= ev.date)
+              .map(e => ({ ...e, ...patch }))
+          })()
+        : [ev]
     if (db) {
       // If date changed, delete old local entry to avoid duplicate
       if (_prevDate && _prevDate !== ev.date) {
@@ -304,6 +316,12 @@ export default function App ({ db, notifs, sync }) {
         for (const gid of evWithAuthor.groups ?? []) {
           await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
         }
+        // Sync delete for any groups removed from this event
+        const original = events.find(e => e.id === occ.id)
+        const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
+        for (const gid of removedGroups) {
+          await sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        }
       }
     }
     setEvents(prev => {
@@ -316,7 +334,7 @@ export default function App ({ db, notifs, sync }) {
       return next
     })
     setModal(null)
-  }, [db, notifs, sync, profile])
+  }, [db, notifs, sync, profile, events])
 
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
@@ -328,7 +346,7 @@ export default function App ({ db, notifs, sync }) {
         await db.deleteEvent(ev.date, id)
         await notifs?.cancelForEvent(id)
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       } else {
         // Non-creator: local-only delete + tombstone so resync never resurrects it
@@ -349,7 +367,7 @@ export default function App ({ db, notifs, sync }) {
       const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
       if (isCreator) {
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone').catch(() => {})
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       }
     }
@@ -1480,6 +1498,8 @@ function expandRecurring (ev) {
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
+  const [confirm, setConfirm] = useState(null)
+  const [scopePending, setScopePending] = useState(null)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
@@ -1528,9 +1548,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   async function handleSave () {
     if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
     setTitleErr('')
-    setSaving(true)
     const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
-    await onSave(toSave)
+    if (modal.mode === 'edit' && ev.recurrenceId) {
+      const origGroups   = [...(modal.event.groups   ?? [])].sort().join(',')
+      const newGroups    = [...(toSave.groups         ?? [])].sort().join(',')
+      const origInvitees = [...(modal.event.invitees  ?? [])].sort().join(',')
+      const newInvitees  = [...(toSave.invitees       ?? [])].sort().join(',')
+      if (origGroups !== newGroups || origInvitees !== newInvitees) {
+        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }); setSaving(false); return
+      }
+      setScopePending(toSave); return
+    }
+    setSaving(true)
+    await onSave(toSave, 'one')
     setSaving(false)
   }
 
@@ -1642,7 +1672,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           </div>}
 
-          {modal.mode === 'create' && (
+          {(modal.mode === 'create' || !ev.recurrenceId) && (
             <div><Label th={th}>Repeat</Label>
               <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
                 onChange={e => {
@@ -1674,7 +1704,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
-          {modal.mode === 'create' && ev.recurrence && ev.recurrence !== 'none' && (
+          {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && (
             <div><Label th={th}>Repeat until</Label>
               <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
                 onChange={e => set('recurrenceEnd', e.target.value)} />
@@ -1797,14 +1827,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <button onClick={() => onDelete(ev.id)}
+                <button onClick={() => isCreator ? setConfirm('delete') : onDelete(ev.id)}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-                  {isCreator ? 'Delete for Everyone' : 'Delete for Me'}
+                  {isCreator ? 'Delete' : 'Remove for Me'}
                 </button>
                 {ev.recurrenceId && (
-                  <button onClick={() => onDeleteSeries?.(ev.recurrenceId)}
+                  <button onClick={() => isCreator ? setConfirm('deleteSeries') : onDeleteSeries?.(ev.recurrenceId)}
                     style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                       padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                       fontFamily:FONT, cursor:'pointer', width:'100%' }}>
@@ -1815,6 +1845,66 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             )
           })()}
         </div>
+
+      {scopePending && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
+            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>Edit recurring event</div>
+            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
+              Save changes to just this event, or this and all future events in the series?
+            </div>
+            <div style={{ display:'flex', gap:8, marginBottom:8 }}>
+              <button onClick={async () => { setSaving(true); setScopePending(null); await onSave(scopePending, 'one'); setSaving(false) }}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+                  background:th.accent, color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                This Event
+              </button>
+              <button onClick={async () => { setSaving(true); setScopePending(null); await onSave(scopePending, 'future'); setSaving(false) }}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+                  background:th.accent, color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                This & Future
+              </button>
+            </div>
+            <button onClick={() => setScopePending(null)}
+              style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
+                fontFamily:FONT, background:'transparent', color:th.text.color,
+                fontSize:14, fontWeight:300, cursor:'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirm && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
+          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
+            <div style={{ fontSize:36, marginBottom:12 }}>🗑</div>
+            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
+              {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
+            </div>
+            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
+              {confirm === 'delete'
+                ? 'This event will be permanently deleted for everyone. This cannot be undone.'
+                : 'All events in this series will be permanently deleted for everyone. This cannot be undone.'}
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setConfirm(null)}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
+                  fontFamily:FONT, background:'transparent', color:th.text.color,
+                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={() => { setConfirm(null); confirm === 'delete' ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId) }}
+                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </BottomSheet>
   )
 }

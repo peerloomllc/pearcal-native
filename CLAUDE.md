@@ -41,9 +41,22 @@ cp android/app/build/outputs/apk/release/app-release.apk ~/pearcal-release.apk
 ```
 Keystore: `~/keystore.jks` — alias: `pearcal`
 
+## Branch Strategy
+
+Always create a branch before starting work — never commit directly to master.
+- Feature branches: `feature/description`
+- Bug fix branches: `bugfix/description`
+- Merge via GitHub PR: `gh pr merge N --merge`
+- After merge: `git checkout master && git pull github master`
+
 ## To-Do List
 
-Tracked in `TODO.md` at the repo root (unversioned, gitignored). When adding items, categorize by type, priority, and complexity. When completing items, mark as `- [x] Description — completed YYYY-MM-DD`.
+Tracked in `TODO.md` at the repo root (unversioned, gitignored). When adding items, categorize by type, priority, and complexity.
+
+### Completing a TODO item — required workflow:
+1. List verification tests/steps and prompt the user for confirmation/results.
+2. If verification passes and no additional work is needed, proceed to commits.
+3. After commits, mark the item as `- [x] Description — completed YYYY-MM-DD`, then show the remaining open TODO items.
 
 ## Patching Rules
 

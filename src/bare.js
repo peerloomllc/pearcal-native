@@ -72,7 +72,7 @@ async function handle (method, args) {
     case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
@@ -111,9 +111,11 @@ async function listEvents (opts) {
   const { from, to, groupId } = opts
   const gt = NS.events + (from ?? '')
   const lt = NS.events + (to ? to + '\xff' : '\xff')
+  const profile = await getProfile()
   const events = []
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (groupId && !value.groups?.includes(groupId)) continue
+    if (!isInvitedToEvent(value, profile?.id)) continue
     events.push(value)
   }
   return events
@@ -312,10 +314,10 @@ async function syncPutEvent (groupId, event) {
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date, updatedByName) {
+async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
-  await base.append({ op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone' })
+  await base.append({ op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' })
 }
 
 async function syncPutGroup (group) {
@@ -395,6 +397,12 @@ async function resyncGroup (groupId) {
   } catch(e) { console.error('[RESYNC] error:', e.message) }
 }
 
+function isInvitedToEvent (event, profileId) {
+  if (!event.invitees || event.invitees.length === 0) return true
+  if (event.creatorId === profileId) return true
+  return event.invitees.includes(profileId)
+}
+
 function makeApply (groupId) {
   return async function apply (nodes, view, host) {
     const base = bases.get(groupId)
@@ -433,7 +441,13 @@ function makeApply (groupId) {
             }
           }
           await view.put(val.key, val.value)
+          // Always mirror so local DB has latest invitees list — listEvents filters at read time.
           await mirrorToLocal(val.type, val.key, val.value, groupId)
+          // Invitee filter: skip notifications for uninvited events (mirrorToLocal already sent sync).
+          if (isRemote && val.type === 'event') {
+            const profile = await getProfile()
+            if (!isInvitedToEvent(val.value, profile?.id)) continue
+          }
           // Notify when a new member joins — detected by diffing member lists on group update
           if (isRemote && val.type === 'group') {
             try {
@@ -505,7 +519,10 @@ function makeApply (groupId) {
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
-        await deleteFromLocal(val.type, val.key)
+        // Skip local delete for the writer's own event del ops —
+        // owner may still hold the event locally (e.g. unshared from a group).
+        // For "Delete for Everyone", db.deleteEvent already ran before sync.deleteEvent.
+        if (isRemote || val.type !== 'event') await deleteFromLocal(val.type, val.key)
         if (val.type === 'group' && isRemote) {
           // Owner deleted the group — clean up locally and notify UI
           await deleteGroup(groupId)
@@ -517,7 +534,7 @@ function makeApply (groupId) {
             const eventId = val.key.split(':').pop()
             const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
             if (!delTombstone) {
-              notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, groupId })
+              notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId })
             }
           }
         }
@@ -526,14 +543,14 @@ function makeApply (groupId) {
   }
 }
 
-async function notifySyncChange ({ op, value, key, prev, updatedByName, groupId }) {
+async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
     // Resolve sender name: prefer the nickname this receiver knows them by in the shared group.
     // Look up in the group's members[] array (kept current by mirrorToLocal) rather than the
     // members: namespace, which may still hold the 'Inviter' placeholder from join time.
-    const _senderId = value?.updatedById || null
+    const _senderId = value?.updatedById || updatedById || null
     let who = updatedByName || value?.updatedByName || 'Someone'
     if (_senderId && groupId) {
       const _groupNode = await db.get(NS.groups + groupId).catch(() => null)
