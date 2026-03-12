@@ -272,6 +272,8 @@ export default function App ({ db, notifs, sync }) {
   const closeInviteSheetRef = useRef(null)
   const closeNewGroupSheetRef = useRef(null)
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
+  const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
+  const closeConfirmSheetRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
@@ -395,6 +397,7 @@ export default function App ({ db, notifs, sync }) {
       if (closeInviteSheetRef.current?.()) return
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
+      if (closeConfirmSheetRef.current?.()) return
       if (modal)        { setModal(null);        return }
       if (closeNewGroupSheetRef.current?.()) return
       if (settingsGroup){ setSettingsGroup(null); return }
@@ -616,6 +619,18 @@ export default function App ({ db, notifs, sync }) {
       .filter(e => e.groups.length > 0))
     setSettingsGroup(null)
   }, [db, sync, groups, profile])
+
+  const removeMember = useCallback(async (g, uid) => {
+    const removedMember = g.members.find(m => m.id === uid)
+    const removedMembers = [...(g.removedMembers ?? []), {
+      id: uid,
+      name: removedMember?.name ?? 'Member',
+      avatar: removedMember?.avatar ?? '?'
+    }]
+    const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
+    await updateGroup(updatedGroup)
+    await sync?.memberLeft(g.id, uid).catch(() => {})
+  }, [updateGroup, sync])
 
   const updateProfile = useCallback(async updates => {
     if (db) {
@@ -840,6 +855,20 @@ export default function App ({ db, notifs, sync }) {
           />
         )}
 
+        {confirmSheet && (
+          <ConfirmSheet
+            th={th}
+            title={confirmSheet.title}
+            message={confirmSheet.message}
+            icon={confirmSheet.icon}
+            confirmLabel={confirmSheet.confirmLabel}
+            dangerous={confirmSheet.dangerous}
+            onConfirm={confirmSheet.onConfirm}
+            onDismiss={() => setConfirmSheet(null)}
+            closeRef={closeConfirmSheetRef}
+          />
+        )}
+
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
@@ -860,7 +889,31 @@ export default function App ({ db, notifs, sync }) {
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
-            onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS} />
+            onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
+            onRequestConfirm={req => {
+              if (req.type === 'deleteEvent') {
+                setModal(null)
+                setConfirmSheet({
+                  title: 'Delete Event?',
+                  message: 'This event will be permanently deleted for everyone. This cannot be undone.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete',
+                  dangerous: true,
+                  onConfirm: () => deleteEvent(req.ev.id),
+                })
+              } else if (req.type === 'deleteSeries') {
+                setModal(null)
+                setConfirmSheet({
+                  title: 'Delete All in Series?',
+                  message: 'All events in this series will be permanently deleted for everyone. This cannot be undone.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete All',
+                  dangerous: true,
+                  onConfirm: () => deleteEventSeries(req.ev.recurrenceId),
+                })
+              }
+            }}
+          />
         )}
         {joinOpen && (
           <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
@@ -890,7 +943,45 @@ export default function App ({ db, notifs, sync }) {
               setGroups(prev => prev.map(g => g.id === groupId
                 ? { ...g, members: (g.members ?? []).map(m => m.id === profile?.id ? { ...m, nickname: nick } : m) }
                 : g))
-            }} />
+            }}
+            onRequestConfirm={req => {
+              if (req.type === 'deleteGroup') {
+                setSettingsGroup(null)
+                const otherCount = req.g.members.length - 1
+                setConfirmSheet({
+                  title: 'Delete Group?',
+                  message: otherCount > 0
+                    ? `"${req.g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
+                    : `"${req.g.name}" and all its events will be permanently deleted. This cannot be undone.`,
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete',
+                  dangerous: true,
+                  onConfirm: () => deleteGroup(req.g.id),
+                })
+              } else if (req.type === 'leaveGroup') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Leave Group?',
+                  message: `You'll be removed from "${req.g.name}" and lose access to shared events.`,
+                  icon: <SignOut size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Leave',
+                  dangerous: true,
+                  onConfirm: () => deleteGroup(req.g.id, 'leave'),
+                })
+              } else if (req.type === 'removeMember') {
+                setSettingsGroup(null)
+                const member = req.g.members.find(m => m.id === req.memberId)
+                setConfirmSheet({
+                  title: `Remove ${member?.name ?? 'Member'}?`,
+                  message: `They will be removed from "${req.g.name}" and lose access to shared events.`,
+                  icon: <User size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Remove',
+                  dangerous: true,
+                  onConfirm: () => removeMember(req.g, req.memberId),
+                })
+              }
+            }}
+          />
         )}
       </div>
     </div>
@@ -1723,10 +1814,9 @@ function expandRecurring (ev) {
   return out
 }
 
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db }) {
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
-  const [confirm, setConfirm] = useState(null)
   const [scopePending, setScopePending] = useState(null)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
@@ -2079,14 +2169,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <button onClick={() => isCreator ? setConfirm('delete') : onDelete(ev.id)}
+                <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteEvent', ev })) : onDelete(ev.id)}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
                   {isCreator ? 'Delete' : 'Remove for Me'}
                 </button>
                 {ev.recurrenceId && (
-                  <button onClick={() => isCreator ? setConfirm('deleteSeries') : onDeleteSeries?.(ev.recurrenceId)}
+                  <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteSeries', ev })) : onDeleteSeries?.(ev.recurrenceId)}
                     style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                       padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                       fontFamily:FONT, cursor:'pointer', width:'100%' }}>
@@ -2128,35 +2218,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
         </div>
       )}
 
-      {confirm && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'10dvh 24px 0' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center', maxHeight:'80dvh', overflowY:'auto' }}>
-            <div style={{ fontSize:36, marginBottom:12 }}><Trash size={36} weight="thin" color="var(--color-destructive)" /></div>
-            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
-              {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
-            </div>
-            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              {confirm === 'delete'
-                ? 'This event will be permanently deleted for everyone. This cannot be undone.'
-                : 'All events in this series will be permanently deleted for everyone. This cannot be undone.'}
-            </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setConfirm(null)}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
-                  fontFamily:FONT, background:'transparent', color:th.text.color,
-                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={() => { setConfirm(null); confirm === 'delete' ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId) }}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </BottomSheet>
   )
 }
@@ -2429,11 +2490,10 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange }) {
+function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
-  const [confirm, setConfirm] = useState(null)
   const [saved,   setSaved]   = useState(false)
   const [saving,  setSaving]  = useState(false)
   const [nickInput, setNickInput] = useState(() => (group.members ?? []).find(m => m.id === me?.id)?.nickname ?? '')
@@ -2460,26 +2520,6 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }
-
-  async function confirmAction () {
-    if (!confirm) return
-    if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
-    if (confirm.startsWith('remove:')) {
-      const uid = confirm.split(':')[1]
-      const removedMember = g.members.find(m => m.id === uid)
-      const removedMembers = [...(g.removedMembers ?? []), {
-        id: uid,
-        name: removedMember?.name ?? 'Member',
-        avatar: removedMember?.avatar ?? '?'
-      }]
-      const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
-      setG(updatedGroup)
-      setConfirm(null)
-      setSaved(false)
-      await onUpdate(updatedGroup)
-      await onMemberLeft(g.id, uid)
-    }
   }
 
   const inp = {
@@ -2677,7 +2717,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       {g.ownerId === m.id && <div style={{ fontSize:11, color:g.color, fontWeight:300 }}>Owner</div>}
                     </div>
                     {canRemove && (
-                      <button onClick={() => setConfirm(`remove:${m.id}`)}
+                      <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
                         style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
                           color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
                           fontWeight:300, fontFamily:FONT }}>
@@ -2701,7 +2741,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
               {isMember && !isOwner && (
-                <button onClick={() => setConfirm('leave')}
+                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'leaveGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -2710,7 +2750,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 </button>
               )}
               {isOwner && (
-                <button onClick={() => setConfirm('delete')}
+                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'deleteGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'#D45F7A11', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -2722,45 +2762,6 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           </div>
         </div>
 
-      {/* Confirm dialog */}
-      {confirm && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'flex-start', justifyContent:'center', padding:'10dvh 24px 0' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center', maxHeight:'80dvh', overflowY:'auto' }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>
-              {confirm === 'delete' ? <Trash size={36} weight="thin" color="var(--color-destructive)" /> : confirm === 'leave' ? <SignOut size={36} weight="thin" color="var(--color-destructive)" /> : <User size={36} weight="thin" color="var(--color-muted)" />}
-            </div>
-            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
-              {confirm === 'delete' ? 'Delete Group?'
-                : confirm === 'leave' ? 'Leave Group?'
-                : `Remove ${g.members.find(m => m.id === confirm.split(':')[1])?.name}?`}
-            </div>
-            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              {confirm === 'delete' && (() => {
-                const otherCount = g.members.length - 1
-                return otherCount > 0
-                  ? `"${g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
-                  : `"${g.name}" and all its events will be permanently deleted. This cannot be undone.`
-              })()}
-              {confirm === 'leave'  && `You'll be removed from "${g.name}" and lose access to shared events.`}
-              {confirm.startsWith('remove:') && `They will be removed from "${g.name}" and lose access to shared events.`}
-            </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setConfirm(null)}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
-                  fontFamily:FONT, background:'transparent', color:th.text.color,
-                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={confirmAction}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                {confirm === 'delete' ? 'Delete' : confirm === 'leave' ? 'Leave' : 'Remove'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </BottomSheet>
   )
 }
