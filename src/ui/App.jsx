@@ -14,6 +14,16 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
+import { FONT_CSS } from './fonts.js'
+import {
+  CalendarBlank, Users, User, Info,
+  ShareNetwork, ArrowSquareOut, MapPin, GearSix,
+  Trash, SignOut, Repeat, Lock, Key,
+  CaretRight, CaretLeft, QrCode, Plus, UserPlus,
+  Check, X, Eye, EyeSlash, Circle,
+  Warning, ArrowLeft, DotsThree,
+  Camera, Image,
+} from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
 // SyncManager calls emitter.emit('sync', groupId) whenever Autobase
@@ -27,25 +37,153 @@ class Emitter {
 export const emitter = new Emitter()
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
+if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
   const style = document.createElement('style')
-  style.id = 'pear-anims'
-  style.textContent = `
+  style.id = 'pear-styles'
+  style.textContent = FONT_CSS + `
+    [data-theme="dark"] {
+      --color-bg:                #0E0D0C;
+      --color-surface:           #1A1916;
+      --color-border:            #2C2A26;
+      --color-text:              #F2EFE8;
+      --color-muted:             #8A8478;
+      --color-accent:            #C8922A;
+      --color-accent-faint:      rgba(200,146,42,0.12);
+      --color-destructive:       #C0504A;
+      --color-destructive-faint: rgba(192,80,74,0.12);
+      --color-success:           #5DBF8A;
+    }
+    [data-theme="light"] {
+      --color-bg:                #F7F5F0;
+      --color-surface:           #FFFFFF;
+      --color-border:            #E5E1D8;
+      --color-text:              #1A1916;
+      --color-muted:             #9A9288;
+      --color-accent:            #B07D20;
+      --color-accent-faint:      rgba(176,125,32,0.10);
+      --color-destructive:       #C0504A;
+      --color-destructive-faint: rgba(192,80,74,0.08);
+      --color-success:           #4A9E6E;
+    }
+    :root {
+      --space-xs:  4px;
+      --space-sm:  8px;
+      --space-md:  16px;
+      --space-lg:  24px;
+      --space-xl:  32px;
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+      --duration-fast:   120ms;
+      --duration-normal: 200ms;
+      --duration-slow:   280ms;
+      --easing: cubic-bezier(0.2, 0, 0, 1);
+      --safe-area-top:    env(safe-area-inset-top, 0px);
+      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
     * { -webkit-tap-highlight-color: transparent; }
-    @keyframes pearFadeIn { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: translateY(0) } }
+    input, textarea, select, button { font-family: var(--font-sans); }
+    input, textarea { font-size: 16px; }
+    button { transition: transform var(--duration-fast) var(--easing); }
+    button:active { transform: scale(0.97); }
+    input:focus, textarea:focus { border-color: var(--color-accent) !important; }
+    * { -webkit-overflow-scrolling: touch; }
+    @keyframes pearFadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0);   }
+    }
+    @keyframes pearFadeIn {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+    @keyframes pearPulse {
+      0%, 100% { opacity: 0.3; }
+      50%       { opacity: 0.7; }
+    }
+    @keyframes pearShake {
+      0%, 100% { transform: translateX(0);   }
+      20%, 60% { transform: translateX(-4px); }
+      40%, 80% { transform: translateX(4px);  }
+    }
+    @keyframes pearSpin {
+      from { transform: rotate(0deg);   }
+      to   { transform: rotate(360deg); }
+    }
     @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
     @keyframes pearSkeletonPulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }
+    @keyframes pearFadeOut {
+      from { opacity: 1; }
+      to   { opacity: 0; }
+    }
   `
   document.head.appendChild(style)
 }
 
-const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
+const FONT = `'Manrope', -apple-system, BlinkMacSystemFont, sans-serif`
+
+function setTheme (dark) {
+  if (typeof document !== 'undefined') {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
+  }
+}
 
 function extractURLs (text) {
   if (!text) return []
   const re = /https?:\/\/[^\s<>"']+/gi
   return [...new Set(text.match(re) ?? [])]
+}
+
+function PearIcon ({ size = 40, color = 'var(--color-accent)' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Stem */}
+      <path d="M20 6 C20 6 22 3 24 2" stroke={color} strokeWidth="1.2" strokeLinecap="round" fill="none"/>
+      {/* Small leaf on stem */}
+      <path d="M21 5 C23 3 26 4 24 6 C22 7 20 6 21 5Z" fill={color} opacity="0.7"/>
+      {/* Pear body — teardrop shape */}
+      <path d="M20 8 C20 8 14 10 13 17 C12 22 14 28 17 31 C18.5 32.5 21.5 32.5 23 31 C26 28 28 22 27 17 C26 10 20 8 20 8Z"
+        stroke={color} strokeWidth="1.2" fill="none" strokeLinejoin="round"/>
+    </svg>
+  )
+}
+
+function Spinner ({ size = 14 }) {
+  return (
+    <Circle
+      size={size}
+      weight="thin"
+      style={{ animation: 'pearSpin 800ms linear infinite', display: 'inline-block' }}
+    />
+  )
+}
+
+function SkeletonBar ({ width = '100%', height = 12, style = {} }) {
+  return (
+    <div style={{
+      width, height, borderRadius: 'var(--radius-sm)',
+      background: 'var(--color-border)',
+      animation: 'pearPulse 1.4s ease-in-out infinite',
+      ...style,
+    }} />
+  )
+}
+
+function SkeletonEventCard () {
+  return (
+    <div style={{
+      background: 'var(--color-surface)', borderRadius: 'var(--radius-md)',
+      padding: '10px 12px', marginBottom: 6,
+      borderLeft: '4px solid var(--color-border)',
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <SkeletonBar width="60%" height={12} />
+      <SkeletonBar width="35%" height={10} />
+    </div>
+  )
 }
 
 function formatTime (t, use24h) {
@@ -68,33 +206,39 @@ const REMINDER_OPTIONS = [
   {label:'1 hour before',value:60},{label:'2 hours before',value:120},{label:'1 day before',value:1440},
 ]
 
-function themes (dark) {
-  const accent = '#6C9BF5'
-  const base = {
-    accent,
-    accentFaint: 'rgba(108,155,245,0.15)',
-    iconBtn: { background:'none',border:'none',cursor:'pointer',padding:'4px 8px',borderRadius:8,fontFamily:FONT,fontWeight:300 },
-    pillBtn: { background:accent,border:'none',borderRadius:10,color:'#fff',cursor:'pointer',fontFamily:FONT },
-  }
-  return dark ? {
-    ...base,
-    app:{background:'#111'},bg:{background:'#111'},headerBg:{background:'#111'},
-    text:{color:'#F0F0F0'},muted:'#888',border:'#2A2A2A',
-    card:{background:'#1C1C1C'},inputBg:'#1C1C1C',navBg:{background:'#111'},
-    iconBtn:{...base.iconBtn,color:'#F0F0F0'},
-  } : {
-    ...base,
-    app:{background:'#F5F6FA'},bg:{background:'#F5F6FA'},headerBg:{background:'#fff'},
-    text:{color:'#111'},muted:'#999',border:'#E5E5E5',
-    card:{background:'#fff',boxShadow:'0 1px 4px rgba(0,0,0,0.06)'},
-    inputBg:'#F5F6FA',navBg:{background:'#fff'},
-    iconBtn:{...base.iconBtn,color:'#111'},
+function themes () {
+  return {
+    accent:       'var(--color-accent)',
+    accentFaint:  'var(--color-accent-faint)',
+    muted:        'var(--color-muted)',
+    border:       'var(--color-border)',
+    inputBg:      'var(--color-bg)',
+    app:          { background: 'var(--color-bg)' },
+    bg:           { background: 'var(--color-bg)' },
+    headerBg:     { background: 'var(--color-bg)' },
+    navBg:        { background: 'var(--color-bg)' },
+    text:         { color: 'var(--color-text)' },
+    card:         { background: 'var(--color-surface)' },
+    iconBtn: {
+      background: 'none', border: 'none', cursor: 'pointer',
+      padding: '4px 8px', borderRadius: 8, fontFamily: FONT, fontWeight: 400,
+      color: 'var(--color-text)',
+    },
+    pillBtn: {
+      background: 'var(--color-accent)', border: 'none',
+      borderRadius: 'var(--radius-md)', color: '#fff',
+      cursor: 'pointer', fontFamily: FONT, fontWeight: 400,
+    },
   }
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App ({ db, notifs, sync }) {
-  const [dark,  setDark]  = useState(true)
+  const [dark,  setDark]  = useState(() => {
+    setTheme(true) // default dark until profile loads
+    return true
+  })
+  useEffect(() => { setTheme(dark) }, [dark])
   const [tab,   setTab]   = useState('calendar')
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(null)
@@ -108,7 +252,7 @@ export default function App ({ db, notifs, sync }) {
   })
   const [modal,         setModal]         = useState(null)
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
-  const newGroupKeyUpdatedRef = useRef(null)
+  const eventsReady = useRef(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
@@ -127,10 +271,16 @@ export default function App ({ db, notifs, sync }) {
   const closeAboutSheetRef  = useRef(null)
   const closeJoinSheetRef   = useRef(null)
   const closeInviteSheetRef = useRef(null)
+  const closeNewGroupSheetRef = useRef(null)
+  const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
+  const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
+  const closeConfirmSheetRef = useRef(null)
+  const closeEventModalRef = useRef(null)
+  const closeGroupSettingsRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
 
-  const th = themes(dark)
+  const th = themes()
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const use24h    = profile?.use24h ?? localeUse24h
   const weekStart = profile?.weekStart ?? 0
@@ -153,6 +303,7 @@ export default function App ({ db, notifs, sync }) {
         setGroups(grps)
         setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
+        eventsReady.current = true
         setReady(true)
       } catch (e) {
         if (!cancelled) setError(e.message)
@@ -224,7 +375,6 @@ export default function App ({ db, notifs, sync }) {
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
-      if (newGroupKeyUpdatedRef.current) newGroupKeyUpdatedRef.current(group)
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => {
@@ -250,14 +400,15 @@ export default function App ({ db, notifs, sync }) {
       if (closeInviteSheetRef.current?.()) return
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
-      if (modal)        { setModal(null);        return }
-      if (newGroupOpen) { setNewGroupOpen(false); return }
-      if (settingsGroup){ setSettingsGroup(null); return }
+      if (closeConfirmSheetRef.current?.()) return
+      if (closeEventModalRef.current?.()) return
+      if (closeNewGroupSheetRef.current?.()) return
+      if (closeGroupSettingsRef.current?.()) return
       const prev = tabHistoryRef.current.pop()
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [modal, newGroupOpen, settingsGroup, qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
+  }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
@@ -405,7 +556,7 @@ export default function App ({ db, notifs, sync }) {
     if (result?.ok && result.group && nickname && nickname !== profile?.name) {
       await db.setMemberNickname(result.group.id, nickname).catch(() => {})
     }
-    if (result?.error === 'blocked_from_group') setBlockedToast(true)
+    if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
     setPendingJoin(null)
     return result
   }, [db, sync, profile])
@@ -444,7 +595,7 @@ export default function App ({ db, notifs, sync }) {
       await sync?.putGroup(updated).catch(() => {})
     }
     setGroups(prev => prev.map(g => g.id === updated.id ? updated : g))
-    setSettingsGroup(updated)
+    setSettingsGroup(prev => prev?.id === updated.id ? updated : prev)
   }, [db, sync, groups])
 
   const deleteGroup = useCallback(async (id, action = 'delete') => {
@@ -471,6 +622,18 @@ export default function App ({ db, notifs, sync }) {
       .filter(e => e.groups.length > 0))
     setSettingsGroup(null)
   }, [db, sync, groups, profile])
+
+  const removeMember = useCallback(async (g, uid) => {
+    const removedMember = g.members.find(m => m.id === uid)
+    const removedMembers = [...(g.removedMembers ?? []), {
+      id: uid,
+      name: removedMember?.name ?? 'Member',
+      avatar: removedMember?.avatar ?? '?'
+    }]
+    const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
+    await updateGroup(updatedGroup)
+    await sync?.memberLeft(g.id, uid).catch(() => {})
+  }, [updateGroup, sync])
 
   const updateProfile = useCallback(async updates => {
     if (db) {
@@ -562,7 +725,7 @@ export default function App ({ db, notifs, sync }) {
   // ─── Loading / error states ─────────────────────────────────────────────────
   if (error) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', background:'#111', color:'#D45F7A', flexDirection:'column', gap:12, padding:24 }}>
+      minHeight:'100dvh', background:'#111', color:'#D45F7A', flexDirection:'column', gap:12, padding:24 }}>
       <span style={{ fontSize:32 }}>⚠️</span>
       <span style={{ fontSize:16, fontWeight:300 }}>Failed to load PearCal</span>
       <span style={{ fontSize:12, color:'#888', fontFamily:'monospace' }}>{error}</span>
@@ -580,8 +743,8 @@ export default function App ({ db, notifs, sync }) {
 
   if (!ready) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
-      <span style={{ fontSize:36 }}>🍐</span>
+      minHeight:'100dvh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
+      <PearIcon size={36} />
       <span style={{ fontSize:14, fontWeight:300, letterSpacing:'0.06em' }}>Loading PearCal…</span>
     </div>
   )
@@ -593,28 +756,24 @@ export default function App ({ db, notifs, sync }) {
       <div style={{ width:'100%', maxWidth:430, height:'100dvh', display:'flex', flexDirection:'column', ...th.bg,
         paddingTop:'var(--sat)', paddingBottom:'var(--sab)' }}>
 
-        {/* Header */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'16px 20px 8px', ...th.headerBg }}>
-          <span style={{ fontSize:20, fontWeight:300, ...th.text }}>🍐 PearCal</span>
-        </div>
-
         {/* Content */}
-        <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0 }}>
+        <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0, WebkitOverflowScrolling: 'touch' }}>
           <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
-            animation:'pearFadeIn 0.22s ease', height: tab === 'calendar' ? '100%' : 'auto' }}>
+            animation: 'pearFadeIn 100ms var(--easing) both', height: tab === 'calendar' ? '100%' : 'auto' }}>
           {tab === 'calendar' && (
             <CalendarTab th={th} viewDate={viewDate} setViewDate={setViewDate}
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} />
+              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady} />
           )}
           {blockedToast && (
-            <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
-              background:'#D45F7A', color:'#fff', borderRadius:12, padding:'12px 18px',
-              fontSize:13, fontWeight:300, zIndex:200, whiteSpace:'nowrap',
-              boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+            <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
+              left:'50%', transform:'translateX(-50%)',
+              width:'calc(100% - 32px)', maxWidth:398,
+              background:'var(--color-destructive)', color:'#fff', borderRadius:'var(--radius-lg)',
+              padding:'12px 16px', fontSize:13, fontWeight:300, zIndex:400,
+              textAlign:'center', lineHeight:1.5 }}>
               You were removed from this group and cannot rejoin with this link.
             </div>
           )}
@@ -639,31 +798,75 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Bottom Nav */}
-        <div style={{ position:'fixed', bottom:0, left:'50%', transform:'translateX(-50%)',
-          width:'100%', maxWidth:430, ...th.navBg, display:'flex',
-          borderTop:`1px solid ${th.border}`, zIndex:50,
-          paddingBottom:'env(safe-area-inset-bottom, 0px)' }}>
+        <div style={{
+          position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+          width: '100%', maxWidth: 430,
+          background: 'var(--color-bg)',
+          display: 'flex',
+          borderTop: '1px solid var(--color-border)',
+          paddingBottom: 'var(--safe-area-bottom)',
+          zIndex: 50,
+        }}>
           {[
-            { key:'calendar', icon:'📅', label:'Calendar' },
-            { key:'groups',   icon:'👥', label:'Groups'   },
-            { key:'profile',  icon:'👤', label:'Profile'  },
-            { key:'about',    icon:'ℹ️',  label:'About'    },
+            { key: 'calendar', Icon: CalendarBlank, label: 'Calendar' },
+            { key: 'groups',   Icon: Users,         label: 'Groups'   },
+            { key: 'profile',  Icon: User,          label: 'Profile'  },
+            { key: 'about',    Icon: Info,          label: 'About'    },
           ].map(t => {
             const isActive = tab === t.key
             return (
               <button key={t.key} onClick={() => goTab(t.key)}
-                style={{ flex:1, padding:'10px 0 8px', border:'none', cursor:'pointer',
-                  display:'flex', flexDirection:'column', alignItems:'center', gap:3, fontFamily:FONT,
-                  background: isActive ? th.accent + '18' : 'none',
-                  borderTop: isActive ? `3px solid ${th.accent}` : '3px solid transparent',
-                  transition:'background 0.15s' }}>
-                <span style={{ fontSize:22 }}>{t.icon}</span>
-                <span style={{ fontSize:11, fontWeight:isActive ? 400 : 300,
-                  color:isActive ? th.accent : th.muted }}>{t.label}</span>
+                style={{
+                  flex: 1, padding: '10px 0 8px', border: 'none', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                  fontFamily: FONT, background: 'none', position: 'relative',
+                }}>
+                {isActive && (
+                  <div style={{
+                    position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)',
+                    width: 24, height: 2, borderRadius: 1,
+                    background: 'var(--color-accent)',
+                  }} />
+                )}
+                <t.Icon
+                  size={20}
+                  weight="thin"
+                  color={isActive ? 'var(--color-accent)' : 'var(--color-muted)'}
+                />
+                <span style={{
+                  fontSize: 10, fontWeight: 400,
+                  color: isActive ? 'var(--color-accent)' : 'var(--color-muted)',
+                }}>
+                  {t.label}
+                </span>
               </button>
             )
           })}
         </div>
+
+        {groupCreatedToast && (
+          <GroupCreatedToast
+            group={groupCreatedToast.group}
+            me={profile}
+            sync={sync}
+            readyGroupKeys={readyGroupKeys}
+            onDismiss={() => setGroupCreatedToast(null)}
+          />
+        )}
+
+        {confirmSheet && (
+          <ConfirmSheet
+            th={th}
+            title={confirmSheet.title}
+            message={confirmSheet.message}
+            icon={confirmSheet.icon}
+            confirmLabel={confirmSheet.confirmLabel}
+            dangerous={confirmSheet.dangerous}
+            onConfirm={confirmSheet.onConfirm}
+            onDismiss={() => setConfirmSheet(null)}
+            closeRef={closeConfirmSheetRef}
+          />
+        )}
 
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
@@ -685,7 +888,32 @@ export default function App ({ db, notifs, sync }) {
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
-            onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS} />
+            onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
+            closeRef={closeEventModalRef}
+            onRequestConfirm={req => {
+              if (req.type === 'deleteEvent') {
+                setModal(null)
+                setConfirmSheet({
+                  title: 'Delete Event?',
+                  message: 'This event will be permanently deleted for everyone. This cannot be undone.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete',
+                  dangerous: true,
+                  onConfirm: () => deleteEvent(req.ev.id),
+                })
+              } else if (req.type === 'deleteSeries') {
+                setModal(null)
+                setConfirmSheet({
+                  title: 'Delete All in Series?',
+                  message: 'All events in this series will be permanently deleted for everyone. This cannot be undone.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete All',
+                  dangerous: true,
+                  onConfirm: () => deleteEventSeries(req.ev.recurrenceId),
+                })
+              }
+            }}
+          />
         )}
         {joinOpen && (
           <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
@@ -700,9 +928,10 @@ export default function App ({ db, notifs, sync }) {
             onClose={() => setPendingJoin(null)} />
         )}
         {newGroupOpen && (
-          <NewGroupModal th={th} onClose={() => { setNewGroupOpen(false); newGroupKeyUpdatedRef.current = null }}
+          <NewGroupModal th={th} onClose={() => setNewGroupOpen(false)}
             onAdd={addGroup} onUpdate={updateGroup} me={profile} sync={sync}
-            onGroupKeyUpdated={fn => { newGroupKeyUpdatedRef.current = fn }} />
+            onCreated={group => setGroupCreatedToast({ group })}
+            closeRef={closeNewGroupSheetRef} />
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
@@ -714,7 +943,46 @@ export default function App ({ db, notifs, sync }) {
               setGroups(prev => prev.map(g => g.id === groupId
                 ? { ...g, members: (g.members ?? []).map(m => m.id === profile?.id ? { ...m, nickname: nick } : m) }
                 : g))
-            }} />
+            }}
+            closeRef={closeGroupSettingsRef}
+            onRequestConfirm={req => {
+              if (req.type === 'deleteGroup') {
+                setSettingsGroup(null)
+                const otherCount = req.g.members.length - 1
+                setConfirmSheet({
+                  title: 'Delete Group?',
+                  message: otherCount > 0
+                    ? `"${req.g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
+                    : `"${req.g.name}" and all its events will be permanently deleted. This cannot be undone.`,
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Delete',
+                  dangerous: true,
+                  onConfirm: () => deleteGroup(req.g.id),
+                })
+              } else if (req.type === 'leaveGroup') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Leave Group?',
+                  message: `You'll be removed from "${req.g.name}" and lose access to shared events.`,
+                  icon: <SignOut size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Leave',
+                  dangerous: true,
+                  onConfirm: () => deleteGroup(req.g.id, 'leave'),
+                })
+              } else if (req.type === 'removeMember') {
+                setSettingsGroup(null)
+                const member = req.g.members.find(m => m.id === req.memberId)
+                setConfirmSheet({
+                  title: `Remove ${member?.name ?? 'Member'}?`,
+                  message: `They will be removed from "${req.g.name}" and lose access to shared events.`,
+                  icon: <User size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Remove',
+                  dangerous: true,
+                  onConfirm: () => removeMember(req.g, req.memberId),
+                })
+              }
+            }}
+          />
         )}
       </div>
     </div>
@@ -965,7 +1233,7 @@ function getUKHolidays (year) {
 }
 
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -1160,8 +1428,15 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           {selectedDate < todayStr &&
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
-        <button onClick={() => openCreate(selectedDate)}
-          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>+ Event</button>
+        <button onClick={() => openCreate(selectedDate)} style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}>
+          <Plus size={18} weight="thin" color="var(--color-text)" />
+        </button>
       </div>
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
@@ -1190,8 +1465,14 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         </div>
       )}
       {/* Scrollable event list — flat, stable, never restructures */}
-      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0, WebkitOverflowScrolling: 'touch' }}>
+      {!eventsReady.current ? (
+        <div style={{ paddingTop: 8 }}>
+          {[0,1,2].map(i => <SkeletonEventCard key={i} />)}
+        </div>
+      ) : null}
       {(() => {
+        if (!eventsReady.current) return null
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
@@ -1213,9 +1494,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
-            {seen.get(date).map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} isPast={date < todayStr}
-                use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+            {seen.get(date).map((ev, i) => (
+              <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
+                <EventCard ev={ev} th={th} isPast={date < todayStr}
+                  use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+              </div>
             ))}
           </div>
         ))
@@ -1291,7 +1574,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const slides = [
     // Slide 0 — Welcome
     <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:56 }}>🍐</div>
+      <PearIcon size={56} />
+      <div style={{ marginBottom: 0 }} />
       <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
       <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
         A private shared calendar that works without servers, accounts, or subscriptions.
@@ -1304,7 +1588,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 1 — How P2P works
     <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>🔗</div>
+      <ShareNetwork size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>No servers. No accounts.</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.7', maxWidth:290 }}>
         PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
@@ -1320,7 +1604,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 2 — Name entry
     <div key={2} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>👤</div>
+      <User size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>What's your name?</div>
       <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
         This is how you'll appear to group members in shared groups.
@@ -1355,14 +1639,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
       <div style={{ display:'flex', gap:10 }}>
         <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
-          📷 Camera
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
+          <Camera size={18} weight="thin" /> Camera
         </button>
         <button onClick={() => {
             if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
           }} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300 }}>
-          🖼️ Gallery
+          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
+          <Image size={18} weight="thin" /> Gallery
         </button>
       </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
@@ -1373,25 +1657,43 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
     // Slide 4 — Groups & Invites
     <div key={4} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <div style={{ fontSize:48 }}>👥</div>
+      <Users size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0, ...th.text }}>＋</span>
+          <Plus size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Go to the <span style={{ ...th.text, fontWeight:400 }}>Groups tab</span> and tap <span style={{ ...th.text, fontWeight:400 }}>+ New Group</span> to create a group.
+            Tap the{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
+              background:'var(--color-surface)', border:'1px solid var(--color-border)',
+              borderRadius:8, padding:'2px 6px' }}>
+              <UserPlus size={14} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}or{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
+              background:'var(--color-surface)', border:'1px solid var(--color-border)',
+              borderRadius:8, padding:'2px 6px' }}>
+              <Plus size={14} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}icons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page to join or add a group.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0 }}>📤</span>
+          <ShareNetwork size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
             Share the invite link or QR code from a group to let others join.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <span style={{ fontSize:22, flexShrink:0 }}>📅</span>
+          <CalendarBlank size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap any day on the calendar, hit <span style={{ ...th.text, fontWeight:400 }}>+ Event</span>, and assign it to a group to share it.
+            Tap any day on the calendar, hit the{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
+              verticalAlign:'middle', width:22, height:22, borderRadius:6,
+              background:'var(--color-surface)', border:'1px solid var(--color-border)' }}>
+              <Plus size={13} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}button, and assign the event to a group to share it.
           </div>
         </div>
       </div>
@@ -1404,13 +1706,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:500, ...th.bg,
-      display:'flex', flexDirection:'column', padding:'48px 28px 32px' }}>
+      display:'flex', flexDirection:'column', padding:'48px 28px 32px',
+      animation: 'pearFadeUp 150ms var(--easing) both' }}>
       {/* Back button */}
       {step > 0 && (
         <button onClick={() => { setSlideDir(-1); setStep(s => s - 1) }}
           style={{ position:'absolute', top:48, left:24, background:'none', border:'none',
-            color:th.muted, fontSize:22, cursor:'pointer', fontFamily:FONT, padding:4 }}>
-          ‹
+            color:th.muted, cursor:'pointer', fontFamily:FONT, padding:4 }}>
+          <CaretLeft size={24} weight="thin" />
         </button>
       )}
       {/* Slide content */}
@@ -1487,7 +1790,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
           <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL('geo:0,0?q=' + encodeURIComponent(ev.location)) }}
             style={{ width:96, display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer', flexShrink:0, padding:'0 6px', gap:4 }}>
-            <span style={{ fontSize:13, flexShrink:0 }}>📍</span>
+            <MapPin size={13} weight="thin" color="var(--color-muted)" style={{ flexShrink: 0 }} />
             <div style={{ fontSize:11, color:th.accent, fontWeight:300, textDecoration:'underline',
               textAlign:'left', lineHeight:'1.35',
               overflow:'hidden', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical' }}>
@@ -1537,10 +1840,9 @@ function expandRecurring (ev) {
   return out
 }
 
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db }) {
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
-  const [confirm, setConfirm] = useState(null)
   const [scopePending, setScopePending] = useState(null)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
@@ -1607,9 +1909,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   }
 
   const bsCloseRef = useRef(null)
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
+  }
 
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
@@ -1624,7 +1936,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
           return null
         })()}
-        <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14,
+          animation: 'pearFadeUp 150ms var(--easing) both' }}>
           <div style={{ display:'flex', flexDirection:'column', gap:14,
             opacity: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
@@ -1809,7 +2122,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
                   marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
                   border:`1px solid ${th.border}`, ...th.card }}>
-                <span style={{ fontSize:15, flexShrink:0 }}>🔗</span>
+                <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
                 <span style={{ fontSize:12, fontWeight:300, color:th.accent,
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                   {url}
@@ -1826,7 +2139,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           {modal.mode === 'edit' && ev.recurrenceId && (
             <div style={{ fontSize:12, fontWeight:300, color:th.muted,
               display:'flex', alignItems:'center', gap:6 }}>
-              🔁 Recurring series — editing this occurrence only
+              <Repeat size={13} weight="thin" color="var(--color-muted)" />
+              {' '}Recurring series — editing this occurrence only
             </div>
           )}
 
@@ -1866,14 +2180,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             if (isReadOnly) return (
               <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
                 padding:'8px 0', border:'1px solid ' + th.border, borderRadius:10 }}>
-                🔒 Read only — only the creator can edit this event
+                <Lock size={13} weight="thin" color="var(--color-muted)" />
+                {' '}Read only — only the creator can edit this event
               </div>
             )
             return (
               <button onClick={handleSave} disabled={saving}
                 style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-                  marginTop:4, opacity:saving ? 0.6 : 1 }}>
-                {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
+                  marginTop:4, opacity:saving ? 0.6 : 1,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {saving
+                  ? <><Spinner /> {' Saving…'}</>
+                  : modal.mode === 'create' ? 'Create Event' : 'Save Changes'
+                }
               </button>
             )
           })()}
@@ -1882,14 +2201,14 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <button onClick={() => isCreator ? setConfirm('delete') : onDelete(ev.id)}
+                <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteEvent', ev })) : onDelete(ev.id)}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
                   {isCreator ? 'Delete' : 'Remove for Me'}
                 </button>
                 {ev.recurrenceId && (
-                  <button onClick={() => isCreator ? setConfirm('deleteSeries') : onDeleteSeries?.(ev.recurrenceId)}
+                  <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteSeries', ev })) : onDeleteSeries?.(ev.recurrenceId)}
                     style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                       padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                       fontFamily:FONT, cursor:'pointer', width:'100%' }}>
@@ -1931,35 +2250,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
         </div>
       )}
 
-      {confirm && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>🗑</div>
-            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
-              {confirm === 'delete' ? 'Delete Event?' : 'Delete All in Series?'}
-            </div>
-            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              {confirm === 'delete'
-                ? 'This event will be permanently deleted for everyone. This cannot be undone.'
-                : 'All events in this series will be permanently deleted for everyone. This cannot be undone.'}
-            </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setConfirm(null)}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
-                  fontFamily:FONT, background:'transparent', color:th.text.color,
-                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={() => { setConfirm(null); confirm === 'delete' ? onDelete(ev.id) : onDeleteSeries?.(ev.recurrenceId) }}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </BottomSheet>
   )
 }
@@ -1971,7 +2261,12 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
   const [pasteUrl,  setPasteUrl]  = useState('')
   const [pasteErr,  setPasteErr]  = useState('')
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   function handlePasteJoin () {
     const url = pasteUrl.trim()
@@ -1998,7 +2293,7 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
             <button onClick={() => setPasteMode(true)}
               style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-              <span style={{ fontSize:22 }}>🔗</span> Paste Invite Link
+              <ArrowSquareOut size={20} weight="thin" color="#fff" /> Paste Invite Link
             </button>
           </>
         ) : (
@@ -2035,7 +2330,12 @@ function NicknameBeforeJoinSheet ({ th, groupName, defaultName, onConfirm, onClo
   const [joining,  setJoining]  = useState(false)
   const [err,      setErr]      = useState('')
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   async function handleJoin () {
     setJoining(true); setErr('')
@@ -2100,12 +2400,25 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Peer Groups</span>
         <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => setJoinOpen(true)}
-            style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-            Join Group
+          <button onClick={() => setJoinOpen(true)} style={{
+            width: 36, height: 36,
+            borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <UserPlus size={18} weight="thin" color="var(--color-text)" />
           </button>
-          <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-            + New Group
+          <button onClick={onNewGroup} style={{
+            width: 36, height: 36,
+            borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Plus size={18} weight="thin" color="var(--color-text)" />
           </button>
         </div>
       </div>
@@ -2130,7 +2443,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
               </div>
               <button onClick={() => onSettings(g)}
                 style={{ ...th.iconBtn, fontSize:18, padding:'6px', borderRadius:10, border:`1px solid ${th.border}` }}>
-                ⚙️
+                <GearSix size={18} weight="thin" color="var(--color-muted)" />
               </button>
             </div>
 
@@ -2156,7 +2469,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                 color:readyGroupKeys.has(g.id) ? g.color : th.muted,
                 cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
                 opacity:readyGroupKeys.has(g.id) ? 1 : 0.5 }}>
-              📤 Share Group Invite
+              <ShareNetwork size={16} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Group Invite
             </button>
           </div>
         ))}
@@ -2182,7 +2495,12 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
   const link = buildInviteLink(group, profile?.publicKey ?? 'unknown')
   const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:\n\n${link}`
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   const row = (icon, title, subtitle, onClick) => (
     <button onClick={onClick}
@@ -2204,7 +2522,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
           Invite to {group.name}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          {row('📤', 'Share Link…', 'Send via messages, email, etc.', () => {
+          {row(<ShareNetwork size={22} weight="thin" color="var(--color-text)" />, 'Share Link…', 'Send via messages, email, etc.', () => {
             bsCloseRef.current?.()
             setTimeout(() => sync?.nativeShare(`Join ${group.name} on PearCal`, shareMsg), 50)
           })}
@@ -2219,11 +2537,16 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange }) {
+function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
-  const [confirm, setConfirm] = useState(null)
   const [saved,   setSaved]   = useState(false)
   const [saving,  setSaving]  = useState(false)
   const [nickInput, setNickInput] = useState(() => (group.members ?? []).find(m => m.id === me?.id)?.nickname ?? '')
@@ -2252,29 +2575,13 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function confirmAction () {
-    if (!confirm) return
-    if (confirm === 'leave' || confirm === 'delete') { await onDelete(g.id, confirm); return }
-    if (confirm.startsWith('remove:')) {
-      const uid = confirm.split(':')[1]
-      const removedMember = g.members.find(m => m.id === uid)
-      const removedMembers = [...(g.removedMembers ?? []), {
-        id: uid,
-        name: removedMember?.name ?? 'Member',
-        avatar: removedMember?.avatar ?? '?'
-      }]
-      const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
-      setG(updatedGroup)
-      setConfirm(null)
-      setSaved(false)
-      await onUpdate(updatedGroup)
-      await onMemberLeft(g.id, uid)
-    }
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
   }
-
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
 
   const section = label => (
     <div style={{ fontSize:11, fontWeight:300, letterSpacing:'0.08em', color:th.muted, marginBottom:8, marginTop:4 }}>
@@ -2290,8 +2597,9 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             {saved && <span style={{ fontSize:12, color:'#5DBF8A', fontWeight:300 }}>✓ Saved</span>}
             {isOwner && (
               <button onClick={save} disabled={saving}
-                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
-                {saving ? 'Saving…' : 'Save'}
+                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1,
+                  display:'flex', alignItems:'center', gap:4 }}>
+                {saving ? <><Spinner size={12} /> {' Saving…'}</> : 'Save'}
               </button>
             )}
             <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
@@ -2321,7 +2629,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      📤 Share Again
+                      <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Again
                     </button>
                   </div>
                 ))}
@@ -2356,7 +2664,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
-                      📤 Reinvite
+                      <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Reinvite
                     </button>
                   </div>
                 ))}
@@ -2462,7 +2770,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                       {g.ownerId === m.id && <div style={{ fontSize:11, color:g.color, fontWeight:300 }}>Owner</div>}
                     </div>
                     {canRemove && (
-                      <button onClick={() => setConfirm(`remove:${m.id}`)}
+                      <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
                         style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
                           color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
                           fontWeight:300, fontFamily:FONT }}>
@@ -2486,20 +2794,20 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
               {isMember && !isOwner && (
-                <button onClick={() => setConfirm('leave')}
+                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'leaveGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span>🚪 Leave Group</span>
+                  <span style={{ display:'flex', alignItems:'center', gap:6 }}><SignOut size={16} weight="thin" /> Leave Group</span>
                   <span style={{ fontSize:12, color:th.muted, fontWeight:300 }}>You'll lose access to shared events</span>
                 </button>
               )}
               {isOwner && (
-                <button onClick={() => setConfirm('delete')}
+                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'deleteGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'#D45F7A11', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                  <span>🗑 Delete Group</span>
+                  <span style={{ display:'flex', alignItems:'center', gap:6 }}><Trash size={16} weight="thin" /> Delete Group</span>
                   <span style={{ fontSize:12, color:'#D45F7A99', fontWeight:300 }}>Permanent — cannot be undone</span>
                 </button>
               )}
@@ -2507,76 +2815,24 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           </div>
         </div>
 
-      {/* Confirm dialog */}
-      {confirm && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
-            <div style={{ fontSize:36, marginBottom:12 }}>
-              {confirm === 'delete' ? '🗑' : confirm === 'leave' ? '🚪' : '👤'}
-            </div>
-            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>
-              {confirm === 'delete' ? 'Delete Group?'
-                : confirm === 'leave' ? 'Leave Group?'
-                : `Remove ${g.members.find(m => m.id === confirm.split(':')[1])?.name}?`}
-            </div>
-            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              {confirm === 'delete' && (() => {
-                const otherCount = g.members.length - 1
-                return otherCount > 0
-                  ? `"${g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
-                  : `"${g.name}" and all its events will be permanently deleted. This cannot be undone.`
-              })()}
-              {confirm === 'leave'  && `You'll be removed from "${g.name}" and lose access to shared events.`}
-              {confirm.startsWith('remove:') && `They will be removed from "${g.name}" and lose access to shared events.`}
-            </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button onClick={() => setConfirm(null)}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
-                  fontFamily:FONT, background:'transparent', color:th.text.color,
-                  fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                Cancel
-              </button>
-              <button onClick={confirmAction}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:'#D45F7A', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                {confirm === 'delete' ? 'Delete' : confirm === 'leave' ? 'Leave' : 'Remove'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </BottomSheet>
   )
 }
 
 // ─── New Group Modal ──────────────────────────────────────────────────────────
-function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpdated }) {
+function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, closeRef }) {
   const bsCloseRef = useRef(null)
-  const [step,           setStep]           = useState(1)
   const [name,           setName]           = useState('')
   const [color,          setColor]          = useState(GROUP_COLORS[0])
   const [emoji,          setEmoji]          = useState(GROUP_EMOJIS[0])
   const [icon,           setIcon]           = useState(null)
   const [nameErr,        setNameErr]        = useState('')
-  const [group,          setGroup]          = useState(null)
-  const [groupKeyReady,  setGroupKeyReady]  = useState(false)
-  useEffect(() => {
-    if (!onGroupKeyUpdated) return
-    onGroupKeyUpdated(updated => {
-      setGroup(prev => {
-        if (prev?.id === updated.id) {
-          setGroupKeyReady(true)
-          return updated
-        }
-        return prev
-      })
-    })
-  }, [onGroupKeyUpdated])
-  const [copiedLink,     setCopiedLink]     = useState(false)
-
   const [creating,       setCreating]       = useState(false)
   const fileRef = useRef()
+
+  useEffect(() => {
+    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+  }, [])
 
   function handleImageUpload (e) {
     const file = e.target.files?.[0]
@@ -2586,232 +2842,106 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
     reader.readAsDataURL(file)
   }
 
-  function handleCreate () {
-    if (!name.trim()) { setNameErr('Group name is required.'); return }
-    const newG = {
-      id:      'g' + Math.random().toString(36).slice(2, 8),
-      name:    name.trim(), color, emoji, icon,
-      ownerId: me?.id ?? 'unknown',
-      members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
-      groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
-      removedMembers: [],
-    }
-    setGroup(newG)
-    setGroupKeyReady(false)
-    setStep(2)
-    onAdd(newG)
-  }
-
-  function genInviteLink (g) {
-    return buildInviteLink(g, me?.publicKey ?? 'unknown')
-  }
-
-  function copyInvite () {
-    if (!group) return
-    navigator.clipboard?.writeText(genInviteLink(group))
-    setCopiedLink(true)
-    setTimeout(() => setCopiedLink(false), 2500)
-  }
-
-
-
-  async function finish () {
-    if (!group) return
+  async function handleCreate () {
+    if (!name.trim()) { setNameErr('Group name required'); return }
     setCreating(true)
-    setCreating(false)
-    setStep(3)
+    try {
+      const newG = {
+        id:      'g' + Math.random().toString(36).slice(2, 8),
+        name:    name.trim(), color, emoji, icon,
+        ownerId: me?.id ?? 'unknown',
+        members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
+        groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
+        removedMembers: [],
+      }
+      await onAdd(newG)
+      onCreated(newG)
+      bsCloseRef.current?.()
+    } catch (e) {
+      // inline error if needed
+    } finally {
+      setCreating(false)
+    }
   }
 
-  const inp = { background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
-    padding:'9px 12px', color:th.text.color, fontSize:14, fontWeight:300,
-    fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }
-
-  const steps = ['Details','Invite','Done']
+  const inp = {
+    background: 'var(--color-bg)', border: '1px solid var(--color-border)',
+    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
+    fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
+    transition: 'border-color var(--duration-fast) var(--easing)',
+  }
 
   return (
     <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
-          <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
+        <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
+      </div>
+      <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
+        {/* Name input */}
+        <div>
+          <input
+            placeholder="Group name"
+            value={name}
+            onChange={e => { setName(e.target.value); setNameErr('') }}
+            style={inp}
+          />
+          {nameErr && <div style={{ color:'var(--color-destructive)', fontSize:13, marginTop:4 }}>{nameErr}</div>}
         </div>
 
-        {/* Step indicator */}
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:'16px 20px 4px' }}>
-          {steps.map((s, i) => {
-            const num = i + 1, done = step > num, active = step === num
-            return (
-              <div key={s} style={{ display:'flex', alignItems:'center' }}>
-                <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-                  <div style={{ width:28, height:28, borderRadius:'50%', display:'flex',
-                    alignItems:'center', justifyContent:'center', fontWeight:300, fontSize:13,
-                    background:done ? '#5DBF8A' : active ? th.accent : th.inputBg,
-                    color:done || active ? '#fff' : th.muted,
-                    border:`2px solid ${done ? '#5DBF8A' : active ? th.accent : th.border}` }}>
-                    {done ? '✓' : num}
-                  </div>
-                  <span style={{ fontSize:10, color:active ? th.accent : th.muted, fontWeight:300 }}>{s}</span>
-                </div>
-                {i < steps.length - 1 && (
-                  <div style={{ width:40, height:2, background:step > num ? '#5DBF8A' : th.border,
-                    margin:'0 4px', marginBottom:16 }} />
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        <div style={{ padding:'16px 20px 0' }}>
-          {/* Step 1 */}
-          {step === 1 && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, padding:'8px 0' }}>
-                <div style={{ width:72, height:72, borderRadius:20, background:color, overflow:'hidden',
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:32,
-                  boxShadow:`0 4px 16px ${color}55` }}>
-                  {icon ? <img src={icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : emoji}
-                </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={() => fileRef.current?.click()}
-                    style={{ fontSize:12, padding:'5px 12px', borderRadius:8, border:`1px solid ${th.border}`,
-                      background:'transparent', color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
-                    📷 Upload Photo
-                  </button>
-                  {icon && (
-                    <button onClick={() => setIcon(null)}
-                      style={{ fontSize:12, padding:'5px 12px', borderRadius:8, border:`1px solid #D45F7A`,
-                        background:'transparent', color:'#D45F7A', cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
-                      Remove
-                    </button>
-                  )}
-                </div>
-                <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }}
-                  onChange={handleImageUpload} />
-              </div>
-
-              <div>
-                <Label th={th}>Group Name</Label>
-                <input style={inp} placeholder="e.g. Smith Family" maxLength={40}
-                  value={name} onChange={e => { setName(e.target.value); setNameErr('') }} />
-                {nameErr && <div style={{ color:'#D45F7A', fontSize:12, marginTop:4, fontWeight:300 }}>{nameErr}</div>}
-              </div>
-
-              {!icon && (
-                <div>
-                  <Label th={th}>Group Icon</Label>
-                  <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
-                    {GROUP_EMOJIS.map(em => (
-                      <button key={em} onClick={() => setEmoji(em)}
-                        style={{ width:40, height:40, borderRadius:10, fontSize:20,
-                          border:`2px solid ${emoji === em ? color : th.border}`,
-                          background:emoji === em ? color + '22' : 'transparent', cursor:'pointer' }}>
-                        {em}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <Label th={th}>Group Color</Label>
-                <div style={{ display:'flex', gap:10, marginTop:6, flexWrap:'wrap' }}>
-                  {GROUP_COLORS.map(c => (
-                    <button key={c} onClick={() => setColor(c)}
-                      style={{ width:32, height:32, borderRadius:'50%', background:c, cursor:'pointer',
-                        border:color === c ? '3px solid #fff' : '3px solid transparent',
-                        boxShadow:color === c ? `0 0 0 2px ${c}` : 'none' }} />
-                  ))}
-                </div>
-              </div>
-
-              <button onClick={handleCreate}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300, marginTop:4 }}>
-                Create Group →
-              </button>
-            </div>
-          )}
-
-          {/* Step 2 */}
-          {step === 2 && group && (
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:12, ...th.card,
-                borderRadius:12, padding:'12px 14px', borderLeft:`4px solid ${group.color}` }}>
-                <GroupIcon group={group} size={40} radius={10} />
-                <div>
-                  <div style={{ fontWeight:300, ...th.text }}>{group.name}</div>
-                  <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>Just created · 1 member (you)</div>
-                </div>
-              </div>
-
-              <div>
-                <Label th={th}>Share Invite Link</Label>
-                <div style={{ ...th.card, borderRadius:10, padding:'10px 12px', display:'flex',
-                  alignItems:'center', gap:8, border:`1px solid ${th.border}`, marginTop:6 }}>
-                  <span style={{ fontSize:11, color:th.muted, flex:1, overflow:'hidden',
-                    textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:'monospace', fontWeight:300 }}>
-                    {genInviteLink(group)}
-                  </span>
-                </div>
-                <div style={{ display:'flex', gap:8, marginTop:8 }}>
-
-                  <button onClick={() => {
-                      const link = genInviteLink(group)
-                      if (sync) sync.nativeShare(`Join ${group.name} on PearCal`, link)
-                      else navigator.clipboard?.writeText(link)
-                    }}
-                    style={{ flex:1, padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
-                      background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                      color:th.text.color, cursor:'pointer' }}>
-                    📤 Share…
-                  </button>
-
-                </div>
-              </div>
-
-
-
-              <div style={{ display:'flex', gap:8, marginTop:4 }}>
-                <button onClick={() => { setSlideDir(1); setStep(1) }}
-                  style={{ flex:1, padding:'12px', fontSize:14, fontWeight:300, fontFamily:FONT,
-                    background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
-                    color:th.text.color, cursor:'pointer' }}>
-                  ← Back
-                </button>
-                <button onClick={finish} disabled={creating}
-                  style={{ ...th.pillBtn, flex:2, padding:'12px', fontSize:15, fontWeight:300,
-                    opacity:creating ? 0.6 : 1 }}>
-                  {creating ? 'Creating…' : 'Finish'}
+        {/* Emoji / icon picker row */}
+        <div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Icon</div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            {icon ? (
+              <div style={{ position:'relative', width:44, height:44, borderRadius:10, overflow:'hidden', flexShrink:0 }}>
+                <img src={icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                <button onClick={() => setIcon(null)}
+                  style={{ position:'absolute', top:0, right:0, background:'rgba(0,0,0,0.55)',
+                    border:'none', color:'#fff', width:18, height:18, borderRadius:0, cursor:'pointer',
+                    display:'flex', alignItems:'center', justifyContent:'center', padding:0, fontSize:11 }}>
+                  <X size={10} weight="bold" />
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Step 3 */}
-          {step === 3 && group && (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, padding:'16px 0 8px' }}>
-              <div style={{ width:80, height:80, borderRadius:24, background:group.color, overflow:'hidden',
-                display:'flex', alignItems:'center', justifyContent:'center', fontSize:38,
-                boxShadow:`0 6px 24px ${group.color}55` }}>
-                {group.icon
-                  ? <img src={group.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                  : group.emoji}
-              </div>
-              <div style={{ textAlign:'center' }}>
-                <div style={{ fontSize:22, fontWeight:300, ...th.text, marginBottom:6 }}>{group.name}</div>
-                <div style={{ fontSize:14, color:th.muted, fontWeight:300 }}>Your group is ready 🎉</div>
-              </div>
-              <div style={{ ...th.card, borderRadius:14, padding:'16px', width:'100%', display:'flex', flexDirection:'column', gap:10 }}>
-                <InfoRow th={th} label="Members" val={String(group.members.length)} />
-                <InfoRow th={th} label="Sync" val="Hyperswarm DHT" />
-                <InfoRow th={th} label="Storage" val="Local · Hyperbee" />
-                <InfoRow th={th} label="Data collected" val="None" />
-              </div>
-              <button onClick={onClose}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300 }}>
-                Go to Groups
+            ) : (
+              <button onClick={() => fileRef.current?.click()}
+                style={{ width:44, height:44, borderRadius:10, border:`1px dashed var(--color-border)`,
+                  background:'transparent', cursor:'pointer', display:'flex', alignItems:'center',
+                  justifyContent:'center', flexShrink:0, color:'var(--color-muted)', fontSize:20 }}>
+                +
               </button>
-            </div>
-          )}
+            )}
+            <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleImageUpload} />
+            {GROUP_EMOJIS.map(em => (
+              <button key={em} onClick={() => setEmoji(em)}
+                style={{ width:44, height:44, borderRadius:10, border:`1px solid ${emoji === em && !icon ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                  background: emoji === em && !icon ? 'var(--color-accent-faint)' : 'transparent',
+                  cursor:'pointer', fontSize:22, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                {em}
+              </button>
+            ))}
+          </div>
         </div>
+
+        {/* Color picker */}
+        <div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Color</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            {GROUP_COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                style={{ width:28, height:28, borderRadius:'50%', background:c, border:`2px solid ${color === c ? 'var(--color-text)' : 'transparent'}`,
+                  cursor:'pointer', transition:'border-color var(--duration-fast) var(--easing)' }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Create button */}
+        <button onClick={handleCreate} disabled={creating}
+          style={{ ...th.pillBtn, padding:'13px', fontSize:15, fontWeight:300, opacity: creating ? 0.6 : 1 }}>
+          {creating ? 'Creating…' : 'Create Group'}
+        </button>
+      </div>
     </BottomSheet>
   )
 }
@@ -2834,11 +2964,104 @@ function SkeletonList ({ th, count = 3, height = 64 }) {
   )
 }
 
+// ─── Group Created Toast ───────────────────────────────────────────────────
+function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
+  const th = themes()
+  const [leaving, setLeaving] = useState(false)
+
+  useEffect(() => {
+    const id = setTimeout(() => setLeaving(true), 5000)
+    return () => clearTimeout(id)
+  }, [])
+
+  useEffect(() => {
+    if (leaving) setTimeout(() => onDismiss(), 150)
+  }, [leaving])
+
+  function handleShare () {
+    setLeaving(true)
+    setTimeout(() => onDismiss(), 150)
+    sync?.nativeShare('Join ' + group.name + ' on PearCal', buildInviteLink(group, me?.publicKey ?? 'unknown'))
+  }
+
+  const ready = readyGroupKeys.has(group.id)
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: 'calc(53px + var(--safe-area-bottom) + 16px)',
+      left: '50%', transform: 'translateX(-50%)',
+      width: 'calc(100% - 32px)', maxWidth: 398,
+      zIndex: 400,
+    }}>
+      <div style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '12px 16px',
+        display: 'flex', alignItems: 'center', gap: 10,
+        animation: leaving
+          ? 'pearFadeOut 150ms var(--easing) both'
+          : 'pearFadeUp 200ms var(--easing) both',
+      }}>
+        <GroupIcon group={group} size={28} radius={8} />
+        <span style={{ flex:1, fontWeight:300, color:'var(--color-text)', fontSize:14 }}>
+          "{group.name}" created
+        </span>
+        <button
+          disabled={!ready}
+          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300,
+            opacity: ready ? 1 : 0.5 }}
+          onClick={handleShare}
+        >
+          Share →
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Confirm Sheet ────────────────────────────────────────────────────────────
+function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onConfirm, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+
+  return (
+    <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        <div style={{ marginBottom:4 }}>{icon}</div>
+        <div style={{ fontWeight:300, fontSize:17, ...th.text }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
+        <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
+          <button onClick={() => bsCloseRef.current?.()}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
+              background:'transparent', color:'var(--color-text)', fontSize:14, fontWeight:300,
+              cursor:'pointer', fontFamily:FONT }}>
+            Cancel
+          </button>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(onConfirm, 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none',
+              background: dangerous ? 'var(--color-destructive)' : 'var(--color-accent)',
+              color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer', fontFamily:FONT }}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
 function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const [visible, setVisible] = useState(false)
   const [closing, setClosing] = useState(false)
   const touchStartY = useRef(null)
-  const DURATION = 420
+  const DURATION = 280
 
   useEffect(() => {
     const id = setTimeout(() => setVisible(true), 20)
@@ -2869,14 +3092,25 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
       transition:`background ${DURATION}ms ease` }}
       onClick={close}>
       <div onClick={e => e.stopPropagation()}
-        style={{ width:'100%', maxWidth:430, ...th.bg, borderRadius:'20px 20px 0 0',
-          maxHeight:'92vh', overflowY:'auto', paddingBottom:32,
-          transform:`translateY(${translateY})`,
-          transition:`transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)` }}>
+        style={{
+          width: '100%', maxWidth: 430,
+          background: 'var(--color-bg)',
+          borderRadius: '20px 20px 0 0',
+          maxHeight: '80dvh', overflowY: 'auto',
+          paddingBottom: 'calc(32px + 53px + var(--safe-area-bottom))',
+          transform: `translateY(${translateY})`,
+          transition: `transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)`,
+          WebkitOverflowScrolling: 'touch',
+        }}>
         <div onTouchStart={onHandleTouchStart} onTouchMove={onHandleTouchMove}
           style={{ display:'flex', justifyContent:'center', padding:'16px 0 8px', cursor:'pointer' }}
           onClick={close}>
-          <div style={{ width:40, height:5, borderRadius:3, background:th.border }} />
+          <div style={{
+            width: 32, height: 3, borderRadius: 2,
+            background: 'var(--color-border)',
+            margin: '12px auto 4px',
+            flexShrink: 0,
+          }} />
         </div>
         {children}
       </div>
@@ -2923,10 +3157,10 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
   return (
     <div style={{ padding:'16px 20px 0', overflowY:'auto', flex:1,
-      paddingBottom:'calc(16px + env(safe-area-inset-bottom))' }}>
+      paddingBottom:'calc(16px + env(safe-area-inset-bottom))', WebkitOverflowScrolling: 'touch' }}>
       {/* App info */}
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:16 }}>
-        <div style={{ fontSize:38 }}>🍐</div>
+        <PearIcon size={44} />
         <div style={{ fontSize:18, fontWeight:400, ...th.text }}>PearCal</div>
         <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>Decentralized. Private. No servers.</div>
       </div>
@@ -3173,8 +3407,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             APPEARANCE
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: appearanceOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3194,8 +3428,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             FIRST DAY OF WEEK
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: weekStartOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3222,8 +3456,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
             DEFAULT REMINDER
           </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display:'inline-block' }}>›</span>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
         <div style={{ maxHeight: defaultRemOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3251,7 +3485,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
           <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
             transform: timeFormatOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            display:'inline-block' }}>›</span>
+            display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
         </div>
         <div style={{ maxHeight: timeFormatOpen ? '200px' : '0px', overflow:'hidden',
           transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
@@ -3349,7 +3583,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               </div>
               <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
                 transform: holidaysOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                display:'inline-block' }}>›</span>
+                display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
             </div>
 
             {/* Collapsible body */}
