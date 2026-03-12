@@ -701,7 +701,7 @@ export default function App ({ db, notifs, sync }) {
   // ─── Loading / error states ─────────────────────────────────────────────────
   if (error) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', background:'#111', color:'#D45F7A', flexDirection:'column', gap:12, padding:24 }}>
+      minHeight:'100dvh', background:'#111', color:'#D45F7A', flexDirection:'column', gap:12, padding:24 }}>
       <span style={{ fontSize:32 }}>⚠️</span>
       <span style={{ fontSize:16, fontWeight:300 }}>Failed to load PearCal</span>
       <span style={{ fontSize:12, color:'#888', fontFamily:'monospace' }}>{error}</span>
@@ -719,7 +719,7 @@ export default function App ({ db, notifs, sync }) {
 
   if (!ready) return (
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100vh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
+      minHeight:'100dvh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
       <PearIcon size={36} />
       <span style={{ fontSize:14, fontWeight:300, letterSpacing:'0.06em' }}>Loading PearCal…</span>
     </div>
@@ -739,7 +739,7 @@ export default function App ({ db, notifs, sync }) {
         </div>
 
         {/* Content */}
-        <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0 }}>
+        <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0, WebkitOverflowScrolling: 'touch' }}>
           <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
             animation: 'pearFadeIn 100ms var(--easing) both', height: tab === 'calendar' ? '100%' : 'auto' }}>
           {tab === 'calendar' && (
@@ -1349,7 +1349,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         </div>
       )}
       {/* Scrollable event list — flat, stable, never restructures */}
-      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0, WebkitOverflowScrolling: 'touch' }}>
       {events.length === 0 ? (
         <div style={{ paddingTop: 8 }}>
           {[0,1,2].map(i => <SkeletonEventCard key={i} />)}
@@ -3125,7 +3125,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
 
   return (
     <div style={{ padding:'16px 20px 0', overflowY:'auto', flex:1,
-      paddingBottom:'calc(16px + env(safe-area-inset-bottom))' }}>
+      paddingBottom:'calc(16px + env(safe-area-inset-bottom))', WebkitOverflowScrolling: 'touch' }}>
       {/* App info */}
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:16 }}>
         <PearIcon size={44} />
