@@ -1663,7 +1663,19 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <Plus size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap the icons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page to join or add a group.
+            Tap the{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
+              background:'var(--color-surface)', border:'1px solid var(--color-border)',
+              borderRadius:8, padding:'2px 6px' }}>
+              <UserPlus size={14} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}or{' '}
+            <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
+              background:'var(--color-surface)', border:'1px solid var(--color-border)',
+              borderRadius:8, padding:'2px 6px' }}>
+              <Plus size={14} weight="thin" color="var(--color-text)" />
+            </span>
+            {' '}icons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page to join or add a group.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
