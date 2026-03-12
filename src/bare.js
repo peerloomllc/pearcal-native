@@ -449,7 +449,8 @@ function makeApply (groupId) {
             if (!isInvitedToEvent(val.value, profile?.id)) continue
           }
           // Notify when a new member joins — detected by diffing member lists on group update
-          if (isRemote && val.type === 'group') {
+          // Guard: if existing is null, this is first-time sync — skip to avoid spurious notifications
+          if (isRemote && val.type === 'group' && existing) {
             try {
               const profile = await getProfile()
               const existingMembers = existing?.value?.members ?? []
