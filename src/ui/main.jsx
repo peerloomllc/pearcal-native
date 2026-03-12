@@ -104,16 +104,9 @@ window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
 }
 
-window.__pearHandleInvite = async function(url) {
-  const result = await handleInviteLink(url, db, sync, group => {
-    window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: group }))
-  })
-  if (result && (result.ok || result.error === 'already_member') && result.group) {
-    window.dispatchEvent(new CustomEvent('pear:groupJoined', { detail: result.group }))
-  }
-  if (result && result.error === 'blocked_from_group') {
-    window.dispatchEvent(new CustomEvent('pear:inviteBlocked', {}))
-  }
+window.__pearHandleInvite = function(url) {
+  if (!url) return
+  window.dispatchEvent(new CustomEvent('pear:pendingJoin', { detail: url }))
 }
 
 const root = createRoot(document.getElementById('root'))
