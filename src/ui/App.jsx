@@ -706,7 +706,7 @@ export default function App ({ db, notifs, sync }) {
         {/* Content */}
         <div style={{ flex:1, overflowY: tab === 'calendar' ? 'hidden' : 'auto', paddingBottom: tab === 'calendar' ? 0 : 72, minHeight:0 }}>
           <div key={tab} style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden',
-            animation:'pearFadeIn 0.22s ease', height: tab === 'calendar' ? '100%' : 'auto' }}>
+            animation: 'pearFadeIn 100ms var(--easing) both', height: tab === 'calendar' ? '100%' : 'auto' }}>
           {tab === 'calendar' && (
             <CalendarTab th={th} viewDate={viewDate} setViewDate={setViewDate}
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
@@ -1337,9 +1337,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
               {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
                 { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
             </div>
-            {seen.get(date).map(ev => (
-              <EventCard key={ev.id} ev={ev} th={th} isPast={date < todayStr}
-                use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+            {seen.get(date).map((ev, i) => (
+              <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
+                <EventCard ev={ev} th={th} isPast={date < todayStr}
+                  use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+              </div>
             ))}
           </div>
         ))
@@ -1529,7 +1531,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:500, ...th.bg,
-      display:'flex', flexDirection:'column', padding:'48px 28px 32px' }}>
+      display:'flex', flexDirection:'column', padding:'48px 28px 32px',
+      animation: 'pearFadeUp 150ms var(--easing) both' }}>
       {/* Back button */}
       {step > 0 && (
         <button onClick={() => { setSlideDir(-1); setStep(s => s - 1) }}
@@ -1753,7 +1756,8 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
           return null
         })()}
-        <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14,
+          animation: 'pearFadeUp 150ms var(--easing) both' }}>
           <div style={{ display:'flex', flexDirection:'column', gap:14,
             opacity: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
