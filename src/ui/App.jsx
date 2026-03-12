@@ -156,6 +156,31 @@ function Spinner ({ size = 14 }) {
   )
 }
 
+function SkeletonBar ({ width = '100%', height = 12, style = {} }) {
+  return (
+    <div style={{
+      width, height, borderRadius: 'var(--radius-sm)',
+      background: 'var(--color-border)',
+      animation: 'pearPulse 1.4s ease-in-out infinite',
+      ...style,
+    }} />
+  )
+}
+
+function SkeletonEventCard () {
+  return (
+    <div style={{
+      background: 'var(--color-surface)', borderRadius: 'var(--radius-md)',
+      padding: '10px 12px', marginBottom: 6,
+      borderLeft: '4px solid var(--color-border)',
+      display: 'flex', flexDirection: 'column', gap: 8,
+    }}>
+      <SkeletonBar width="60%" height={12} />
+      <SkeletonBar width="35%" height={10} />
+    </div>
+  )
+}
+
 function formatTime (t, use24h) {
   if (!t) return ''
   const [hStr, mStr] = t.split(':')
@@ -1325,7 +1350,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       )}
       {/* Scrollable event list — flat, stable, never restructures */}
       <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0 }}>
+      {events.length === 0 ? (
+        <div style={{ paddingTop: 8 }}>
+          {[0,1,2].map(i => <SkeletonEventCard key={i} />)}
+        </div>
+      ) : null}
       {(() => {
+        if (events.length === 0) return null
         const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30)
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
