@@ -41,6 +41,13 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-anims')) {
 }
 
 const FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`
+
+function extractURLs (text) {
+  if (!text) return []
+  const re = /https?:\/\/[^\s<>"']+/gi
+  return [...new Set(text.match(re) ?? [])]
+}
+
 function formatTime (t, use24h) {
   if (!t) return ''
   const [hStr, mStr] = t.split(':')
@@ -1796,6 +1803,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           <div><Label th={th}>Notes</Label>
             <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
               value={ev.desc} onChange={e => set('desc', e.target.value)} />
+            {extractURLs(ev.desc).map(url => (
+              <div key={url}
+                onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(url) }}
+                style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
+                  marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                  border:`1px solid ${th.border}`, ...th.card }}>
+                <span style={{ fontSize:15, flexShrink:0 }}>🔗</span>
+                <span style={{ fontSize:12, fontWeight:300, color:th.accent,
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {url}
+                </span>
+              </div>
+            ))}
           </div>
 
           <div><Label th={th}>Location</Label>

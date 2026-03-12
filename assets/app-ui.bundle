@@ -14546,6 +14546,11 @@
     document.head.appendChild(style);
   }
   var FONT = `"Segoe UI Light","Helvetica Neue Light","Helvetica Neue",Helvetica,Arial,sans-serif`;
+  function extractURLs(text) {
+    if (!text) return [];
+    const re = /https?:\/\/[^\s<>"']+/gi;
+    return [...new Set(text.match(re) ?? [])];
+  }
   function formatTime(t, use24h) {
     if (!t) return "";
     const [hStr, mStr] = t.split(":");
@@ -16902,7 +16907,40 @@
                 value: ev.desc,
                 onChange: (e) => set("desc", e.target.value)
               }
-            )
+            ),
+            extractURLs(ev.desc).map((url) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e) => {
+                  e.stopPropagation();
+                  window.__pearSync?.openURL(url);
+                },
+                style: {
+                  pointerEvents: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 6,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  border: `1px solid ${th.border}`,
+                  ...th.card
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 15, flexShrink: 0 }, children: "\u{1F517}" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 12,
+                    fontWeight: 300,
+                    color: th.accent,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }, children: url })
+                ]
+              },
+              url
+            ))
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
