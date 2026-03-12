@@ -2297,12 +2297,25 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Peer Groups</span>
         <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => setJoinOpen(true)}
-            style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-            Join Group
+          <button onClick={() => setJoinOpen(true)} style={{
+            width: 36, height: 36,
+            borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <UserPlus size={18} weight="thin" color="var(--color-text)" />
           </button>
-          <button onClick={onNewGroup} style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300 }}>
-            + New Group
+          <button onClick={onNewGroup} style={{
+            width: 36, height: 36,
+            borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Plus size={18} weight="thin" color="var(--color-text)" />
           </button>
         </div>
       </div>
