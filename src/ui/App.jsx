@@ -556,7 +556,7 @@ export default function App ({ db, notifs, sync }) {
     if (result?.ok && result.group && nickname && nickname !== profile?.name) {
       await db.setMemberNickname(result.group.id, nickname).catch(() => {})
     }
-    if (result?.error === 'blocked_from_group') setBlockedToast(true)
+    if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
     setPendingJoin(null)
     return result
   }, [db, sync, profile])
@@ -595,7 +595,7 @@ export default function App ({ db, notifs, sync }) {
       await sync?.putGroup(updated).catch(() => {})
     }
     setGroups(prev => prev.map(g => g.id === updated.id ? updated : g))
-    setSettingsGroup(updated)
+    setSettingsGroup(prev => prev?.id === updated.id ? updated : prev)
   }, [db, sync, groups])
 
   const deleteGroup = useCallback(async (id, action = 'delete') => {
@@ -768,10 +768,12 @@ export default function App ({ db, notifs, sync }) {
               setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady} />
           )}
           {blockedToast && (
-            <div style={{ position:'fixed', bottom:90, left:'50%', transform:'translateX(-50%)',
-              background:'#D45F7A', color:'#fff', borderRadius:12, padding:'12px 18px',
-              fontSize:13, fontWeight:300, zIndex:200, whiteSpace:'nowrap',
-              boxShadow:'0 4px 20px rgba(0,0,0,0.3)' }}>
+            <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
+              left:'50%', transform:'translateX(-50%)',
+              width:'calc(100% - 32px)', maxWidth:398,
+              background:'var(--color-destructive)', color:'#fff', borderRadius:'var(--radius-lg)',
+              padding:'12px 16px', fontSize:13, fontWeight:300, zIndex:400,
+              textAlign:'center', lineHeight:1.5 }}>
               You were removed from this group and cannot rejoin with this link.
             </div>
           )}
@@ -1661,7 +1663,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <Plus size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap the <span style={{ ...th.text, fontWeight:400 }}>+</span> button next to <span style={{ ...th.text, fontWeight:400 }}>Peer Groups</span> to create a new group.
+            Tap the icons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page to join or add a group.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
@@ -1673,7 +1675,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <CalendarBlank size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap any day on the calendar, hit <span style={{ ...th.text, fontWeight:400 }}>+ Event</span>, and assign it to a group to share it.
+            Tap any day on the calendar, hit the <Plus size={14} weight="thin" color="var(--color-text)" style={{ display:'inline', verticalAlign:'middle' }} /> button, and assign the event to a group to share it.
           </div>
         </div>
       </div>
@@ -1890,7 +1892,10 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
   const bsCloseRef = useRef(null)
   useEffect(() => {
-    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
   }, [])
   const inp = {
     background: 'var(--color-bg)', border: '1px solid var(--color-border)',
@@ -2238,7 +2243,12 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
   const [pasteUrl,  setPasteUrl]  = useState('')
   const [pasteErr,  setPasteErr]  = useState('')
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   function handlePasteJoin () {
     const url = pasteUrl.trim()
@@ -2302,7 +2312,12 @@ function NicknameBeforeJoinSheet ({ th, groupName, defaultName, onConfirm, onClo
   const [joining,  setJoining]  = useState(false)
   const [err,      setErr]      = useState('')
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   async function handleJoin () {
     setJoining(true); setErr('')
@@ -2462,7 +2477,12 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
   const link = buildInviteLink(group, profile?.publicKey ?? 'unknown')
   const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:\n\n${link}`
 
-  useEffect(() => { if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true } }, [])
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
 
   const row = (icon, title, subtitle, onClick) => (
     <button onClick={onClick}
@@ -2502,7 +2522,10 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   useEffect(() => {
-    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
   }, [])
   const [g,       setG]       = useState({ ...group })
   const [nameErr, setNameErr] = useState('')
@@ -2985,7 +3008,10 @@ function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onCo
   const bsCloseRef = useRef(null)
 
   useEffect(() => {
-    if (closeRef) closeRef.current = () => { bsCloseRef.current?.(); return true }
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
   }, [])
 
   return (
