@@ -16,12 +16,13 @@ import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
 import { FONT_CSS } from './fonts.js'
 import {
-  CalendarBlank, Users, User, Info,
+  CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
   Trash, SignOut, Repeat, Lock, Key,
   CaretRight, CaretLeft, QrCode, Plus, UserPlus,
   Check, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
+  Lightning, BookOpen, EnvelopeSimple, Bug,
   Camera, Image,
 } from '@phosphor-icons/react'
 
@@ -136,6 +137,9 @@ function extractURLs (text) {
   const re = /https?:\/\/[^\s<>"']+/gi
   return [...new Set(text.match(re) ?? [])]
 }
+
+// Module-level camera consumer — whichever component most recently called takePhoto owns the next result
+const activeCameraConsumer = { current: null }
 
 function PearIcon ({ size = 40, color = 'var(--color-accent)' }) {
   return (
@@ -417,7 +421,12 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('qrScanResult', onQrScanResult)
     function onCameraResult (base64) {
-      if (base64) updateProfile({ avatar: base64 }).catch(() => {})
+      if (activeCameraConsumer.current) {
+        activeCameraConsumer.current(base64)
+        activeCameraConsumer.current = null
+      } else if (base64) {
+        updateProfile({ avatar: base64 }).catch(() => {})
+      }
     }
     emitter.on('cameraResult', onCameraResult)
     return () => { emitter.off('qrScanResult', onQrScanResult); emitter.off('cameraResult', onCameraResult) }
@@ -1323,7 +1332,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     <div style={{ padding:'0 16px 8px', flexShrink:0 }}>
       {/* Month / Year nav */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 8px' }}>
-        <button onClick={prev} style={th.iconBtn}>◀</button>
+        <button onClick={prev} style={th.iconBtn}><CaretLeft size={18} weight="thin" /></button>
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
           {/* Month picker */}
           <div style={{ position:'relative' }}>
@@ -1362,7 +1371,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             )}
           </div>
         </div>
-        <button onClick={next} style={th.iconBtn}>▶</button>
+        <button onClick={next} style={th.iconBtn}><CaretRight size={18} weight="thin" /></button>
       </div>
 
       {/* Today button */}
@@ -1370,7 +1379,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         <button onClick={() => {
           setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
           setSelectedDate(todayStr); scrollToDate(todayStr)
-        }} style={{ ...th.pillBtn, fontSize:12, padding:'4px 16px', fontWeight:300 }}>⬤ Today</button>
+        }} style={{ height:36, padding:'0 12px', borderRadius:10, background:'var(--color-surface)',
+          border:'1px solid var(--color-border)', display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
+          <CalendarDot size={18} weight="thin" color="var(--color-text)" />
+          <span style={{ fontSize:13, fontWeight:300, color:'var(--color-text)', fontFamily:FONT }}>Today</span>
+        </button>
       </div>
 
       <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
@@ -2288,7 +2301,7 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
             <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
               style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-              <span style={{ fontSize:22 }}>📷</span> Scan QR Code
+              <QrCode size={22} weight="thin" /> Scan QR Code
             </button>
             <button onClick={() => setPasteMode(true)}
               style={{ ...th.pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
@@ -2397,8 +2410,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
 
   return (
     <div style={{ padding:'16px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Peer Groups</span>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', marginBottom:16 }}>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => setJoinOpen(true)} style={{
             width: 36, height: 36,
@@ -2526,7 +2538,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
             bsCloseRef.current?.()
             setTimeout(() => sync?.nativeShare(`Join ${group.name} on PearCal`, shareMsg), 50)
           })}
-          {row('⬛', 'Show QR Code', 'Scan to join instantly', () => {
+          {row(<QrCode size={22} weight="thin" color="var(--color-text)" />, 'Show QR Code', 'Scan to join instantly', () => {
             bsCloseRef.current?.()
             setTimeout(() => onQrGroup({ group, link }), 50)
           })}
@@ -2679,8 +2691,9 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={() => fileRef.current?.click()}
                     style={{ fontSize:11, padding:'4px 8px', borderRadius:6, border:`1px solid ${th.border}`,
-                      background:'transparent', color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
-                    📷 Photo
+                      background:'transparent', color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                      display:'flex', alignItems:'center', gap:4 }}>
+                    <Image size={13} weight="thin" /> Photo
                   </button>
                   {g.icon && (
                     <button onClick={() => set('icon', null)}
@@ -2875,7 +2888,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
   return (
     <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Peer Group</span>
+        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Group</span>
         <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
       </div>
       <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
@@ -2890,37 +2903,42 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
           {nameErr && <div style={{ color:'var(--color-destructive)', fontSize:13, marginTop:4 }}>{nameErr}</div>}
         </div>
 
-        {/* Emoji / icon picker row */}
+        {/* Group Avatar */}
         <div>
-          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Icon</div>
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:8 }}>Group Avatar</div>
+          <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             {icon ? (
-              <div style={{ position:'relative', width:44, height:44, borderRadius:10, overflow:'hidden', flexShrink:0 }}>
+              <div style={{ position:'relative', width:52, height:52, borderRadius:12, overflow:'hidden', flexShrink:0 }}>
                 <img src={icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
                 <button onClick={() => setIcon(null)}
                   style={{ position:'absolute', top:0, right:0, background:'rgba(0,0,0,0.55)',
                     border:'none', color:'#fff', width:18, height:18, borderRadius:0, cursor:'pointer',
-                    display:'flex', alignItems:'center', justifyContent:'center', padding:0, fontSize:11 }}>
+                    display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
                   <X size={10} weight="bold" />
                 </button>
               </div>
             ) : (
-              <button onClick={() => fileRef.current?.click()}
-                style={{ width:44, height:44, borderRadius:10, border:`1px dashed var(--color-border)`,
-                  background:'transparent', cursor:'pointer', display:'flex', alignItems:'center',
-                  justifyContent:'center', flexShrink:0, color:'var(--color-muted)', fontSize:20 }}>
-                +
-              </button>
+              <div style={{ width:52, height:52, borderRadius:12, border:`1px dashed var(--color-border)`,
+                background:'var(--color-surface)', display:'flex', alignItems:'center', justifyContent:'center',
+                color:'var(--color-muted)', fontSize:22, flexShrink:0 }}>
+                <Users size={24} weight="thin" />
+              </div>
             )}
             <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handleImageUpload} />
-            {GROUP_EMOJIS.map(em => (
-              <button key={em} onClick={() => setEmoji(em)}
-                style={{ width:44, height:44, borderRadius:10, border:`1px solid ${emoji === em && !icon ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                  background: emoji === em && !icon ? 'var(--color-accent-faint)' : 'transparent',
-                  cursor:'pointer', fontSize:22, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {em}
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={() => { activeCameraConsumer.current = b64 => { if (b64) setIcon(b64) }; window.__pearSync?.takePhoto?.() }}
+                style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
+                  background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                  display:'flex', alignItems:'center', gap:5 }}>
+                <Camera size={14} weight="thin" /> Camera
               </button>
-            ))}
+              <button onClick={() => fileRef.current?.click()}
+                style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
+                  background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                  display:'flex', alignItems:'center', gap:5 }}>
+                <Image size={14} weight="thin" /> Gallery
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3184,7 +3202,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
         <button onClick={handleDonate}
           style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          ⚡ Donate with Lightning ⚡
+          <Lightning size={16} weight="thin" /> Donate with Lightning <Lightning size={16} weight="thin" />
         </button>
       </div>
 
@@ -3197,7 +3215,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
         <button onClick={() => sync?.openURL('https://nakamotoinstitute.org/crash-course/')}
           style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          📖 Bitcoin Crash Course ↗
+          <BookOpen size={16} weight="thin" /> Bitcoin Crash Course <ArrowSquareOut size={14} weight="thin" />
         </button>
       </div>
 
@@ -3208,12 +3226,12 @@ function AboutTab ({ th, sync, closeSheetRef }) {
           <button onClick={() => sync?.openURL('mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback')}
             style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
               display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            ✉ Send Email ↗
+            <EnvelopeSimple size={16} weight="thin" /> Send Email <ArrowSquareOut size={14} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://github.com/peerloomllc/pearcal-native/issues')}
             style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
               display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            🐛 Report Issue on GitHub ↗
+            <Bug size={16} weight="thin" /> Report Issue on GitHub <ArrowSquareOut size={14} weight="thin" />
           </button>
         </div>
       </div>
@@ -3225,7 +3243,9 @@ function AboutTab ({ th, sync, closeSheetRef }) {
             <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
               <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
             </div>
-            <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6, textAlign:'center' }}>⚡ Bitcoin Lightning ⚡</div>
+            <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              <Lightning size={18} weight="thin" /> Bitcoin Lightning <Lightning size={18} weight="thin" />
+            </div>
             <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:20 }}>
               No Lightning wallet was detected on your device. Bitcoin Lightning is a fast, low-fee payment network built on top of Bitcoin. To send a tip, install one of these wallets:
             </div>
@@ -3239,7 +3259,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
                     <div style={{ fontSize:14, fontWeight:400, ...th.text }}>{w.name}</div>
                     <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>{w.desc}</div>
                   </div>
-                  <div style={{ fontSize:13, color:th.muted }}>↗</div>
+                  <ArrowSquareOut size={14} weight="thin" color={th.muted} />
                 </button>
               ))}
             </div>
@@ -3340,15 +3360,17 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
               border:`1px solid ${th.border}`, background:'transparent',
               color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              display:'flex', alignItems:'center', gap:5,
               opacity: photoSaving ? 0.5 : 1 }}>
-            📷 Camera
+            <Camera size={14} weight="thin" /> Camera
           </button>
           <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
             style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
               border:`1px solid ${th.border}`, background:'transparent',
               color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              display:'flex', alignItems:'center', gap:5,
               opacity: photoSaving ? 0.5 : 1 }}>
-            🖼️ Gallery
+            <Image size={14} weight="thin" /> Gallery
           </button>
           {hasPhoto && (
             <button onClick={removePhoto} disabled={photoSaving}
@@ -3376,22 +3398,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           style={{ ...th.pillBtn, fontSize:13, padding:'5px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
           {saving ? 'Saving…' : editing ? 'Save Name' : 'Edit Name'}
         </button>
-      </div>
-
-      <div style={{ ...th.card, borderRadius:12, padding:'14px 16px', marginBottom:16 }}>
-        <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:6, letterSpacing:'0.06em' }}>
-          MY PUBLIC KEY
-        </div>
-        <div style={{ fontSize:11, color:th.text.color, wordBreak:'break-all',
-          fontFamily:'monospace', fontWeight:300, lineHeight:1.6 }}>
-          {publicKey}
-        </div>
-        <div style={{ display:'flex', justifyContent:'center', marginTop:10 }}>
-          <button onClick={() => navigator.clipboard?.writeText(publicKey)}
-            style={{ ...th.pillBtn, fontSize:12, padding:'5px 14px', fontWeight:300 }}>
-            Copy Key
-          </button>
-        </div>
       </div>
 
       <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em',
