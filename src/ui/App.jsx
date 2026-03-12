@@ -146,6 +146,16 @@ function PearIcon ({ size = 40, color = 'var(--color-accent)' }) {
   )
 }
 
+function Spinner ({ size = 14 }) {
+  return (
+    <Circle
+      size={size}
+      weight="thin"
+      style={{ animation: 'pearSpin 800ms linear infinite', display: 'inline-block' }}
+    />
+  )
+}
+
 function formatTime (t, use24h) {
   if (!t) return ''
   const [hStr, mStr] = t.split(':')
@@ -2007,8 +2017,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             return (
               <button onClick={handleSave} disabled={saving}
                 style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-                  marginTop:4, opacity:saving ? 0.6 : 1 }}>
-                {saving ? 'Saving…' : modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
+                  marginTop:4, opacity:saving ? 0.6 : 1,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {saving
+                  ? <><Spinner /> {' Saving…'}</>
+                  : modal.mode === 'create' ? 'Create Event' : 'Save Changes'
+                }
               </button>
             )
           })()}
@@ -2429,8 +2443,9 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             {saved && <span style={{ fontSize:12, color:'#5DBF8A', fontWeight:300 }}>✓ Saved</span>}
             {isOwner && (
               <button onClick={save} disabled={saving}
-                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
-                {saving ? 'Saving…' : 'Save'}
+                style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1,
+                  display:'flex', alignItems:'center', gap:4 }}>
+                {saving ? <><Spinner size={12} /> {' Saving…'}</> : 'Save'}
               </button>
             )}
             <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
@@ -2866,9 +2881,11 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onGroupKeyUpda
                 </div>
               </div>
 
-              <button onClick={handleCreate}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300, marginTop:4 }}>
-                Create Group →
+              <button onClick={handleCreate} disabled={creating}
+                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300, marginTop:4,
+                  opacity: creating ? 0.6 : 1,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {creating ? <><Spinner /> {' Creating…'}</> : 'Create Group →'}
               </button>
             </div>
           )}
