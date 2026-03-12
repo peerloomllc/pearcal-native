@@ -2938,28 +2938,31 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
       bottom: 'calc(53px + var(--safe-area-bottom) + 16px)',
       left: '50%', transform: 'translateX(-50%)',
       width: 'calc(100% - 32px)', maxWidth: 398,
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-lg)',
-      padding: '12px 16px',
-      display: 'flex', alignItems: 'center', gap: 10,
       zIndex: 400,
-      animation: leaving
-        ? 'pearFadeOut 150ms var(--easing) both'
-        : 'pearFadeUp 200ms var(--easing) both',
     }}>
-      <GroupIcon group={group} size={28} radius={8} />
-      <span style={{ flex:1, fontWeight:300, color:'var(--color-text)', fontSize:14 }}>
-        "{group.name}" created
-      </span>
-      <button
-        disabled={!ready}
-        style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300,
-          opacity: ready ? 1 : 0.5 }}
-        onClick={handleShare}
-      >
-        Share →
-      </button>
+      <div style={{
+        background: 'var(--color-surface)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '12px 16px',
+        display: 'flex', alignItems: 'center', gap: 10,
+        animation: leaving
+          ? 'pearFadeOut 150ms var(--easing) both'
+          : 'pearFadeUp 200ms var(--easing) both',
+      }}>
+        <GroupIcon group={group} size={28} radius={8} />
+        <span style={{ flex:1, fontWeight:300, color:'var(--color-text)', fontSize:14 }}>
+          "{group.name}" created
+        </span>
+        <button
+          disabled={!ready}
+          style={{ ...th.pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300,
+            opacity: ready ? 1 : 0.5 }}
+          onClick={handleShare}
+        >
+          Share →
+        </button>
+      </div>
     </div>
   )
 }
