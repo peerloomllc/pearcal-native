@@ -60,6 +60,17 @@ fi
 
 cd "$REPO_ROOT"
 
+# --- 0. Update app.json version ---
+echo "==> Updating app.json to $APP_VERSION..."
+node -e "
+  const fs = require('fs');
+  const f = 'app.json';
+  const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+  j.expo.version = process.env.APP_VERSION;
+  fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
+  console.log('Updated app.json to ' + process.env.APP_VERSION);
+" APP_VERSION="$APP_VERSION"
+
 # --- 1. Build UI bundle ---
 echo "==> Building UI bundle..."
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \

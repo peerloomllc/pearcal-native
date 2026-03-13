@@ -72,7 +72,7 @@ async function handle (method, args) {
     case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
@@ -229,6 +229,7 @@ async function removeMember (groupId, memberId) {
 const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
 const activeChannels = new Set() // active writer-announce message objects
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
+const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
 const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
 
 async function joinGroup (group) {
@@ -314,10 +315,12 @@ async function syncPutEvent (groupId, event) {
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById) {
+async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
-  await base.append({ op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' })
+  const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
+  if (recurrenceId) payload.recurrenceId = recurrenceId
+  await base.append(payload)
 }
 
 async function syncPutGroup (group) {
@@ -494,7 +497,17 @@ function makeApply (groupId) {
               val.value.desc === localPrev.desc &&
               JSON.stringify(val.value.groups) === JSON.stringify(localPrev.groups)
             if (!onlyColorChanged) {
-              notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId })
+              const rid = val.value.recurrenceId
+              if (rid) {
+                // Deduplicate across apply() calls: only fire once per series per op within a 5s window
+                const deupKey = groupId + ':' + rid + ':put'
+                if (!recentSeriesNotifs.has(deupKey)) {
+                  recentSeriesNotifs.set(deupKey, setTimeout(() => recentSeriesNotifs.delete(deupKey), 5000))
+                  notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId, isSeries: true })
+                }
+              } else {
+                notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId })
+              }
             }
           }
         } else {
@@ -511,7 +524,14 @@ function makeApply (groupId) {
               const prev = mergedMap.get(m.id)
               if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
             }
-            const merged = { ...winningValue, members: [...mergedMap.values()] }
+            const merged = {
+              ...winningValue,
+              color:   winningValue.color   || existing?.value?.color,
+              name:    winningValue.name    || existing?.value?.name,
+              emoji:   winningValue.emoji   || existing?.value?.emoji,
+              icon:    winningValue.icon    ?? existing?.value?.icon,
+              members: [...mergedMap.values()]
+            }
             await db.put(val.key, merged)
             send({ type: 'event', event: 'sync', data: groupId })
           } else {
@@ -535,7 +555,16 @@ function makeApply (groupId) {
             const eventId = val.key.split(':').pop()
             const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
             if (!delTombstone) {
-              notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId })
+              const delRid = val.recurrenceId || val.value?.recurrenceId || null
+              if (delRid) {
+                const dedupKey = groupId + ':' + delRid + ':del'
+                if (!recentSeriesNotifs.has(dedupKey)) {
+                  recentSeriesNotifs.set(dedupKey, setTimeout(() => recentSeriesNotifs.delete(dedupKey), 5000))
+                  notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, isSeries: true })
+                }
+              } else {
+                notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId })
+              }
             }
           }
         }
@@ -544,7 +573,7 @@ function makeApply (groupId) {
   }
 }
 
-async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId }) {
+async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId, isSeries = false }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
@@ -623,6 +652,8 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
       }
     }
 
+    if (isSeries && body) body = body + ' · Recurring series'
+    else if (isSeries) body = 'Recurring series'
     send({ type: 'event', event: 'syncNotify', data: { title, body } })
   } catch (e) {
     console.error('notifySyncChange error:', e.message)
@@ -677,7 +708,15 @@ async function mirrorToLocal (type, key, value, groupId) {
           mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
         }
       }
-      const merged = { ...value, members: [...mergedMap.values()], updatedAt: value.updatedAt || Date.now() }
+      const merged = {
+        ...value,
+        color:   value.color   || existing?.value?.color,
+        name:    value.name    || existing?.value?.name,
+        emoji:   value.emoji   || existing?.value?.emoji,
+        icon:    value.icon    ?? existing?.value?.icon,
+        members: [...mergedMap.values()],
+        updatedAt: value.updatedAt || Date.now()
+      }
       await db.put(key, merged)
     }
     // Notify UI to refresh
