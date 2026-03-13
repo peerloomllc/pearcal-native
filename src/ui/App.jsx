@@ -860,15 +860,7 @@ export default function App ({ db, notifs, sync }) {
           })}
         </div>
 
-        {groupCreatedToast && (
-          <GroupCreatedToast
-            group={groupCreatedToast.group}
-            me={profile}
-            sync={sync}
-            readyGroupKeys={readyGroupKeys}
-            onDismiss={() => setGroupCreatedToast(null)}
-          />
-        )}
+
 
         {confirmSheet && (
           <ConfirmSheet
@@ -1368,7 +1360,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   })
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%' }}>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', position:'relative' }}>
     <div style={{ padding:'0 16px 8px', flexShrink:0 }}>
       {/* Month / Year nav */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 8px' }}>
@@ -1412,18 +1404,6 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         </div>
         <button onClick={next} style={th.iconBtn}><CaretRight size={18} weight="thin" /></button>
-      </div>
-
-      {/* Today button */}
-      <div style={{ display:'flex', justifyContent:'center', marginBottom:8 }}>
-        <button onClick={() => {
-          setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
-          setSelectedDate(todayStr); scrollToDate(todayStr)
-        }} style={{ height:36, padding:'0 12px', borderRadius:10, background:'var(--color-surface)',
-          border:'1px solid var(--color-border)', display:'flex', alignItems:'center', gap:6, cursor:'pointer' }}>
-          <CalendarDot size={18} weight="thin" color="var(--color-text)" />
-          <span style={{ fontSize:13, fontWeight:300, color:'var(--color-text)', fontFamily:FONT }}>Today</span>
-        </button>
       </div>
 
       <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
@@ -1518,7 +1498,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         </div>
       )}
       {/* Scrollable event list — flat, stable, never restructures */}
-      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px 16px', minHeight:0, WebkitOverflowScrolling: 'touch' }}>
+      <div ref={scrollRef} onScroll={handleScroll} style={{ flex:1, overflowY:'auto', padding:'0 16px calc(72px + var(--safe-area-bottom))', minHeight:0, WebkitOverflowScrolling: 'touch' }}>
       {!eventsReady.current ? (
         <div style={{ paddingTop: 8 }}>
           {[0,1,2].map(i => <SkeletonEventCard key={i} />)}
@@ -1556,6 +1536,22 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           </div>
         ))
       })()}
+      </div>
+
+      {/* Floating Today button — anchored above bottom nav */}
+      <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 12px)',
+        left:'50%', transform:'translateX(-50%)',
+        display:'flex', justifyContent:'center', pointerEvents:'none' }}>
+        <button onClick={() => {
+          setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
+          setSelectedDate(todayStr); scrollToDate(todayStr)
+        }} style={{ height:44, padding:'0 24px', borderRadius:22,
+          background:'var(--color-surface)', border:'1px solid var(--color-border)',
+          boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
+          display:'flex', alignItems:'center', gap:8, cursor:'pointer', pointerEvents:'auto' }}>
+          <CalendarDot size={18} weight="thin" color="var(--color-text)" />
+          <span style={{ fontSize:14, fontWeight:300, color:'var(--color-text)', fontFamily:FONT }}>Today</span>
+        </button>
       </div>
 
     </div>
@@ -2419,31 +2415,8 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
   }
 
   return (
-    <div style={{ padding:'16px' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'flex-end', marginBottom:16 }}>
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => setJoinOpen(true)} style={{
-            width: 36, height: 36,
-            borderRadius: 10,
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}>
-            <UserPlus size={18} weight="thin" color="var(--color-text)" />
-          </button>
-          <button onClick={onNewGroup} style={{
-            width: 36, height: 36,
-            borderRadius: 10,
-            background: 'var(--color-surface)',
-            border: '1px solid var(--color-border)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-          }}>
-            <Plus size={18} weight="thin" color="var(--color-text)" />
-          </button>
-        </div>
-      </div>
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', position:'relative' }}>
+      <div style={{ flex:1, overflowY:'auto', padding:'16px 16px calc(88px + var(--safe-area-bottom))', WebkitOverflowScrolling:'touch' }}>
 
 
       {groups.length === 0 && (
@@ -2507,6 +2480,34 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
           closeRef={closeInviteSheetRef}
         />
       )}
+      </div>
+
+      {/* Floating action buttons — anchored above bottom nav */}
+      <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 12px)',
+        left:'50%', transform:'translateX(-50%)',
+        width:'calc(100% - 64px)', maxWidth:366,
+        display:'flex', justifyContent:'center', gap:10, pointerEvents:'none' }}>
+        <button onClick={() => setJoinOpen(true)} style={{
+          flex:1, height:44, borderRadius:22,
+          background:'var(--color-surface)', border:'1px solid var(--color-border)',
+          boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          cursor:'pointer', fontFamily:FONT, fontSize:14, fontWeight:300, color:'var(--color-text)',
+          pointerEvents:'auto'
+        }}>
+          <UserPlus size={18} weight="thin" color="var(--color-text)" /> Join Group
+        </button>
+        <button onClick={onNewGroup} style={{
+          flex:1, height:44, borderRadius:22,
+          background:'var(--color-accent)', border:'none',
+          boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
+          display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+          cursor:'pointer', fontFamily:FONT, fontSize:14, fontWeight:300, color:'#fff',
+          pointerEvents:'auto'
+        }}>
+          <Plus size={18} weight="thin" /> New Group
+        </button>
+      </div>
     </div>
   )
 }
@@ -2921,7 +2922,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
   return (
     <BottomSheet th={th} onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>New Group</span>
+        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>Create a Group</span>
         <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
       </div>
       <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
