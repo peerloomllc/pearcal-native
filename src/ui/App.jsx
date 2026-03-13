@@ -24,6 +24,7 @@ import {
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Camera, Image, ArrowsClockwise, CurrencyDollar,
+  ShieldCheck, Crown,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -1003,6 +1004,30 @@ export default function App ({ db, notifs, sync }) {
                   confirmLabel: 'Remove',
                   dangerous: true,
                   onConfirm: () => removeMember(req.g, req.memberId),
+                })
+              } else if (req.type === 'makeAdmin') {
+                setConfirmSheet({
+                  title: `Make ${req.memberName ?? 'Member'} Admin?`,
+                  message: `They will be able to remove members and manage reinvites in "${req.g.name}".`,
+                  icon: <ShieldCheck size={36} weight="thin" color="var(--color-accent)" />,
+                  confirmLabel: 'Make Admin',
+                  dangerous: false,
+                  onConfirm: async () => {
+                    const updated = { ...req.g, admins: [...(req.g.admins ?? []), req.memberId], updatedAt: Date.now() }
+                    await updateGroup(updated)
+                  },
+                })
+              } else if (req.type === 'removeAdmin') {
+                setConfirmSheet({
+                  title: `Revoke Admin for ${req.memberName ?? 'Member'}?`,
+                  message: `They will return to regular member status in "${req.g.name}".`,
+                  icon: <ShieldCheck size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Revoke',
+                  dangerous: false,
+                  onConfirm: async () => {
+                    const updated = { ...req.g, admins: (req.g.admins ?? []).filter(id => id !== req.memberId), updatedAt: Date.now() }
+                    await updateGroup(updated)
+                  },
                 })
               }
             }}
@@ -2550,6 +2575,8 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
   const [nickSaved, setNickSaved] = useState(false)
   const fileRef = useRef()
   const isOwner  = g.ownerId === me?.id
+  const isAdmin  = !isOwner && (g.admins ?? []).includes(me?.id)
+  const canManage = isOwner || isAdmin
   const isMember = g.members.some(m => m.id === me?.id)
 
   function set (k, v) { setG(prev => ({ ...prev, [k]:v })); setSaved(false) }
@@ -2605,7 +2632,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
           {/* Identity — owner only */}
-          {isOwner && (g.pendingInvites ?? []).length > 0 && (
+          {canManage && (g.pendingInvites ?? []).length > 0 && (
             <div>
               {section('PENDING INVITES')}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -2633,7 +2660,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
               </div>
             </div>
           )}
-          {isOwner && (g.removedMembers ?? []).length > 0 && (
+          {canManage && (g.removedMembers ?? []).length > 0 && (
             <div>
               {section('REMOVED MEMBERS')}
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
@@ -2753,8 +2780,10 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
             {section(`MEMBERS · ${g.members.length}`)}
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {g.members.map(m => {
-                const isMe     = m.id === me?.id
-                const canRemove = isOwner && !isMe
+                const isMe        = m.id === me?.id
+                const isMemberOwner = m.id === g.ownerId
+                const isMemberAdmin = (g.admins ?? []).includes(m.id)
+                const canRemove   = canManage && !isMe && !isMemberOwner
                 return (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
@@ -2765,21 +2794,40 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                         {isMe && <span style={{ fontSize:11, color:th.muted, marginLeft:6, fontWeight:300 }}>(you)</span>}
                       </div>
                       {m.nickname && <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>{m.name}</div>}
-                      {g.ownerId === m.id && <div style={{ fontSize:11, color:g.color, fontWeight:300 }}>Owner</div>}
+                      {isMemberOwner && <div style={{ fontSize:11, color:g.color, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}><Crown size={11} weight="thin" /> Owner</div>}
+                      {!isMemberOwner && isMemberAdmin && <div style={{ fontSize:11, color:'#4CAF50', fontWeight:300, display:'flex', alignItems:'center', gap:3 }}><ShieldCheck size={11} weight="thin" /> Admin</div>}
                     </div>
-                    {canRemove && (
-                      <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
-                        style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
-                          color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
-                          fontWeight:300, fontFamily:FONT }}>
-                        Remove
-                      </button>
-                    )}
-                    {isMe && !isOwner && <span style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Member</span>}
-                    {isMe && isOwner && (
-                      <span style={{ fontSize:11, color:g.color, background:g.color+'22',
-                        padding:'3px 8px', borderRadius:10, fontWeight:300 }}>Owner</span>
-                    )}
+                    <div style={{ display:'flex', flexDirection:'row', gap:6, alignItems:'center' }}>
+                      {isOwner && !isMe && !isMemberOwner && (
+                        <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: isMemberAdmin ? 'removeAdmin' : 'makeAdmin', g, memberId: m.id, memberName: m.nickname || m.name }) }}
+                          style={{ background:'transparent', border:`1px solid ${isMemberAdmin ? '#D45F7A44' : '#4CAF5044'}`, borderRadius:8,
+                            color:isMemberAdmin ? '#D45F7A' : '#4CAF50', fontSize:11, padding:'4px 8px', cursor:'pointer',
+                            fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:4 }}>
+                          <ShieldCheck size={12} weight="thin" /> {isMemberAdmin ? 'Revoke Admin' : 'Make Admin'}
+                        </button>
+                      )}
+                      {canRemove && (
+                        <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
+                          style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
+                            color:'#D45F7A', fontSize:11, padding:'4px 8px', cursor:'pointer',
+                            fontWeight:300, fontFamily:FONT }}>
+                          Remove
+                        </button>
+                      )}
+                      {isMe && !isOwner && !isAdmin && <span style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Member</span>}
+                      {isMe && isOwner && (
+                        <span style={{ fontSize:11, color:g.color, background:g.color+'22',
+                          padding:'3px 8px', borderRadius:10, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}>
+                          <Crown size={11} weight="thin" /> Owner
+                        </span>
+                      )}
+                      {isMe && isAdmin && (
+                        <span style={{ fontSize:11, color:'#4CAF50', background:'#4CAF5022',
+                          padding:'3px 8px', borderRadius:10, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}>
+                          <ShieldCheck size={11} weight="thin" /> Admin
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )
               })}

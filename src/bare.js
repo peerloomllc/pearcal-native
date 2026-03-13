@@ -483,6 +483,28 @@ function makeApply (groupId) {
               }
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
           }
+          // Admin role change — notify only the affected member (self-check)
+          if (isRemote && val.type === 'group' && existing) {
+            try {
+              const profile = await getProfile()
+              const existingAdmins = new Set(existing?.value?.admins ?? [])
+              const incomingAdmins = new Set(val.value.admins ?? [])
+              const groupName = val.value.name || 'a group'
+              if (!existingAdmins.has(profile?.id) && incomingAdmins.has(profile?.id)) {
+                send({ type: 'event', event: 'syncNotify', data: {
+                  title: 'You’re now an admin of ' + groupName,
+                  body: 'You can remove members and manage reinvites',
+                  tab: 'groups'
+                }})
+              } else if (existingAdmins.has(profile?.id) && !incomingAdmins.has(profile?.id)) {
+                send({ type: 'event', event: 'syncNotify', data: {
+                  title: 'Admin access removed in ' + groupName,
+                  body: 'You’ve been returned to regular member status',
+                  tab: 'groups'
+                }})
+              }
+            } catch(e) { console.error('[ADMIN_NOTIF] error:', e.message) }
+          }
           if (isRemote && val.type === 'event') {
             // Skip notification if user locally deleted this event
             const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
