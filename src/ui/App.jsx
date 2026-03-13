@@ -23,7 +23,7 @@ import {
   Check, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
-  Camera, Image,
+  Camera, Image, ArrowsClockwise, CurrencyDollar,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -279,6 +279,8 @@ export default function App ({ db, notifs, sync }) {
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
+  const [scopeSheet, setScopeSheet] = useState(null) // null | { ev }
+  const closeScopeSheetRef = useRef(null)
   const closeEventModalRef = useRef(null)
   const closeGroupSettingsRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
@@ -405,14 +407,18 @@ export default function App ({ db, notifs, sync }) {
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
       if (closeConfirmSheetRef.current?.()) return
+      if (closeScopeSheetRef.current?.()) return
       if (closeEventModalRef.current?.()) return
       if (closeNewGroupSheetRef.current?.()) return
-      if (closeGroupSettingsRef.current?.()) return
+      if (settingsGroup) {
+        if (closeGroupSettingsRef.current) { closeGroupSettingsRef.current(); return }
+        setSettingsGroup(null); return
+      }
       const prev = tabHistoryRef.current.pop()
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep])
+  }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep, settingsGroup])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
@@ -877,6 +883,12 @@ export default function App ({ db, notifs, sync }) {
           />
         )}
 
+        {scopeSheet && (
+          <ScopeSheet th={th} ev={scopeSheet.ev}
+            onSave={saveEvent} onDismiss={() => setScopeSheet(null)}
+            closeRef={closeScopeSheetRef} />
+        )}
+
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
@@ -900,7 +912,10 @@ export default function App ({ db, notifs, sync }) {
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
             closeRef={closeEventModalRef}
             onRequestConfirm={req => {
-              if (req.type === 'deleteEvent') {
+              if (req.type === 'editScope') {
+                setModal(null)
+                setScopeSheet({ ev: req.ev })
+              } else if (req.type === 'deleteEvent') {
                 setModal(null)
                 setConfirmSheet({
                   title: 'Delete Event?',
@@ -1856,7 +1871,6 @@ function expandRecurring (ev) {
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
-  const [scopePending, setScopePending] = useState(null)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
@@ -1914,7 +1928,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
       if (origGroups !== newGroups || origInvitees !== newInvitees) {
         setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }); setSaving(false); return
       }
-      setScopePending(toSave); return
+      bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave }); return
     }
     setSaving(true)
     await onSave(toSave, 'one')
@@ -2233,35 +2247,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           })()}
         </div>
 
-      {scopePending && (
-        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:300,
-          display:'flex', alignItems:'center', justifyContent:'center', padding:'0 24px' }}>
-          <div style={{ ...th.bg, borderRadius:20, padding:'24px', width:'100%', maxWidth:360, textAlign:'center' }}>
-            <div style={{ fontWeight:300, fontSize:17, ...th.text, marginBottom:8 }}>Edit recurring event</div>
-            <div style={{ fontSize:14, color:th.muted, marginBottom:20, lineHeight:1.5, fontWeight:300 }}>
-              Save changes to just this event, or this and all future events in the series?
-            </div>
-            <div style={{ display:'flex', gap:8, marginBottom:8 }}>
-              <button onClick={async () => { setSaving(true); setScopePending(null); await onSave(scopePending, 'one'); setSaving(false) }}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:th.accent, color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                This Event
-              </button>
-              <button onClick={async () => { setSaving(true); setScopePending(null); await onSave(scopePending, 'future'); setSaving(false) }}
-                style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-                  background:th.accent, color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-                This & Future
-              </button>
-            </div>
-            <button onClick={() => setScopePending(null)}
-              style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid ${th.border}`,
-                fontFamily:FONT, background:'transparent', color:th.text.color,
-                fontSize:14, fontWeight:300, cursor:'pointer' }}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
 
     </BottomSheet>
   )
@@ -2806,7 +2791,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           <div>
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
-              {isMember && !isOwner && (
+              {!isOwner && (
                 <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'leaveGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
@@ -3039,6 +3024,46 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
   )
 }
 
+// ─── Scope Sheet (recurring edit) ─────────────────────────────────────────────
+function ScopeSheet ({ th, ev, onSave, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+  return (
+    <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        <div style={{ marginBottom:4 }}><ArrowsClockwise size={28} weight="thin" color="var(--color-accent)" /></div>
+        <div style={{ fontWeight:300, fontSize:17, ...th.text }}>Edit recurring event</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>
+          Save changes to just this event, or this and all future events in the series?
+        </div>
+        <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'one'), 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+              background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+            This Event
+          </button>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'future'), 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+              background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+            This & Future
+          </button>
+        </div>
+        <button onClick={() => bsCloseRef.current?.()}
+          style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
+            fontFamily:FONT, background:'transparent', color:'var(--color-text)',
+            fontSize:14, fontWeight:300, cursor:'pointer', marginBottom:8 }}>
+          Cancel
+        </button>
+      </div>
+    </BottomSheet>
+  )
+}
+
 // ─── Confirm Sheet ────────────────────────────────────────────────────────────
 function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onConfirm, onDismiss, closeRef }) {
   const bsCloseRef = useRef(null)
@@ -3186,24 +3211,36 @@ function AboutTab ({ th, sync, closeSheetRef }) {
       {/* P2P explainer */}
       <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
-        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
           No accounts. No subscriptions. No data collection.
         </div>
+        <button onClick={() => sync?.openURL('https://pears.com/')}
+          style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          Learn about P2P <ArrowSquareOut size={14} weight="thin" />
+        </button>
       </div>
 
       {/* Donate */}
       <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
         <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
-          PearCal is free and open source. If you receive value from it, please consider returning value via Bitcoin Lightning.
+          PearCal is free and open source. If you receive value from it, please consider returning value.
         </div>
-        <button onClick={handleDonate}
-          style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
-            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-          <Lightning size={16} weight="thin" /> Donate with Lightning <Lightning size={16} weight="thin" />
-        </button>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <button onClick={handleDonate}
+            style={{ ...th.pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <Lightning size={14} weight="thin" /> Donate BTC <Lightning size={14} weight="thin" />
+          </button>
+          <button onClick={() => sync?.openURL('https://buymeacoffee.com/peerloomllc')}
+            style={{ ...th.pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <CurrencyDollar size={14} weight="thin" /> Donate USD <CurrencyDollar size={14} weight="thin" />
+          </button>
+        </div>
       </div>
 
       {/* Bitcoin learning card */}
@@ -3222,16 +3259,16 @@ function AboutTab ({ th, sync, closeSheetRef }) {
       {/* Contact */}
       <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:10, letterSpacing:'0.04em', textAlign:'center' }}>CONTACT</div>
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => sync?.openURL('mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback')}
-            style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            <EnvelopeSimple size={16} weight="thin" /> Send Email <ArrowSquareOut size={14} weight="thin" />
+            style={{ ...th.pillBtn, flex:1, padding:'10px 8px', fontSize:13, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <EnvelopeSimple size={14} weight="thin" /> Send Email <ArrowSquareOut size={13} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://github.com/peerloomllc/pearcal-native/issues')}
-            style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-            <Bug size={16} weight="thin" /> Report Issue on GitHub <ArrowSquareOut size={14} weight="thin" />
+            style={{ ...th.pillBtn, flex:1, padding:'10px 8px', fontSize:13, fontWeight:300,
+              display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <Bug size={14} weight="thin" /> Report Issue <ArrowSquareOut size={13} weight="thin" />
           </button>
         </div>
       </div>
