@@ -94,7 +94,8 @@ export async function handleInviteLink (url, db, sync, onJoined) {
   const broadcastSelf = async () => {
     try {
       // Send just ourselves — bare.js will merge with existing members on owner's side
-      const updatedGroup = { ...group, members: [ myMember ], updatedAt: Date.now() }
+      // Only include identity fields — never broadcast color/name/emoji or we may clobber owner's chosen values
+      const updatedGroup = { id: group.id, groupKey: group.groupKey, ownerId: group.ownerId, members: [ myMember ], updatedAt: Date.now() }
       await sync.putGroup(updatedGroup)
       // Success — stop retrying
     } catch (e) {

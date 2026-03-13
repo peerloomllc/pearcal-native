@@ -540,7 +540,7 @@ export default function App ({ db, notifs, sync }) {
       const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
       if (isCreator) {
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', ev.recurrenceId ?? '').catch(() => {})
         }
       }
     }
@@ -3276,10 +3276,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
       {/* Lightning wallet info modal */}
       {lightningModal && (
         <BottomSheet th={th} onClose={() => setLightningModal(false)} zIndex={300} closeRef={lsBsCloseRef}>
-          <div style={{ padding:'8px 20px 0' }}>
-            <div style={{ display:'flex', justifyContent:'center', marginBottom:12 }}>
-              <div style={{ width:36, height:4, borderRadius:2, background:th.border }} />
-            </div>
+          <div style={{ padding:'0 20px 20px' }}>
             <div style={{ fontSize:18, fontWeight:400, ...th.text, marginBottom:6, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
               <Lightning size={18} weight="thin" /> Bitcoin Lightning <Lightning size={18} weight="thin" />
             </div>
