@@ -13,7 +13,7 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 - [ ] iOS port
 
 ## Features — Medium Priority / Medium Complexity
-- [ ] Group admin roles: add `admins: [memberId]` to group record; owner can promote/demote admins in Group Settings; admins get remove-member, reinvite, and blocklist UI permissions; writer handshake authorization stays owner-only
+- [x] Group admin roles: add `admins: [memberId]` to group record; owner can promote/demote admins in Group Settings; admins get remove-member, reinvite, and blocklist UI permissions; writer handshake authorization stays owner-only — completed 2026-03-13
 - [ ] Ownership transfer: transfer Autobase bootstrap keypair to another member via Protomux; requires seed word backup as a prerequisite; update `ownerId` on group record and broadcast to all members (prerequisite: seed word backup)
 
 ## Features — Medium Priority / Low Complexity
@@ -42,6 +42,10 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 
 ## UI / UX — Medium Priority / Medium Complexity
 - [x] UI redesign: revisit color scheme and replace default emojis (share, QR, etc.) with custom images — completed 2026-03-12
+- [x] Move Today button on Calendar tab to floating position above bottom nav, centered for thumb reach — completed 2026-03-13
+- [x] Move Join Group and New Group buttons on Groups tab to floating position above bottom nav, centered for thumb reach — completed 2026-03-13
+- [x] Rename "New Group" bottom sheet title to "Create a Group" — completed 2026-03-13
+- [x] Remove group created toast on new group creation — completed 2026-03-13
 
 ## UI / UX — Medium Priority / Low Complexity (Polish)
 - [x] Stale invite link creates ghost group: user can join with an old link, group card appears, but Leave Group button is missing from Group Settings (no leave action available) — completed 2026-03-12
