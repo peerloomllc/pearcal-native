@@ -96,7 +96,8 @@ async function handleNotification (msg: any, webViewRef: any) {
         }
       }
     } else if (msg.method === 'cancelForEvent') {
-      await PearCalNotifications?.cancel?.(notifId(msg.args[0]))
+      await PearCalNotifications?.cancel?.(notifId(msg.args[0])).catch(() => {})
+      await PearCalNotifications?.cancel?.(notifId(msg.args[0]) + 1).catch(() => {})
     }
     webViewRef.current?.injectJavaScript(
       'window.__pearResponse(' + JSON.stringify({ id: msg.id, result: null }) + ');true;'
