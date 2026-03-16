@@ -2,7 +2,6 @@
   "expo": {
     "name": "PearCal",
     "slug": "pearcal",
-    "version": "1.0.0",
     "newArchEnabled": true,
     "orientation": "portrait",
     "scheme": "pearcal",
@@ -29,7 +28,9 @@
             "DEFAULT"
           ]
         }
-      ]
+      ],
+      "versionCode": 1000013,
+      "privacyPolicy": "https://peerloomllc.github.io/pearcal-native/privacy.html"
     },
     "plugins": [
       [
@@ -46,6 +47,7 @@
     ],
     "assets": [
       "./assets/bare-universal.bundle"
-    ]
+    ],
+    "version": "1.0.13"
   }
 }

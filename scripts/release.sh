@@ -205,7 +205,108 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
-# Helper: extract Android package name from android/app/build.gradle.
+# ---------------------------------------------------------------------------
+# Helper: obtain a Google Play API OAuth2 token.
+# Tries gcloud application-default credentials first (no key file needed),
+# then falls back to service account JSON if PLAY_SERVICE_ACCOUNT_JSON is set.
+# Returns the token string or "" on failure.
+# ---------------------------------------------------------------------------
+_play_token() {
+  local sa_json="${1:-}"
+
+  # --- Path 1: gcloud application-default credentials ---
+  if command -v gcloud > /dev/null 2>&1; then
+    local tok
+    tok=$(gcloud auth application-default print-access-token 2>/dev/null || echo "")
+    if [ -n "$tok" ]; then
+      printf '%s' "$tok"
+      return
+    fi
+  fi
+
+  # --- Path 2: service account JSON ---
+  if [ -z "$sa_json" ] || [ ! -f "$sa_json" ]; then
+    echo ""
+    return
+  fi
+
+  python3 - "$sa_json" <<'PYEOF' 2>/dev/null || echo ""
+import sys, json, time, base64
+from urllib.request import urlopen, Request
+from urllib.parse import urlencode
+
+svc = json.load(open(sys.argv[1]))
+now = int(time.time())
+header  = base64.urlsafe_b64encode(json.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b'=')
+payload = base64.urlsafe_b64encode(json.dumps({
+    "iss": svc["client_email"],
+    "scope": "https://www.googleapis.com/auth/androidpublisher",
+    "aud": "https://oauth2.googleapis.com/token",
+    "iat": now, "exp": now + 3600
+}).encode()).rstrip(b'=')
+
+try:
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import padding
+    key = serialization.load_pem_private_key(svc["private_key"].encode(), password=None)
+    sig_input = header + b'.' + payload
+    sig = base64.urlsafe_b64encode(key.sign(sig_input, padding.PKCS1v15(), hashes.SHA256())).rstrip(b'=')
+    jwt = (sig_input + b'.' + sig).decode()
+except ImportError:
+    import subprocess, tempfile, os
+    sig_input = (header + b'.' + payload).decode()
+    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as f:
+        f.write(svc["private_key"].encode()); kp = f.name
+    try:
+        sig_bytes = subprocess.check_output(['openssl','dgst','-sha256','-sign',kp], input=sig_input.encode())
+        sig = base64.urlsafe_b64encode(sig_bytes).rstrip(b'=').decode()
+        jwt = sig_input + '.' + sig
+    finally:
+        os.unlink(kp)
+
+data = urlencode({"grant_type":"urn:ietf:params:oauth:grant-type:jwt-bearer","assertion":jwt}).encode()
+resp = json.loads(urlopen(Request("https://oauth2.googleapis.com/token", data=data)).read())
+print(resp.get("access_token",""))
+PYEOF
+}
+
+# ---------------------------------------------------------------------------
+# Helper: fetch latest version published on Google Play for this app.
+# Queries the configured PLAY_TRACK (default: production).
+# Returns bare X.Y.Z or "".
+# ---------------------------------------------------------------------------
+_play_latest_version() {
+  local package="${1:-}" sa_json="${2:-}" track="${3:-production}"
+  [ -z "$package" ] && echo "" && return
+
+  local token
+  token=$(_play_token "$sa_json")
+  [ -z "$token" ] && echo "" && return
+
+  python3 - "$package" "$track" "$token" <<'PYEOF' 2>/dev/null || echo ""
+import sys, json
+from urllib.request import urlopen, Request
+
+package = sys.argv[1]
+track   = sys.argv[2]
+token   = sys.argv[3]
+
+url = f"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{package}/tracks/{track}"
+req = Request(url, headers={"Authorization": f"Bearer {token}"})
+try:
+    track_data = json.loads(urlopen(req).read())
+    releases = track_data.get("releases", [])
+    for status in ("completed", "inProgress", "halted", "draft"):
+        for r in releases:
+            if r.get("status") == status:
+                print(r.get("name", ""))
+                sys.exit(0)
+except Exception:
+    pass
+PYEOF
+}
+
+
 # Uses $REPO_ROOT so this works regardless of invocation directory.
 # ---------------------------------------------------------------------------
 _android_package_name() {
@@ -351,9 +452,18 @@ fi
 echo "==> Checking published versions..."
 GH_VERSION=$(_github_latest_version "$GH_TOKEN" "$REPO_SLUG")
 ZSP_VERSION_CURRENT=$(_zapstore_latest_version "$ZSP_IDENTIFIER")
+PLAY_VERSION_CURRENT=$(_play_latest_version "$ZSP_IDENTIFIER" "${PLAY_SERVICE_ACCOUNT_JSON:-}" "${PLAY_TRACK:-production}")
 
-echo "    GitHub   : ${GH_VERSION:-unknown}"
-echo "    Zapstore : ${ZSP_VERSION_CURRENT:-unknown}"
+echo "    GitHub       : ${GH_VERSION:-unknown}"
+echo "    Zapstore     : ${ZSP_VERSION_CURRENT:-unknown}"
+if [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+  echo "    Google Play  : ${PLAY_VERSION_CURRENT:-unknown} (${PLAY_TRACK:-production} track)"
+elif command -v gcloud > /dev/null 2>&1 \
+     && gcloud auth application-default print-access-token > /dev/null 2>&1; then
+  echo "    Google Play  : ${PLAY_VERSION_CURRENT:-unknown} (${PLAY_TRACK:-production} track, via gcloud)"
+else
+  echo "    Google Play  : (not configured)"
+fi
 
 # --check-versions: print diagnostic info and exit without doing anything else
 if $CHECK_VERSIONS_ONLY; then
@@ -372,23 +482,45 @@ if $CHECK_VERSIONS_ONLY; then
     echo "      echo '[\"REQ\",\"test\",{\"kinds\":[30063],\"#i\":[\"${ZSP_IDENTIFIER}\"],\"limit\":5}]' \\"
     echo "        | websocat --no-close wss://relay.zapstore.dev"
   fi
+  if [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+    echo ""
+    if [ -n "$PLAY_VERSION_CURRENT" ]; then
+      echo "    Google Play query succeeded: $PLAY_VERSION_CURRENT"
+    else
+      echo "    Google Play query returned nothing — app may not be published yet,"
+      echo "    or the service account lacks permissions on the production track."
+    fi
+  fi
   exit 0
 fi
 
 if [ -n "${EXPLICIT_TAG:-}" ]; then
-  # -------------------------------------------------------------------------
-  # Explicit version passed — check whether it already exists on each platform
-  # and route accordingly rather than treating it as a new build target.
-  # -------------------------------------------------------------------------
   GH_HAS_VERSION=false
   ZSP_HAS_VERSION=false
-  [ "$GH_VERSION" = "$APP_VERSION" ]          && GH_HAS_VERSION=true
-  [ "$ZSP_VERSION_CURRENT" = "$APP_VERSION" ] && ZSP_HAS_VERSION=true
+  PLAY_HAS_VERSION=false
+  [ "$GH_VERSION" = "$APP_VERSION" ]           && GH_HAS_VERSION=true
+  [ "$ZSP_VERSION_CURRENT" = "$APP_VERSION" ]  && ZSP_HAS_VERSION=true
+  [ "$PLAY_VERSION_CURRENT" = "$APP_VERSION" ] && PLAY_HAS_VERSION=true
 
-  if $GH_HAS_VERSION && $ZSP_HAS_VERSION; then
+  # Build a human-readable summary of what's already published
+  _already=""
+  $GH_HAS_VERSION   && _already="${_already}GitHub, "
+  $ZSP_HAS_VERSION  && _already="${_already}Zapstore, "
+  $PLAY_HAS_VERSION && _already="${_already}Google Play, "
+  _already="${_already%, }"   # strip trailing comma+space
+
+  # Check if all configured destinations already have this version
+  _all_have=true
+  $GH_HAS_VERSION  || _all_have=false
+  $ZSP_HAS_VERSION || _all_have=false
+  if [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+    $PLAY_HAS_VERSION || _all_have=false
+  fi
+
+  if $_all_have; then
     echo ""
-    echo "    $RELEASE_TAG is already published on both GitHub and Zapstore."
-    echo "    Nothing to do unless you want to republish to Zapstore (e.g. to fix release notes)."
+    echo "    $RELEASE_TAG is already published on all configured destinations: $_already"
+    echo "    Nothing to do unless you want to republish (e.g. to fix release notes)."
     echo ""
     while true; do
       read -rp "    Republish $RELEASE_TAG to Zapstore? [y/n] " _reply
@@ -510,8 +642,17 @@ echo ""
 PUBLISH_GITHUB=true
 PUBLISH_ZAPSTORE=true
 PUBLISH_PLAY=false
-[ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] \
-  && PUBLISH_PLAY=true
+
+# Play is available if either gcloud is authenticated or a SA JSON is present
+_play_configured() {
+  command -v gcloud > /dev/null 2>&1 \
+    && gcloud auth application-default print-access-token > /dev/null 2>&1 \
+    && return 0
+  [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] \
+    && return 0
+  return 1
+}
+_play_configured && PUBLISH_PLAY=true
 
 if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
   echo "==> Select publish destinations for $RELEASE_TAG:"
@@ -537,8 +678,8 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
     esac
   done
 
-  # Google Play — only prompt if credentials are configured
-  if [ -n "${PLAY_SERVICE_ACCOUNT_JSON:-}" ] && [ -f "${PLAY_SERVICE_ACCOUNT_JSON:-}" ]; then
+  # Google Play — only prompt if gcloud or SA JSON is configured
+  if _play_configured; then
     while true; do
       read -rp "    Publish to Google Play (${PLAY_TRACK:-production} track)? [Y/n] " _r
       case "${_r:-y}" in
@@ -549,7 +690,7 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
     done
   else
     PUBLISH_PLAY=false
-    echo "    - Google Play (PLAY_SERVICE_ACCOUNT_JSON not configured — skipped)"
+    echo "    - Google Play (not configured — run 'gcloud auth application-default login' to enable)"
   fi
 
   echo ""
@@ -568,19 +709,25 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
 fi
 
 # ---------------------------------------------------------------------------
-# 0. Update app.json version
+# 0. Update app.json version and versionCode
 # ---------------------------------------------------------------------------
 echo "==> Updating app.json to $APP_VERSION..."
 APP_VERSION="$APP_VERSION" node -e "
   const fs = require('fs');
   const f = 'app.json';
   const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-  j.expo.version = process.env.APP_VERSION;
+  const v = process.env.APP_VERSION;
+  const [major, minor, patch] = v.split('.').map(Number);
+  const versionCode = major * 1000000 + minor * 1000 + patch;
+  j.expo.version = v;
+  if (!j.expo.android) j.expo.android = {};
+  j.expo.android.versionCode = versionCode;
   fs.writeFileSync(f, JSON.stringify(j, null, 2) + '\n');
-  console.log('Updated app.json to ' + process.env.APP_VERSION);
+  console.log('Updated app.json to ' + v + ' (versionCode: ' + versionCode + ')');
 "
 
-echo "    app.json now reads: $(node -p "require('./app.json').expo.version")"
+echo "    Version     : $(node -p "require('./app.json').expo.version")"
+echo "    versionCode : $(node -p "require('./app.json').expo.android.versionCode")"
 _confirm "app.json version looks correct — proceed with bundle builds?"
 
 # ---------------------------------------------------------------------------
@@ -1124,64 +1271,12 @@ else
     echo "    Version : $APP_VERSION"
     _confirm "Upload $RELEASE_TAG to Google Play ($PLAY_TRACK track)?"
 
-    # --- Obtain OAuth2 Bearer token from service account JSON ---
-    PLAY_TOKEN=$(python3 - "$PLAY_SERVICE_ACCOUNT_JSON" <<'PYEOF'
-import sys, json, time, base64, hashlib, hmac
-from urllib.request import urlopen, Request
-from urllib.parse import urlencode
-
-key_file = sys.argv[1]
-svc = json.load(open(key_file))
-
-# Build JWT for service account auth
-now = int(time.time())
-header = base64.urlsafe_b64encode(json.dumps({"alg":"RS256","typ":"JWT"}).encode()).rstrip(b'=')
-payload = base64.urlsafe_b64encode(json.dumps({
-    "iss": svc["client_email"],
-    "scope": "https://www.googleapis.com/auth/androidpublisher",
-    "aud": "https://oauth2.googleapis.com/token",
-    "iat": now, "exp": now + 3600
-}).encode()).rstrip(b'=')
-
-# Sign with private key using cryptography library
-try:
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-    private_key = serialization.load_pem_private_key(
-        svc["private_key"].encode(), password=None)
-    sig_input = header + b'.' + payload
-    signature = private_key.sign(sig_input, padding.PKCS1v15(), hashes.SHA256())
-    sig = base64.urlsafe_b64encode(signature).rstrip(b'=')
-    jwt = (sig_input + b'.' + sig).decode()
-except ImportError:
-    # Fallback: use openssl subprocess
-    import subprocess, tempfile, os
-    sig_input = (header + b'.' + payload).decode()
-    with tempfile.NamedTemporaryFile(suffix='.pem', delete=False) as f:
-        f.write(svc["private_key"].encode()); keypath = f.name
-    try:
-        sig_bytes = subprocess.check_output(
-            ['openssl', 'dgst', '-sha256', '-sign', keypath],
-            input=sig_input.encode())
-        sig = base64.urlsafe_b64encode(sig_bytes).rstrip(b'=').decode()
-        jwt = sig_input + '.' + sig
-    finally:
-        os.unlink(keypath)
-
-# Exchange JWT for access token
-data = urlencode({
-    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-    "assertion": jwt
-}).encode()
-req = Request("https://oauth2.googleapis.com/token", data=data)
-resp = json.loads(urlopen(req).read())
-print(resp.get("access_token", ""))
-PYEOF
-    )
+    # --- Obtain OAuth2 Bearer token (gcloud or SA JSON) ---
+    PLAY_TOKEN=$(_play_token "${PLAY_SERVICE_ACCOUNT_JSON:-}")
 
     if [ -z "$PLAY_TOKEN" ]; then
       echo "    ERROR: Failed to obtain Google OAuth2 token."
-      echo "    Check PLAY_SERVICE_ACCOUNT_JSON and ensure the Play API is enabled."
+      echo "    Run 'gcloud auth application-default login' or set PLAY_SERVICE_ACCOUNT_JSON."
     else
       echo "    OAuth2 token obtained."
 
