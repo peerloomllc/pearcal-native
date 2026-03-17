@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		07A4B17B976D5E0D3673B3EF /* HapticModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D3E67A47AAF9D133026769D3 /* HapticModule.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 432CF75ADD4963D7351063E9 /* LinkModule.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6466122AC83FA96405613F46 /* ShareModule.m */; };
 		81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */; };
@@ -18,6 +19,7 @@
 		C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */; };
 		DAF5708BAC84EEC6349AA1EF /* DeepLinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 17086FDCA2812725DD101353 /* DeepLinkModule.m */; };
 		E0DA430E00A88A151E604B9D /* ShareModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A19A60265BF82560F78ECA2 /* ShareModule.swift */; };
+		E8B53D8043C690B658D2DDC2 /* LinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DC41E56E5833C624E0BBE6 /* LinkModule.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		FC2CE1543547C11B3FD49A2D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -31,9 +33,11 @@
 		17086FDCA2812725DD101353 /* DeepLinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DeepLinkModule.m; path = PearCal/DeepLinkModule.m; sourceTree = "<group>"; };
 		3A19A60265BF82560F78ECA2 /* ShareModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareModule.swift; path = PearCal/ShareModule.swift; sourceTree = "<group>"; };
 		3D8DB875303C7D5BBE17A5A3 /* Pods-PearCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.release.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.release.xcconfig"; sourceTree = "<group>"; };
+		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
 		5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PearCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		6466122AC83FA96405613F46 /* ShareModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShareModule.m; path = PearCal/ShareModule.m; sourceTree = "<group>"; };
 		8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PearCal.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		98DC41E56E5833C624E0BBE6 /* LinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LinkModule.swift; path = PearCal/LinkModule.swift; sourceTree = "<group>"; };
 		A58EAE82C681BCCDFCF5ED48 /* Pods-PearCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.debug.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = PearCal/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
@@ -66,6 +70,8 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
 				16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */,
+				98DC41E56E5833C624E0BBE6 /* LinkModule.swift */,
+				432CF75ADD4963D7351063E9 /* LinkModule.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -375,6 +381,8 @@
 				4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */,
 				81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */,
 				DAF5708BAC84EEC6349AA1EF /* DeepLinkModule.m in Sources */,
+				E8B53D8043C690B658D2DDC2 /* LinkModule.swift in Sources */,
+				22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
