@@ -12,7 +12,7 @@ class DeepLinkModule: NSObject {
 
   @objc func canOpenLightning(
     _ resolve: @escaping RCTPromiseResolveBlock,
-    reject: RCTPromiseRejectBlock
+    reject: @escaping RCTPromiseRejectBlock
   ) {
     guard let url = URL(string: "lightning:") else { resolve(false); return }
     DispatchQueue.main.async {

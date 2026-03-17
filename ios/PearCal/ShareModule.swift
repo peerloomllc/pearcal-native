@@ -9,6 +9,7 @@ class ShareModule: NSObject {
       if let root = UIApplication.shared.connectedScenes
           .compactMap({ $0 as? UIWindowScene })
           .first?.windows.first?.rootViewController {
+        vc.popoverPresentationController?.sourceView = root.view
         root.present(vc, animated: true)
       }
     }
