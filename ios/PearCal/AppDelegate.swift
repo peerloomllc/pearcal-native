@@ -1,3 +1,4 @@
+import BackgroundTasks
 import Expo
 import React
 import ReactAppDependencyProvider
@@ -30,6 +31,13 @@ public class AppDelegate: ExpoAppDelegate {
       launchOptions: launchOptions)
 #endif
 
+    BGTaskScheduler.shared.register(
+      forTaskWithIdentifier: BareBackgroundSync.taskIdentifier,
+      using: nil
+    ) { task in
+      BareBackgroundSync.handleBGTask(task as! BGAppRefreshTask)
+    }
+    BareBackgroundSync.scheduleNext()
     UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }

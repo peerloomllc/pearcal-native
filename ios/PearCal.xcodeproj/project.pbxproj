@@ -13,8 +13,10 @@
 		2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */; };
 		22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 432CF75ADD4963D7351063E9 /* LinkModule.m */; };
 		24DA35638478C3E3161E1909 /* NotificationsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 43B39E45E490E815F6A2E8DC /* NotificationsModule.m */; };
+		28708F085289B2D9F4818BFD /* BareBackgroundSync.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C29454412519534F243D013 /* BareBackgroundSync.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6466122AC83FA96405613F46 /* ShareModule.m */; };
+		68A7206C8C2D7AB3BBC59921 /* BareBackgroundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */; };
 		81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */; };
 		8790520B36DCA7944A6D8F8E /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EEB61CDBF78F983BB07207 /* HapticModule.swift */; };
 		8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */; };
@@ -38,10 +40,12 @@
 		16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = PearCal/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		17086FDCA2812725DD101353 /* DeepLinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DeepLinkModule.m; path = PearCal/DeepLinkModule.m; sourceTree = "<group>"; };
 		278CCBB93EB9E31D691C8817 /* CameraModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CameraModule.swift; path = PearCal/CameraModule.swift; sourceTree = "<group>"; };
+		2C29454412519534F243D013 /* BareBackgroundSync.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = BareBackgroundSync.m; path = PearCal/BareBackgroundSync.m; sourceTree = "<group>"; };
 		3A19A60265BF82560F78ECA2 /* ShareModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareModule.swift; path = PearCal/ShareModule.swift; sourceTree = "<group>"; };
 		3D8DB875303C7D5BBE17A5A3 /* Pods-PearCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.release.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.release.xcconfig"; sourceTree = "<group>"; };
 		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
 		43B39E45E490E815F6A2E8DC /* NotificationsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = NotificationsModule.m; path = PearCal/NotificationsModule.m; sourceTree = "<group>"; };
+		54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BareBackgroundSync.swift; path = PearCal/BareBackgroundSync.swift; sourceTree = "<group>"; };
 		5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PearCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = CameraModule.m; path = PearCal/CameraModule.m; sourceTree = "<group>"; };
 		6466122AC83FA96405613F46 /* ShareModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShareModule.m; path = PearCal/ShareModule.m; sourceTree = "<group>"; };
@@ -90,6 +94,8 @@
 				6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */,
 				718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */,
 				672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */,
+				54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */,
+				2C29454412519534F243D013 /* BareBackgroundSync.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -407,6 +413,8 @@
 				8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */,
 				F3E8E86DD263668B0AE11972 /* QRScannerModule.swift in Sources */,
 				2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */,
+				68A7206C8C2D7AB3BBC59921 /* BareBackgroundSync.swift in Sources */,
+				28708F085289B2D9F4818BFD /* BareBackgroundSync.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

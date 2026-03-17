@@ -19,6 +19,7 @@ const { PearCalQRScanner } = NativeModules
 const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
+const { PearCalBGSync } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -301,7 +302,15 @@ export default function Root () {
       })
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
-      onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
+      onEvent('ready', () => {
+        setDbReady(true)
+        dbReadyRef.current = true
+        if (Platform.OS === 'ios') {
+          PearCalBGSync?.checkPendingBGSync?.().then((pending: boolean) => {
+            if (pending) sendToWorklet({ method: 'sync', id: -99, args: [] })
+          }).catch(() => {})
+        }
+      })
       onEvent('error', (msg: string) => {
         if (msg && msg.includes('keep awake')) return // ignore second worklet startup error
         setError(msg)
@@ -315,6 +324,8 @@ webViewRef.current?.injectJavaScript(
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
         )
+        // No-op if no BGTask is pending; harmless for foreground syncs
+        if (Platform.OS === 'ios') PearCalBGSync?.completeBGSync?.(true)
       })
 
       onEvent('groupDeleted', (groupId: string) => {

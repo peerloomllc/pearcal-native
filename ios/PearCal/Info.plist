@@ -80,5 +80,13 @@
     <string>Dark</string>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.pearcal.bgsync</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
   </dict>
 </plist>
