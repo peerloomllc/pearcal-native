@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PearCal is a peer-to-peer calendar app for Android built with Expo (React Native). It uses a dual-runtime architecture: a React Native shell hosts a WebView that renders the UI, while a separate [Bare](https://github.com/nicolo-ribaudo/bare) runtime runs the P2P backend.
+PearCal is a peer-to-peer calendar app for Android and iOS built with Expo (React Native). It uses a dual-runtime architecture: a React Native shell hosts a WebView that renders the UI, while a separate [Bare](https://github.com/nicolo-ribaudo/bare) runtime runs the P2P backend.
 
 ## Build & Deploy
+
+### Android
 
 Two test devices are connected via ADB:
 - Device 1: `53071FDAP00038` — Pixel/GrapheneOS (owner)
@@ -40,6 +42,58 @@ cd android && ./gradlew assembleRelease && cd ..
 cp android/app/build/outputs/apk/release/app-release.apk ~/pearcal-release.apk
 ```
 Keystore: `~/keystore.jks` — alias: `pearcal`
+
+### iOS
+
+iOS builds run on Mac Mini (`Tims-Mac-mini.local`) via SSH. Write code on Linux, sync to Mac, build remotely, install via `ios-deploy` from Linux (iPhone connected here via USB).
+
+iPhone UDID: `00008030-0009714C2613402E`
+
+**Sync code to Mac** (run after any iOS-related file change):
+```bash
+rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+  /home/tim/AndroidStudioProjects/pearcal-native/ \
+  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+```
+
+**UI-only changes** (no Swift/native changes):
+```bash
+# 1. Bundle UI on Linux
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+# 2. Sync and build on Mac
+rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+  /home/tim/AndroidStudioProjects/pearcal-native/ \
+  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  cd ~/AndroidStudioProjects/pearcal-native && \
+  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
+    -sdk iphoneos -destination "generic/platform=iOS" \
+    CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -5'
+# 3. Copy .app back and install
+rsync -az "Tims-Mac-mini.local:/Users/tim/Library/Developer/Xcode/DerivedData/PearCal-ghqsfwfoxtjozjfvydtjkaomdoaa/Build/Products/Debug-iphoneos/PearCal.app" /tmp/
+ios-deploy --bundle /tmp/PearCal.app --id 00008030-0009714C2613402E
+```
+
+**Swift/native module changes** (also runs `pod install` first):
+```bash
+# 1. Sync and pod install + build on Mac
+rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+  /home/tim/AndroidStudioProjects/pearcal-native/ \
+  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
+  cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
+    -sdk iphoneos -destination "generic/platform=iOS" \
+    CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -5'
+# 2. Copy .app back and install
+rsync -az "Tims-Mac-mini.local:/Users/tim/Library/Developer/Xcode/DerivedData/PearCal-ghqsfwfoxtjozjfvydtjkaomdoaa/Build/Products/Debug-iphoneos/PearCal.app" /tmp/
+ios-deploy --bundle /tmp/PearCal.app --id 00008030-0009714C2613402E
+```
+
+**Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
+
+**Release (App Store):** Archive and export from Xcode on the Mac Mini. Increment `buildNumber` in `app.json` before each upload.
 
 ## Branch Strategy
 
@@ -121,7 +175,7 @@ Most method calls (`getProfile`, `putEvent`, `joinGroup`, etc.) route transparen
   - Group membership and events are mirrored from Autobase view back to local DB via `mirrorToLocal()`
 - **Peer discovery**: `Hyperswarm`, one topic per group (derived from `groupKey`)
 
-### Native Modules (Android — `android/app/src/main/java/com/pearcal/`)
+### Native Modules (Android — `android/app/src/main/java/com/pearcal/`, iOS — `ios/PearCal/`)
 
 | Module | Purpose |
 |--------|---------|
