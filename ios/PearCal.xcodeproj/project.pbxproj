@@ -7,14 +7,17 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		066E6FCB3F7385FFD861778E /* CameraModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278CCBB93EB9E31D691C8817 /* CameraModule.swift */; };
 		07A4B17B976D5E0D3673B3EF /* HapticModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D3E67A47AAF9D133026769D3 /* HapticModule.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */; };
 		22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 432CF75ADD4963D7351063E9 /* LinkModule.m */; };
 		24DA35638478C3E3161E1909 /* NotificationsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 43B39E45E490E815F6A2E8DC /* NotificationsModule.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6466122AC83FA96405613F46 /* ShareModule.m */; };
 		81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */; };
 		8790520B36DCA7944A6D8F8E /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EEB61CDBF78F983BB07207 /* HapticModule.swift */; };
+		8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */; };
 		92B051FA843A24860CCC167F /* NotificationsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB86438FC337C227BD692415 /* NotificationsModule.swift */; };
 		92E985E6CB0416747F8A9DC4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
@@ -23,6 +26,7 @@
 		E0DA430E00A88A151E604B9D /* ShareModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A19A60265BF82560F78ECA2 /* ShareModule.swift */; };
 		E8B53D8043C690B658D2DDC2 /* LinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DC41E56E5833C624E0BBE6 /* LinkModule.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
+		F3E8E86DD263668B0AE11972 /* QRScannerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */; };
 		FC2CE1543547C11B3FD49A2D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -33,12 +37,16 @@
 		15EEB61CDBF78F983BB07207 /* HapticModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = HapticModule.swift; path = PearCal/HapticModule.swift; sourceTree = "<group>"; };
 		16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = PearCal/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		17086FDCA2812725DD101353 /* DeepLinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DeepLinkModule.m; path = PearCal/DeepLinkModule.m; sourceTree = "<group>"; };
+		278CCBB93EB9E31D691C8817 /* CameraModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CameraModule.swift; path = PearCal/CameraModule.swift; sourceTree = "<group>"; };
 		3A19A60265BF82560F78ECA2 /* ShareModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareModule.swift; path = PearCal/ShareModule.swift; sourceTree = "<group>"; };
 		3D8DB875303C7D5BBE17A5A3 /* Pods-PearCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.release.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.release.xcconfig"; sourceTree = "<group>"; };
 		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
 		43B39E45E490E815F6A2E8DC /* NotificationsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = NotificationsModule.m; path = PearCal/NotificationsModule.m; sourceTree = "<group>"; };
 		5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PearCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
+		6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = CameraModule.m; path = PearCal/CameraModule.m; sourceTree = "<group>"; };
 		6466122AC83FA96405613F46 /* ShareModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShareModule.m; path = PearCal/ShareModule.m; sourceTree = "<group>"; };
+		672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = QRScannerModule.m; path = PearCal/QRScannerModule.m; sourceTree = "<group>"; };
+		718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRScannerModule.swift; path = PearCal/QRScannerModule.swift; sourceTree = "<group>"; };
 		8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PearCal.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		98DC41E56E5833C624E0BBE6 /* LinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LinkModule.swift; path = PearCal/LinkModule.swift; sourceTree = "<group>"; };
 		A58EAE82C681BCCDFCF5ED48 /* Pods-PearCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.debug.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.debug.xcconfig"; sourceTree = "<group>"; };
@@ -78,6 +86,10 @@
 				432CF75ADD4963D7351063E9 /* LinkModule.m */,
 				EB86438FC337C227BD692415 /* NotificationsModule.swift */,
 				43B39E45E490E815F6A2E8DC /* NotificationsModule.m */,
+				278CCBB93EB9E31D691C8817 /* CameraModule.swift */,
+				6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */,
+				718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */,
+				672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -391,6 +403,10 @@
 				22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */,
 				92B051FA843A24860CCC167F /* NotificationsModule.swift in Sources */,
 				24DA35638478C3E3161E1909 /* NotificationsModule.m in Sources */,
+				066E6FCB3F7385FFD861778E /* CameraModule.swift in Sources */,
+				8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */,
+				F3E8E86DD263668B0AE11972 /* QRScannerModule.swift in Sources */,
+				2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
