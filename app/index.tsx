@@ -195,7 +195,7 @@ export default function Root () {
         handleNotification(msg, webViewRef)
         return
       }
-      if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
+      if (msg.method === 'exitApp') { if (Platform.OS === 'android') BackHandler.exitApp(); return }
       if (msg.method === 'haptic') { PearCalHaptic?.impact?.(msg.args?.[0] ?? 'light'); return }
       if (msg.method === 'openURL') {
         PearCalDeepLink?.openURL?.(msg.args?.[0] ?? '').catch?.(() => {})
@@ -252,18 +252,20 @@ export default function Root () {
       const dataDir = dataUri.replace(/^file:\/\//, '')
 
             // Request notification permission on first launch (Android 13+)
-            try {
-              const { PermissionsAndroid } = require('react-native')
-              await PermissionsAndroid.request(
-                'android.permission.POST_NOTIFICATIONS',
-                {
-                  title: 'PearCal Reminders',
-                  message: 'Allow PearCal to send event reminders',
-                  buttonPositive: 'Allow',
-                  buttonNegative: 'Deny',
-                }
-              )
-            } catch(e) { console.log('Permission request error:', e) }
+            if (Platform.OS === 'android') {
+              try {
+                const { PermissionsAndroid } = require('react-native')
+                await PermissionsAndroid.request(
+                  'android.permission.POST_NOTIFICATIONS',
+                  {
+                    title: 'PearCal Reminders',
+                    message: 'Allow PearCal to send event reminders',
+                    buttonPositive: 'Allow',
+                    buttonNegative: 'Deny',
+                  }
+                )
+              } catch(e) { console.log('Permission request error:', e) }
+            }
       const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
       await jsAsset.downloadAsync()
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
@@ -397,6 +399,7 @@ webViewRef.current?.injectJavaScript(
     }
   }, [])
   useEffect(() => {
+    if (Platform.OS !== 'android') return
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       webViewRef.current?.injectJavaScript('if(window.__pearBack) window.__pearBack(); true;')
       return true
@@ -442,7 +445,7 @@ function PearLoadingScreen() {
   }, [])
   return (
     <View style={styles.center}>
-      <Animated.Image source={require('../android/app/src/main/ic_launcher-playstore.png')} style={[styles.icon, { transform: [{ scale: pulse }] }]} />
+      <Animated.Image source={require('../assets/images/icon.png')} style={[styles.icon, { transform: [{ scale: pulse }] }]} />
       <Text style={styles.loadingText}>PearCal</Text>
       <Text style={styles.loadingSubtext}>Starting up…</Text>
     </View>
