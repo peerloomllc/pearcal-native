@@ -32,6 +32,16 @@
       "versionCode": 1000013,
       "privacyPolicy": "https://peerloomllc.github.io/pearcal-native/privacy.html"
     },
+    "ios": {
+      "bundleIdentifier": "com.pearcal",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Used to set your profile photo",
+        "NSPhotoLibraryUsageDescription": "Used to set your profile photo",
+        "NSMicrophoneUsageDescription": "Required by AVCaptureSession for QR scanning and camera capture",
+        "LSApplicationQueriesSchemes": ["lightning"]
+      }
+    },
     "plugins": [
       [
         "expo-router"
