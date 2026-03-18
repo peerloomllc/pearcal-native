@@ -11,6 +11,7 @@ import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
 import { Asset } from 'expo-asset'
+import Constants from 'expo-constants'
 import * as FileSystem from 'expo-file-system/legacy'
 
 const { PearCalNotifications } = NativeModules
@@ -273,7 +274,9 @@ export default function Root () {
       setHtml(buildHtml(appBundleJs))
 
       const bareModule = Platform.OS === 'ios'
-        ? require('../assets/bare-ios.bundle')
+        ? (Constants.isDevice
+            ? require('../assets/bare-ios.bundle')
+            : require('../assets/bare-ios-sim.bundle'))
         : require('../assets/bare-universal.bundle')
       const bundleAsset = Asset.fromModule(bareModule)
       await bundleAsset.downloadAsync()

@@ -1,6 +1,6 @@
 # PearCal To-Do List
 
-Items are categorized by type, priority, and complexity. Completed items remain in the list with a completion date for historical reference.
+Items are categorized by type, priority, complexity, and platform (`[Android]`, `[iOS]`, `[Both]`). Completed items remain in the list with a completion date for historical reference.
 
 ---
 
@@ -9,12 +9,15 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 - [x] Converting a single event into a recurring series — completed 2026-03-10
 
 ## Features — High Priority / High Complexity
-- [ ] Seed word backup and restore capability (also prerequisite for ownership transfer)
-- [ ] iOS port
+- [ ] `[Both]` Seed word backup and restore capability (also prerequisite for ownership transfer)
+- [x] `[iOS]` iOS port — completed 2026-03-17
+
+## Features — Medium Priority / Low Complexity
+- [ ] `[Both]` Private event notes field: a notes/description field on events that is stored locally only and never synced to group peers
 
 ## Features — Medium Priority / Medium Complexity
 - [x] Group admin roles: add `admins: [memberId]` to group record; owner can promote/demote admins in Group Settings; admins get remove-member, reinvite, and blocklist UI permissions; writer handshake authorization stays owner-only — completed 2026-03-13
-- [ ] Ownership transfer: transfer Autobase bootstrap keypair to another member via Protomux; requires seed word backup as a prerequisite; update `ownerId` on group record and broadcast to all members (prerequisite: seed word backup)
+- [ ] `[Both]` Ownership transfer: transfer Autobase bootstrap keypair to another member via Protomux; requires seed word backup as a prerequisite; update `ownerId` on group record and broadcast to all members (prerequisite: seed word backup)
 
 ## Features — Medium Priority / Low Complexity
 - [x] Contact Developer button on About tab — completed 2026-03-10
@@ -35,7 +38,12 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 - [x] Users see group join notifications for pre-existing members (not the owner) when they join a group — completed 2026-03-11
 - [x] Persist dark/light mode preference to profile (currently resets on restart) — completed 2026-03-10
 
+## UI / UX — High Priority / Low Complexity
+- [x] `[iOS]` Fix app icon — completed 2026-03-17
+
 ## UI / UX — Medium Priority / Low Complexity
+- [x] `[Both]` Verify reminder/support page donation options match the About page — completed 2026-03-17
+- [x] `[Both]` Update Lightning address to `peerloomllc@strike.me` — completed 2026-03-17
 - [x] Update Lightning Address on About page to peerloomllc@strike.me — completed 2026-03-11
 - [x] Add USD donation option on About page — completed 2026-03-11
 - [x] Clarify event deletion button text and flow — completed 2026-03-10
@@ -67,13 +75,18 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 - [x] Edit recurring event confirmation dialog should be a bottom sheet (consistent with rest of app) — completed 2026-03-12
 
 ## Bugs — Medium Priority / Low Complexity
+- [ ] `[Both]` Nickname set during group join not saved: nickname entered on the join prompt is not persisted — user must reopen Group Settings and re-enter it for it to take effect
 - [x] Receiving notifications for deleted events at event time (but not at reminder time) — deleted events fire the event-time alarm even after deletion — completed 2026-03-12
 - [x] When a user joins a group, all existing events appear on their calendar and trigger a notification for each one — completed 2026-03-13
 - [x] New or edited recurring event series fires a separate notification for each occurrence instead of a single notification for the series — completed 2026-03-13
 - [x] When a user joins a group, the group color is sometimes changed unexpectedly — completed 2026-03-13
 
+## Bugs — High Priority / Medium Complexity
+- [ ] `[Both]` Group join issues on one device: group member list not updating on devices after a member joins, but leaving the group still sends a "someone left" notification to the owner — investigate sync/member state consistency
+- [ ] `[Both]` Joining a group erases the group name, color, and icon on the owner's device — joiner's device syncing back corrupted/empty group metadata to the owner
+
 ## Bugs — Low Priority / High Complexity
-- [ ] Autobase late-joiner replay: when a member wipes app data and rejoins, Autobase replays the full operation log — firing historical notifications, briefly churning the member list, and accumulating duplicate member records across wipe cycles. Mostly a dev/testing artifact (repeated wipes); real production impact is limited to mild notification spam (~N notifications) when a user reinstalls and rejoins an active group. Root cause: no reliable "catchup complete" signal in Autobase/Hypercore — blocks replicate asynchronously so a simple flag cleared after first base.update() fires too early. Defer until a clean solution presents itself.
+- [ ] `[Both]` Autobase late-joiner replay: when a member wipes app data and rejoins, Autobase replays the full operation log — firing historical notifications, briefly churning the member list, and accumulating duplicate member records across wipe cycles. Mostly a dev/testing artifact (repeated wipes); real production impact is limited to mild notification spam (~N notifications) when a user reinstalls and rejoins an active group. Root cause: no reliable "catchup complete" signal in Autobase/Hypercore — blocks replicate asynchronously so a simple flag cleared after first base.update() fires too early. Defer until a clean solution presents itself.
 
 ## UI / UX — Medium Priority / Low Complexity
 - [x] Add USD donation button to About page — completed 2026-03-12
@@ -85,8 +98,14 @@ Items are categorized by type, priority, and complexity. Completed items remain 
 
 ## DevOps / Release — High Priority / Low Complexity
 - [ ] Resolve GitHub account flagged by abuse detection: Actions disabled, release asset downloads blocked programmatically — contact support ticket open
+- [x] `[iOS]` Prepare App Store Connect: create app listing, bundle ID, certificates, provisioning profiles, screenshots, and metadata for PearCal — completed 2026-03-18
+- [ ] `[iOS]` Add App Store Connect build and upload steps to `scripts/release.sh`: archive with xcodebuild, export IPA, upload via `xcrun altool` or `xcrun notarytool` / Transporter (partial: `scripts/ios-appstore.sh` created as standalone Mac Mini script)
+
+## Features — Low Priority / Low Complexity
+- [ ] `[Android]` Investigate custom notification sound: explore using a custom sound file for event/reminder notifications via NotificationChannel
 
 ## DevOps / Release — Low Priority / Low Complexity
+- [ ] `[Android]` Enable simultaneous Debug + Release installs: set `applicationIdSuffix ".debug"` in the debug buildType in build.gradle so both APKs can coexist on the same device
 - [x] Update zapstore.yaml to include metadata_sources and app metadata — completed 2026-03-10
 - [x] GitHub releases: auto-generate release notes from PR "Summary" sections of all merged PRs since last release — completed 2026-03-10
 
