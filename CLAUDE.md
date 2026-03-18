@@ -54,6 +54,8 @@ iPhone UDID: `00008030-0009714C2613402E`
 ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain'
 ```
 
+**Note on configuration:** Use `-configuration Release` for device installs — Debug builds try to connect to a Metro bundler at localhost:8081, which fails on physical devices without a running dev server. Release builds embed the JS bundle.
+
 **UI-only changes** (no Swift/native changes):
 ```bash
 # 1. Bundle UI
@@ -66,13 +68,13 @@ rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native && \
-  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
+  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
   mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Debug-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && zip -qr PearCal-debug.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
-rsync -az Tims-Mac-mini.local:/tmp/PearCal-debug.ipa /tmp/
-ideviceinstaller install /tmp/PearCal-debug.ipa
+  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-release.ipa
 ```
 
 **Swift/native module changes** (also runs `pod install` first):
@@ -83,13 +85,13 @@ rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
-  cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
+  cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
   mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Debug-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && zip -qr PearCal-debug.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
-rsync -az Tims-Mac-mini.local:/tmp/PearCal-debug.ipa /tmp/
-ideviceinstaller install /tmp/PearCal-debug.ipa
+  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-release.ipa
 ```
 
 **Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
