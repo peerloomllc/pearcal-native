@@ -45,6 +45,10 @@ app-example
 /docs/plans/2026-03-10-time-format-toggle.md
 /docs/plans/2026-03-10-time-format-toggle-design.md
 
+# Local release script and TODO
+scripts/release.sh
+TODO.md
+
 # Local release script credentials and artifacts
 scripts/.env
 pearcal-v*.apk
