@@ -20074,7 +20074,7 @@ ${link}`;
     );
   }
   function AboutTab({ th, sync: sync2, closeSheetRef }) {
-    const LIGHTNING_ADDRESS = "timmy2383@strike.me";
+    const LIGHTNING_ADDRESS = "peerloomllc@strike.me";
     const lsBsCloseRef = (0, import_react2.useRef)(null);
     const [lightningModal, setLightningModal] = (0, import_react2.useState)(false);
     (0, import_react2.useEffect)(() => {

@@ -3211,7 +3211,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
 }
 
 function AboutTab ({ th, sync, closeSheetRef }) {
-  const LIGHTNING_ADDRESS = 'timmy2383@strike.me'
+  const LIGHTNING_ADDRESS = 'peerloomllc@strike.me'
   const lsBsCloseRef = useRef(null)
   const [lightningModal, setLightningModal] = useState(false)
   useEffect(() => {
