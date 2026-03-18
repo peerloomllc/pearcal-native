@@ -676,10 +676,10 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
 
     if (isSeries && body) body = body + ' · Recurring series'
     else if (isSeries) body = 'Recurring series'
-    send({ type: 'event', event: 'syncNotify', data: { title, body } })
+    send({ type: 'event', event: 'syncNotify', data: { title, body, tab: 'calendar' } })
   } catch (e) {
     console.error('notifySyncChange error:', e.message)
-    send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '' } })
+    send({ type: 'event', event: 'syncNotify', data: { title: 'Calendar updated', body: '', tab: 'calendar' } })
   }
 }
 function formatTime (t) {
