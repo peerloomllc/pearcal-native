@@ -272,7 +272,10 @@ export default function Root () {
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
       setHtml(buildHtml(appBundleJs))
 
-      const bundleAsset = Asset.fromModule(require('../assets/bare-universal.bundle'))
+      const bareModule = Platform.OS === 'ios'
+        ? require('../assets/bare-ios.bundle')
+        : require('../assets/bare-universal.bundle')
+      const bundleAsset = Asset.fromModule(bareModule)
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 

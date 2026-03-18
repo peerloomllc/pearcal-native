@@ -56,6 +56,8 @@ ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buil
 
 **Note on configuration:** Use `-configuration Release` for device installs — Debug builds try to connect to a Metro bundler at localhost:8081, which fails on physical devices without a running dev server. Release builds embed the JS bundle.
 
+**Signing note:** `DEVELOPMENT_TEAM=G79ALD29NA` uses the wildcard provisioning profile already cached on the Mac. `-allowProvisioningUpdates` does NOT work over SSH (no Apple account in the SSH session).
+
 **UI-only changes** (no Swift/native changes):
 ```bash
 # 1. Bundle UI
@@ -69,12 +71,22 @@ ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native && \
   xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
-    -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
-  mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
   cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa
+```
+
+**bare.js changes** (rebuild both bundles, then build iOS):
+```bash
+node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
+node_modules/.bin/bare-pack --host ios-arm64 --linked src/bare.js -o assets/bare-ios.bundle
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+# Then sync + build as above
 ```
 
 **Swift/native module changes** (also runs `pod install` first):
@@ -86,9 +98,10 @@ ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
   cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
-    -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
-  mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
   cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa

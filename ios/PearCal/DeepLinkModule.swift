@@ -4,7 +4,15 @@ import UIKit
 class DeepLinkModule: NSObject {
 
   @objc func openURL(_ urlString: String) {
-    guard let url = URL(string: urlString) else { return }
+    // Convert Android geo: URLs to iOS maps: URLs
+    var resolved = urlString
+    if urlString.hasPrefix("geo:") {
+      if let q = URLComponents(string: urlString)?.queryItems?.first(where: { $0.name == "q" })?.value,
+         let encoded = q.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+        resolved = "maps:0,0?q=\(encoded)"
+      }
+    }
+    guard let url = URL(string: resolved) else { return }
     DispatchQueue.main.async {
       UIApplication.shared.open(url)
     }
