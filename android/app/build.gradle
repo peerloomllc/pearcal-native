@@ -92,7 +92,8 @@ android {
         applicationId 'com.pearcal'
         minSdkVersion 29
         targetSdkVersion rootProject.ext.targetSdkVersion
-        def tagVersion = System.getenv("APP_VERSION") ?: findProperty("APP_VERSION") ?: "1.0.0"
+        def appJsonVersion = new groovy.json.JsonSlurper().parse(file("${rootProject.projectDir.parent}/app.json")).expo.version
+        def tagVersion = System.getenv("APP_VERSION") ?: findProperty("APP_VERSION") ?: appJsonVersion ?: "1.0.0"
         def (major, minor, patch) = tagVersion.tokenize('.').collect { it.toInteger() }
         versionCode major * 10000 + minor * 100 + patch
         versionName tagVersion
@@ -122,6 +123,7 @@ android {
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
+            applicationIdSuffix ".debug"
         }
         release {
             signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
