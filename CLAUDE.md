@@ -45,50 +45,51 @@ Keystore: `~/keystore.jks` — alias: `pearcal`
 
 ### iOS
 
-iOS builds run on Mac Mini (`Tims-Mac-mini.local`) via SSH. Write code on Linux, sync to Mac, build remotely, install via `ios-deploy` from Linux (iPhone connected here via USB).
+iOS builds run on Mac Mini (`Tims-Mac-mini.local`) via SSH. Write code on Linux, sync to Mac, build remotely, package as `.ipa`, copy back, install via `ideviceinstaller` (iPhone connected to Linux via USB).
 
 iPhone UDID: `00008030-0009714C2613402E`
 
-**Sync code to Mac** (run after any iOS-related file change):
+**Signing keychain:** `~/Library/Keychains/buildkey.keychain` (no password). Must be unlocked once per Mac restart:
 ```bash
-rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
-  /home/tim/AndroidStudioProjects/pearcal-native/ \
-  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain'
 ```
 
 **UI-only changes** (no Swift/native changes):
 ```bash
-# 1. Bundle UI on Linux
+# 1. Bundle UI
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
-# 2. Sync and build on Mac
+# 2. Sync, build, package, install
 rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/AndroidStudioProjects/pearcal-native/ \
   Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native && \
   xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
-    -sdk iphoneos -destination "generic/platform=iOS" \
-    CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -5'
-# 3. Copy .app back and install
-rsync -az "Tims-Mac-mini.local:/Users/tim/Library/Developer/Xcode/DerivedData/PearCal-ghqsfwfoxtjozjfvydtjkaomdoaa/Build/Products/Debug-iphoneos/PearCal.app" /tmp/
-ios-deploy --bundle /tmp/PearCal.app --id 00008030-0009714C2613402E
+    -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
+  mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Debug-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-debug.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-debug.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-debug.ipa
 ```
 
 **Swift/native module changes** (also runs `pod install` first):
 ```bash
-# 1. Sync and pod install + build on Mac
 rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/AndroidStudioProjects/pearcal-native/ \
   Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
   cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Debug \
-    -sdk iphoneos -destination "generic/platform=iOS" \
-    CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tail -5'
-# 2. Copy .app back and install
-rsync -az "Tims-Mac-mini.local:/Users/tim/Library/Developer/Xcode/DerivedData/PearCal-ghqsfwfoxtjozjfvydtjkaomdoaa/Build/Products/Debug-iphoneos/PearCal.app" /tmp/
-ios-deploy --bundle /tmp/PearCal.app --id 00008030-0009714C2613402E
+    -sdk iphoneos -destination "generic/platform=iOS" -allowProvisioningUpdates 2>&1 | tail -3 && \
+  mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d /Users/tim/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Debug-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-debug.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-debug.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-debug.ipa
 ```
 
 **Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
