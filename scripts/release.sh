@@ -726,6 +726,11 @@ APP_VERSION="$APP_VERSION" node -e "
   console.log('Updated app.json to ' + v + ' (versionCode: ' + versionCode + ')');
 "
 
+# Derive APP_VERSION_CODE from the version string for Gradle
+IFS='.' read -r _vmaj _vmin _vpat <<< "$APP_VERSION"
+APP_VERSION_CODE=$(( _vmaj * 1000000 + _vmin * 1000 + _vpat ))
+export APP_VERSION_CODE
+
 echo "    Version     : $(node -p "require('./app.json').expo.version")"
 echo "    versionCode : $(node -p "require('./app.json').expo.android.versionCode")"
 _confirm "app.json version looks correct — proceed with bundle builds?"
@@ -748,14 +753,14 @@ node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
 # ---------------------------------------------------------------------------
 echo "==> Building signed release APK (this takes a few minutes)..."
 (
-  export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION
+  export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
   cd android && ./gradlew assembleRelease -q
 )
 
 if $PUBLISH_PLAY; then
   echo "==> Building signed release AAB for Google Play..."
   (
-    export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION
+    export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
     cd android && ./gradlew bundleRelease -q
   )
 fi

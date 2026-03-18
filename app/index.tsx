@@ -19,6 +19,7 @@ const { PearCalQRScanner } = NativeModules
 const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
+const { PearCalBGSync } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -195,7 +196,7 @@ export default function Root () {
         handleNotification(msg, webViewRef)
         return
       }
-      if (msg.method === 'exitApp') { BackHandler.exitApp(); return }
+      if (msg.method === 'exitApp') { if (Platform.OS === 'android') BackHandler.exitApp(); return }
       if (msg.method === 'haptic') { PearCalHaptic?.impact?.(msg.args?.[0] ?? 'light'); return }
       if (msg.method === 'openURL') {
         PearCalDeepLink?.openURL?.(msg.args?.[0] ?? '').catch?.(() => {})
@@ -252,24 +253,29 @@ export default function Root () {
       const dataDir = dataUri.replace(/^file:\/\//, '')
 
             // Request notification permission on first launch (Android 13+)
-            try {
-              const { PermissionsAndroid } = require('react-native')
-              await PermissionsAndroid.request(
-                'android.permission.POST_NOTIFICATIONS',
-                {
-                  title: 'PearCal Reminders',
-                  message: 'Allow PearCal to send event reminders',
-                  buttonPositive: 'Allow',
-                  buttonNegative: 'Deny',
-                }
-              )
-            } catch(e) { console.log('Permission request error:', e) }
+            if (Platform.OS === 'android') {
+              try {
+                const { PermissionsAndroid } = require('react-native')
+                await PermissionsAndroid.request(
+                  'android.permission.POST_NOTIFICATIONS',
+                  {
+                    title: 'PearCal Reminders',
+                    message: 'Allow PearCal to send event reminders',
+                    buttonPositive: 'Allow',
+                    buttonNegative: 'Deny',
+                  }
+                )
+              } catch(e) { console.log('Permission request error:', e) }
+            }
       const jsAsset = Asset.fromModule(require('../assets/app-ui.bundle'))
       await jsAsset.downloadAsync()
       const appBundleJs = await fetch(jsAsset.localUri!).then(r => r.text())
       setHtml(buildHtml(appBundleJs))
 
-      const bundleAsset = Asset.fromModule(require('../assets/bare-universal.bundle'))
+      const bareModule = Platform.OS === 'ios'
+        ? require('../assets/bare-ios.bundle')
+        : require('../assets/bare-universal.bundle')
+      const bundleAsset = Asset.fromModule(bareModule)
       await bundleAsset.downloadAsync()
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
@@ -299,7 +305,15 @@ export default function Root () {
       })
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
-      onEvent('ready', () => { setDbReady(true); dbReadyRef.current = true })
+      onEvent('ready', () => {
+        setDbReady(true)
+        dbReadyRef.current = true
+        if (Platform.OS === 'ios') {
+          PearCalBGSync?.checkPendingBGSync?.().then((pending: boolean) => {
+            if (pending) sendToWorklet({ method: 'sync', id: -99, args: [] })
+          }).catch(() => {})
+        }
+      })
       onEvent('error', (msg: string) => {
         if (msg && msg.includes('keep awake')) return // ignore second worklet startup error
         setError(msg)
@@ -313,6 +327,8 @@ webViewRef.current?.injectJavaScript(
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
         )
+        // No-op if no BGTask is pending; harmless for foreground syncs
+        if (Platform.OS === 'ios') PearCalBGSync?.completeBGSync?.(true)
       })
 
       onEvent('groupDeleted', (groupId: string) => {
@@ -397,6 +413,7 @@ webViewRef.current?.injectJavaScript(
     }
   }, [])
   useEffect(() => {
+    if (Platform.OS !== 'android') return
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       webViewRef.current?.injectJavaScript('if(window.__pearBack) window.__pearBack(); true;')
       return true
@@ -442,7 +459,7 @@ function PearLoadingScreen() {
   }, [])
   return (
     <View style={styles.center}>
-      <Animated.Image source={require('../android/app/src/main/ic_launcher-playstore.png')} style={[styles.icon, { transform: [{ scale: pulse }] }]} />
+      <Animated.Image source={require('../assets/images/icon.png')} style={[styles.icon, { transform: [{ scale: pulse }] }]} />
       <Text style={styles.loadingText}>PearCal</Text>
       <Text style={styles.loadingSubtext}>Starting up…</Text>
     </View>

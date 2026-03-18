@@ -4,9 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PearCal is a peer-to-peer calendar app for Android built with Expo (React Native). It uses a dual-runtime architecture: a React Native shell hosts a WebView that renders the UI, while a separate [Bare](https://github.com/nicolo-ribaudo/bare) runtime runs the P2P backend.
+PearCal is a peer-to-peer calendar app for Android and iOS built with Expo (React Native). It uses a dual-runtime architecture: a React Native shell hosts a WebView that renders the UI, while a separate [Bare](https://github.com/nicolo-ribaudo/bare) runtime runs the P2P backend.
 
 ## Build & Deploy
+
+### Android
 
 Two test devices are connected via ADB:
 - Device 1: `53071FDAP00038` — Pixel/GrapheneOS (owner)
@@ -40,6 +42,74 @@ cd android && ./gradlew assembleRelease && cd ..
 cp android/app/build/outputs/apk/release/app-release.apk ~/pearcal-release.apk
 ```
 Keystore: `~/keystore.jks` — alias: `pearcal`
+
+### iOS
+
+iOS builds run on Mac Mini (`Tims-Mac-mini.local`) via SSH. Write code on Linux, sync to Mac, build remotely, package as `.ipa`, copy back, install via `ideviceinstaller` (iPhone connected to Linux via USB).
+
+iPhone UDID: `00008030-0009714C2613402E`
+
+**Signing keychain:** `~/Library/Keychains/buildkey.keychain` (no password). Must be unlocked once per Mac restart:
+```bash
+ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain'
+```
+
+**Note on configuration:** Use `-configuration Release` for device installs — Debug builds try to connect to a Metro bundler at localhost:8081, which fails on physical devices without a running dev server. Release builds embed the JS bundle.
+
+**Signing note:** `DEVELOPMENT_TEAM=G79ALD29NA` uses the wildcard provisioning profile already cached on the Mac. `-allowProvisioningUpdates` does NOT work over SSH (no Apple account in the SSH session).
+
+**UI-only changes** (no Swift/native changes):
+```bash
+# 1. Bundle UI
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+# 2. Sync, build, package, install
+rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+  /home/tim/AndroidStudioProjects/pearcal-native/ \
+  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
+  cd ~/AndroidStudioProjects/pearcal-native && \
+  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
+    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-release.ipa
+```
+
+**bare.js changes** (rebuild both bundles, then build iOS):
+```bash
+node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
+node_modules/.bin/bare-pack --host ios-arm64 --linked src/bare.js -o assets/bare-ios.bundle
+npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
+  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
+# Then sync + build as above
+```
+
+**Swift/native module changes** (also runs `pod install` first):
+```bash
+rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+  /home/tim/AndroidStudioProjects/pearcal-native/ \
+  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
+  cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
+  cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
+    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
+  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
+  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
+ideviceinstaller install /tmp/PearCal-release.ipa
+```
+
+**Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
+
+**Release (App Store):** Archive and export from Xcode on the Mac Mini. Increment `buildNumber` in `app.json` before each upload.
 
 ## Branch Strategy
 
@@ -121,7 +191,7 @@ Most method calls (`getProfile`, `putEvent`, `joinGroup`, etc.) route transparen
   - Group membership and events are mirrored from Autobase view back to local DB via `mirrorToLocal()`
 - **Peer discovery**: `Hyperswarm`, one topic per group (derived from `groupKey`)
 
-### Native Modules (Android — `android/app/src/main/java/com/pearcal/`)
+### Native Modules (Android — `android/app/src/main/java/com/pearcal/`, iOS — `ios/PearCal/`)
 
 | Module | Purpose |
 |--------|---------|
