@@ -35,7 +35,7 @@ const KEY_LEN  = 64    // hex chars (32-byte public key)
  *                                use this to update React state in the UI
  * @returns {Promise<{ ok: boolean, error?: string, group?: object }>}
  */
-export async function handleInviteLink (url, db, sync, onJoined) {
+export async function handleInviteLink (url, db, sync, onJoined, nickname = null) {
   // 1. Parse
   const parsed = parseInviteLink(url)
   if (!parsed.ok) return parsed
@@ -62,7 +62,7 @@ export async function handleInviteLink (url, db, sync, onJoined) {
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
-  const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey }
+  const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey, ...(nickname ? { nickname } : {}) }
   const inviterMember = { id: inviterKey, name: 'Inviter', avatar: '?', publicKey: inviterKey }
 
   const group = {
