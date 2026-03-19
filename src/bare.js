@@ -540,12 +540,25 @@ function makeApply (groupId) {
             const winningValue = existing.value
             const existingMembers = winningValue.members ?? []
             const incomingMembers = val.value.members ?? []
+            // Read local DB to preserve nicknames that may not be in the Autobase view yet
+            const localGroup = await db.get(val.key).catch(() => null)
+            const localMembersMap = new Map()
+            for (const m of (localGroup?.value?.members ?? [])) localMembersMap.set(m.id, m)
             const mergedMap = new Map()
-            for (const m of existingMembers) mergedMap.set(m.id, m)
+            // Seed from winning VIEW value, overlaying local DB nickname if VIEW lacks it
+            for (const m of existingMembers) {
+              const localM = localMembersMap.get(m.id)
+              mergedMap.set(m.id, { ...m, nickname: m.nickname || localM?.nickname || '' })
+            }
+            // Merge incoming (losing) members, also consulting local DB for nickname
             for (const m of incomingMembers) {
               const prev = mergedMap.get(m.id)
-              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+              const localM = localMembersMap.get(m.id)
+              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
+                mergedMap.set(m.id, { ...m, nickname: m.nickname || localM?.nickname || prev?.nickname || '' })
+              }
             }
+
             const merged = {
               ...winningValue,
               color:   winningValue.color   || existing?.value?.color,
@@ -950,7 +963,7 @@ async function init (dir, attempt = 0) {
                   await db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
                   // Notify owner that member left
                   const leavingMember = (group.members ?? []).find(m => m.id === memberId)
-                  const leavingName = leavingMember?.name || 'Someone'
+                  const leavingName = leavingMember?.nickname || leavingMember?.name || 'Someone'
                   send({ type: 'event', event: 'syncNotify', data: {
                     title: leavingName + ' left ' + (group.name || 'your group'),
                     body: 'Tap to view the group',

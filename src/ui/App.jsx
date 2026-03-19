@@ -565,12 +565,12 @@ export default function App ({ db, notifs, sync }) {
   }
 
   const joinWithNickname = useCallback(async (url, nickname) => {
+    const nick = nickname && nickname !== profile?.name ? nickname : null
     const result = await handleInviteLink(url, db, sync, g => {
-      setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
       setTab('groups')
-    })
-    if (result?.ok && result.group && nickname && nickname !== profile?.name) {
-      await db.setMemberNickname(result.group.id, nickname).catch(() => {})
+    }, nick)
+    if (result?.ok && result.group) {
+      setGroups(prev => prev.find(x => x.id === result.group.id) ? prev : [...prev, result.group])
     }
     if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
     setPendingJoin(null)
