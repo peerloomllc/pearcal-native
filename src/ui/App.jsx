@@ -2142,7 +2142,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
 
           <div>
-            <Label th={th}>Reminder</Label>
+            <Label th={th}>Reminder(s)</Label>
             <RemindersEditor
               th={th}
               reminders={reminders}

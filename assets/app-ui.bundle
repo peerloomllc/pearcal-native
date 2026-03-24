@@ -18430,7 +18430,7 @@
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Reminder" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Reminder(s)" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               RemindersEditor,
               {
