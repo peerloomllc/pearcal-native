@@ -1898,6 +1898,64 @@ function expandRecurring (ev) {
   return out
 }
 
+function RemindersEditor ({ th, reminders, setReminders }) {
+  const FONT = 'Geist, system-ui, sans-serif'
+  const inp = {
+    width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
+    fontWeight: 300, border: `1px solid ${th.border}`, background: th.inputBg,
+    color: th.text.color, fontFamily: FONT, appearance: 'none', boxSizing: 'border-box',
+  }
+
+  function addReminder () {
+    if (reminders.length >= 3) return
+    const next = REMINDER_OPTIONS.find(o => !reminders.includes(o.value))
+    if (next) setReminders([...reminders, next.value])
+  }
+
+  function removeReminder (idx) {
+    setReminders(reminders.filter((_, i) => i !== idx))
+  }
+
+  function updateReminder (idx, value) {
+    const updated = [...reminders]
+    updated[idx] = value
+    setReminders(updated)
+  }
+
+  return (
+    <div>
+      {reminders.map((val, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <select
+            style={{ ...inp, flex: 1 }}
+            value={val}
+            onChange={e => updateReminder(idx, Number(e.target.value))}>
+            {REMINDER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}
+                disabled={opt.value !== val && reminders.includes(opt.value)}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => removeReminder(idx)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer',
+              color: th.muted, fontSize: 18, padding: '0 4px', lineHeight: 1 }}>
+            ×
+          </button>
+        </div>
+      ))}
+      {reminders.length < 3 && (
+        <button onClick={addReminder}
+          style={{ background: 'none', border: `1px dashed ${th.border}`, borderRadius: 10,
+            color: th.muted, fontSize: 13, fontWeight: 300, padding: '8px 12px',
+            cursor: 'pointer', width: '100%', fontFamily: FONT }}>
+          + Add reminder
+        </button>
+      )}
+    </div>
+  )
+}
+
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
@@ -1930,6 +1988,24 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     if (cols.length > 0) setEv(e => ({ ...e, color: cols[0], colors: cols }))
     else setEv(e => ({ ...e, colors: [] }))
   }, [ev.groups, groups])
+
+  const [reminders, setReminders] = useState([])
+
+  useEffect(() => {
+    if (!db) return
+    const eventId = modal.event?.id
+    if (!eventId) return
+    db.getReminders(eventId).then(r => {
+      if (r && r.length > 0) {
+        setReminders(r)
+      } else if (modal.mode === 'create') {
+        const profileDefault = typeof profile?.defaultReminder === 'number'
+          ? profile.defaultReminder : 15
+        if (profileDefault > 0) setReminders([profileDefault])
+        else setReminders([])
+      }
+    }).catch(() => {})
+  }, [])
 
   const [titleErr, setTitleErr] = useState('')
   const [pastTitles, setPastTitles] = useState([])
@@ -2062,11 +2138,13 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               </div>
             </div>
 
-          <div><Label th={th}>Reminder</Label>
-            <select style={{ ...inp, appearance:'none' }} value={ev.reminder}
-              onChange={e => set('reminder', Number(e.target.value))}>
-              {REMINDER_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+          <div>
+            <Label th={th}>Reminder</Label>
+            <RemindersEditor
+              th={th}
+              reminders={reminders}
+              setReminders={setReminders}
+            />
           </div>
 
           {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
