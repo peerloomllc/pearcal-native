@@ -65,11 +65,11 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
 # 2. Sync, build, package, install
 rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
-  /home/tim/AndroidStudioProjects/pearcal-native/ \
-  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+  /home/tim/peerloomllc/pearcal-native/ \
+  Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
-  cd ~/AndroidStudioProjects/pearcal-native && \
+  cd ~/peerloomllc/pearcal-native && \
   xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
     OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
@@ -92,11 +92,11 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
 **Swift/native module changes** (also runs `pod install` first):
 ```bash
 rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
-  /home/tim/AndroidStudioProjects/pearcal-native/ \
-  Tims-Mac-mini.local:~/AndroidStudioProjects/pearcal-native/
+  /home/tim/peerloomllc/pearcal-native/ \
+  Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
-  cd ~/AndroidStudioProjects/pearcal-native/ios && pod install && \
+  cd ~/peerloomllc/pearcal-native/ios && pod install && \
   cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
     OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
