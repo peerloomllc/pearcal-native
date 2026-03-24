@@ -15912,14 +15912,17 @@
   var GROUP_EMOJIS = ["\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}", "\u26BD", "\u{1F4DA}", "\u{1F3AE}", "\u{1F3CB}\uFE0F", "\u{1F3B5}", "\u{1F33F}", "\u{1F43E}", "\u2708\uFE0F", "\u{1F355}", "\u{1F4BC}", "\u{1F3A8}"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  var MORNING_OF = -1;
+  var DAY_BEFORE = -2;
   var REMINDER_OPTIONS = [
-    { label: "None", value: 0 },
     { label: "5 min before", value: 5 },
     { label: "10 min before", value: 10 },
     { label: "15 min before", value: 15 },
     { label: "30 min before", value: 30 },
     { label: "1 hour before", value: 60 },
     { label: "2 hours before", value: 120 },
+    { label: "Morning of (9 AM)", value: MORNING_OF },
+    { label: "Day before (9 AM)", value: DAY_BEFORE },
     { label: "1 day before", value: 1440 }
   ];
   function themes() {
@@ -16199,7 +16202,7 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const saveEvent = (0, import_react2.useCallback)(async (ev, scope = "one", options = {}) => {
+    const saveEvent = (0, import_react2.useCallback)(async (ev, scope = "one", options = {}, reminders = []) => {
       const { _prevDate, ...evClean } = ev;
       ev = evClean;
       const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : scope === "future" && ev.recurrenceId ? (() => {
@@ -16232,7 +16235,9 @@
         for (const occ of occurrences) {
           const evWithAuthor = { ...occ, updatedByName: profile?.name ?? "Someone", updatedById: profile?.id ?? "" };
           await db2.putEvent(evWithAuthor);
-          await notifs2?.scheduleForEvent(evWithAuthor);
+          await db2.putReminders(ev.id, reminders);
+          await notifs2?.cancelForEvent(ev.id);
+          await notifs2?.scheduleForEvent(evWithAuthor, reminders);
           const evToSync = _prevDate && occ.id === ev.id ? { ...evWithAuthor, _prevDate } : evWithAuthor;
           for (const gid of evWithAuthor.groups ?? []) {
             await sync2?.putEvent(gid, evToSync).catch((e49) => console.warn("[SYNC-ERR]", e49?.message));
@@ -16476,7 +16481,7 @@
         allDay: false,
         start: defaultStart,
         end: defaultEnd,
-        reminder: profile?.defaultReminder ?? 15,
+        reminder: 0,
         groups: [],
         invitees: [],
         color: "#6C9BF5",
@@ -16717,7 +16722,7 @@
         {
           th,
           ev: scopeSheet.ev,
-          onSave: saveEvent,
+          onSave: (ev, scope, opts) => saveEvent(ev, scope, opts, scopeSheet.reminders ?? []),
           onDismiss: () => setScopeSheet(null),
           closeRef: closeScopeSheetRef
         }
@@ -16773,7 +16778,7 @@
           onRequestConfirm: (req) => {
             if (req.type === "editScope") {
               setModal(null);
-              setScopeSheet({ ev: req.ev });
+              setScopeSheet({ ev: req.ev, reminders: req.reminders ?? [] });
             } else if (req.type === "deleteEvent") {
               setModal(null);
               setConfirmSheet({
@@ -18110,6 +18115,91 @@
     }
     return out;
   }
+  function RemindersEditor({ th, reminders, setReminders }) {
+    const FONT2 = "Geist, system-ui, sans-serif";
+    const inp = {
+      width: "100%",
+      padding: "10px 12px",
+      borderRadius: 10,
+      fontSize: 13,
+      fontWeight: 300,
+      border: `1px solid ${th.border}`,
+      background: th.inputBg,
+      color: th.text.color,
+      fontFamily: FONT2,
+      appearance: "none",
+      boxSizing: "border-box"
+    };
+    function addReminder() {
+      if (reminders.length >= 3) return;
+      const next = REMINDER_OPTIONS.find((o28) => !reminders.includes(o28.value));
+      if (next) setReminders([...reminders, next.value]);
+    }
+    function removeReminder(idx) {
+      setReminders(reminders.filter((_, i2) => i2 !== idx));
+    }
+    function updateReminder(idx, value) {
+      const updated = [...reminders];
+      updated[idx] = value;
+      setReminders(updated);
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+      reminders.map((val, idx) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "select",
+          {
+            style: { ...inp, flex: 1 },
+            value: val,
+            onChange: (e49) => updateReminder(idx, Number(e49.target.value)),
+            children: REMINDER_OPTIONS.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "option",
+              {
+                value: opt.value,
+                disabled: opt.value !== val && reminders.includes(opt.value),
+                children: opt.label
+              },
+              opt.value
+            ))
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => removeReminder(idx),
+            style: {
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: th.muted,
+              fontSize: 18,
+              padding: "0 4px",
+              lineHeight: 1
+            },
+            children: "\xD7"
+          }
+        )
+      ] }, idx)),
+      reminders.length < 3 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          onClick: addReminder,
+          style: {
+            background: "none",
+            border: `1px dashed ${th.border}`,
+            borderRadius: 10,
+            color: th.muted,
+            fontSize: 13,
+            fontWeight: 300,
+            padding: "8px 12px",
+            cursor: "pointer",
+            width: "100%",
+            fontFamily: FONT2
+          },
+          children: "+ Add reminder"
+        }
+      )
+    ] });
+  }
   function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef }) {
     const [ev, setEv] = (0, import_react2.useState)(modal.event);
     const [saving, setSaving] = (0, import_react2.useState)(false);
@@ -18139,6 +18229,22 @@
       if (cols.length > 0) setEv((e49) => ({ ...e49, color: cols[0], colors: cols }));
       else setEv((e49) => ({ ...e49, colors: [] }));
     }, [ev.groups, groups]);
+    const [reminders, setReminders] = (0, import_react2.useState)([]);
+    (0, import_react2.useEffect)(() => {
+      if (!db2) return;
+      const eventId = modal.event?.id;
+      if (!eventId) return;
+      db2.getReminders(eventId).then((r7) => {
+        if (r7 && r7.length > 0) {
+          setReminders(r7);
+        } else if (modal.mode === "create") {
+          const profileDefault = typeof profile?.defaultReminder === "number" ? profile.defaultReminder : 15;
+          if (profileDefault > 0) setReminders([profileDefault]);
+          else setReminders([]);
+        }
+      }).catch(() => {
+      });
+    }, []);
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
     const [pastTitles, setPastTitles] = (0, import_react2.useState)([]);
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
@@ -18171,16 +18277,16 @@
         const newInvitees = [...toSave.invitees ?? []].sort().join(",");
         if (origGroups !== newGroups || origInvitees !== newInvitees) {
           setSaving(true);
-          await onSave(toSave, "future", { propagateGroups: true });
+          await onSave(toSave, "future", { propagateGroups: true }, reminders);
           setSaving(false);
           return;
         }
         bsCloseRef.current?.();
-        onRequestConfirm({ type: "editScope", ev: toSave });
+        onRequestConfirm({ type: "editScope", ev: toSave, reminders });
         return;
       }
       setSaving(true);
-      await onSave(toSave, "one");
+      await onSave(toSave, "one", {}, reminders);
       setSaving(false);
     }
     const bsCloseRef = (0, import_react2.useRef)(null);
@@ -18326,12 +18432,11 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Reminder" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "select",
+              RemindersEditor,
               {
-                style: { ...inp, appearance: "none" },
-                value: ev.reminder,
-                onChange: (e49) => set("reminder", Number(e49.target.value)),
-                children: REMINDER_OPTIONS2.map((r7) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r7.value, children: r7.label }, r7.value))
+                th,
+                reminders,
+                setReminders
               }
             )
           ] }),
@@ -20669,7 +20774,7 @@ ${link}`;
           maxHeight: defaultRemOpen ? "200px" : "0px",
           overflow: "hidden",
           transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "select",
           {
             value: profile?.defaultReminder ?? 15,
@@ -20689,7 +20794,10 @@ ${link}`;
               fontFamily: FONT,
               appearance: "none"
             },
-            children: REMINDER_OPTIONS.map((r7) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r7.value, children: r7.label }, r7.value))
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: 0, children: "None" }),
+              REMINDER_OPTIONS.map((r7) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r7.value, children: r7.label }, r7.value))
+            ]
           }
         ) }) })
       ] }),
@@ -20942,10 +21050,12 @@ ${link}`;
     putMember: (gid, m3) => window.__pearDB.call("putMember", gid, m3),
     removeMember: (gid, mid) => window.__pearDB.call("removeMember", gid, mid),
     resyncGroup: (groupId) => window.__pearDB.call("resyncGroup", groupId),
-    setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick)
+    setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick),
+    getReminders: (id) => window.__pearDB.call("getReminders", id),
+    putReminders: (id, r7) => window.__pearDB.call("putReminders", id, r7)
   };
   var notifs = {
-    scheduleForEvent: (ev) => window.__pearDB.call("scheduleForEvent", ev),
+    scheduleForEvent: (ev, reminders) => window.__pearDB.call("scheduleForEvent", ev, reminders),
     cancelForEvent: (id) => window.__pearDB.call("cancelForEvent", id),
     restoreAll: () => window.__pearDB.call("restoreAll")
   };
