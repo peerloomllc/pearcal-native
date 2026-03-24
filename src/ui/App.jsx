@@ -205,10 +205,19 @@ const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MORNING_OF = -1
+const DAY_BEFORE = -2
+
 const REMINDER_OPTIONS = [
-  {label:'None',value:0},{label:'5 min before',value:5},{label:'10 min before',value:10},
-  {label:'15 min before',value:15},{label:'30 min before',value:30},
-  {label:'1 hour before',value:60},{label:'2 hours before',value:120},{label:'1 day before',value:1440},
+  {label:'5 min before',      value:5},
+  {label:'10 min before',     value:10},
+  {label:'15 min before',     value:15},
+  {label:'30 min before',     value:30},
+  {label:'1 hour before',     value:60},
+  {label:'2 hours before',    value:120},
+  {label:'Morning of (9 AM)', value:MORNING_OF},
+  {label:'Day before (9 AM)', value:DAY_BEFORE},
+  {label:'1 day before',      value:1440},
 ]
 
 function themes () {
@@ -733,7 +742,7 @@ export default function App ({ db, notifs, sync }) {
     const defaultEnd   = endHour + ':00'
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
-      allDay:false, start:defaultStart, end:defaultEnd, reminder: profile?.defaultReminder ?? 15,
+      allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
       groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
     }})
   }
@@ -3556,6 +3565,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
                 border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
                 fontFamily:FONT, appearance:'none' }}>
+              <option value={0}>None</option>
               {REMINDER_OPTIONS.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
