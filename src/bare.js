@@ -77,6 +77,8 @@ async function handle (method, args) {
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
+    case 'getReminders':     return getReminders(args[0])
+    case 'putReminders':     return putReminders(args[0], args[1])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -128,14 +130,38 @@ async function putEvent (event) {
 
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
+  await db.del('reminders:' + id).catch(() => {})
 }
 
 async function deleteEventSeries (recurrenceId) {
   const toDelete = []
   for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
-    if (value.recurrenceId === recurrenceId) toDelete.push(key)
+    if (value.recurrenceId === recurrenceId) toDelete.push({ key, id: value.id })
   }
-  for (const key of toDelete) await db.del(key)
+  for (const { key, id } of toDelete) {
+    await db.del(key)
+    await db.del('reminders:' + id).catch(() => {})
+  }
+}
+
+async function getReminders (eventId) {
+  const node = await db.get('reminders:' + eventId)
+  if (node) return node.value
+  // One-time migration: seed from legacy event.reminder field
+  let legacyReminder = 0
+  for await (const { value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (value.id === eventId) { legacyReminder = value.reminder ?? 0; break }
+  }
+  if (legacyReminder > 0) {
+    const migrated = [legacyReminder]
+    await db.put('reminders:' + eventId, migrated)
+    return migrated
+  }
+  return []
+}
+
+async function putReminders (eventId, reminders) {
+  await db.put('reminders:' + eventId, reminders)
 }
 
 async function localDeleteEvent (date, id) {

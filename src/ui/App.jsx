@@ -205,10 +205,19 @@ const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
+const MORNING_OF = -1
+const DAY_BEFORE = -2
+
 const REMINDER_OPTIONS = [
-  {label:'None',value:0},{label:'5 min before',value:5},{label:'10 min before',value:10},
-  {label:'15 min before',value:15},{label:'30 min before',value:30},
-  {label:'1 hour before',value:60},{label:'2 hours before',value:120},{label:'1 day before',value:1440},
+  {label:'5 min before',      value:5},
+  {label:'10 min before',     value:10},
+  {label:'15 min before',     value:15},
+  {label:'30 min before',     value:30},
+  {label:'1 hour before',     value:60},
+  {label:'2 hours before',    value:120},
+  {label:'Morning of (9 AM)', value:MORNING_OF},
+  {label:'Day before (9 AM)', value:DAY_BEFORE},
+  {label:'1 day before',      value:1440},
 ]
 
 function themes () {
@@ -457,7 +466,7 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
-  const saveEvent = useCallback(async (ev, scope = 'one', options = {}) => {
+  const saveEvent = useCallback(async (ev, scope = 'one', options = {}, reminders = []) => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
@@ -485,7 +494,9 @@ export default function App ({ db, notifs, sync }) {
       for (const occ of occurrences) {
         const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? '' }
         await db.putEvent(evWithAuthor)
-        await notifs?.scheduleForEvent(evWithAuthor)
+        await db.putReminders(occ.id, reminders)
+        await notifs?.cancelForEvent(occ.id)
+        await notifs?.scheduleForEvent(evWithAuthor, reminders)
         const evToSync = (_prevDate && occ.id === ev.id) ? { ...evWithAuthor, _prevDate } : evWithAuthor
         for (const gid of evWithAuthor.groups ?? []) {
           await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
@@ -733,7 +744,7 @@ export default function App ({ db, notifs, sync }) {
     const defaultEnd   = endHour + ':00'
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
-      allDay:false, start:defaultStart, end:defaultEnd, reminder: profile?.defaultReminder ?? 15,
+      allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
       groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
     }})
   }
@@ -878,7 +889,8 @@ export default function App ({ db, notifs, sync }) {
 
         {scopeSheet && (
           <ScopeSheet th={th} ev={scopeSheet.ev}
-            onSave={saveEvent} onDismiss={() => setScopeSheet(null)}
+            onSave={(ev, scope, opts) => saveEvent(ev, scope, opts, scopeSheet.reminders ?? [])}
+            onDismiss={() => setScopeSheet(null)}
             closeRef={closeScopeSheetRef} />
         )}
 
@@ -907,7 +919,7 @@ export default function App ({ db, notifs, sync }) {
             onRequestConfirm={req => {
               if (req.type === 'editScope') {
                 setModal(null)
-                setScopeSheet({ ev: req.ev })
+                setScopeSheet({ ev: req.ev, reminders: req.reminders ?? [] })
               } else if (req.type === 'deleteEvent') {
                 setModal(null)
                 setConfirmSheet({
@@ -1889,6 +1901,64 @@ function expandRecurring (ev) {
   return out
 }
 
+function RemindersEditor ({ th, reminders, setReminders }) {
+  const FONT = 'Geist, system-ui, sans-serif'
+  const inp = {
+    width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
+    fontWeight: 300, border: `1px solid ${th.border}`, background: th.inputBg,
+    color: th.text.color, fontFamily: FONT, appearance: 'none', boxSizing: 'border-box',
+  }
+
+  function addReminder () {
+    if (reminders.length >= 3) return
+    const next = REMINDER_OPTIONS.find(o => !reminders.includes(o.value))
+    if (next) setReminders([...reminders, next.value])
+  }
+
+  function removeReminder (idx) {
+    setReminders(reminders.filter((_, i) => i !== idx))
+  }
+
+  function updateReminder (idx, value) {
+    const updated = [...reminders]
+    updated[idx] = value
+    setReminders(updated)
+  }
+
+  return (
+    <div>
+      {reminders.map((val, idx) => (
+        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+          <select
+            style={{ ...inp, flex: 1 }}
+            value={val}
+            onChange={e => updateReminder(idx, Number(e.target.value))}>
+            {REMINDER_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}
+                disabled={opt.value !== val && reminders.includes(opt.value)}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => removeReminder(idx)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer',
+              color: th.muted, fontSize: 18, padding: '0 4px', lineHeight: 1 }}>
+            ×
+          </button>
+        </div>
+      ))}
+      {reminders.length < 3 && (
+        <button onClick={addReminder}
+          style={{ background: 'none', border: `1px dashed ${th.border}`, borderRadius: 10,
+            color: th.muted, fontSize: 13, fontWeight: 300, padding: '8px 12px',
+            cursor: 'pointer', width: '100%', fontFamily: FONT }}>
+          + Add reminder
+        </button>
+      )}
+    </div>
+  )
+}
+
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
   const [saving, setSaving] = useState(false)
@@ -1922,6 +1992,24 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     else setEv(e => ({ ...e, colors: [] }))
   }, [ev.groups, groups])
 
+  const [reminders, setReminders] = useState([])
+
+  useEffect(() => {
+    if (!db) return
+    const eventId = modal.event?.id
+    if (!eventId) return
+    db.getReminders(eventId).then(r => {
+      if (r && r.length > 0) {
+        setReminders(r)
+      } else if (modal.mode === 'create') {
+        const profileDefault = typeof profile?.defaultReminder === 'number'
+          ? profile.defaultReminder : 15
+        if (profileDefault > 0) setReminders([profileDefault])
+        else setReminders([])
+      }
+    }).catch(() => {})
+  }, [modal.event?.id])
+
   const [titleErr, setTitleErr] = useState('')
   const [pastTitles, setPastTitles] = useState([])
   const [suggestions, setSuggestions] = useState([])
@@ -1947,12 +2035,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
       const origInvitees = [...(modal.event.invitees  ?? [])].sort().join(',')
       const newInvitees  = [...(toSave.invitees       ?? [])].sort().join(',')
       if (origGroups !== newGroups || origInvitees !== newInvitees) {
-        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }); setSaving(false); return
+        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }, reminders); setSaving(false); return
       }
-      bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave }); return
+      bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave, reminders }); return
     }
     setSaving(true)
-    await onSave(toSave, 'one')
+    await onSave(toSave, 'one', {}, reminders)
     setSaving(false)
   }
 
@@ -2053,11 +2141,13 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               </div>
             </div>
 
-          <div><Label th={th}>Reminder</Label>
-            <select style={{ ...inp, appearance:'none' }} value={ev.reminder}
-              onChange={e => set('reminder', Number(e.target.value))}>
-              {REMINDER_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
+          <div>
+            <Label th={th}>Reminder(s)</Label>
+            <RemindersEditor
+              th={th}
+              reminders={reminders}
+              setReminders={setReminders}
+            />
           </div>
 
           {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
@@ -3556,6 +3646,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
                 border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
                 fontFamily:FONT, appearance:'none' }}>
+              <option value={0}>None</option>
               {REMINDER_OPTIONS.map(r => (
                 <option key={r.value} value={r.value}>{r.label}</option>
               ))}
