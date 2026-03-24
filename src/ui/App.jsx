@@ -466,7 +466,7 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
-  const saveEvent = useCallback(async (ev, scope = 'one', options = {}) => {
+  const saveEvent = useCallback(async (ev, scope = 'one', options = {}, reminders = []) => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
@@ -494,7 +494,9 @@ export default function App ({ db, notifs, sync }) {
       for (const occ of occurrences) {
         const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? '' }
         await db.putEvent(evWithAuthor)
-        await notifs?.scheduleForEvent(evWithAuthor)
+        await db.putReminders(ev.id, reminders)
+        await notifs?.cancelForEvent(ev.id)
+        await notifs?.scheduleForEvent(evWithAuthor, reminders)
         const evToSync = (_prevDate && occ.id === ev.id) ? { ...evWithAuthor, _prevDate } : evWithAuthor
         for (const gid of evWithAuthor.groups ?? []) {
           await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
@@ -887,7 +889,8 @@ export default function App ({ db, notifs, sync }) {
 
         {scopeSheet && (
           <ScopeSheet th={th} ev={scopeSheet.ev}
-            onSave={saveEvent} onDismiss={() => setScopeSheet(null)}
+            onSave={(ev, scope, opts) => saveEvent(ev, scope, opts, scopeSheet.reminders ?? [])}
+            onDismiss={() => setScopeSheet(null)}
             closeRef={closeScopeSheetRef} />
         )}
 
@@ -916,7 +919,7 @@ export default function App ({ db, notifs, sync }) {
             onRequestConfirm={req => {
               if (req.type === 'editScope') {
                 setModal(null)
-                setScopeSheet({ ev: req.ev })
+                setScopeSheet({ ev: req.ev, reminders: req.reminders ?? [] })
               } else if (req.type === 'deleteEvent') {
                 setModal(null)
                 setConfirmSheet({
@@ -2032,12 +2035,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
       const origInvitees = [...(modal.event.invitees  ?? [])].sort().join(',')
       const newInvitees  = [...(toSave.invitees       ?? [])].sort().join(',')
       if (origGroups !== newGroups || origInvitees !== newInvitees) {
-        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }); setSaving(false); return
+        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }, reminders); setSaving(false); return
       }
-      bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave }); return
+      bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave, reminders }); return
     }
     setSaving(true)
-    await onSave(toSave, 'one')
+    await onSave(toSave, 'one', {}, reminders)
     setSaving(false)
   }
 
