@@ -54,52 +54,93 @@ function calcFireTime (event: any): number | null {
   return new Date(y, mo - 1, d, h, m, 0, 0).getTime() - event.reminder * 60 * 1000
 }
 
+function calcReminderFireTime (ev: any, reminder: number): number | null {
+  const [y, mo, d] = ev.date.split('-').map(Number)
+  if (reminder === -1) {
+    // MORNING_OF: 9 AM on the event date
+    return new Date(y, mo - 1, d, 9, 0, 0, 0).getTime()
+  }
+  if (reminder === -2) {
+    // DAY_BEFORE: 9 AM the day before
+    return new Date(y, mo - 1, d - 1, 9, 0, 0, 0).getTime()
+  }
+  // Positive offset: minutes before event start (all-day uses 9 AM as base)
+  let h = 9, m = 0
+  if (!ev.allDay && ev.start) {
+    const parts = ev.start.split(':').map(Number)
+    h = parts[0]; m = parts[1]
+  }
+  const eventStartMs = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+  return eventStartMs - reminder * 60 * 1000
+}
+
 async function handleNotification (msg: any, webViewRef: any) {
   try {
     if (msg.method === 'scheduleForEvent') {
-      const ev = msg.args[0]
+      const ev       = msg.args[0]
+      const reminders: number[] = msg.args[1] ?? []
       if (ev) {
-        // Cancel both alarms first (reminder + start-time)
-        await PearCalNotifications?.cancel?.(notifId(ev.id)).catch(() => {})
-        await PearCalNotifications?.cancel?.(notifId(ev.id) + 1).catch(() => {})
+        const base = notifId(ev.id)
 
-        // Schedule reminder alarm (X minutes before start)
-        if (ev.reminder && ev.reminder > 0) {
-          const fireAt = calcFireTime(ev)
-          if (fireAt && fireAt > Date.now()) {
-            const reminderLabel = ev.reminder >= 60
-              ? (ev.reminder / 60) + 'hr' : ev.reminder + 'min'
-            try { await PearCalNotifications?.schedule?.({
-              id:      notifId(ev.id),
+        // Cancel all 4 slots first (3 reminder slots + 1 start-time slot)
+        for (let i = 0; i < 4; i++) {
+          await PearCalNotifications?.cancel?.(base + i).catch(() => {})
+        }
+
+        // Schedule up to 3 reminder alarms
+        const OPTION_LABELS: Record<string, string> = {
+          '5': '5 min', '10': '10 min', '15': '15 min', '30': '30 min',
+          '60': '1 hr', '120': '2 hrs', '1440': '1 day',
+          '-1': 'Morning of', '-2': 'Day before',
+        }
+        for (let i = 0; i < Math.min(reminders.length, 3); i++) {
+          const reminder = reminders[i]
+          const fireAt = calcReminderFireTime(ev, reminder)
+          if (!fireAt || fireAt <= Date.now()) continue
+          const label = OPTION_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
+          const body = ev.allDay
+            ? 'All day · ' + label
+            : label + ' · ' + ev.start + '–' + ev.end
+          try {
+            await PearCalNotifications?.schedule?.({
+              id:      base + i,
               title:   ev.title,
-              body:    ev.allDay ? 'All day event reminder' : reminderLabel + ' reminder · ' + ev.start + ' to ' + ev.end,
+              body,
               fireAt,
               eventId: ev.id,
               tab:     'calendar',
-            }) } catch(schedErr) { console.log('Alarm schedule error (non-fatal):', schedErr?.message) }
+            })
+          } catch (schedErr: any) {
+            console.log('Reminder alarm error (non-fatal):', schedErr?.message)
           }
         }
 
-        // Schedule start-time alarm (fires at event start, or 9am for all-day)
+        // Schedule start-time alarm at slot base+3 (non-all-day only)
         if (!ev.allDay && ev.start) {
           const [y, mo, d] = ev.date.split('-').map(Number)
           const [h, m2] = ev.start.split(':').map(Number)
           const startFireAt = new Date(y, mo - 1, d, h, m2, 0, 0).getTime()
           if (startFireAt > Date.now()) {
-            try { await PearCalNotifications?.schedule?.({
-              id:      notifId(ev.id) + 1,
-              title:   ev.title + ' is starting now',
-              body:    ev.start + ' to ' + ev.end,
-              fireAt:  startFireAt,
-              eventId: ev.id,
-              tab:     'calendar',
-            }) } catch(schedErr) { console.log('Start alarm error (non-fatal):', schedErr?.message) }
+            try {
+              await PearCalNotifications?.schedule?.({
+                id:      base + 3,
+                title:   ev.title + ' is starting now',
+                body:    ev.start + ' to ' + ev.end,
+                fireAt:  startFireAt,
+                eventId: ev.id,
+                tab:     'calendar',
+              })
+            } catch (schedErr: any) {
+              console.log('Start alarm error (non-fatal):', schedErr?.message)
+            }
           }
         }
       }
     } else if (msg.method === 'cancelForEvent') {
-      await PearCalNotifications?.cancel?.(notifId(msg.args[0])).catch(() => {})
-      await PearCalNotifications?.cancel?.(notifId(msg.args[0]) + 1).catch(() => {})
+      const base = notifId(msg.args[0])
+      for (let i = 0; i < 4; i++) {
+        await PearCalNotifications?.cancel?.(base + i).catch(() => {})
+      }
     }
     webViewRef.current?.injectJavaScript(
       'window.__pearResponse(' + JSON.stringify({ id: msg.id, result: null }) + ');true;'
