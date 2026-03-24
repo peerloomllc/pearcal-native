@@ -56,10 +56,12 @@ const db = {
   removeMember:  (gid, mid)  => window.__pearDB.call('removeMember', gid, mid),
   resyncGroup:   (groupId)   => window.__pearDB.call('resyncGroup', groupId),
   setMemberNickname: (groupId, nick) => window.__pearDB.call('setMemberNickname', groupId, nick),
+  getReminders:  (id)     => window.__pearDB.call('getReminders', id),
+  putReminders:  (id, r)  => window.__pearDB.call('putReminders', id, r),
 }
 
 const notifs = {
-  scheduleForEvent: (ev) => window.__pearDB.call('scheduleForEvent', ev),
+  scheduleForEvent: (ev, reminders) => window.__pearDB.call('scheduleForEvent', ev, reminders),
   cancelForEvent:   (id) => window.__pearDB.call('cancelForEvent', id),
   restoreAll:       ()   => window.__pearDB.call('restoreAll'),
 }
