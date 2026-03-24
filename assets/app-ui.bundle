@@ -16235,8 +16235,8 @@
         for (const occ of occurrences) {
           const evWithAuthor = { ...occ, updatedByName: profile?.name ?? "Someone", updatedById: profile?.id ?? "" };
           await db2.putEvent(evWithAuthor);
-          await db2.putReminders(ev.id, reminders);
-          await notifs2?.cancelForEvent(ev.id);
+          await db2.putReminders(occ.id, reminders);
+          await notifs2?.cancelForEvent(occ.id);
           await notifs2?.scheduleForEvent(evWithAuthor, reminders);
           const evToSync = _prevDate && occ.id === ev.id ? { ...evWithAuthor, _prevDate } : evWithAuthor;
           for (const gid of evWithAuthor.groups ?? []) {
@@ -18244,7 +18244,7 @@
         }
       }).catch(() => {
       });
-    }, []);
+    }, [modal.event?.id]);
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
     const [pastTitles, setPastTitles] = (0, import_react2.useState)([]);
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
