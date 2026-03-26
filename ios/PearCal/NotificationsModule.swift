@@ -113,9 +113,5 @@ class NotificationsModule: NSObject {
     }
   }
 
-  // Required stubs for RN event emitter contract
-  @objc func addListener(_ eventName: String) {}
-  @objc func removeListeners(_ count: Double) {}
-
   @objc static func requiresMainQueueSetup() -> Bool { return false }
 }
