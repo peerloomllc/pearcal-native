@@ -75,7 +75,7 @@ ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en
     OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
   rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
   cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+  cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa
 ```
@@ -102,7 +102,7 @@ ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en
     OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
   rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
   cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && zip -qr PearCal-release.ipa Payload/ && rm -rf Payload && echo "IPA ready"'
+  cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa
 ```

@@ -12,6 +12,4 @@ RCT_EXTERN_METHOD(postNow:(NSDictionary *)opts
                   reject:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(getPermission:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject)
-RCT_EXTERN_METHOD(addListener:(NSString *)eventName)
-RCT_EXTERN_METHOD(removeListeners:(double)count)
 @end

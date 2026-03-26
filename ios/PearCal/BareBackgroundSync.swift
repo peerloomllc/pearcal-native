@@ -53,11 +53,11 @@ class BareBackgroundSync: NSObject {
   }
 
   // Called from JS when sync completes. No-op if no BGTask is pending (e.g. sync triggered by foreground action).
-  @objc func completeBGSync(_ success: Bool) {
+  @objc func completeBGSync(_ success: NSNumber) {
     BareBackgroundSync.lock.lock()
     BareBackgroundSync.expirationTimer?.invalidate()
     BareBackgroundSync.expirationTimer = nil
-    BareBackgroundSync.pendingTask?.setTaskCompleted(success: success)
+    BareBackgroundSync.pendingTask?.setTaskCompleted(success: success.boolValue)
     BareBackgroundSync.pendingTask = nil
     BareBackgroundSync.lock.unlock()
   }

@@ -59,5 +59,31 @@ target 'PearCal' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+    # fmt 11.0.2 + Xcode 26 Clang: consteval is detected as available but produces
+    # "not a constant expression" errors in format-inl.h. Patch base.h to wrap
+    # the detection block in #ifndef so -DFMT_USE_CONSTEVAL=0 can override it.
+    fmt_base = "#{installer.sandbox.root}/fmt/include/fmt/base.h"
+    if File.exist?(fmt_base)
+      content = File.read(fmt_base)
+      unless content.include?('FMT_USE_CONSTEVAL_OVERRIDE')
+        content = content.sub(
+          "// Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.",
+          "// Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.\n#ifndef FMT_USE_CONSTEVAL // FMT_USE_CONSTEVAL_OVERRIDE"
+        )
+        content = content.sub(
+          "#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval",
+          "#endif // FMT_USE_CONSTEVAL_OVERRIDE\n#if FMT_USE_CONSTEVAL\n#  define FMT_CONSTEVAL consteval"
+        )
+        File.chmod(0644, fmt_base)
+        File.write(fmt_base, content)
+      end
+    end
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |config|
+          config.build_settings['OTHER_CPLUSPLUSFLAGS'] = '$(inherited) -DFMT_USE_CONSTEVAL=0'
+        end
+      end
+    end
   end
 end
