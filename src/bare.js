@@ -77,6 +77,7 @@ async function handle (method, args) {
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
+    case 'sync':               return bgSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
     // Notifications handled on RN side
@@ -310,6 +311,34 @@ async function joinGroup (group) {
 
   bases.set(group.id, base)
 
+  // Non-owner: broadcast our member record to Autobase once we become writable.
+  // This handles the case where the owner's iOS app was in the background when we
+  // joined — the invite.js broadcastSelf retries exhaust before addWriter fires.
+  // The Autobase 'writable' event fires when addWriter is processed (even across
+  // app restarts). A persisted flag prevents redundant re-broadcasts on restarts.
+  if (!isOwner) {
+    const groupId = group.id
+    const doBroadcastSelf = async () => {
+      try {
+        const alreadyBroadcasted = await db.get('selfBroadcasted:' + groupId).catch(() => null)
+        if (alreadyBroadcasted) return
+        const p = await getProfile()
+        if (!p?.id) return
+        const g = await getGroup(groupId)
+        if (!g) return
+        const initials = (p.name || '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
+        const myMember = { id: p.id, name: p.name, avatar: p.avatar ?? initials, publicKey: p.publicKey }
+        const updatedGroup = { id: g.id, groupKey: g.groupKey, ownerId: g.ownerId, members: [myMember], updatedAt: Date.now() }
+        await base.append({ op: 'put', type: 'group', key: 'groups:' + g.id, value: updatedGroup })
+        await db.put('selfBroadcasted:' + groupId, { ts: Date.now() })
+        console.log('[BROADCAST_SELF] auto-broadcast succeeded for group:', groupId)
+      } catch (e) {
+        console.error('[BROADCAST_SELF] auto-broadcast error:', e.message)
+      }
+    }
+    base.once('writable', doBroadcastSelf)
+  }
+
   // Announce our writer key to any already-connected peers
   const writerKey = b4a.toString(base.local.key, 'hex')
   for (const ch of activeChannels) {
@@ -331,6 +360,7 @@ async function leaveGroup (groupId) {
     await base.close()
     bases.delete(groupId)
   }
+  await db.del('selfBroadcasted:' + groupId).catch(() => {})
 }
 
 async function syncPutEvent (groupId, event) {
@@ -376,6 +406,20 @@ async function syncMemberLeft (groupId, memberId) {
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
+}
+
+// Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
+// Runs base.update() on every active group, then emits a sync event so the RN layer
+// can call completeBGSync() to properly close the BGTask (rather than letting it time out).
+async function bgSync () {
+  const updates = []
+  for (const [, base] of bases) {
+    updates.push(base.update().catch(e => console.warn('[BGSYNC] update error:', e.message)))
+  }
+  await Promise.all(updates)
+  // Emit sync so completeBGSync is always called, even if no new data arrived.
+  // apply() may have already emitted sync events for changed groups; this is a no-op fallback.
+  send({ type: 'event', event: 'sync', data: null })
 }
 
 async function resyncGroup (groupId) {
