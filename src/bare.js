@@ -77,6 +77,7 @@ async function handle (method, args) {
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
+    case 'sync':               return bgSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
     // Notifications handled on RN side
@@ -405,6 +406,20 @@ async function syncMemberLeft (groupId, memberId) {
   for (const ch of activeChannels) {
     try { ch.send(Buffer.from(JSON.stringify({ memberLeft: memberId, groupId }))) } catch(e) {}
   }
+}
+
+// Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
+// Runs base.update() on every active group, then emits a sync event so the RN layer
+// can call completeBGSync() to properly close the BGTask (rather than letting it time out).
+async function bgSync () {
+  const updates = []
+  for (const [, base] of bases) {
+    updates.push(base.update().catch(e => console.warn('[BGSYNC] update error:', e.message)))
+  }
+  await Promise.all(updates)
+  // Emit sync so completeBGSync is always called, even if no new data arrived.
+  // apply() may have already emitted sync events for changed groups; this is a no-op fallback.
+  send({ type: 'event', event: 'sync', data: null })
 }
 
 async function resyncGroup (groupId) {
