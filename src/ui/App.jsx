@@ -466,7 +466,7 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
-  const saveEvent = useCallback(async (ev, scope = 'one', options = {}, reminders = []) => {
+  const saveEvent = useCallback((ev, scope = 'one', options = {}, reminders = []) => {
     const { _prevDate, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
@@ -485,33 +485,18 @@ export default function App ({ db, notifs, sync }) {
               .map(e => ({ ...e, ...patch }))
           })()
         : [ev]
-    if (db) {
-      // If date changed, delete old local entry to avoid duplicate
-      if (_prevDate && _prevDate !== ev.date) {
-        await db.deleteEvent(_prevDate, ev.id).catch(() => {})
-        setEvents(prev => prev.filter(e => !(e.id === ev.id && e.date === _prevDate)))
-      }
-      for (const occ of occurrences) {
-        const evWithAuthor = { ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? '' }
-        await db.putEvent(evWithAuthor)
-        await db.putReminders(occ.id, reminders)
-        await notifs?.cancelForEvent(occ.id)
-        await notifs?.scheduleForEvent(evWithAuthor, reminders)
-        const evToSync = (_prevDate && occ.id === ev.id) ? { ...evWithAuthor, _prevDate } : evWithAuthor
-        for (const gid of evWithAuthor.groups ?? []) {
-          await sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
-        }
-        // Sync delete for any groups removed from this event
-        const original = events.find(e => e.id === occ.id)
-        const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
-        for (const gid of removedGroups) {
-          await sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
-        }
-      }
-    }
+    const withAuthor = occurrences.map(occ => ({
+      ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? ''
+    }))
+    // Optimistic UI: update calendar and close modal immediately (no async blocking).
+    // On iOS, Autobase.append() and even notification IPC can stall, so we never
+    // await them on the hot path. All persistence happens fire-and-forget below.
     setEvents(prev => {
       let next = [...prev]
-      for (const occ of occurrences) {
+      if (_prevDate && _prevDate !== ev.date) {
+        next = next.filter(e => !(e.id === ev.id && e.date === _prevDate))
+      }
+      for (const occ of withAuthor) {
         const i = next.findIndex(e => e.id === occ.id)
         if (i >= 0) next[i] = occ
         else next.push(occ)
@@ -519,6 +504,27 @@ export default function App ({ db, notifs, sync }) {
       return next
     })
     setModal(null)
+    // Background: persist to local DB, schedule notifications, fire P2P sync
+    if (db) {
+      if (_prevDate && _prevDate !== ev.date) {
+        db.deleteEvent(_prevDate, ev.id).catch(() => {})
+      }
+      for (const occ of withAuthor) {
+        db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
+        db.putReminders(occ.id, reminders).catch(() => {})
+        notifs?.cancelForEvent(occ.id).catch(() => {})
+        notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+        const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+        for (const gid of occ.groups ?? []) {
+          sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
+        }
+        const original = events.find(e => e.id === occ.id)
+        const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
+        for (const gid of removedGroups) {
+          sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        }
+      }
+    }
   }, [db, notifs, sync, profile, events])
 
   const deleteEvent = useCallback(async id => {
@@ -1961,7 +1967,6 @@ function RemindersEditor ({ th, reminders, setReminders }) {
 
 function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
   const [ev, setEv] = useState(modal.event)
-  const [saving, setSaving] = useState(false)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
@@ -2025,7 +2030,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     }).catch(() => {})
   }, [])
 
-  async function handleSave () {
+  function handleSave () {
     if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
     setTitleErr('')
     const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
@@ -2035,13 +2040,12 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
       const origInvitees = [...(modal.event.invitees  ?? [])].sort().join(',')
       const newInvitees  = [...(toSave.invitees       ?? [])].sort().join(',')
       if (origGroups !== newGroups || origInvitees !== newInvitees) {
-        setSaving(true); await onSave(toSave, 'future', { propagateGroups: true }, reminders); setSaving(false); return
+        onSave(toSave, 'future', { propagateGroups: true }, reminders)
+        return
       }
       bsCloseRef.current?.(); onRequestConfirm({ type: 'editScope', ev: toSave, reminders }); return
     }
-    setSaving(true)
-    await onSave(toSave, 'one', {}, reminders)
-    setSaving(false)
+    onSave(toSave, 'one', {}, reminders)
   }
 
   const bsCloseRef = useRef(null)
@@ -2323,14 +2327,11 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               </div>
             )
             return (
-              <button onClick={handleSave} disabled={saving}
+              <button onClick={handleSave}
                 style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-                  marginTop:4, opacity:saving ? 0.6 : 1,
+                  marginTop:4,
                   display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {saving
-                  ? <><Spinner /> {' Saving…'}</>
-                  : modal.mode === 'create' ? 'Create Event' : 'Save Changes'
-                }
+                {modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
               </button>
             )
           })()}

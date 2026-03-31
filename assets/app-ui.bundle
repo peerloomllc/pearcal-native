@@ -16202,7 +16202,7 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const saveEvent = (0, import_react2.useCallback)(async (ev, scope = "one", options = {}, reminders = []) => {
+    const saveEvent = (0, import_react2.useCallback)((ev, scope = "one", options = {}, reminders = []) => {
       const { _prevDate, ...evClean } = ev;
       ev = evClean;
       const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : scope === "future" && ev.recurrenceId ? (() => {
@@ -16226,33 +16226,17 @@
         for (const k of PROPAGATE) patch[k] = ev[k];
         return events.filter((e49) => e49.recurrenceId === ev.recurrenceId && e49.date >= ev.date).map((e49) => ({ ...e49, ...patch }));
       })() : [ev];
-      if (db2) {
-        if (_prevDate && _prevDate !== ev.date) {
-          await db2.deleteEvent(_prevDate, ev.id).catch(() => {
-          });
-          setEvents((prev) => prev.filter((e49) => !(e49.id === ev.id && e49.date === _prevDate)));
-        }
-        for (const occ of occurrences) {
-          const evWithAuthor = { ...occ, updatedByName: profile?.name ?? "Someone", updatedById: profile?.id ?? "" };
-          await db2.putEvent(evWithAuthor);
-          await db2.putReminders(occ.id, reminders);
-          await notifs2?.cancelForEvent(occ.id);
-          await notifs2?.scheduleForEvent(evWithAuthor, reminders);
-          const evToSync = _prevDate && occ.id === ev.id ? { ...evWithAuthor, _prevDate } : evWithAuthor;
-          for (const gid of evWithAuthor.groups ?? []) {
-            await sync2?.putEvent(gid, evToSync).catch((e49) => console.warn("[SYNC-ERR]", e49?.message));
-          }
-          const original = events.find((e49) => e49.id === occ.id);
-          const removedGroups = (original?.groups ?? []).filter((g) => !(occ.groups ?? []).includes(g));
-          for (const gid of removedGroups) {
-            await sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
-            });
-          }
-        }
-      }
+      const withAuthor = occurrences.map((occ) => ({
+        ...occ,
+        updatedByName: profile?.name ?? "Someone",
+        updatedById: profile?.id ?? ""
+      }));
       setEvents((prev) => {
         let next = [...prev];
-        for (const occ of occurrences) {
+        if (_prevDate && _prevDate !== ev.date) {
+          next = next.filter((e49) => !(e49.id === ev.id && e49.date === _prevDate));
+        }
+        for (const occ of withAuthor) {
           const i2 = next.findIndex((e49) => e49.id === occ.id);
           if (i2 >= 0) next[i2] = occ;
           else next.push(occ);
@@ -16260,6 +16244,31 @@
         return next;
       });
       setModal(null);
+      if (db2) {
+        if (_prevDate && _prevDate !== ev.date) {
+          db2.deleteEvent(_prevDate, ev.id).catch(() => {
+          });
+        }
+        for (const occ of withAuthor) {
+          db2.putEvent(occ).catch((e49) => console.warn("[PUT-EVENT-ERR]", e49?.message));
+          db2.putReminders(occ.id, reminders).catch(() => {
+          });
+          notifs2?.cancelForEvent(occ.id).catch(() => {
+          });
+          notifs2?.scheduleForEvent(occ, reminders).catch(() => {
+          });
+          const evToSync = _prevDate && occ.id === ev.id ? { ...occ, _prevDate } : occ;
+          for (const gid of occ.groups ?? []) {
+            sync2?.putEvent(gid, evToSync).catch((e49) => console.warn("[SYNC-ERR]", e49?.message));
+          }
+          const original = events.find((e49) => e49.id === occ.id);
+          const removedGroups = (original?.groups ?? []).filter((g) => !(occ.groups ?? []).includes(g));
+          for (const gid of removedGroups) {
+            sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            });
+          }
+        }
+      }
     }, [db2, notifs2, sync2, profile, events]);
     const deleteEvent = (0, import_react2.useCallback)(async (id) => {
       const ev = events.find((e49) => e49.id === id);
@@ -18202,7 +18211,6 @@
   }
   function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef }) {
     const [ev, setEv] = (0, import_react2.useState)(modal.event);
-    const [saving, setSaving] = (0, import_react2.useState)(false);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e49) => ({ ...e49, [k]: v }));
     function toggleGroup(gid) {
@@ -18263,7 +18271,7 @@
       }).catch(() => {
       });
     }, []);
-    async function handleSave() {
+    function handleSave() {
       if (!ev.title.trim()) {
         setTitleErr("Event title is required.");
         return;
@@ -18276,18 +18284,14 @@
         const origInvitees = [...modal.event.invitees ?? []].sort().join(",");
         const newInvitees = [...toSave.invitees ?? []].sort().join(",");
         if (origGroups !== newGroups || origInvitees !== newInvitees) {
-          setSaving(true);
-          await onSave(toSave, "future", { propagateGroups: true }, reminders);
-          setSaving(false);
+          onSave(toSave, "future", { propagateGroups: true }, reminders);
           return;
         }
         bsCloseRef.current?.();
         onRequestConfirm({ type: "editScope", ev: toSave, reminders });
         return;
       }
-      setSaving(true);
-      await onSave(toSave, "one", {}, reminders);
-      setSaving(false);
+      onSave(toSave, "one", {}, reminders);
     }
     const bsCloseRef = (0, import_react2.useRef)(null);
     (0, import_react2.useEffect)(() => {
@@ -18712,7 +18716,6 @@
             "button",
             {
               onClick: handleSave,
-              disabled: saving,
               style: {
                 ...th.pillBtn,
                 width: "100%",
@@ -18720,17 +18723,12 @@
                 fontSize: 15,
                 fontWeight: 300,
                 marginTop: 4,
-                opacity: saving ? 0.6 : 1,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 6
               },
-              children: saving ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Spinner, {}),
-                " ",
-                " Saving\u2026"
-              ] }) : modal.mode === "create" ? "Create Event" : "Save Changes"
+              children: modal.mode === "create" ? "Create Event" : "Save Changes"
             }
           );
         })(),
