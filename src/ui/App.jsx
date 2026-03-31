@@ -2598,17 +2598,6 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
           </div>
         ))}
       </div>
-      {inviteModalGroup && (
-        <InviteOptionsModal
-          th={th}
-          group={inviteModalGroup}
-          profile={profile}
-          sync={sync}
-          onQrGroup={onQrGroup}
-          onClose={() => setInviteModalGroup(null)}
-          closeRef={closeInviteSheetRef}
-        />
-      )}
       </div>
 
       {/* Floating action buttons — anchored above bottom nav */}
@@ -2637,6 +2626,17 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
           <Plus size={18} weight="thin" /> New Group
         </button>
       </div>
+      {inviteModalGroup && (
+        <InviteOptionsModal
+          th={th}
+          group={inviteModalGroup}
+          profile={profile}
+          sync={sync}
+          onQrGroup={onQrGroup}
+          onClose={() => setInviteModalGroup(null)}
+          closeRef={closeInviteSheetRef}
+        />
+      )}
     </div>
   )
 }
@@ -3433,6 +3433,19 @@ function AboutTab ({ th, sync, closeSheetRef }) {
           style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           <BookOpen size={16} weight="thin" /> Bitcoin Crash Course <ArrowSquareOut size={14} weight="thin" />
+        </button>
+      </div>
+
+      {/* Share App */}
+      <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+        <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SHARE THE APP</div>
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
+          Know someone who'd enjoy a private, serverless calendar? Share PearCal with them.
+        </div>
+        <button onClick={() => sync?.nativeShare('PearCal', 'Check out PearCal — a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/')}
+          style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <ShareNetwork size={16} weight="thin" /> Share PearCal
         </button>
       </div>
 

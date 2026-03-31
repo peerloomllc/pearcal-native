@@ -19117,19 +19117,7 @@
               ]
             }
           )
-        ] }, g.id)) }),
-        inviteModalGroup && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          InviteOptionsModal,
-          {
-            th,
-            group: inviteModalGroup,
-            profile,
-            sync: sync2,
-            onQrGroup,
-            onClose: () => setInviteModalGroup(null),
-            closeRef: closeInviteSheetRef
-          }
-        )
+        ] }, g.id)) })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         position: "fixed",
@@ -19185,7 +19173,19 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 18, weight: "thin" }),
           " New Group"
         ] })
-      ] })
+      ] }),
+      inviteModalGroup && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        InviteOptionsModal,
+        {
+          th,
+          group: inviteModalGroup,
+          profile,
+          sync: sync2,
+          onQrGroup,
+          onClose: () => setInviteModalGroup(null),
+          closeRef: closeInviteSheetRef
+        }
+      )
     ] });
   }
   function InviteOptionsModal({ th, group, profile, sync: sync2, onQrGroup, onClose, closeRef }) {
@@ -20363,6 +20363,31 @@ ${link}`;
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(c, { size: 16, weight: "thin" }),
               " Bitcoin Crash Course ",
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 14, weight: "thin" })
+            ]
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 400, ...th.text, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "SHARE THE APP" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Know someone who'd enjoy a private, serverless calendar? Share PearCal with them." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "button",
+          {
+            onClick: () => sync2?.nativeShare("PearCal", "Check out PearCal \u2014 a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/"),
+            style: {
+              ...th.pillBtn,
+              width: "100%",
+              padding: "10px",
+              fontSize: 14,
+              fontWeight: 300,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n7, { size: 16, weight: "thin" }),
+              " Share PearCal"
             ]
           }
         )
