@@ -484,6 +484,7 @@ webViewRef.current?.injectJavaScript(
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
+      injectedJavaScriptBeforeContentLoaded={`window.__pearPlatform=${JSON.stringify(Platform.OS)};true;`}
       onLoadEnd={() => setWebViewReady(true)}
       onError={e => setError(e.nativeEvent.description)}
     />
