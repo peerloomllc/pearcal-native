@@ -126,6 +126,7 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) 
 }
 
 const FONT = `'Manrope', -apple-system, BlinkMacSystemFont, sans-serif`
+const IS_IOS = window.__pearPlatform === 'ios'
 
 function setTheme (dark) {
   if (typeof document !== 'undefined') {
@@ -1709,12 +1710,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
           <Camera size={18} weight="thin" /> Camera
         </button>
-        <button onClick={() => {
-            if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
-          }} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
-          <Image size={18} weight="thin" /> Gallery
-        </button>
+        {!IS_IOS && (
+          <button onClick={() => {
+              if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
+            }} disabled={photoSaving}
+            style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
+            <Image size={18} weight="thin" /> Gallery
+          </button>
+        )}
       </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
@@ -3057,12 +3060,14 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
                   display:'flex', alignItems:'center', gap:5 }}>
                 <Camera size={14} weight="thin" /> Camera
               </button>
-              <button onClick={() => fileRef.current?.click()}
-                style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
-                  background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
-                  display:'flex', alignItems:'center', gap:5 }}>
-                <Image size={14} weight="thin" /> Gallery
-              </button>
+              {!IS_IOS && (
+                <button onClick={() => fileRef.current?.click()}
+                  style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
+                    background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                    display:'flex', alignItems:'center', gap:5 }}>
+                  <Image size={14} weight="thin" /> Gallery
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -3538,14 +3543,16 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               opacity: photoSaving ? 0.5 : 1 }}>
             <Camera size={14} weight="thin" /> Camera
           </button>
-          <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
-            style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
-              border:`1px solid ${th.border}`, background:'transparent',
-              color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
-              display:'flex', alignItems:'center', gap:5,
-              opacity: photoSaving ? 0.5 : 1 }}>
-            <Image size={14} weight="thin" /> Gallery
-          </button>
+          {!IS_IOS && (
+            <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
+              style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
+                border:`1px solid ${th.border}`, background:'transparent',
+                color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                display:'flex', alignItems:'center', gap:5,
+                opacity: photoSaving ? 0.5 : 1 }}>
+              <Image size={14} weight="thin" /> Gallery
+            </button>
+          )}
           {hasPhoto && (
             <button onClick={removePhoto} disabled={photoSaving}
               style={{ fontSize:12, padding:'5px 14px', borderRadius:8,

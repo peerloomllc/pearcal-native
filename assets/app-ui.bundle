@@ -15837,6 +15837,7 @@
     document.head.appendChild(style);
   }
   var FONT = `'Manrope', -apple-system, BlinkMacSystemFont, sans-serif`;
+  var IS_IOS = window.__pearPlatform === "ios";
   function setTheme(dark) {
     if (typeof document !== "undefined") {
       document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
@@ -17788,7 +17789,7 @@
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          !IS_IOS && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
               onClick: () => {
@@ -19886,7 +19887,7 @@ ${link}`;
                   ]
                 }
               ),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              !IS_IOS && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "button",
                 {
                   onClick: () => fileRef.current?.click(),
@@ -20543,7 +20544,7 @@ ${link}`;
               ]
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          !IS_IOS && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
             {
               onClick: () => fileRef.current?.click(),
