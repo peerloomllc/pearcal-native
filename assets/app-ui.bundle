@@ -16210,6 +16210,7 @@
         const PROPAGATE = [
           "title",
           "allDay",
+          "endDate",
           "start",
           "end",
           "reminder",
@@ -16475,7 +16476,7 @@
         cells.push({ d: nextD++, y: nextY, m: nextM, type: "next" });
       return cells;
     }, [viewDate, weekStart]);
-    const eventsOnDate = (d) => events.filter((e49) => e49.date === d);
+    const eventsOnDate = (d) => events.filter((e49) => e49.date <= d && (e49.endDate || e49.date) >= d);
     function openCreate(date) {
       const now = /* @__PURE__ */ new Date();
       const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 6e4);
@@ -16503,7 +16504,8 @@
         recurrenceEnd: "",
         recurrenceNth: 0,
         recurrenceWeekday: 0,
-        editPermission: "everyone"
+        editPermission: "creator",
+        endDate: ""
       } });
     }
     if (error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -18028,7 +18030,7 @@
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text }, children: ev.title }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
-              ev.allDay ? "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
+              ev.allDay ? ev.endDate && ev.endDate !== ev.date ? `${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
               compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
                 "en-US",
                 { month: "short", day: "numeric" }
@@ -18255,20 +18257,18 @@
       });
     }, [modal.event?.id]);
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
-    const [pastTitles, setPastTitles] = (0, import_react2.useState)([]);
+    const [pastEvents, setPastEvents] = (0, import_react2.useState)(/* @__PURE__ */ new Map());
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
     const [showSuggestions, setShowSuggestions] = (0, import_react2.useState)(false);
     (0, import_react2.useEffect)(() => {
       db2.listEvents().then((evts) => {
-        const seen = /* @__PURE__ */ new Set();
-        const titles = [];
+        const byTitle = /* @__PURE__ */ new Map();
         for (const e49 of evts ?? []) {
-          if (e49.title && !seen.has(e49.title)) {
-            seen.add(e49.title);
-            titles.push(e49.title);
-          }
+          if (!e49.title) continue;
+          const existing = byTitle.get(e49.title);
+          if (!existing || (e49.updatedAt ?? 0) > (existing.updatedAt ?? 0)) byTitle.set(e49.title, e49);
         }
-        setPastTitles(titles);
+        setPastEvents(byTitle);
       }).catch(() => {
       });
     }, []);
@@ -18356,7 +18356,7 @@
                   if (val.trim()) setTitleErr("");
                   if (val.trim().length >= 1) {
                     const q = val.toLowerCase();
-                    const matches = pastTitles.filter((t7) => t7.toLowerCase().includes(q) && t7 !== val).slice(0, 5);
+                    const matches = [...pastEvents.keys()].filter((t7) => t7.toLowerCase().includes(q) && t7 !== val).slice(0, 5);
                     setSuggestions(matches);
                     setShowSuggestions(matches.length > 0);
                   } else {
@@ -18378,29 +18378,46 @@
               marginTop: 2,
               overflow: "hidden",
               boxShadow: "0 4px 16px rgba(0,0,0,0.3)"
-            }, children: suggestions.map((s9, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "div",
-              {
-                onMouseDown: () => {
-                  set("title", s9);
-                  setShowSuggestions(false);
+            }, children: suggestions.map((s9, i2) => {
+              const match = pastEvents.get(s9);
+              const prefillHint = match ? match.allDay ? match.endDate && match.endDate !== match.date ? "All day \xB7 multi-day" : "All day" : match.start ? match.start + "\u2013" + match.end : "" : "";
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "div",
+                {
+                  onMouseDown: () => {
+                    setShowSuggestions(false);
+                    setEv((prev) => ({
+                      ...prev,
+                      title: s9,
+                      ...match ? {
+                        allDay: match.allDay ?? prev.allDay,
+                        start: match.start ?? prev.start,
+                        end: match.end ?? prev.end,
+                        location: match.location ?? prev.location,
+                        endDate: match.endDate ?? prev.endDate
+                      } : {}
+                    }));
+                  },
+                  style: {
+                    padding: "10px 12px",
+                    fontSize: 14,
+                    fontWeight: 300,
+                    color: th.text.color,
+                    cursor: "pointer",
+                    borderBottom: i2 < suggestions.length - 1 ? `1px solid ${th.border}` : "none",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: s9 }),
+                    prefillHint ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, flexShrink: 0 }, children: prefillHint }) : null
+                  ]
                 },
-                onClick: () => {
-                  set("title", s9);
-                  setShowSuggestions(false);
-                },
-                style: {
-                  padding: "10px 12px",
-                  fontSize: 14,
-                  fontWeight: 300,
-                  color: th.text.color,
-                  cursor: "pointer",
-                  borderBottom: i2 < suggestions.length - 1 ? `1px solid ${th.border}` : "none"
-                },
-                children: s9
-              },
-              i2
-            )) }),
+                i2
+              );
+            }) }),
             titleErr && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300, marginTop: 4 }, children: titleErr })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
@@ -18409,7 +18426,23 @@
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "All Day" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => set("allDay", v), accent: th.accent })
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => {
+              set("allDay", v);
+              if (!v) set("endDate", "");
+            }, accent: th.accent })
+          ] }),
+          ev.allDay && !ev.recurrenceId && ev.recurrence === "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End Date" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                type: "date",
+                style: inp,
+                value: ev.endDate || ev.date,
+                min: ev.date,
+                onChange: (e49) => set("endDate", e49.target.value === ev.date ? "" : e49.target.value)
+              }
+            )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
             display: "grid",

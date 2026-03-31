@@ -475,7 +475,7 @@ export default function App ({ db, notifs, sync }) {
       ? expandRecurring(ev)
       : scope === 'future' && ev.recurrenceId
         ? (() => {
-            const PROPAGATE = ['title','allDay','start','end','reminder',
+            const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
                                ...(options.propagateGroups ? ['groups','invitees'] : []),
                                'color','desc','location','recurrence','recurrenceEnd',
                                'recurrenceNth','recurrenceWeekday','editPermission']
@@ -739,7 +739,7 @@ export default function App ({ db, notifs, sync }) {
     return cells
   }, [viewDate, weekStart])
 
-  const eventsOnDate = d => events.filter(e => e.date === d)
+  const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d)
 
   function openCreate (date) {
     const now = new Date()
@@ -752,7 +752,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'everyone',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'',
     }})
   }
 
@@ -1846,7 +1846,11 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
       <div style={{ flex:1 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
-          {ev.allDay ? 'All day' : `${formatTime(ev.start, use24h)} – ${formatTime(ev.end, use24h)}`}
+          {ev.allDay
+            ? (ev.endDate && ev.endDate !== ev.date
+                ? `${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })} – ${new Date(ev.endDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}`
+                : 'All day')
+            : `${formatTime(ev.start, use24h)} – ${formatTime(ev.end, use24h)}`}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
@@ -2019,17 +2023,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   }, [modal.event?.id])
 
   const [titleErr, setTitleErr] = useState('')
-  const [pastTitles, setPastTitles] = useState([])
+  // Map<title, mostRecentEvent> — used to prefill fields when a suggestion is picked
+  const [pastEvents, setPastEvents] = useState(new Map())
   const [suggestions, setSuggestions] = useState([])
   const [showSuggestions, setShowSuggestions] = useState(false)
   useEffect(() => {
     db.listEvents().then(evts => {
-      const seen = new Set()
-      const titles = []
+      const byTitle = new Map()
       for (const e of (evts ?? [])) {
-        if (e.title && !seen.has(e.title)) { seen.add(e.title); titles.push(e.title) }
+        if (!e.title) continue
+        const existing = byTitle.get(e.title)
+        if (!existing || (e.updatedAt ?? 0) > (existing.updatedAt ?? 0)) byTitle.set(e.title, e)
       }
-      setPastTitles(titles)
+      setPastEvents(byTitle)
     }).catch(() => {})
   }, [])
 
@@ -2095,7 +2101,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 if (val.trim()) setTitleErr('')
                 if (val.trim().length >= 1) {
                   const q = val.toLowerCase()
-                  const matches = pastTitles.filter(t => t.toLowerCase().includes(q) && t !== val).slice(0, 5)
+                  const matches = [...pastEvents.keys()].filter(t => t.toLowerCase().includes(q) && t !== val).slice(0, 5)
                   setSuggestions(matches)
                   setShowSuggestions(matches.length > 0)
                 } else {
@@ -2107,15 +2113,37 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:50,
                 background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:8,
                 marginTop:2, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,0.3)' }}>
-                {suggestions.map((s, i) => (
+                {suggestions.map((s, i) => {
+                  const match = pastEvents.get(s)
+                  const prefillHint = match
+                    ? (match.allDay
+                        ? (match.endDate && match.endDate !== match.date ? 'All day · multi-day' : 'All day')
+                        : (match.start ? match.start + '–' + match.end : ''))
+                    : ''
+                  return (
                   <div key={i}
-                    onMouseDown={() => { set('title', s); setShowSuggestions(false) }}
-                    onClick={() => { set('title', s); setShowSuggestions(false) }}
+                    onMouseDown={() => {
+                      setShowSuggestions(false)
+                      setEv(prev => ({
+                        ...prev,
+                        title: s,
+                        ...(match ? {
+                          allDay:   match.allDay ?? prev.allDay,
+                          start:    match.start ?? prev.start,
+                          end:      match.end ?? prev.end,
+                          location: match.location ?? prev.location,
+                          endDate:  match.endDate ?? prev.endDate,
+                        } : {}),
+                      }))
+                    }}
                     style={{ padding:'10px 12px', fontSize:14, fontWeight:300, color:th.text.color,
-                      cursor:'pointer', borderBottom: i < suggestions.length - 1 ? `1px solid ${th.border}` : 'none' }}>
-                    {s}
+                      cursor:'pointer', borderBottom: i < suggestions.length - 1 ? `1px solid ${th.border}` : 'none',
+                      display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
+                    <span>{s}</span>
+                    {prefillHint ? <span style={{ fontSize:11, color:th.muted, flexShrink:0 }}>{prefillHint}</span> : null}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             )}
             {titleErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300, marginTop:4 }}>{titleErr}</div>}
@@ -2127,8 +2155,15 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
             <span style={{ fontSize:14, fontWeight:300, ...th.text }}>All Day</span>
-            <Toggle val={ev.allDay} onChange={v => set('allDay', v)} accent={th.accent} />
+            <Toggle val={ev.allDay} onChange={v => { set('allDay', v); if (!v) set('endDate', '') }} accent={th.accent} />
           </div>
+
+          {ev.allDay && !ev.recurrenceId && ev.recurrence === 'none' && (
+            <div><Label th={th}>End Date</Label>
+              <input type="date" style={inp} value={ev.endDate || ev.date} min={ev.date}
+                onChange={e => set('endDate', e.target.value === ev.date ? '' : e.target.value)} />
+            </div>
+          )}
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10,
             opacity: ev.allDay ? 0.35 : 1, pointerEvents: ev.allDay ? 'none' : 'auto',
