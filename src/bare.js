@@ -536,7 +536,7 @@ function makeApply (groupId) {
                 m.id !== val.value.ownerId  // owner was always there, never a "new" joiner
               )
               for (const m of newMembers) {
-                const groupName = val.value.name || 'a group'
+                const groupName = val.value.name || existing?.value?.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
                   title: (m.nickname || m.name || 'Someone') + ' joined ' + groupName,
                   body: 'Tap to view the group',
@@ -559,7 +559,7 @@ function makeApply (groupId) {
               const profile = await getProfile()
               const existingAdmins = new Set(existing?.value?.admins ?? [])
               const incomingAdmins = new Set(val.value.admins ?? [])
-              const groupName = val.value.name || 'a group'
+              const groupName = val.value.name || existing?.value?.name || 'a group'
               if (!existingAdmins.has(profile?.id) && incomingAdmins.has(profile?.id)) {
                 send({ type: 'event', event: 'syncNotify', data: {
                   title: 'You’re now an admin of ' + groupName,
