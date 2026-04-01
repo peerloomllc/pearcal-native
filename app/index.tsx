@@ -258,6 +258,10 @@ export default function Root () {
         PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
+      if (msg.method === 'exportIcs') {
+        PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -407,11 +411,6 @@ webViewRef.current?.injectJavaScript(
         try {
           const { title, text } = data
           PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
-        } catch (e) {}
-      })
-      onEvent('exportIcs', (content: string) => {
-        try {
-          PearCalShare?.shareCalendar?.(content ?? '').catch?.(() => {})
         } catch (e) {}
       })
       onEvent('takePhoto', () => {
