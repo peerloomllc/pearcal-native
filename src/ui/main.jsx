@@ -75,6 +75,7 @@ const sync = {
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
+  exportIcs: (content) => window.__pearDB.call('exportIcs', content),
   qrScan: () => window.__pearDB.call('qrScan'),
   takePhoto: () => window.__pearDB.call('takePhoto'),
   haptic: (style) => window.__pearDB.call('haptic', style),

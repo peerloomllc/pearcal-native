@@ -24,7 +24,7 @@ import {
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Camera, Image, ArrowsClockwise, CurrencyDollar,
-  ShieldCheck, Crown,
+  ShieldCheck, Crown, UploadSimple, DownloadSimple,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -37,6 +37,132 @@ class Emitter {
   emit (e, ...a) { (this._h[e] ?? []).forEach(fn => fn(...a)) }
 }
 export const emitter = new Emitter()
+
+// ─── ICS / iCalendar Parser ───────────────────────────────────────────────────
+
+function _icsUnescape (s) {
+  return s.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\')
+}
+
+function _icsParseDate (s) {
+  // YYYYMMDD → YYYY-MM-DD
+  const d = s.slice(0, 8)
+  return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8)
+}
+
+function _icsParseDateTime (s) {
+  // YYYYMMDDTHHMMSS[Z]
+  return {
+    date: s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8),
+    time: s.slice(9,11) + ':' + s.slice(11,13),
+  }
+}
+
+export function parseIcs (text) {
+  // Unfold folded lines (continuation lines begin with space or tab)
+  const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '')
+  const lines = unfolded.split(/\r\n|\r|\n/)
+  const events = []
+  let inEvent = false
+  let cur = null
+
+  for (const raw of lines) {
+    if (raw.trim() === 'BEGIN:VEVENT') { inEvent = true; cur = {}; continue }
+    if (raw.trim() === 'END:VEVENT') {
+      inEvent = false
+      if (cur && cur.title && cur.date) events.push(cur)
+      cur = null
+      continue
+    }
+    if (!inEvent || !cur) continue
+
+    const colonIdx = raw.indexOf(':')
+    if (colonIdx < 0) continue
+    const keyPart = raw.slice(0, colonIdx)
+    const value   = raw.slice(colonIdx + 1)
+    const semiIdx = keyPart.indexOf(';')
+    const key     = semiIdx >= 0 ? keyPart.slice(0, semiIdx) : keyPart
+    const params  = semiIdx >= 0 ? keyPart.slice(semiIdx + 1) : ''
+
+    if (key === 'SUMMARY')     { cur.title    = _icsUnescape(value) }
+    else if (key === 'DESCRIPTION') { cur.desc = _icsUnescape(value) }
+    else if (key === 'LOCATION')    { cur.location = _icsUnescape(value) }
+    else if (key === 'UID')         { cur.uid = value }
+    else if (key === 'DTSTART') {
+      const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
+      if (allDay) {
+        cur.date   = _icsParseDate(value)
+        cur.allDay = true
+      } else {
+        const { date, time } = _icsParseDateTime(value)
+        cur.date   = date
+        cur.start  = time
+        cur.allDay = false
+      }
+    } else if (key === 'DTEND') {
+      const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
+      if (allDay) {
+        // DTEND is exclusive for DATE values — subtract one day to get inclusive end
+        const excl = _icsParseDate(value)
+        const d = new Date(excl + 'T12:00:00')
+        d.setDate(d.getDate() - 1)
+        const incl = d.toISOString().slice(0, 10)
+        if (incl !== cur.date) cur.endDate = incl
+      } else {
+        cur.end = _icsParseDateTime(value).time
+      }
+    }
+  }
+  return events
+}
+
+// ─── ICS Generator ───────────────────────────────────────────────────────────
+
+function _icsEscape (s) {
+  return String(s ?? '').replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')
+}
+
+function _icsDate (dateStr) {
+  return dateStr.replace(/-/g, '')
+}
+
+function _icsDateTime (dateStr, timeStr) {
+  // Returns YYYYMMDDTHHMMSS (local time, no Z — avoids TZ conversion issues)
+  return dateStr.replace(/-/g, '') + 'T' + timeStr.replace(/:/g, '') + '00'
+}
+
+export function generateIcs (events) {
+  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//PeerLoom LLC//PearCal//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+  ]
+  for (const ev of events) {
+    lines.push('BEGIN:VEVENT')
+    lines.push('UID:' + ev.id + '@pearcal')
+    lines.push('DTSTAMP:' + now)
+    if (ev.allDay) {
+      lines.push('DTSTART;VALUE=DATE:' + _icsDate(ev.date))
+      const endDate = ev.endDate || ev.date
+      // DTEND is exclusive for all-day events
+      const d = new Date(endDate + 'T12:00:00')
+      d.setDate(d.getDate() + 1)
+      lines.push('DTEND;VALUE=DATE:' + d.toISOString().slice(0,10).replace(/-/g,''))
+    } else {
+      lines.push('DTSTART:' + _icsDateTime(ev.date, ev.start || '00:00'))
+      if (ev.end) lines.push('DTEND:' + _icsDateTime(ev.date, ev.end))
+    }
+    lines.push('SUMMARY:' + _icsEscape(ev.title))
+    if (ev.desc)     lines.push('DESCRIPTION:' + _icsEscape(ev.desc))
+    if (ev.location) lines.push('LOCATION:' + _icsEscape(ev.location))
+    lines.push('END:VEVENT')
+  }
+  lines.push('END:VCALENDAR')
+  return lines.join('\r\n')
+}
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
@@ -799,7 +925,8 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady} />
+              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
+              saveEvent={saveEvent} profile={profile} sync={sync} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
@@ -1293,7 +1420,8 @@ function getUKHolidays (year) {
 }
 
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
-  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady }) {
+  eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady,
+  saveEvent, profile, sync }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -1306,6 +1434,53 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const userScrollTimer = useRef(null)
   const scrollToDateRef = useRef(null)
   const [filterGroupIds, setFilterGroupIds] = useState(new Set())
+  const [icsImport, setIcsImport] = useState(null) // { events, filename }
+  const icsFileRef = useRef(null)
+
+  function handleIcsFile (e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    const reader = new FileReader()
+    reader.onload = ev => {
+      const parsed = parseIcs(ev.target.result)
+      if (parsed.length === 0) return
+      setIcsImport({ events: parsed, filename: file.name })
+    }
+    reader.readAsText(file)
+  }
+
+  function doImportIcs () {
+    if (!icsImport || !saveEvent) return
+    for (const ev of icsImport.events) {
+      const id = 'e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+      saveEvent({
+        id,
+        title:    ev.title,
+        date:     ev.date,
+        allDay:   ev.allDay ?? true,
+        start:    ev.start  ?? '',
+        end:      ev.end    ?? '',
+        endDate:  ev.endDate ?? '',
+        desc:     ev.desc   ?? '',
+        location: ev.location ?? '',
+        groups:   [],
+        invitees: [],
+        color:    '#6C9BF5',
+        colors:   [],
+        reminder: 0,
+        recurrence: 'none',
+        recurrenceId: '',
+        recurrenceEnd: '',
+        recurrenceNth: 0,
+        recurrenceWeekday: 0,
+        editPermission: 'everyone',
+        creatorId: profile?.id ?? '',
+      }, 'one', {}, [])
+    }
+    setIcsImport(null)
+  }
+
   const handleScroll = () => {
     if (isProgrammaticScroll.current) return
     isUserScrolling.current = true
@@ -1480,15 +1655,41 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           {selectedDate < todayStr &&
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
-        <button onClick={() => openCreate(selectedDate)} style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'pointer',
-        }}>
-          <Plus size={18} weight="thin" color="var(--color-text)" />
-        </button>
+        <div style={{ display:'flex', gap:8 }}>
+          <input ref={icsFileRef} type="file" accept=".ics,.ical,text/calendar"
+            style={{ display:'none' }} onChange={handleIcsFile} />
+          <button onClick={() => icsFileRef.current?.click()} style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <UploadSimple size={18} weight="thin" color="var(--color-text)" />
+          </button>
+          <button onClick={() => {
+            const nonHoliday = events.filter(e => !e.id?.startsWith('holiday-'))
+            if (!nonHoliday.length || !sync) return
+            sync.exportIcs(generateIcs(nonHoliday))
+          }} style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <DownloadSimple size={18} weight="thin" color="var(--color-text)" />
+          </button>
+          <button onClick={() => openCreate(selectedDate)} style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Plus size={18} weight="thin" color="var(--color-text)" />
+          </button>
+        </div>
       </div>
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
@@ -1573,6 +1774,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         </button>
       </div>
 
+    {icsImport && (
+      <ImportIcsSheet th={th} events={icsImport.events} filename={icsImport.filename}
+        onImport={doImportIcs} onClose={() => setIcsImport(null)} />
+    )}
     </div>
   )
 }
@@ -3338,6 +3543,42 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
         {children}
       </div>
     </div>
+  )
+}
+
+function ImportIcsSheet ({ th, events, filename, onImport, onClose }) {
+  const bsClose = useRef(null)
+  return (
+    <BottomSheet th={th} onClose={onClose} zIndex={250} closeRef={bsClose}>
+      <div style={{ padding:'0 20px 16px' }}>
+        <div style={{ fontSize:17, fontWeight:400, ...th.text, marginBottom:4 }}>
+          Import {events.length} Event{events.length !== 1 ? 's' : ''}
+        </div>
+        <div style={{ fontSize:13, color:th.muted, fontWeight:300, marginBottom:16,
+          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {filename}
+        </div>
+        <div style={{ maxHeight:280, overflowY:'auto', display:'flex', flexDirection:'column',
+          gap:8, marginBottom:16 }}>
+          {events.map((ev, i) => (
+            <div key={i} style={{ padding:'10px 12px', borderRadius:10,
+              border:`1px solid ${th.border}`, display:'flex', flexDirection:'column', gap:3 }}>
+              <div style={{ fontSize:14, fontWeight:400, ...th.text }}>{ev.title}</div>
+              <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>
+                {ev.date}
+                {ev.allDay
+                  ? (ev.endDate ? ` – ${ev.endDate} · All day` : ' · All day')
+                  : (ev.start ? ` · ${ev.start}${ev.end ? '–'+ev.end : ''}` : '')}
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onImport}
+          style={{ ...th.pillBtn, width:'100%', padding:13, fontSize:15, fontWeight:300 }}>
+          Import {events.length} Event{events.length !== 1 ? 's' : ''}
+        </button>
+      </div>
+    </BottomSheet>
   )
 }
 

@@ -409,6 +409,11 @@ webViewRef.current?.injectJavaScript(
           PearCalShare?.share?.(title ?? '', text ?? '').catch?.(() => {})
         } catch (e) {}
       })
+      onEvent('exportIcs', (content: string) => {
+        try {
+          PearCalShare?.shareCalendar?.(content ?? '').catch?.(() => {})
+        } catch (e) {}
+      })
       onEvent('takePhoto', () => {
         PearCalCamera?.capture?.()
           .then((base64: string) => {
