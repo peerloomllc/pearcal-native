@@ -258,6 +258,10 @@ export default function Root () {
         PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
+      if (msg.method === 'exportIcs') {
+        PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
