@@ -2291,21 +2291,21 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Sharing with others</div>
       <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
-          <Plus size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
+          <Users size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
           <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
-            Tap the{' '}
+            Use the{' '}
             <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
               background:'var(--color-surface)', border:'1px solid var(--color-border)',
-              borderRadius:8, padding:'2px 6px' }}>
-              <UserPlus size={14} weight="thin" color="var(--color-text)" />
+              borderRadius:12, padding:'3px 10px', fontSize:12, fontWeight:300, color:'var(--color-text)' }}>
+              <UserPlus size={13} weight="thin" /> Join Group
             </span>
-            {' '}or{' '}
+            {' '}and{' '}
             <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
-              background:'var(--color-surface)', border:'1px solid var(--color-border)',
-              borderRadius:8, padding:'2px 6px' }}>
-              <Plus size={14} weight="thin" color="var(--color-text)" />
+              background:'var(--color-accent)', border:'none',
+              borderRadius:12, padding:'3px 10px', fontSize:12, fontWeight:300, color:'#fff' }}>
+              <Plus size={13} weight="thin" /> New Group
             </span>
-            {' '}icons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page to join or add a group.
+            {' '}buttons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
@@ -2324,6 +2324,13 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
               <Plus size={13} weight="thin" color="var(--color-text)" />
             </span>
             {' '}button, and assign the event to a group to share it.
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
+          <UploadSimple size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, lineHeight:'1.6' }}>
+            Have events in another calendar? Import them from the{' '}
+            <span style={{ ...th.text, fontWeight:400 }}>Profile</span> tab under Settings.
           </div>
         </div>
       </div>
