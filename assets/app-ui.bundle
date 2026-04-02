@@ -15996,7 +15996,8 @@
       --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     }
     *, *::before, *::after { box-sizing: border-box; }
-    * { -webkit-tap-highlight-color: transparent; }
+    * { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+    input, textarea { -webkit-user-select: text; user-select: text; }
     input, textarea, select, button { font-family: var(--font-sans); }
     input, textarea { font-size: 16px; }
     button { transition: transform var(--duration-fast) var(--easing); }
@@ -16675,14 +16676,20 @@
       return cells;
     }, [viewDate, weekStart]);
     const eventsOnDate = (d) => events.filter((e53) => e53.date <= d && (e53.endDate || e53.date) >= d);
-    function openCreate(date) {
-      const now = /* @__PURE__ */ new Date();
-      const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 6e4);
-      nextHour.setSeconds(0, 0);
-      const hh = String(nextHour.getHours()).padStart(2, "0");
-      const endHour = String((nextHour.getHours() + 1) % 24).padStart(2, "0");
-      const defaultStart = hh + ":00";
-      const defaultEnd = endHour + ":00";
+    function openCreate(date, startTime) {
+      let defaultStart, defaultEnd;
+      if (startTime) {
+        defaultStart = startTime;
+        const h2 = parseInt(startTime.split(":")[0]);
+        defaultEnd = String((h2 + 1) % 24).padStart(2, "0") + ":00";
+      } else {
+        const now = /* @__PURE__ */ new Date();
+        const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 6e4);
+        nextHour.setSeconds(0, 0);
+        const hh = String(nextHour.getHours()).padStart(2, "0");
+        defaultStart = hh + ":00";
+        defaultEnd = String((nextHour.getHours() + 1) % 24).padStart(2, "0") + ":00";
+      }
       setModal({ mode: "create", event: {
         id: "e" + Date.now(),
         title: "",
@@ -16843,6 +16850,8 @@
             events,
             setEvents,
             dark,
+            sync: sync2,
+            saveEvent,
             onToggleDark: () => {
               const nd = !dark;
               setDark(nd);
@@ -17378,6 +17387,517 @@
       { title: "Boxing Day", date: observed(year, 12, 26) }
     ];
   }
+  function WeekView({
+    th,
+    selectedDate,
+    setSelectedDate,
+    weekStart,
+    eventsOnDate,
+    todayStr: todayStr2,
+    dateStr: dateStr2,
+    openCreate,
+    setModal,
+    use24h,
+    events,
+    groups,
+    filterGroupIds,
+    setFilterGroupIds,
+    onTouchStart,
+    onTouchEnd,
+    slideDir,
+    isSliding
+  }) {
+    const weekDays = (0, import_react2.useMemo)(() => {
+      const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
+      const dow = d.getDay();
+      const off = (dow - weekStart + 7) % 7;
+      const start = new Date(d);
+      start.setDate(d.getDate() - off);
+      return Array.from({ length: 7 }, (_, i2) => {
+        const day = new Date(start);
+        day.setDate(start.getDate() + i2);
+        return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
+      });
+    }, [selectedDate, weekStart, dateStr2]);
+    const weekScrollRef = (0, import_react2.useRef)(null);
+    (0, import_react2.useEffect)(() => {
+      if (!weekScrollRef.current) return;
+      const el = weekScrollRef.current.querySelector('[data-weekday="' + selectedDate + '"]');
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, [weekDays]);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "div",
+      {
+        onTouchStart,
+        onTouchEnd,
+        style: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" },
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          transform: slideDir === -1 ? "translateX(-8%)" : slideDir === 1 ? "translateX(8%)" : "translateX(0)",
+          opacity: isSliding ? 0 : 1,
+          transition: isSliding ? "transform 0.22s ease, opacity 0.22s ease" : "none",
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 4, padding: "0 16px 10px", justifyContent: "space-between" }, children: weekDays.map((ds) => {
+            const d = /* @__PURE__ */ new Date(ds + "T12:00:00");
+            const isSel = ds === selectedDate;
+            const isToday = ds === todayStr2;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  window.__pearSync?.haptic("light");
+                  setSelectedDate(ds);
+                },
+                style: {
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 2,
+                  padding: "6px 0",
+                  borderRadius: 10,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  background: isSel ? th.accent : isToday ? th.accentFaint : "transparent"
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 11,
+                    fontWeight: 300,
+                    color: isSel ? "#fff" : th.muted
+                  }, children: DAYS[d.getDay()].slice(0, 1) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 14,
+                    fontWeight: isSel || isToday ? 400 : 300,
+                    color: isSel ? "#fff" : isToday ? th.accent : th.text.color
+                  }, children: d.getDate() })
+                ]
+              },
+              ds
+            );
+          }) }),
+          groups && groups.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            display: "flex",
+            gap: 6,
+            overflowX: "auto",
+            padding: "0 16px 10px",
+            scrollbarWidth: "none",
+            flexShrink: 0
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
+              flexShrink: 0,
+              fontSize: 12,
+              fontWeight: 300,
+              padding: "4px 12px",
+              borderRadius: 20,
+              border: "1.5px solid " + (filterGroupIds.size === 0 ? th.accent : th.border),
+              background: filterGroupIds.size === 0 ? th.accent : "transparent",
+              color: filterGroupIds.size === 0 ? "#fff" : th.muted,
+              cursor: "pointer"
+            }, children: "All" }),
+            groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds((prev) => {
+              const next = new Set(prev);
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id);
+              return next;
+            }), style: {
+              flexShrink: 0,
+              fontSize: 12,
+              fontWeight: 300,
+              padding: "4px 12px",
+              borderRadius: 20,
+              border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : "transparent",
+              color: filterGroupIds.has(g.id) ? "#fff" : th.muted,
+              cursor: "pointer"
+            }, children: g.name }, g.id))
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", justifyContent: "flex-end", padding: "0 16px 8px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => openCreate(selectedDate), style: {
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer"
+          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 18, weight: "thin", color: "var(--color-text)" }) }) }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: weekScrollRef, style: { flex: 1, overflowY: "auto", padding: "0 16px calc(72px + var(--safe-area-bottom))", minHeight: 0 }, children: weekDays.map((ds) => {
+            const d = /* @__PURE__ */ new Date(ds + "T12:00:00");
+            const isSel = ds === selectedDate;
+            let dayEvents = eventsOnDate(ds);
+            if (filterGroupIds.size > 0) dayEvents = dayEvents.filter((e53) => (e53.groups ?? []).some((gid) => filterGroupIds.has(gid)));
+            dayEvents.sort((a35, b) => {
+              if (a35.allDay && !b.allDay) return -1;
+              if (!a35.allDay && b.allDay) return 1;
+              return (a35.start || "").localeCompare(b.start || "");
+            });
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-weekday": ds, style: { marginBottom: 16 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                fontSize: 12,
+                fontWeight: isSel ? 400 : 300,
+                color: ds === todayStr2 ? th.accent : th.muted,
+                letterSpacing: "0.05em",
+                marginBottom: 8,
+                paddingBottom: 4,
+                borderBottom: "1px solid " + th.border
+              }, children: ds === todayStr2 ? "TODAY" : d.toLocaleDateString(
+                "en-US",
+                { weekday: "long", month: "short", day: "numeric" }
+              ).toUpperCase() }),
+              dayEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, padding: "8px 0", fontStyle: "italic" }, children: "No events" }) : dayEvents.map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                EventCard,
+                {
+                  ev,
+                  th,
+                  isPast: ds < todayStr2,
+                  use24h,
+                  onClick: () => setModal({ mode: "edit", event: { ...ev } })
+                }
+              ) }, ev.id))
+            ] }, ds);
+          }) })
+        ] })
+      }
+    );
+  }
+  function DayView({
+    th,
+    selectedDate,
+    setSelectedDate,
+    weekStart,
+    eventsOnDate,
+    todayStr: todayStr2,
+    dateStr: dateStr2,
+    openCreate,
+    setModal,
+    use24h,
+    groups,
+    filterGroupIds,
+    setFilterGroupIds,
+    onTouchStart,
+    onTouchEnd,
+    slideDir,
+    isSliding
+  }) {
+    const HOUR_H = 60;
+    const hourGridRef = (0, import_react2.useRef)(null);
+    const adjacentDays = (0, import_react2.useMemo)(() => {
+      const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
+      return Array.from({ length: 7 }, (_, i2) => {
+        const day = new Date(d);
+        day.setDate(d.getDate() + (i2 - 3));
+        return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
+      });
+    }, [selectedDate, dateStr2]);
+    const dayEvents = (0, import_react2.useMemo)(() => {
+      let evs = eventsOnDate(selectedDate);
+      if (filterGroupIds.size > 0) evs = evs.filter((e53) => (e53.groups ?? []).some((gid) => filterGroupIds.has(gid)));
+      return evs;
+    }, [selectedDate, eventsOnDate, filterGroupIds]);
+    const allDayEvents = dayEvents.filter((e53) => e53.allDay);
+    const timedEvents = dayEvents.filter((e53) => !e53.allDay && e53.start);
+    const timeToY = (t7) => {
+      if (!t7) return 0;
+      const [h2, m3] = t7.split(":").map(Number);
+      return (h2 + m3 / 60) * HOUR_H;
+    };
+    const positioned = (0, import_react2.useMemo)(() => {
+      const sorted = [...timedEvents].sort((a35, b) => (a35.start || "").localeCompare(b.start || ""));
+      const cols = [];
+      return sorted.map((ev) => {
+        const top = timeToY(ev.start);
+        const bot = timeToY(ev.end || ev.start);
+        const height = Math.max(bot - top, 30);
+        let col = 0;
+        while (cols[col] && cols[col] > top) col++;
+        cols[col] = top + height;
+        const totalCols = cols.length;
+        return { ev, top, height, col, totalCols };
+      });
+    }, [dayEvents]);
+    (0, import_react2.useEffect)(() => {
+      if (!hourGridRef.current) return;
+      const isToday = selectedDate === todayStr2;
+      let scrollTarget;
+      if (isToday) {
+        const now = /* @__PURE__ */ new Date();
+        scrollTarget = Math.max(0, (now.getHours() - 1) * HOUR_H);
+      } else if (timedEvents.length > 0) {
+        const earliest = timedEvents.reduce((a35, b) => (a35.start || "99") < (b.start || "99") ? a35 : b);
+        scrollTarget = Math.max(0, timeToY(earliest.start) - HOUR_H);
+      } else {
+        scrollTarget = 8 * HOUR_H;
+      }
+      hourGridRef.current.scrollTop = scrollTarget;
+    }, [selectedDate]);
+    const formatHour = (h2) => {
+      if (use24h) return String(h2).padStart(2, "0") + ":00";
+      if (h2 === 0) return "12 AM";
+      if (h2 === 12) return "12 PM";
+      return h2 > 12 ? h2 - 12 + " PM" : h2 + " AM";
+    };
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "div",
+      {
+        onTouchStart,
+        onTouchEnd,
+        style: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0, overflow: "hidden" },
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          transform: slideDir === -1 ? "translateX(-8%)" : slideDir === 1 ? "translateX(8%)" : "translateX(0)",
+          opacity: isSliding ? 0 : 1,
+          transition: isSliding ? "transform 0.22s ease, opacity 0.22s ease" : "none",
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          minHeight: 0
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 4, padding: "0 16px 10px", justifyContent: "space-between" }, children: adjacentDays.map((ds) => {
+            const d = /* @__PURE__ */ new Date(ds + "T12:00:00");
+            const isSel = ds === selectedDate;
+            const isToday = ds === todayStr2;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  window.__pearSync?.haptic("light");
+                  setSelectedDate(ds);
+                },
+                style: {
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 2,
+                  padding: "6px 0",
+                  borderRadius: 10,
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  background: isSel ? th.accent : isToday ? th.accentFaint : "transparent"
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 11,
+                    fontWeight: 300,
+                    color: isSel ? "#fff" : th.muted
+                  }, children: DAYS[d.getDay()].slice(0, 1) }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 14,
+                    fontWeight: isSel || isToday ? 400 : 300,
+                    color: isSel ? "#fff" : isToday ? th.accent : th.text.color
+                  }, children: d.getDate() })
+                ]
+              },
+              ds
+            );
+          }) }),
+          groups && groups.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            display: "flex",
+            gap: 6,
+            overflowX: "auto",
+            padding: "0 16px 10px",
+            scrollbarWidth: "none",
+            flexShrink: 0
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
+              flexShrink: 0,
+              fontSize: 12,
+              fontWeight: 300,
+              padding: "4px 12px",
+              borderRadius: 20,
+              border: "1.5px solid " + (filterGroupIds.size === 0 ? th.accent : th.border),
+              background: filterGroupIds.size === 0 ? th.accent : "transparent",
+              color: filterGroupIds.size === 0 ? "#fff" : th.muted,
+              cursor: "pointer"
+            }, children: "All" }),
+            groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds((prev) => {
+              const next = new Set(prev);
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id);
+              return next;
+            }), style: {
+              flexShrink: 0,
+              fontSize: 12,
+              fontWeight: 300,
+              padding: "4px 12px",
+              borderRadius: 20,
+              border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : "transparent",
+              color: filterGroupIds.has(g.id) ? "#fff" : th.muted,
+              cursor: "pointer"
+            }, children: g.name }, g.id))
+          ] }),
+          allDayEvents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px", maxHeight: 80, overflowY: "auto" }, children: [
+            allDayEvents.slice(0, 3).map((ev) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "div",
+              {
+                onClick: () => {
+                  window.__pearSync?.haptic("light");
+                  setModal({ mode: "edit", event: { ...ev } });
+                },
+                style: {
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  marginBottom: 4,
+                  cursor: "pointer",
+                  background: (ev.colors?.[0] ?? ev.color) + "22",
+                  borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: ev.title })
+              },
+              ev.id
+            )),
+            allDayEvents.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
+              "+",
+              allDayEvents.length - 3,
+              " more"
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: hourGridRef, style: { flex: 1, overflowY: "auto", position: "relative", minHeight: 0 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative", height: 24 * HOUR_H }, children: [
+            Array.from({ length: 24 }, (_, h2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "div",
+              {
+                onClick: () => openCreate(selectedDate, String(h2).padStart(2, "0") + ":00"),
+                style: {
+                  position: "absolute",
+                  top: h2 * HOUR_H,
+                  left: 0,
+                  right: 0,
+                  height: HOUR_H,
+                  borderBottom: `1px solid ${th.border}`,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "flex-start"
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                  fontSize: 11,
+                  fontWeight: 300,
+                  color: th.muted,
+                  width: 48,
+                  textAlign: "right",
+                  paddingRight: 8,
+                  paddingTop: 2,
+                  flexShrink: 0
+                }, children: formatHour(h2) })
+              },
+              h2
+            )),
+            positioned.map(({ ev, top, height, col, totalCols }) => {
+              const gutterPx = 56;
+              const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`;
+              const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "div",
+                {
+                  onClick: (e53) => {
+                    e53.stopPropagation();
+                    window.__pearSync?.haptic("light");
+                    setModal({ mode: "edit", event: { ...ev } });
+                  },
+                  style: {
+                    position: "absolute",
+                    top,
+                    height: Math.max(height, 30),
+                    left: colLeft,
+                    width: `calc(${colWidth} - 4px)`,
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    overflow: "hidden",
+                    background: (ev.colors?.[0] ?? ev.color) + "22",
+                    borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`,
+                    zIndex: 10,
+                    display: "flex",
+                    gap: 0
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0, padding: "4px 8px" }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, ...th.text, lineHeight: "1.3" }, children: ev.title }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: [
+                        formatTime(ev.start, use24h),
+                        ev.end ? ` \u2013 ${formatTime(ev.end, use24h)}` : ""
+                      ] }),
+                      ev.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                        "div",
+                        {
+                          onClick: (e210) => {
+                            e210.stopPropagation();
+                            window.__pearSync?.openURL(ev.meetingLink.trim());
+                          },
+                          style: { display: "flex", alignItems: "center", gap: 3, marginTop: 2, cursor: "pointer", minWidth: 0 },
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 10, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                              fontSize: 10,
+                              fontWeight: 300,
+                              color: th.accent,
+                              textDecoration: "underline",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap"
+                            }, children: ev.meetingLink.trim().replace(/^https?:\/\//, "") })
+                          ]
+                        }
+                      )
+                    ] }),
+                    ev.location && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 1, background: th.border, flexShrink: 0, marginTop: 4, marginBottom: 4 } }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "div",
+                        {
+                          onClick: (e210) => {
+                            e210.stopPropagation();
+                            window.__pearSync?.openURL("geo:0,0?q=" + encodeURIComponent(ev.location));
+                          },
+                          style: {
+                            width: 56,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            flexShrink: 0,
+                            padding: "0 4px"
+                          },
+                          children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(p2, { size: 11, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } })
+                        }
+                      )
+                    ] })
+                  ]
+                },
+                ev.id
+              );
+            }),
+            selectedDate === todayStr2 && (() => {
+              const now = /* @__PURE__ */ new Date();
+              const y = (now.getHours() + now.getMinutes() / 60) * HOUR_H;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                position: "absolute",
+                top: y,
+                left: 48,
+                right: 0,
+                height: 2,
+                background: "#ef4444",
+                borderRadius: 1,
+                zIndex: 20,
+                pointerEvents: "none"
+              }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                position: "absolute",
+                left: -4,
+                top: -3,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#ef4444"
+              } }) });
+            })()
+          ] }) })
+        ] })
+      }
+    );
+  }
   function CalendarTab({
     th,
     viewDate,
@@ -17412,50 +17932,7 @@
     const userScrollTimer = (0, import_react2.useRef)(null);
     const scrollToDateRef = (0, import_react2.useRef)(null);
     const [filterGroupIds, setFilterGroupIds] = (0, import_react2.useState)(/* @__PURE__ */ new Set());
-    const [icsImport, setIcsImport] = (0, import_react2.useState)(null);
-    const icsFileRef = (0, import_react2.useRef)(null);
-    function handleIcsFile(e53) {
-      const file = e53.target.files?.[0];
-      if (!file) return;
-      e53.target.value = "";
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const parsed = parseIcs(ev.target.result);
-        if (parsed.length === 0) return;
-        setIcsImport({ events: parsed, filename: file.name });
-      };
-      reader.readAsText(file);
-    }
-    function doImportIcs() {
-      if (!icsImport || !saveEvent) return;
-      for (const ev of icsImport.events) {
-        const id = "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-        saveEvent({
-          id,
-          title: ev.title,
-          date: ev.date,
-          allDay: ev.allDay ?? true,
-          start: ev.start ?? "",
-          end: ev.end ?? "",
-          endDate: ev.endDate ?? "",
-          desc: ev.desc ?? "",
-          location: ev.location ?? "",
-          groups: [],
-          invitees: [],
-          color: "#6C9BF5",
-          colors: [],
-          reminder: 0,
-          recurrence: "none",
-          recurrenceId: "",
-          recurrenceEnd: "",
-          recurrenceNth: 0,
-          recurrenceWeekday: 0,
-          editPermission: "everyone",
-          creatorId: profile?.id ?? ""
-        }, "one", {}, []);
-      }
-      setIcsImport(null);
-    }
+    const [calView, setCalView] = (0, import_react2.useState)("month");
     const handleScroll = () => {
       if (isProgrammaticScroll.current) return;
       isUserScrolling.current = true;
@@ -17503,8 +17980,20 @@
       setSlideDir(dir);
       setIsSliding(true);
       setTimeout(() => {
-        if (dir === -1) setViewDate((v) => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 });
-        else setViewDate((v) => v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 });
+        if (calView === "month") {
+          if (dir === -1) setViewDate((v) => v.m === 11 ? { y: v.y + 1, m: 0 } : { y: v.y, m: v.m + 1 });
+          else setViewDate((v) => v.m === 0 ? { y: v.y - 1, m: 11 } : { y: v.y, m: v.m - 1 });
+        } else {
+          const shift = calView === "week" ? 7 : 1;
+          const sign = dir === -1 ? 1 : -1;
+          setSelectedDate((prev2) => {
+            const d = /* @__PURE__ */ new Date(prev2 + "T12:00:00");
+            d.setDate(d.getDate() + sign * shift);
+            const ns = dateStr2(d.getFullYear(), d.getMonth(), d.getDate());
+            setViewDate({ y: d.getFullYear(), m: d.getMonth() });
+            return ns;
+          });
+        }
         setSlideDir(0);
         setIsSliding(false);
       }, 220);
@@ -17552,7 +18041,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px", flexShrink: 0 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 0 8px" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: prev, style: th.iconBtn, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s2, { size: 18, weight: "thin" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4, alignItems: "center" }, children: [
+          calView === "month" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 4, alignItems: "center" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "button",
@@ -17623,10 +18112,38 @@
                 yr
               )) })
             ] })
-          ] }),
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: calView === "day" ? (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }) : (() => {
+            const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
+            const dow = d.getDay();
+            const off = (dow - weekStart + 7) % 7;
+            const wk0 = new Date(d);
+            wk0.setDate(d.getDate() - off);
+            const wk6 = new Date(wk0);
+            wk6.setDate(wk0.getDate() + 6);
+            const fmt = (dt) => dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            return `${fmt(wk0)} \u2013 ${fmt(wk6)}, ${wk6.getFullYear()}`;
+          })() }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: next, style: th.iconBtn, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s3, { size: 18, weight: "thin" }) })
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          display: "flex",
+          margin: "0 0 10px",
+          borderRadius: 10,
+          border: `1px solid ${th.border}`,
+          overflow: "hidden"
+        }, children: ["month", "week", "day"].map((v) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setCalView(v), style: {
+          flex: 1,
+          padding: "6px 0",
+          fontSize: 13,
+          fontWeight: calView === v ? 400 : 300,
+          fontFamily: FONT,
+          border: "none",
+          cursor: "pointer",
+          background: calView === v ? th.accent : "transparent",
+          color: calView === v ? "#fff" : th.muted,
+          transition: "background 0.15s, color 0.15s"
+        }, children: v.charAt(0).toUpperCase() + v.slice(1) }, v)) }),
+        calView === "month" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "div",
           {
             onTouchStart,
@@ -17682,186 +18199,185 @@
           }
         )
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-        padding: "8px 16px 8px",
-        borderTop: "1px solid " + th.border,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        flexShrink: 0
-      }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontWeight: 400, fontSize: 15, ...th.text }, children: [
-          selectedDate === todayStr2 ? "Today \xB7 " : "",
-          selectedDate && (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString(
-            "en-US",
-            { weekday: "long", month: "short", day: "numeric" }
-          ),
-          selectedDate < todayStr2 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginLeft: 8 }, children: "past" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "input",
-            {
-              ref: icsFileRef,
-              type: "file",
-              accept: ".ics,.ical,text/calendar",
-              style: { display: "none" },
-              onChange: handleIcsFile
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => icsFileRef.current?.click(), style: {
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer"
-          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(l5, { size: 18, weight: "thin", color: "var(--color-text)" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => {
-            const nonHoliday = events.filter((e53) => !e53.id?.startsWith("holiday-"));
-            if (!nonHoliday.length || !sync2) return;
-            sync2.exportIcs(generateIcs(nonHoliday));
-          }, style: {
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer"
-          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(l4, { size: 18, weight: "thin", color: "var(--color-text)" }) }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => openCreate(selectedDate), style: {
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer"
-          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 18, weight: "thin", color: "var(--color-text)" }) })
-        ] })
-      ] }),
-      groups && groups.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-        display: "flex",
-        gap: 6,
-        overflowX: "auto",
-        padding: "0 16px 10px",
-        scrollbarWidth: "none",
-        flexShrink: 0
-      }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
-          flexShrink: 0,
-          fontSize: 12,
-          fontWeight: 300,
-          padding: "4px 12px",
-          borderRadius: 20,
-          border: "1.5px solid " + (filterGroupIds.size === 0 ? th.accent : th.border),
-          background: filterGroupIds.size === 0 ? th.accent : "transparent",
-          color: filterGroupIds.size === 0 ? "#fff" : th.muted,
-          cursor: "pointer"
-        }, children: "All" }),
-        groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds((prev2) => {
-          const next2 = new Set(prev2);
-          next2.has(g.id) ? next2.delete(g.id) : next2.add(g.id);
-          return next2;
-        }), style: {
-          flexShrink: 0,
-          fontSize: 12,
-          fontWeight: 300,
-          padding: "4px 12px",
-          borderRadius: 20,
-          border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : th.border),
-          background: filterGroupIds.has(g.id) ? g.color : "transparent",
-          color: filterGroupIds.has(g.id) ? "#fff" : th.muted,
-          cursor: "pointer"
-        }, children: g.name }, g.id))
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: scrollRef, onScroll: handleScroll, style: { flex: 1, overflowY: "auto", padding: "0 16px calc(72px + var(--safe-area-bottom))", minHeight: 0, WebkitOverflowScrolling: "touch" }, children: [
-        !eventsReady.current ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { paddingTop: 8 }, children: [0, 1, 2].map((i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonEventCard, {}, i2)) }) : null,
-        (() => {
-          if (!eventsReady.current) return null;
-          const cutoff = /* @__PURE__ */ new Date();
-          cutoff.setDate(cutoff.getDate() - 30);
-          const cutoffStr = cutoff.toISOString().slice(0, 10);
-          const seen = /* @__PURE__ */ new Map();
-          const days = [];
-          const filteredEvents = filterGroupIds.size > 0 ? events.filter((e53) => (e53.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events;
-          filteredEvents.filter((e53) => e53.date >= cutoffStr).sort((a35, b) => a35.date.localeCompare(b.date)).forEach((e53) => {
-            if (!seen.has(e53.date)) {
-              seen.set(e53.date, []);
-              days.push(e53.date);
-            }
-            seen.get(e53.date).push(e53);
-          });
-          return days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-              fontSize: 12,
-              fontWeight: 400,
-              color: th.muted,
-              letterSpacing: "0.05em",
-              marginBottom: 8,
-              paddingBottom: 4,
-              borderBottom: "1px solid " + th.border
-            }, children: date === todayStr2 ? "TODAY" : (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString(
+      calView === "month" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          padding: "8px 16px 8px",
+          borderTop: "1px solid " + th.border,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexShrink: 0
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontWeight: 400, fontSize: 15, ...th.text }, children: [
+            selectedDate === todayStr2 ? "Today \xB7 " : "",
+            selectedDate && (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString(
               "en-US",
               { weekday: "long", month: "short", day: "numeric" }
-            ).toUpperCase() }),
-            seen.get(date).map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              EventCard,
-              {
-                ev,
-                th,
-                isPast: date < todayStr2,
-                use24h,
-                onClick: () => setModal({ mode: "edit", event: { ...ev } })
+            ),
+            selectedDate < todayStr2 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginLeft: 8 }, children: "past" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => openCreate(selectedDate), style: {
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer"
+          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 18, weight: "thin", color: "var(--color-text)" }) }) })
+        ] }),
+        groups && groups.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          display: "flex",
+          gap: 6,
+          overflowX: "auto",
+          padding: "0 16px 10px",
+          scrollbarWidth: "none",
+          flexShrink: 0
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
+            flexShrink: 0,
+            fontSize: 12,
+            fontWeight: 300,
+            padding: "4px 12px",
+            borderRadius: 20,
+            border: "1.5px solid " + (filterGroupIds.size === 0 ? th.accent : th.border),
+            background: filterGroupIds.size === 0 ? th.accent : "transparent",
+            color: filterGroupIds.size === 0 ? "#fff" : th.muted,
+            cursor: "pointer"
+          }, children: "All" }),
+          groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => setFilterGroupIds((prev2) => {
+            const next2 = new Set(prev2);
+            next2.has(g.id) ? next2.delete(g.id) : next2.add(g.id);
+            return next2;
+          }), style: {
+            flexShrink: 0,
+            fontSize: 12,
+            fontWeight: 300,
+            padding: "4px 12px",
+            borderRadius: 20,
+            border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : th.border),
+            background: filterGroupIds.has(g.id) ? g.color : "transparent",
+            color: filterGroupIds.has(g.id) ? "#fff" : th.muted,
+            cursor: "pointer"
+          }, children: g.name }, g.id))
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { ref: scrollRef, onScroll: handleScroll, style: { flex: 1, overflowY: "auto", padding: "0 16px calc(72px + var(--safe-area-bottom))", minHeight: 0, WebkitOverflowScrolling: "touch" }, children: [
+          !eventsReady.current ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { paddingTop: 8 }, children: [0, 1, 2].map((i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(SkeletonEventCard, {}, i2)) }) : null,
+          (() => {
+            if (!eventsReady.current) return null;
+            const cutoff = /* @__PURE__ */ new Date();
+            cutoff.setDate(cutoff.getDate() - 30);
+            const cutoffStr = cutoff.toISOString().slice(0, 10);
+            const seen = /* @__PURE__ */ new Map();
+            const days = [];
+            const filteredEvents = filterGroupIds.size > 0 ? events.filter((e53) => (e53.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events;
+            filteredEvents.filter((e53) => e53.date >= cutoffStr).sort((a35, b) => a35.date.localeCompare(b.date)).forEach((e53) => {
+              if (!seen.has(e53.date)) {
+                seen.set(e53.date, []);
+                days.push(e53.date);
               }
-            ) }, ev.id))
-          ] }, date));
-        })()
+              seen.get(e53.date).push(e53);
+            });
+            return days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                fontSize: 12,
+                fontWeight: 400,
+                color: th.muted,
+                letterSpacing: "0.05em",
+                marginBottom: 8,
+                paddingBottom: 4,
+                borderBottom: "1px solid " + th.border
+              }, children: date === todayStr2 ? "TODAY" : (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString(
+                "en-US",
+                { weekday: "long", month: "short", day: "numeric" }
+              ).toUpperCase() }),
+              seen.get(date).map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                EventCard,
+                {
+                  ev,
+                  th,
+                  isPast: date < todayStr2,
+                  use24h,
+                  onClick: () => setModal({ mode: "edit", event: { ...ev } })
+                }
+              ) }, ev.id))
+            ] }, date));
+          })()
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          position: "fixed",
+          bottom: "calc(53px + var(--safe-area-bottom) + 12px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          justifyContent: "center",
+          pointerEvents: "none"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => {
+          setViewDate({ y: parseInt(todayStr2.slice(0, 4)), m: parseInt(todayStr2.slice(5, 7)) - 1 });
+          setSelectedDate(todayStr2);
+          scrollToDate(todayStr2);
+        }, style: {
+          height: 44,
+          padding: "0 24px",
+          borderRadius: 22,
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          cursor: "pointer",
+          pointerEvents: "auto"
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s, { size: 18, weight: "thin", color: "var(--color-text)" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, color: "var(--color-text)", fontFamily: FONT }, children: "Today" })
+        ] }) })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-        position: "fixed",
-        bottom: "calc(53px + var(--safe-area-bottom) + 12px)",
-        left: "50%",
-        transform: "translateX(-50%)",
-        display: "flex",
-        justifyContent: "center",
-        pointerEvents: "none"
-      }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("button", { onClick: () => {
-        setViewDate({ y: parseInt(todayStr2.slice(0, 4)), m: parseInt(todayStr2.slice(5, 7)) - 1 });
-        setSelectedDate(todayStr2);
-        scrollToDate(todayStr2);
-      }, style: {
-        height: 44,
-        padding: "0 24px",
-        borderRadius: 22,
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        boxShadow: "0 2px 12px rgba(0,0,0,0.18)",
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        cursor: "pointer",
-        pointerEvents: "auto"
-      }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s, { size: 18, weight: "thin", color: "var(--color-text)" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, color: "var(--color-text)", fontFamily: FONT }, children: "Today" })
-      ] }) }),
-      icsImport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        ImportIcsSheet,
+      calView === "week" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        WeekView,
         {
           th,
-          events: icsImport.events,
-          filename: icsImport.filename,
-          onImport: doImportIcs,
-          onClose: () => setIcsImport(null)
+          selectedDate,
+          setSelectedDate,
+          weekStart,
+          eventsOnDate,
+          todayStr: todayStr2,
+          dateStr: dateStr2,
+          openCreate,
+          setModal,
+          use24h,
+          events,
+          groups,
+          filterGroupIds,
+          setFilterGroupIds,
+          onTouchStart,
+          onTouchEnd,
+          slideDir,
+          isSliding
+        }
+      ),
+      calView === "day" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        DayView,
+        {
+          th,
+          selectedDate,
+          setSelectedDate,
+          weekStart,
+          eventsOnDate,
+          todayStr: todayStr2,
+          dateStr: dateStr2,
+          openCreate,
+          setModal,
+          use24h,
+          groups,
+          filterGroupIds,
+          setFilterGroupIds,
+          onTouchStart,
+          onTouchEnd,
+          slideDir,
+          isSliding
         }
       )
     ] });
@@ -18324,7 +18840,7 @@
           opacity: isPast ? 0.5 : 1
         },
         children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text }, children: ev.title }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
               ev.allDay ? ev.endDate && ev.endDate !== ev.date ? `${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
@@ -18340,7 +18856,7 @@
                   e53.stopPropagation();
                   window.__pearSync?.openURL(ev.meetingLink.trim());
                 },
-                style: { display: "flex", alignItems: "center", gap: 4, marginTop: 4, cursor: "pointer" },
+                style: { display: "flex", alignItems: "center", gap: 4, marginTop: 4, cursor: "pointer", minWidth: 0 },
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 12, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
@@ -20916,7 +21432,7 @@ ${link}`;
       ] })
     ] });
   }
-  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark }) {
+  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent }) {
     const [name, setName] = (0, import_react2.useState)(profile?.name ?? "");
     const [editing, setEditing] = (0, import_react2.useState)(false);
     const [saving, setSaving] = (0, import_react2.useState)(false);
@@ -20927,6 +21443,9 @@ ${link}`;
     const [timeFormatOpen, setTimeFormatOpen] = (0, import_react2.useState)(false);
     const [weekStartOpen, setWeekStartOpen] = (0, import_react2.useState)(false);
     const [defaultRemOpen, setDefaultRemOpen] = (0, import_react2.useState)(false);
+    const [importExportOpen, setImportExportOpen] = (0, import_react2.useState)(false);
+    const [icsImport, setIcsImport] = (0, import_react2.useState)(null);
+    const icsFileRef = (0, import_react2.useRef)(null);
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
     const weekStart = profile?.weekStart ?? 0;
@@ -21320,6 +21839,155 @@ ${link}`;
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: use24h, onChange: (v) => onUpdateProfile({ use24h: v }), accent: th.accent })
         ] }) })
       ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setImportExportOpen((o30) => !o30);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "IMPORT & EXPORT" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                s3,
+                {
+                  size: 16,
+                  weight: "thin",
+                  color: "var(--color-muted)",
+                  style: { transition: "transform 0.3s", transform: importExportOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: importExportOpen ? "300px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "input",
+            {
+              ref: icsFileRef,
+              type: "file",
+              accept: ".ics,.ical,text/calendar",
+              style: { display: "none" },
+              onChange: (e53) => {
+                const file = e53.target.files?.[0];
+                if (!file) return;
+                e53.target.value = "";
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                  const parsed = parseIcs(ev.target.result);
+                  if (parsed.length === 0) return;
+                  setIcsImport({ events: parsed, filename: file.name });
+                };
+                reader.readAsText(file);
+              }
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => icsFileRef.current?.click(),
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(l5, { size: 18, weight: "thin", color: "var(--color-accent)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Import Events" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Import from .ics file" })
+                ] })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => {
+                const nonHoliday = (events ?? []).filter((e53) => !e53.id?.startsWith("holiday-"));
+                if (!nonHoliday.length || !sync2) return;
+                sync2.exportIcs(generateIcs(nonHoliday));
+              },
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(l4, { size: 18, weight: "thin", color: "var(--color-accent)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Export Events" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Export all events as .ics" })
+                ] })
+              ]
+            }
+          )
+        ] }) })
+      ] }),
+      icsImport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        ImportIcsSheet,
+        {
+          th,
+          events: icsImport.events,
+          filename: icsImport.filename,
+          onImport: () => {
+            if (!icsImport || !saveEvent) return;
+            for (const ev of icsImport.events) {
+              const id = "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+              saveEvent({
+                id,
+                title: ev.title,
+                date: ev.date,
+                allDay: ev.allDay ?? true,
+                start: ev.start ?? "",
+                end: ev.end ?? "",
+                endDate: ev.endDate ?? "",
+                desc: ev.desc ?? "",
+                location: ev.location ?? "",
+                meetingLink: ev.meetingLink ?? "",
+                groups: [],
+                invitees: [],
+                color: "#6C9BF5",
+                colors: [],
+                reminder: 0,
+                recurrence: "none",
+                recurrenceId: "",
+                recurrenceEnd: "",
+                recurrenceNth: 0,
+                recurrenceWeekday: 0,
+                editPermission: "everyone",
+                creatorId: profile?.id ?? ""
+              }, "one", {}, []);
+            }
+            setIcsImport(null);
+          },
+          onClose: () => setIcsImport(null)
+        }
+      ),
       (() => {
         const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
         const slug = (t7) => t7.replace(/\s+/g, "-").toLowerCase();
