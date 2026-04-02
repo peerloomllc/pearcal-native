@@ -121,12 +121,12 @@ Always create a branch before starting work — never commit directly to master.
 
 ## To-Do List
 
-Tracked in `TODO.md` at the repo root (unversioned, gitignored). When adding items, categorize by type, priority, and complexity.
+Open items tracked in `TODO.md`; completed items in `DONE.md` (both at repo root, unversioned, gitignored). When adding items, categorize by type, priority, and complexity.
 
 ### Completing a TODO item — required workflow:
 1. List verification tests/steps and prompt the user for confirmation/results.
 2. If verification passes and no additional work is needed, proceed to commits.
-3. After commits, mark the item as `- [x] Description — completed YYYY-MM-DD`, then show the remaining open TODO items.
+3. After commits, remove the item from `TODO.md` and add it to the top of the relevant date section in `DONE.md` as `- [x] Description — completed YYYY-MM-DD`, then show the remaining open TODO items.
 
 ## Patching Rules
 
