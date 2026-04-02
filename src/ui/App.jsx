@@ -868,14 +868,20 @@ export default function App ({ db, notifs, sync }) {
 
   const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d)
 
-  function openCreate (date) {
-    const now = new Date()
-    const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 60000)
-    nextHour.setSeconds(0, 0)
-    const hh = String(nextHour.getHours()).padStart(2, '0')
-    const endHour = String((nextHour.getHours() + 1) % 24).padStart(2, '0')
-    const defaultStart = hh + ':00'
-    const defaultEnd   = endHour + ':00'
+  function openCreate (date, startTime) {
+    let defaultStart, defaultEnd
+    if (startTime) {
+      defaultStart = startTime
+      const h = parseInt(startTime.split(':')[0])
+      defaultEnd = String((h + 1) % 24).padStart(2, '0') + ':00'
+    } else {
+      const now = new Date()
+      const nextHour = new Date(now.getTime() + (60 - now.getMinutes()) * 60000)
+      nextHour.setSeconds(0, 0)
+      const hh = String(nextHour.getHours()).padStart(2, '0')
+      defaultStart = hh + ':00'
+      defaultEnd = String((nextHour.getHours() + 1) % 24).padStart(2, '0') + ':00'
+    }
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
@@ -1420,6 +1426,325 @@ function getUKHolidays (year) {
   ]
 }
 
+// ─── Week View ───────────────────────────────────────────────────────────────
+function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, todayStr, dateStr,
+  openCreate, setModal, use24h, events, groups, filterGroupIds, setFilterGroupIds,
+  onTouchStart, onTouchEnd, slideDir, isSliding }) {
+
+  const weekDays = useMemo(() => {
+    const d = new Date(selectedDate + 'T12:00:00')
+    const dow = d.getDay()
+    const off = (dow - weekStart + 7) % 7
+    const start = new Date(d)
+    start.setDate(d.getDate() - off)
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(start)
+      day.setDate(start.getDate() + i)
+      return dateStr(day.getFullYear(), day.getMonth(), day.getDate())
+    })
+  }, [selectedDate, weekStart, dateStr])
+
+  const weekScrollRef = useRef(null)
+
+  useEffect(() => {
+    if (!weekScrollRef.current) return
+    const el = weekScrollRef.current.querySelector('[data-weekday="' + selectedDate + '"]')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [weekDays])
+
+  return (
+    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
+    <div style={{
+      transform: slideDir === -1 ? 'translateX(-8%)' : slideDir === 1 ? 'translateX(8%)' : 'translateX(0)',
+      opacity: isSliding ? 0 : 1,
+      transition: isSliding ? 'transform 0.22s ease, opacity 0.22s ease' : 'none',
+      display:'flex', flexDirection:'column', flex:1, minHeight:0,
+    }}>
+      {/* Day chip strip */}
+      <div style={{ display:'flex', gap:4, padding:'0 16px 10px', justifyContent:'space-between' }}>
+        {weekDays.map(ds => {
+          const d = new Date(ds + 'T12:00:00')
+          const isSel = ds === selectedDate
+          const isToday = ds === todayStr
+          return (
+            <button key={ds} onClick={() => { window.__pearSync?.haptic('light'); setSelectedDate(ds) }}
+              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
+                background: isSel ? th.accent : isToday ? th.accentFaint : 'transparent' }}>
+              <span style={{ fontSize:11, fontWeight:300,
+                color: isSel ? '#fff' : th.muted }}>{DAYS[d.getDay()].slice(0,1)}</span>
+              <span style={{ fontSize:14, fontWeight: isSel || isToday ? 400 : 300,
+                color: isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d.getDate()}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Group filter pills */}
+      {groups && groups.length > 0 && (
+        <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
+          scrollbarWidth:'none', flexShrink:0 }}>
+          <button onClick={() => setFilterGroupIds(new Set())} style={{
+            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
+            background: filterGroupIds.size === 0 ? th.accent : 'transparent',
+            color: filterGroupIds.size === 0 ? '#fff' : th.muted, cursor:'pointer' }}>
+            All
+          </button>
+          {groups.map(g => (
+            <button key={g.id} onClick={() => setFilterGroupIds(prev => {
+              const next = new Set(prev)
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id)
+              return next
+            })} style={{
+              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : 'transparent',
+              color: filterGroupIds.has(g.id) ? '#fff' : th.muted, cursor:'pointer' }}>
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Day sections */}
+      <div ref={weekScrollRef} style={{ flex:1, overflowY:'auto', padding:'0 16px calc(72px + var(--safe-area-bottom))', minHeight:0 }}>
+        {weekDays.map(ds => {
+          const d = new Date(ds + 'T12:00:00')
+          const isSel = ds === selectedDate
+          let dayEvents = eventsOnDate(ds)
+          if (filterGroupIds.size > 0) dayEvents = dayEvents.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+          dayEvents.sort((a, b) => {
+            if (a.allDay && !b.allDay) return -1
+            if (!a.allDay && b.allDay) return 1
+            return (a.start || '').localeCompare(b.start || '')
+          })
+          return (
+            <div key={ds} data-weekday={ds} style={{ marginBottom:16 }}>
+              <div style={{ fontSize:12, fontWeight: isSel ? 400 : 300, color: ds === todayStr ? th.accent : th.muted,
+                letterSpacing:'0.05em', marginBottom:8, paddingBottom:4,
+                borderBottom:'1px solid ' + th.border }}>
+                {ds === todayStr ? 'TODAY' : d.toLocaleDateString('en-US',
+                  { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
+              </div>
+              {dayEvents.length === 0 ? (
+                <div style={{ fontSize:13, fontWeight:300, color:th.muted, padding:'8px 0', fontStyle:'italic' }}>
+                  No events
+                </div>
+              ) : dayEvents.map((ev, i) => (
+                <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
+                  <EventCard ev={ev} th={th} isPast={ds < todayStr}
+                    use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+    </div>
+  )
+}
+
+// ─── Day View ────────────────────────────────────────────────────────────────
+function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, todayStr, dateStr,
+  openCreate, setModal, use24h, groups, filterGroupIds, setFilterGroupIds,
+  onTouchStart, onTouchEnd, slideDir, isSliding }) {
+
+  const HOUR_H = 60
+  const hourGridRef = useRef(null)
+
+  const adjacentDays = useMemo(() => {
+    const d = new Date(selectedDate + 'T12:00:00')
+    return Array.from({ length: 7 }, (_, i) => {
+      const day = new Date(d)
+      day.setDate(d.getDate() + (i - 3))
+      return dateStr(day.getFullYear(), day.getMonth(), day.getDate())
+    })
+  }, [selectedDate, dateStr])
+
+  const dayEvents = useMemo(() => {
+    let evs = eventsOnDate(selectedDate)
+    if (filterGroupIds.size > 0) evs = evs.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+    return evs
+  }, [selectedDate, eventsOnDate, filterGroupIds])
+  const allDayEvents = dayEvents.filter(e => e.allDay)
+  const timedEvents = dayEvents.filter(e => !e.allDay && e.start)
+
+  const timeToY = (t) => {
+    if (!t) return 0
+    const [h, m] = t.split(':').map(Number)
+    return (h + m / 60) * HOUR_H
+  }
+
+  const positioned = useMemo(() => {
+    const sorted = [...timedEvents].sort((a, b) => (a.start || '').localeCompare(b.start || ''))
+    const cols = []
+    return sorted.map(ev => {
+      const top = timeToY(ev.start)
+      const bot = timeToY(ev.end || ev.start)
+      const height = Math.max(bot - top, 30)
+      let col = 0
+      while (cols[col] && cols[col] > top) col++
+      cols[col] = top + height
+      const totalCols = cols.length
+      return { ev, top, height, col, totalCols }
+    })
+  }, [dayEvents])
+
+  useEffect(() => {
+    if (!hourGridRef.current) return
+    const isToday = selectedDate === todayStr
+    let scrollTarget
+    if (isToday) {
+      const now = new Date()
+      scrollTarget = Math.max(0, (now.getHours() - 1) * HOUR_H)
+    } else if (timedEvents.length > 0) {
+      const earliest = timedEvents.reduce((a, b) => (a.start || '99') < (b.start || '99') ? a : b)
+      scrollTarget = Math.max(0, timeToY(earliest.start) - HOUR_H)
+    } else {
+      scrollTarget = 8 * HOUR_H
+    }
+    hourGridRef.current.scrollTop = scrollTarget
+  }, [selectedDate])
+
+  const formatHour = (h) => {
+    if (use24h) return String(h).padStart(2, '0') + ':00'
+    if (h === 0) return '12 AM'
+    if (h === 12) return '12 PM'
+    return h > 12 ? (h - 12) + ' PM' : h + ' AM'
+  }
+
+  return (
+    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+      style={{ display:'flex', flexDirection:'column', flex:1, minHeight:0, overflow:'hidden' }}>
+    <div style={{
+      transform: slideDir === -1 ? 'translateX(-8%)' : slideDir === 1 ? 'translateX(8%)' : 'translateX(0)',
+      opacity: isSliding ? 0 : 1,
+      transition: isSliding ? 'transform 0.22s ease, opacity 0.22s ease' : 'none',
+      display:'flex', flexDirection:'column', flex:1, minHeight:0,
+    }}>
+      {/* Day scroller strip */}
+      <div style={{ display:'flex', gap:4, padding:'0 16px 10px', justifyContent:'space-between' }}>
+        {adjacentDays.map(ds => {
+          const d = new Date(ds + 'T12:00:00')
+          const isSel = ds === selectedDate
+          const isToday = ds === todayStr
+          return (
+            <button key={ds} onClick={() => { window.__pearSync?.haptic('light'); setSelectedDate(ds) }}
+              style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+                padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
+                background: isSel ? th.accent : isToday ? th.accentFaint : 'transparent' }}>
+              <span style={{ fontSize:11, fontWeight:300,
+                color: isSel ? '#fff' : th.muted }}>{DAYS[d.getDay()].slice(0,1)}</span>
+              <span style={{ fontSize:14, fontWeight: isSel || isToday ? 400 : 300,
+                color: isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{d.getDate()}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Group filter pills */}
+      {groups && groups.length > 0 && (
+        <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
+          scrollbarWidth:'none', flexShrink:0 }}>
+          <button onClick={() => setFilterGroupIds(new Set())} style={{
+            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
+            background: filterGroupIds.size === 0 ? th.accent : 'transparent',
+            color: filterGroupIds.size === 0 ? '#fff' : th.muted, cursor:'pointer' }}>
+            All
+          </button>
+          {groups.map(g => (
+            <button key={g.id} onClick={() => setFilterGroupIds(prev => {
+              const next = new Set(prev)
+              next.has(g.id) ? next.delete(g.id) : next.add(g.id)
+              return next
+            })} style={{
+              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : th.border),
+              background: filterGroupIds.has(g.id) ? g.color : 'transparent',
+              color: filterGroupIds.has(g.id) ? '#fff' : th.muted, cursor:'pointer' }}>
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* All-day events */}
+      {allDayEvents.length > 0 && (
+        <div style={{ padding:'0 16px 8px', maxHeight:80, overflowY:'auto' }}>
+          {allDayEvents.slice(0, 3).map(ev => (
+            <div key={ev.id} onClick={() => { window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+              style={{ padding:'4px 10px', borderRadius:8, marginBottom:4, cursor:'pointer',
+                background: (ev.colors?.[0] ?? ev.color) + '22',
+                borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}` }}>
+              <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}</span>
+            </div>
+          ))}
+          {allDayEvents.length > 3 && (
+            <span style={{ fontSize:12, fontWeight:300, color:th.muted }}>+{allDayEvents.length - 3} more</span>
+          )}
+        </div>
+      )}
+
+      {/* Hour grid */}
+      <div ref={hourGridRef} style={{ flex:1, overflowY:'auto', position:'relative', minHeight:0 }}>
+        <div style={{ position:'relative', height: 24 * HOUR_H }}>
+          {Array.from({ length: 24 }, (_, h) => (
+            <div key={h} onClick={() => openCreate(selectedDate, String(h).padStart(2, '0') + ':00')}
+              style={{ position:'absolute', top: h * HOUR_H, left:0, right:0, height: HOUR_H,
+                borderBottom: `1px solid ${th.border}`, cursor:'pointer',
+                display:'flex', alignItems:'flex-start' }}>
+              <span style={{ fontSize:11, fontWeight:300, color:th.muted, width:48,
+                textAlign:'right', paddingRight:8, paddingTop:2, flexShrink:0 }}>
+                {formatHour(h)}
+              </span>
+            </div>
+          ))}
+
+          {/* Event blocks */}
+          {positioned.map(({ ev, top, height, col, totalCols }) => {
+            const gutterPx = 56
+            const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`
+            const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`
+            return (
+              <div key={ev.id}
+                onClick={(e) => { e.stopPropagation(); window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+                style={{ position:'absolute', top, height: Math.max(height, 30),
+                  left: colLeft, width: `calc(${colWidth} - 4px)`,
+                  borderRadius:8, padding:'4px 8px', cursor:'pointer', overflow:'hidden',
+                  background: (ev.colors?.[0] ?? ev.color) + '22',
+                  borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`,
+                  zIndex:10 }}>
+                <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}</div>
+                <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+                  {formatTime(ev.start, use24h)}{ev.end ? ` – ${formatTime(ev.end, use24h)}` : ''}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* Current time indicator */}
+          {selectedDate === todayStr && (() => {
+            const now = new Date()
+            const y = (now.getHours() + now.getMinutes() / 60) * HOUR_H
+            return (
+              <div style={{ position:'absolute', top:y, left:48, right:0, height:2,
+                background:'#ef4444', borderRadius:1, zIndex:20, pointerEvents:'none' }}>
+                <div style={{ position:'absolute', left:-4, top:-3, width:8, height:8,
+                  borderRadius:'50%', background:'#ef4444' }} />
+              </div>
+            )
+          })()}
+        </div>
+      </div>
+    </div>
+    </div>
+  )
+}
+
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
   eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady,
   saveEvent, profile, sync }) {
@@ -1435,6 +1760,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const userScrollTimer = useRef(null)
   const scrollToDateRef = useRef(null)
   const [filterGroupIds, setFilterGroupIds] = useState(new Set())
+  const [calView, setCalView] = useState('month') // 'month' | 'week' | 'day'
   const [icsImport, setIcsImport] = useState(null) // { events, filename }
   const icsFileRef = useRef(null)
 
@@ -1524,8 +1850,20 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     setSlideDir(dir)
     setIsSliding(true)
     setTimeout(() => {
-      if (dir === -1) setViewDate(v => v.m === 11 ? { y:v.y+1, m:0 } : { y:v.y, m:v.m+1 })
-      else            setViewDate(v => v.m === 0  ? { y:v.y-1, m:11 } : { y:v.y, m:v.m-1 })
+      if (calView === 'month') {
+        if (dir === -1) setViewDate(v => v.m === 11 ? { y:v.y+1, m:0 } : { y:v.y, m:v.m+1 })
+        else            setViewDate(v => v.m === 0  ? { y:v.y-1, m:11 } : { y:v.y, m:v.m-1 })
+      } else {
+        const shift = calView === 'week' ? 7 : 1
+        const sign = dir === -1 ? 1 : -1
+        setSelectedDate(prev => {
+          const d = new Date(prev + 'T12:00:00')
+          d.setDate(d.getDate() + sign * shift)
+          const ns = dateStr(d.getFullYear(), d.getMonth(), d.getDate())
+          setViewDate({ y: d.getFullYear(), m: d.getMonth() })
+          return ns
+        })
+      }
       setSlideDir(0)
       setIsSliding(false)
     }, 220)
@@ -1557,9 +1895,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', position:'relative' }}>
     <div style={{ padding:'0 16px 8px', flexShrink:0 }}>
-      {/* Month / Year nav */}
+      {/* Nav header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 0 8px' }}>
         <button onClick={prev} style={th.iconBtn}><CaretLeft size={18} weight="thin" /></button>
+        {calView === 'month' ? (
         <div style={{ display:'flex', gap:4, alignItems:'center' }}>
           {/* Month picker */}
           <div style={{ position:'relative' }}>
@@ -1598,9 +1937,39 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             )}
           </div>
         </div>
+        ) : (
+        <span style={{ fontWeight:300, fontSize:17, ...th.text }}>
+          {calView === 'day'
+            ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' })
+            : (() => {
+                const d = new Date(selectedDate + 'T12:00:00')
+                const dow = d.getDay()
+                const off = (dow - weekStart + 7) % 7
+                const wk0 = new Date(d); wk0.setDate(d.getDate() - off)
+                const wk6 = new Date(wk0); wk6.setDate(wk0.getDate() + 6)
+                const fmt = (dt) => dt.toLocaleDateString('en-US', { month:'short', day:'numeric' })
+                return `${fmt(wk0)} – ${fmt(wk6)}, ${wk6.getFullYear()}`
+              })()}
+        </span>
+        )}
         <button onClick={next} style={th.iconBtn}><CaretRight size={18} weight="thin" /></button>
       </div>
 
+      {/* View toggle */}
+      <div style={{ display:'flex', margin:'0 0 10px', borderRadius:10,
+        border:`1px solid ${th.border}`, overflow:'hidden' }}>
+        {['month','week','day'].map(v => (
+          <button key={v} onClick={() => setCalView(v)} style={{
+            flex:1, padding:'6px 0', fontSize:13, fontWeight:calView === v ? 400 : 300,
+            fontFamily:FONT, border:'none', cursor:'pointer',
+            background: calView === v ? th.accent : 'transparent',
+            color: calView === v ? '#fff' : th.muted,
+            transition: 'background 0.15s, color 0.15s',
+          }}>{v.charAt(0).toUpperCase() + v.slice(1)}</button>
+        ))}
+      </div>
+
+      {calView === 'month' && (
       <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
         style={{ overflow:'hidden', position:'relative' }}>
       <div style={{
@@ -1643,9 +2012,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       </div>
       </div>
       </div>
+      )}
 
     </div>
 
+      {calView === 'month' && (<>
       {/* Static date header + add button */}
       <div style={{ padding:'8px 16px 8px', borderTop:'1px solid ' + th.border,
         display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
@@ -1774,6 +2145,25 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           <span style={{ fontSize:14, fontWeight:300, color:'var(--color-text)', fontFamily:FONT }}>Today</span>
         </button>
       </div>
+      </>)}
+
+      {calView === 'week' && (
+        <WeekView th={th} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+          weekStart={weekStart} eventsOnDate={eventsOnDate} todayStr={todayStr} dateStr={dateStr}
+          openCreate={openCreate} setModal={setModal} use24h={use24h} events={events}
+          groups={groups} filterGroupIds={filterGroupIds} setFilterGroupIds={setFilterGroupIds}
+          onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+          slideDir={slideDir} isSliding={isSliding} />
+      )}
+
+      {calView === 'day' && (
+        <DayView th={th} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+          weekStart={weekStart} eventsOnDate={eventsOnDate} todayStr={todayStr} dateStr={dateStr}
+          openCreate={openCreate} setModal={setModal} use24h={use24h}
+          groups={groups} filterGroupIds={filterGroupIds} setFilterGroupIds={setFilterGroupIds}
+          onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
+          slideDir={slideDir} isSliding={isSliding} />
+      )}
 
     {icsImport && (
       <ImportIcsSheet th={th} events={icsImport.events} filename={icsImport.filename}
