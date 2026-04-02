@@ -18640,37 +18640,49 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Sharing with others" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 16, width: "100%", maxWidth: 300 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n11, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, lineHeight: "1.6" }, children: [
-              "Tap the",
+              "Use the",
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
                 verticalAlign: "middle",
                 background: "var(--color-surface)",
                 border: "1px solid var(--color-border)",
-                borderRadius: 8,
-                padding: "2px 6px"
-              }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n10, { size: 14, weight: "thin", color: "var(--color-text)" }) }),
+                borderRadius: 12,
+                padding: "3px 10px",
+                fontSize: 12,
+                fontWeight: 300,
+                color: "var(--color-text)"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n10, { size: 13, weight: "thin" }),
+                " Join Group"
+              ] }),
               " ",
-              "or",
+              "and",
               " ",
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: 4,
                 verticalAlign: "middle",
-                background: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: 8,
-                padding: "2px 6px"
-              }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 14, weight: "thin", color: "var(--color-text)" }) }),
+                background: "var(--color-accent)",
+                border: "none",
+                borderRadius: 12,
+                padding: "3px 10px",
+                fontSize: 12,
+                fontWeight: 300,
+                color: "#fff"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 13, weight: "thin" }),
+                " New Group"
+              ] }),
               " ",
-              "icons on the ",
+              "buttons on the ",
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...th.text, fontWeight: 400 }, children: "Groups" }),
-              " page to join or add a group."
+              " page."
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
@@ -18695,6 +18707,15 @@
               }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 13, weight: "thin", color: "var(--color-text)" }) }),
               " ",
               "button, and assign the event to a group to share it."
+            ] })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(l5, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, lineHeight: "1.6" }, children: [
+              "Have events in another calendar? Import them from the",
+              " ",
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...th.text, fontWeight: 400 }, children: "Profile" }),
+              " tab under Settings."
             ] })
           ] })
         ] }),
