@@ -87,6 +87,7 @@ export function parseIcs (text) {
     if (key === 'SUMMARY')     { cur.title    = _icsUnescape(value) }
     else if (key === 'DESCRIPTION') { cur.desc = _icsUnescape(value) }
     else if (key === 'LOCATION')    { cur.location = _icsUnescape(value) }
+    else if (key === 'URL')         { cur.meetingLink = _icsUnescape(value) }
     else if (key === 'UID')         { cur.uid = value }
     else if (key === 'DTSTART') {
       const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
@@ -157,7 +158,8 @@ export function generateIcs (events) {
     }
     lines.push('SUMMARY:' + _icsEscape(ev.title))
     if (ev.desc)     lines.push('DESCRIPTION:' + _icsEscape(ev.desc))
-    if (ev.location) lines.push('LOCATION:' + _icsEscape(ev.location))
+    if (ev.location)    lines.push('LOCATION:' + _icsEscape(ev.location))
+    if (ev.meetingLink) lines.push('URL:' + _icsEscape(ev.meetingLink))
     lines.push('END:VEVENT')
   }
   lines.push('END:VCALENDAR')
@@ -878,7 +880,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'',
     }})
   }
 
@@ -2059,6 +2061,16 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
+        {!compact && ev.meetingLink ? (
+          <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
+            style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, cursor:'pointer' }}>
+            <ArrowSquareOut size={12} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
+            <span style={{ fontSize:11, fontWeight:300, color:th.accent, textDecoration:'underline',
+              overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              {ev.meetingLink.trim().replace(/^https?:\/\//, '')}
+            </span>
+          </div>
+        ) : null}
         {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
@@ -2337,6 +2349,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                           start:    match.start ?? prev.start,
                           end:      match.end ?? prev.end,
                           location: match.location ?? prev.location,
+                          meetingLink: match.meetingLink ?? prev.meetingLink,
                           endDate:  match.endDate ?? prev.endDate,
                         } : {}),
                       }))
@@ -2498,6 +2511,28 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             </div>
           )}
 
+          <div><Label th={th}>Meeting Link</Label>
+            <input style={inp} placeholder="Zoom, Meet, Webex, or Keet link…"
+              value={ev.meetingLink ?? ''} onChange={e => set('meetingLink', e.target.value)} />
+            {ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && (
+              <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
+                style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
+                  marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                  border:`1px solid ${th.border}`, ...th.card }}>
+                <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
+                <span style={{ fontSize:12, fontWeight:300, color:th.accent,
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {ev.meetingLink.trim()}
+                </span>
+              </div>
+            )}
+          </div>
+
+          <div><Label th={th}>Location</Label>
+            <input style={inp} placeholder="Address, place, or landmark…"
+              value={ev.location ?? ''} onChange={e => set('location', e.target.value)} />
+          </div>
+
           <div><Label th={th}>Notes</Label>
             <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
               value={ev.desc} onChange={e => set('desc', e.target.value)} />
@@ -2514,11 +2549,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 </span>
               </div>
             ))}
-          </div>
-
-          <div><Label th={th}>Location</Label>
-            <input style={inp} placeholder="Address, place, or landmark…"
-              value={ev.location ?? ''} onChange={e => set('location', e.target.value)} />
           </div>
 
           {modal.mode === 'edit' && ev.recurrenceId && (

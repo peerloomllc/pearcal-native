@@ -15878,6 +15878,8 @@
         cur.desc = _icsUnescape(value);
       } else if (key === "LOCATION") {
         cur.location = _icsUnescape(value);
+      } else if (key === "URL") {
+        cur.meetingLink = _icsUnescape(value);
       } else if (key === "UID") {
         cur.uid = value;
       } else if (key === "DTSTART") {
@@ -15941,6 +15943,7 @@
       lines.push("SUMMARY:" + _icsEscape(ev.title));
       if (ev.desc) lines.push("DESCRIPTION:" + _icsEscape(ev.desc));
       if (ev.location) lines.push("LOCATION:" + _icsEscape(ev.location));
+      if (ev.meetingLink) lines.push("URL:" + _icsEscape(ev.meetingLink));
       lines.push("END:VEVENT");
     }
     lines.push("END:VCALENDAR");
@@ -16693,6 +16696,7 @@
         color: "#6C9BF5",
         desc: "",
         location: "",
+        meetingLink: "",
         creatorId: profile?.id ?? "unknown",
         recurrence: "none",
         recurrenceId: "",
@@ -18329,6 +18333,28 @@
                 { month: "short", day: "numeric" }
               )}`
             ] }),
+            !compact && ev.meetingLink ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e53) => {
+                  e53.stopPropagation();
+                  window.__pearSync?.openURL(ev.meetingLink.trim());
+                },
+                style: { display: "flex", alignItems: "center", gap: 4, marginTop: 4, cursor: "pointer" },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 12, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 11,
+                    fontWeight: 300,
+                    color: th.accent,
+                    textDecoration: "underline",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }, children: ev.meetingLink.trim().replace(/^https?:\/\//, "") })
+                ]
+              }
+            ) : null,
             !compact && ev.desc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
               fontSize: 12,
               color: th.muted,
@@ -18687,6 +18713,7 @@
                         start: match.start ?? prev.start,
                         end: match.end ?? prev.end,
                         location: match.location ?? prev.location,
+                        meetingLink: match.meetingLink ?? prev.meetingLink,
                         endDate: match.endDate ?? prev.endDate
                       } : {}
                     }));
@@ -18918,6 +18945,62 @@
             }) })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Meeting Link" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                style: inp,
+                placeholder: "Zoom, Meet, Webex, or Keet link\u2026",
+                value: ev.meetingLink ?? "",
+                onChange: (e53) => set("meetingLink", e53.target.value)
+              }
+            ),
+            ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e53) => {
+                  e53.stopPropagation();
+                  window.__pearSync?.openURL(ev.meetingLink.trim());
+                },
+                style: {
+                  pointerEvents: "auto",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  marginTop: 6,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  border: `1px solid ${th.border}`,
+                  ...th.card
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                    fontSize: 12,
+                    fontWeight: 300,
+                    color: th.accent,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap"
+                  }, children: ev.meetingLink.trim() })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "input",
+              {
+                style: inp,
+                placeholder: "Address, place, or landmark\u2026",
+                value: ev.location ?? "",
+                onChange: (e53) => set("location", e53.target.value)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "textarea",
@@ -18961,18 +19044,6 @@
               },
               url
             ))
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                style: inp,
-                placeholder: "Address, place, or landmark\u2026",
-                value: ev.location ?? "",
-                onChange: (e53) => set("location", e53.target.value)
-              }
-            )
           ] }),
           modal.mode === "edit" && ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
             fontSize: 12,
