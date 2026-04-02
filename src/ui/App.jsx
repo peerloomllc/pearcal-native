@@ -212,7 +212,8 @@ if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) 
       --safe-area-bottom: env(safe-area-inset-bottom, 0px);
     }
     *, *::before, *::after { box-sizing: border-box; }
-    * { -webkit-tap-highlight-color: transparent; }
+    * { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+    input, textarea { -webkit-user-select: text; user-select: text; }
     input, textarea, select, button { font-family: var(--font-sans); }
     input, textarea { font-size: 16px; }
     button { transition: transform var(--duration-fast) var(--easing); }
