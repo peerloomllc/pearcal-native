@@ -58,6 +58,9 @@ const db = {
   setMemberNickname: (groupId, nick) => window.__pearDB.call('setMemberNickname', groupId, nick),
   getReminders:  (id)     => window.__pearDB.call('getReminders', id),
   putReminders:  (id, r)  => window.__pearDB.call('putReminders', id, r),
+  getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
+  setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
+  removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
 }
 
 const notifs = {

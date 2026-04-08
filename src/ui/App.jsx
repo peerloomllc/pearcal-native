@@ -425,6 +425,7 @@ export default function App ({ db, notifs, sync }) {
   const closeGroupSettingsRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
+  const [blindPeerKey,   setBlindPeerKey]   = useState(null)
 
   const th = themes()
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -438,10 +439,11 @@ export default function App ({ db, notifs, sync }) {
 
     async function load () {
       try {
-        const [prof, grps, evts] = await Promise.all([
+        const [prof, grps, evts, bpk] = await Promise.all([
           db.getProfile(),
           db.listGroups(),
           db.listEvents(),
+          db.getBlindPeerKey().catch(() => null),
         ])
         if (cancelled) return
         setProfile(prof)
@@ -449,6 +451,7 @@ export default function App ({ db, notifs, sync }) {
         setGroups(grps)
         setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
+        setBlindPeerKey(bpk)
         eventsReady.current = true
         setReady(true)
       } catch (e) {
@@ -959,6 +962,7 @@ export default function App ({ db, notifs, sync }) {
           {tab === 'profile' && (
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
+              blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -4140,7 +4144,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
   )
 }
 
-function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent }) {
+function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -4158,6 +4162,12 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const use24h    = profile?.use24h    ?? localeUse24h
   const weekStart = profile?.weekStart ?? 0
   const fileRef = useRef()
+  const [seedPeerOpen,     setSeedPeerOpen]     = useState(false)
+  const [seedPeerInput,    setSeedPeerInput]    = useState(blindPeerKey ?? '')
+  const [seedPeerSaving,   setSeedPeerSaving]   = useState(false)
+  const [seedPeerSaved,    setSeedPeerSaved]    = useState(false)
+  const [seedPeerError,    setSeedPeerError]    = useState(null)
+  const [seedPeerInfoOpen, setSeedPeerInfoOpen] = useState(false)
 
   async function saveName () {
     setSaving(true)
@@ -4562,6 +4572,132 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         )
       })()}
+
+      {/* Seed Peer */}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setSeedPeerOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+              SEED PEER
+            </div>
+            <div style={{ fontSize:10, fontWeight:500, padding:'1px 6px', borderRadius:4,
+              background: blindPeerKey ? '#2E7D3220' : 'transparent',
+              color: blindPeerKey ? '#2E7D32' : th.muted }}>
+              {blindPeerKey ? 'Active' : 'Not configured'}
+            </div>
+          </div>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: seedPeerOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
+        </div>
+        <div style={{ maxHeight: seedPeerOpen ? '500px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+          <div style={{ padding:'0 16px 14px' }}>
+
+            {/* What is this? */}
+            <div onClick={() => setSeedPeerInfoOpen(o => !o)}
+              style={{ fontSize:12, fontWeight:400, color:th.accent, cursor:'pointer', marginBottom:10 }}>
+              {seedPeerInfoOpen ? 'Hide info' : 'What is this?'}
+            </div>
+            {seedPeerInfoOpen && (
+              <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:1.6,
+                marginBottom:14, padding:'10px 12px', borderRadius:8, background:th.inputBg,
+                border:`1px solid ${th.border}` }}>
+                <p style={{ margin:'0 0 8px' }}>
+                  A <b>seed peer</b> is a server that keeps your calendar data available for syncing,
+                  even when your phone is offline.
+                </p>
+                <p style={{ margin:'0 0 8px' }}>
+                  You only need this if you share calendars with other people and want
+                  always-on sync availability.
+                </p>
+                <p style={{ margin:0 }}>
+                  You can run your own seed peer server using{' '}
+                  <a href="https://github.com/holepunchto/blind-peer-cli" target="_blank" rel="noopener noreferrer"
+                    style={{ fontFamily:'monospace', fontSize:11, color:th.accent }}
+                    onClick={e => { e.preventDefault(); window.__pearSync?.openURL('https://github.com/holepunchto/blind-peer-cli') }}>blind-peer-cli</a>{' '}
+                  on any computer that stays online (e.g. a home server or VPS).
+                  Paste the server's public key below to connect.
+                </p>
+              </div>
+            )}
+
+            {/* Key input */}
+            <input
+              value={seedPeerInput}
+              onChange={e => { setSeedPeerInput(e.target.value); setSeedPeerError(null) }}
+              placeholder="Paste z32 public key..."
+              style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:12,
+                fontWeight:300, fontFamily:'monospace', border:`1px solid ${th.border}`,
+                background:th.inputBg, color:th.text.color, outline:'none',
+                boxSizing:'border-box' }} />
+
+            {seedPeerError && (
+              <div style={{ fontSize:11, color:'#D45F7A', fontWeight:300, marginTop:6 }}>
+                {seedPeerError}
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div style={{ display:'flex', gap:8, marginTop:10, justifyContent:'center' }}>
+              <button onClick={async () => {
+                  const key = seedPeerInput.trim()
+                  if (!key || key.length !== 52) {
+                    setSeedPeerError('Key must be a 52-character z32 string')
+                    return
+                  }
+                  setSeedPeerSaving(true)
+                  setSeedPeerError(null)
+                  try {
+                    await db.setBlindPeerKey(key)
+                    setBlindPeerKey(key)
+                    setSeedPeerSaved(true)
+                    setTimeout(() => setSeedPeerSaved(false), 2000)
+                  } catch (e) {
+                    setSeedPeerError(e.message || 'Failed to save')
+                  }
+                  setSeedPeerSaving(false)
+                }} disabled={seedPeerSaving || !seedPeerInput.trim()}
+                style={{ ...th.pillBtn, fontSize:12, padding:'6px 16px', fontWeight:300,
+                  width:100, opacity: (seedPeerSaving || !seedPeerInput.trim()) ? 0.5 : 1 }}>
+                {seedPeerSaving ? 'Saving...' : seedPeerSaved ? 'Saved' : 'Save'}
+              </button>
+              {blindPeerKey && (
+                <button onClick={async () => {
+                    setSeedPeerSaving(true)
+                    try {
+                      await db.removeBlindPeerKey()
+                      setBlindPeerKey(null)
+                      setSeedPeerInput('')
+                      setSeedPeerError(null)
+                    } catch (e) {
+                      setSeedPeerError(e.message || 'Failed to remove')
+                    }
+                    setSeedPeerSaving(false)
+                  }} disabled={seedPeerSaving}
+                  style={{ ...th.pillBtn, fontSize:12, padding:'6px 16px', fontWeight:300,
+                    width:100, border:'1px solid #D45F7A', background:'transparent', color:'#D45F7A',
+                    opacity: seedPeerSaving ? 0.5 : 1 }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Public Key */}
+      <div style={{ marginTop:24, textAlign:'center' }}>
+        <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginBottom:6 }}>PUBLIC KEY</div>
+        <div onClick={() => { navigator.clipboard?.writeText(publicKey); window.__pearSync?.haptic('light') }}
+          style={{ fontSize:10, color:th.muted, fontWeight:300, wordBreak:'break-all',
+            fontFamily:'monospace', lineHeight:1.5, cursor:'pointer', padding:'8px 12px',
+            background:th.inputBg, borderRadius:8, border:`1px solid ${th.border}` }}>
+          {publicKey}
+        </div>
+        <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:4 }}>Tap to copy</div>
+      </div>
     </div>
   )
 }

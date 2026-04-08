@@ -1,10 +1,12 @@
-const Hypercore  = require('hypercore')
-const Hyperbee   = require('hyperbee')
-const Hyperswarm = require('hyperswarm')
-const Autobase   = require('autobase')
-const Corestore  = require('corestore')
-const sodium     = require('sodium-native')
-const b4a        = require('b4a')
+const Hypercore     = require('hypercore')
+const Hyperbee      = require('hyperbee')
+const Hyperswarm    = require('hyperswarm')
+const Autobase      = require('autobase')
+const Corestore     = require('corestore')
+const BlindPeering  = require('blind-peering')
+const Wakeup        = require('protomux-wakeup')
+const sodium        = require('sodium-native')
+const b4a           = require('b4a')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
@@ -15,6 +17,11 @@ let dataDir = null
 
 const bases = new Map()   // groupId → Autobase
 let buf = ''
+
+// ── Blind peering ────────────────────────────────────────────────────────────
+// Blind peer key is now user-configurable via Settings → Seed Peer.
+// Stored in local Hyperbee under 'blindPeerKey'.
+let blind = null                     // BlindPeering instance
 
 // ── IPC ──────────────────────────────────────────────────────────────────────
 
@@ -85,6 +92,9 @@ async function handle (method, args) {
     case 'cancelForEvent':   return null
     case 'restoreAll':       return null
     case 'setMemberNickname': return setMemberNickname(args[0], args[1])
+    case 'getBlindPeerKey':  return getBlindPeerKey()
+    case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
+    case 'removeBlindPeerKey': return removeBlindPeerKey()
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -107,6 +117,47 @@ async function getProfile () {
 async function updateProfile (updates) {
   const current = await getProfile()
   await db.put(NS.profile, { ...current, ...updates, updatedAt: Date.now() })
+}
+
+// ── Blind peer key management ────────────────────────────────────────────────
+
+async function getBlindPeerKey () {
+  const node = await db.get('blindPeerKey')
+  return node?.value?.key ?? null
+}
+
+async function setBlindPeerKey (key) {
+  if (!key || typeof key !== 'string' || key.length !== 52) {
+    throw new Error('Invalid seed peer key: must be a 52-character z32 string')
+  }
+  await db.put('blindPeerKey', { key, updatedAt: Date.now() })
+  await initBlindPeering(key)
+  return true
+}
+
+async function removeBlindPeerKey () {
+  await db.del('blindPeerKey')
+  if (blind) {
+    blind.close?.()
+    blind = null
+    console.log('Blind peering disabled')
+  }
+  return true
+}
+
+async function initBlindPeering (key) {
+  if (blind) {
+    blind.close?.()
+    blind = null
+  }
+  if (!key) return
+  const wakeup = new Wakeup()
+  blind = new BlindPeering(swarm.dht, store, { keys: [key], wakeup })
+  console.log('Blind peering initialized with key:', key.slice(0, 8) + '...')
+  // Re-register all active Autobases
+  for (const [, base] of bases) {
+    blind.addAutobaseBackground(base)
+  }
 }
 
 async function listEvents (opts) {
@@ -352,6 +403,9 @@ async function joinGroup (group) {
   swarm.join(topic, { server: true, client: true })
 
   console.log('Joined group swarm:', group.id, 'topic:', topicKey.slice(0,16))
+
+  // Register with blind peer so cores stay available when app is closed
+  if (blind) blind.addAutobaseBackground(base)
 }
 
 async function leaveGroup (groupId) {
@@ -1130,6 +1184,7 @@ async function init (dir, attempt = 0) {
       })
 
       channel.open()
+
     })
 
     // Bootstrap profile
@@ -1160,6 +1215,12 @@ async function init (dir, attempt = 0) {
     for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
       groups.push(value)
     }
+    // Initialize blind peering from user-configured key (if any)
+    const savedKey = await getBlindPeerKey()
+    if (savedKey) {
+      await initBlindPeering(savedKey)
+    }
+
     for (const g of groups) {
       await joinGroup(g).catch(e => console.error('joinGroup error:', e.message))
     }
