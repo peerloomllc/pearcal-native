@@ -1830,16 +1830,25 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     }
   }
   const years = Array.from({ length:16 }, (_, i) => 2020 + i)
-  const scrollToDate = (date) => {
+  const scrollToDate = (date, smooth = true) => {
     const container = scrollRef.current
     if (!container) return
     const el = container.querySelector('[data-date="' + date + '"]')
     if (!el) return
     isProgrammaticScroll.current = true
     const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop
-    container.scrollTo({ top, behavior: 'smooth' })
-    setTimeout(() => { isProgrammaticScroll.current = false }, 600)
+    container.scrollTo({ top, behavior: smooth ? 'smooth' : 'instant' })
+    setTimeout(() => { isProgrammaticScroll.current = false }, smooth ? 600 : 50)
   }
+
+  // Scroll to today on initial render once events are loaded
+  const didInitialScroll = useRef(false)
+  useEffect(() => {
+    if (!eventsReady.current || didInitialScroll.current) return
+    didInitialScroll.current = true
+    // Defer to next frame so the DOM has rendered the date sections
+    requestAnimationFrame(() => scrollToDate(todayStr, false))
+  }, [events])
 
   function navigate (dir) {
     if (isSliding) return
