@@ -477,7 +477,7 @@ webViewRef.current?.injectJavaScript(
     </View>
   )
 
-  if (!dbReady || !html) return <PearLoadingScreen />
+  if (!html) return <PearLoadingScreen />
 
   return (
     <WebView

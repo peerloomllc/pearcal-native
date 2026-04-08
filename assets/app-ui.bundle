@@ -17968,18 +17968,24 @@
       }
     };
     const years = Array.from({ length: 16 }, (_, i2) => 2020 + i2);
-    const scrollToDate = (date) => {
+    const scrollToDate = (date, smooth = true) => {
       const container = scrollRef.current;
       if (!container) return;
       const el = container.querySelector('[data-date="' + date + '"]');
       if (!el) return;
       isProgrammaticScroll.current = true;
       const top = el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-      container.scrollTo({ top, behavior: "smooth" });
+      container.scrollTo({ top, behavior: smooth ? "smooth" : "instant" });
       setTimeout(() => {
         isProgrammaticScroll.current = false;
-      }, 600);
+      }, smooth ? 600 : 50);
     };
+    const didInitialScroll = (0, import_react2.useRef)(false);
+    (0, import_react2.useEffect)(() => {
+      if (!eventsReady.current || didInitialScroll.current) return;
+      didInitialScroll.current = true;
+      requestAnimationFrame(() => scrollToDate(todayStr2, false));
+    }, [events]);
     function navigate(dir) {
       if (isSliding) return;
       setSlideDir(dir);

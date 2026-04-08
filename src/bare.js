@@ -920,38 +920,35 @@ async function setMemberNickname (groupId, nickname) {
 
 async function shutdown () {
   try {
+    if (blind) { blind.close?.(); blind = null }
     if (swarm) { await swarm.destroy(); swarm = null }
     if (store) { await store.close(); store = null }
     if (db) { await db.close(); db = null }
     bases.clear()
+    pendingMemberLeaves.clear()
     console.log('Shutdown complete')
   } catch(e) {
     console.error('Shutdown error:', e.message)
   }
 }
 
+let _initPromise = null
 async function init (dir, attempt = 0) {
-  // If already initialized, just re-send ready event
-  if (db) {
-    // Reload any persisted pending member leaves from previous sessions
-  // and briefly rejoin those group swarms so we can deliver on next connection
-  try {
-    for await (const entry of db.createReadStream({ gt: 'pendingLeave:', lt: 'pendingLeave:~' })) {
-      const { groupId, memberId, groupKey } = entry.value
-      pendingMemberLeaves.add(JSON.stringify({ groupId, memberId }))
-      // Rejoin swarm so Protomux onopen can deliver the leave message.
-      // We stay joined until delivery succeeds (leave happens in onopen after send).
-      if (groupKey && !bases.has(groupId)) {
-        try {
-          const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
-          swarm.join(topic, { server: false, client: true })
-        } catch(e) {}
-      }
-    }
-  } catch(e) {}
-  send({ type: 'event', event: 'ready' })
+  // Prevent concurrent init calls — wait for any in-progress init to finish
+  if (_initPromise && attempt === 0) {
+    console.log('Init already in progress, waiting...')
+    await _initPromise
     return
   }
+  // If already initialized, shut down first to release DB locks cleanly
+  if (db) {
+    console.log('Re-init requested, shutting down first...')
+    await shutdown()
+  }
+  _initPromise = _doInit(dir, attempt)
+  try { await _initPromise } finally { _initPromise = null }
+}
+async function _doInit (dir, attempt = 0) {
   try {
     dataDir = dir
     console.log('Init DB at', dataDir)
@@ -1224,6 +1221,20 @@ async function init (dir, attempt = 0) {
     for (const g of groups) {
       await joinGroup(g).catch(e => console.error('joinGroup error:', e.message))
     }
+
+    // Reload persisted pending member leaves so they can be delivered on next peer connection
+    try {
+      for await (const entry of db.createReadStream({ gt: 'pendingLeave:', lt: 'pendingLeave:~' })) {
+        const { groupId, memberId, groupKey } = entry.value
+        pendingMemberLeaves.add(JSON.stringify({ groupId, memberId }))
+        if (groupKey && !bases.has(groupId)) {
+          try {
+            const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+            swarm.join(topic, { server: false, client: true })
+          } catch(e) {}
+        }
+      }
+    } catch(e) {}
 
     console.log('DB ready, groups rejoined:', groups.length)
     send({ type: 'event', event: 'ready' })
