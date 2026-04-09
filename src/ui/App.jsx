@@ -574,7 +574,7 @@ export default function App ({ db, notifs, sync }) {
         activeCameraConsumer.current(base64)
         activeCameraConsumer.current = null
       } else if (base64) {
-        updateProfile({ avatar: base64 }).catch(() => {})
+        updateProfileRef.current({ avatar: base64 }).catch(() => {})
       }
     }
     emitter.on('cameraResult', onCameraResult)
@@ -822,7 +822,7 @@ export default function App ({ db, notifs, sync }) {
                 : (updatedProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?')
           const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar }
           await db.putMember(g.id, updatedMember).catch(() => {})
-          const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m) }
+          const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m), updatedAt: Date.now() }
           // Write updated group to local DB so sync reload gets correct data
           await db.putGroup(updatedGroup).catch(() => {})
           // Retry sync a few times in case Autobase isn't writable yet
@@ -848,6 +848,8 @@ export default function App ({ db, notifs, sync }) {
       members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: memberAvatarForState } : m) ?? []
     })))
   }, [db, profile, groups, sync])
+  const updateProfileRef = useRef(updateProfile)
+  updateProfileRef.current = updateProfile
 
   // ─── Calendar helpers ───────────────────────────────────────────────────────
   const calDays = useMemo(() => {
@@ -1256,7 +1258,7 @@ function MemberAvatar ({ avatar, name = '?', color = '#6C9BF5', size = 34, fontS
 
 /**
  * compressAvatar — resize & JPEG-compress a File to a base64 data URL.
- * Target: 80×80px, JPEG quality 0.65 ≈ 10–20 KB.
+ * Target: 200×200px, JPEG quality 0.7 — matches native camera module output.
  */
 function compressAvatar (file) {
   // For animated formats, skip canvas compression (canvas strips animation)
@@ -1271,9 +1273,11 @@ function compressAvatar (file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = ev => {
-      const img = new Image()
+      const img = document.createElement('img')
+      const timeout = setTimeout(() => reject(new Error('Image load timed out')), 15000)
       img.onload = () => {
-        const SIZE = 80
+        clearTimeout(timeout)
+        const SIZE = 200
         const canvas = document.createElement('canvas')
         canvas.width = SIZE
         canvas.height = SIZE
@@ -1283,9 +1287,9 @@ function compressAvatar (file) {
         const sx = (img.width - side) / 2
         const sy = (img.height - side) / 2
         ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE)
-        resolve(canvas.toDataURL('image/jpeg', 0.65))
+        resolve(canvas.toDataURL('image/jpeg', 0.7))
       }
-      img.onerror = reject
+      img.onerror = () => { clearTimeout(timeout); reject(new Error('Image load failed')) }
       img.src = ev.target.result
     }
     reader.onerror = reject
