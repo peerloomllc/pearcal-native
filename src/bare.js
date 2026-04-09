@@ -533,10 +533,16 @@ async function resyncGroup (groupId) {
             // Autobase is older than our join — only replace Inviter placeholders,
             // don't add new IDs (prevents stale entries from old profiles on rejoin)
             if (prev && prev.name === 'Inviter' && m.name !== 'Inviter')
-              mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+              mergedMap.set(m.id, { ...m, avatar: prev.avatar || m.avatar, nickname: m.nickname || prev?.nickname || '' })
           } else {
-            if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter')
-              mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+            if (!prev) {
+              mergedMap.set(m.id, m)
+            } else if (prev.name === 'Inviter' && m.name !== 'Inviter') {
+              mergedMap.set(m.id, { ...m, avatar: prev.avatar || m.avatar, nickname: m.nickname || prev?.nickname || '' })
+            } else {
+              // Existing member — prefer local avatar (may be newer than view)
+              mergedMap.set(m.id, { ...m, avatar: prev.avatar || m.avatar, nickname: prev.nickname || m.nickname || '' })
+            }
           }
         }
         await db.put(key, { ...value, members: [...mergedMap.values()] })
@@ -699,12 +705,22 @@ function makeApply (groupId) {
               const localM = localMembersMap.get(m.id)
               mergedMap.set(m.id, { ...m, nickname: m.nickname || localM?.nickname || '' })
             }
-            // Merge incoming (losing) members, also consulting local DB for nickname
+            // Merge incoming (losing) members, also consulting local DB for nickname.
+            // Since this is the LOSING record, prefer the winning member's properties
+            // (especially avatar) and only fill in gaps from the incoming member.
             for (const m of incomingMembers) {
               const prev = mergedMap.get(m.id)
               const localM = localMembersMap.get(m.id)
-              if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
-                mergedMap.set(m.id, { ...m, nickname: m.nickname || localM?.nickname || prev?.nickname || '' })
+              if (!prev) {
+                // Brand new member not in winning record — take incoming entirely
+                mergedMap.set(m.id, { ...m, nickname: m.nickname || localM?.nickname || '' })
+              } else if (prev.name === 'Inviter' && m.name !== 'Inviter') {
+                // Replace Inviter placeholder with real data, but keep winning avatar if it exists
+                mergedMap.set(m.id, { ...m, avatar: prev.avatar || m.avatar, nickname: m.nickname || localM?.nickname || prev.nickname || '' })
+              } else {
+                // Existing member already in winning record — preserve winning properties,
+                // only backfill nickname from incoming/local if missing
+                mergedMap.set(m.id, { ...prev, nickname: prev.nickname || m.nickname || localM?.nickname || '' })
               }
             }
 
