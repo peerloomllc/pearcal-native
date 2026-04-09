@@ -32,12 +32,19 @@ public class AppDelegate: ExpoAppDelegate {
 #endif
 
     BGTaskScheduler.shared.register(
-      forTaskWithIdentifier: BareBackgroundSync.taskIdentifier,
+      forTaskWithIdentifier: BareBackgroundSync.refreshIdentifier,
       using: nil
     ) { task in
       BareBackgroundSync.handleBGTask(task as! BGAppRefreshTask)
     }
-    BareBackgroundSync.scheduleNext()
+    BGTaskScheduler.shared.register(
+      forTaskWithIdentifier: BareBackgroundSync.processingIdentifier,
+      using: nil
+    ) { task in
+      BareBackgroundSync.handleProcessingTask(task as! BGProcessingTask)
+    }
+    BareBackgroundSync.scheduleNextRefresh()
+    BareBackgroundSync.scheduleNextProcessing()
     UNUserNotificationCenter.current().delegate = self
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -63,6 +70,7 @@ public class AppDelegate: ExpoAppDelegate {
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }
+
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {

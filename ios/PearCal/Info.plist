@@ -83,10 +83,12 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.pearcal.bgsync</string>
+		<string>com.pearcal.bgprocessing</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
   </dict>
 </plist>
