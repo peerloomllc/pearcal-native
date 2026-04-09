@@ -545,7 +545,25 @@ async function resyncGroup (groupId) {
             }
           }
         }
-        await db.put(key, { ...value, members: [...mergedMap.values()] })
+        const dedupRemoved = deduplicateReinstalls(mergedMap, existingMembers, incomingMembers)
+        // Combine removedMembers from all sources
+        const removedMap = new Map()
+        for (const m of (existing?.value?.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
+        for (const m of (value.removedMembers ?? []))           removedMap.set(m.id ?? m, m)
+        for (const m of dedupRemoved)                           removedMap.set(m.id, m)
+        for (const id of removedMap.keys()) mergedMap.delete(id)
+        // Preserve group metadata (color/name/emoji/icon) from local DB when
+        // the Autobase view record has none (e.g. joiner's broadcastSelf on rejoin)
+        const ev = existing?.value
+        await db.put(key, {
+          ...value,
+          color:   value.color   || ev?.color,
+          name:    value.name    || ev?.name,
+          emoji:   value.emoji   || ev?.emoji,
+          icon:    value.icon    ?? ev?.icon,
+          removedMembers: [...removedMap.values()],
+          members: [...mergedMap.values()]
+        })
       }
     }
     send({ type: 'event', event: 'sync', data: groupId })
@@ -724,12 +742,30 @@ function makeApply (groupId) {
               }
             }
 
+            // Dedup reinstalls: local DB has the full member list (including stale entry)
+            const localMembers = localGroup?.value?.members ?? []
+            const allIncoming = [...new Map([...incomingMembers, ...existingMembers].map(m => [m.id, m])).values()]
+            const dedupRemoved = deduplicateReinstalls(mergedMap, localMembers, allIncoming)
+            // Combine removedMembers from all sources so removals propagate
+            const removedMap = new Map()
+            for (const m of (localGroup?.value?.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
+            for (const m of (winningValue.removedMembers ?? []))      removedMap.set(m.id ?? m, m)
+            for (const m of (val.value.removedMembers ?? []))         removedMap.set(m.id ?? m, m)
+            for (const m of dedupRemoved)                             removedMap.set(m.id, m)
+            for (const id of removedMap.keys()) mergedMap.delete(id)
+
+            // Preserve metadata: winning record (view) → local DB → losing record
+            // The winning record may lack metadata (e.g. joiner's broadcastSelf on
+            // rejoin). Fall back to local DB then the losing record which may carry
+            // the owner's full group metadata.
+            const lv = localGroup?.value
             const merged = {
               ...winningValue,
-              color:   winningValue.color   || existing?.value?.color,
-              name:    winningValue.name    || existing?.value?.name,
-              emoji:   winningValue.emoji   || existing?.value?.emoji,
-              icon:    winningValue.icon    ?? existing?.value?.icon,
+              color:   winningValue.color   || lv?.color   || val.value.color,
+              name:    winningValue.name    || lv?.name    || val.value.name,
+              emoji:   winningValue.emoji   || lv?.emoji   || val.value.emoji,
+              icon:    winningValue.icon    ?? lv?.icon    ?? val.value.icon,
+              removedMembers: [...removedMap.values()],
               members: [...mergedMap.values()]
             }
             await db.put(val.key, merged)
@@ -877,6 +913,34 @@ function formatDate (dateStr) {
   } catch (e) { return dateStr }
 }
 
+// Detect reinstall/wipe: a newly-added member with the same name as an existing
+// member likely represents the same person with a fresh keypair.  Replace the stale
+// entry so the member doesn't appear twice.  Carry over nickname from the old entry.
+// Returns array of removed member objects (for adding to removedMembers).
+function deduplicateReinstalls (mergedMap, existingMembers, incomingMembers) {
+  const removed = []
+  const existingIds = new Set(existingMembers.map(m => m.id))
+  const incomingIds = new Set(incomingMembers.map(m => m.id))
+  // Only look at members that are brand-new (from incoming, not already in existing)
+  for (const [id, m] of mergedMap) {
+    if (!incomingIds.has(id) || existingIds.has(id)) continue
+    if (!m.name || m.name === 'Inviter') continue
+    for (const [oldId, oldM] of mergedMap) {
+      if (oldId === id) continue
+      if (oldM.name === m.name && existingIds.has(oldId)) {
+        // Same name, different ID — carry over nickname, remove stale entry
+        if (oldM.nickname) {
+          mergedMap.set(id, { ...mergedMap.get(id), nickname: oldM.nickname })
+        }
+        removed.push(oldM)
+        mergedMap.delete(oldId)
+        break
+      }
+    }
+  }
+  return removed
+}
+
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     if (type === 'event') {
@@ -908,12 +972,21 @@ async function mirrorToLocal (type, key, value, groupId) {
           mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
         }
       }
+      const dedupRemoved = deduplicateReinstalls(mergedMap, existingMembers, incomingMembers)
+      // Combine removedMembers from incoming + existing + dedup so removals propagate
+      const removedMap = new Map()
+      for (const m of (existing?.value?.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
+      for (const m of (value.removedMembers ?? []))           removedMap.set(m.id ?? m, m)
+      for (const m of dedupRemoved)                           removedMap.set(m.id, m)
+      // Filter out any member who appears in removedMembers
+      for (const id of removedMap.keys()) mergedMap.delete(id)
       const merged = {
         ...value,
         color:   value.color   || existing?.value?.color,
         name:    value.name    || existing?.value?.name,
         emoji:   value.emoji   || existing?.value?.emoji,
         icon:    value.icon    ?? existing?.value?.icon,
+        removedMembers: [...removedMap.values()],
         members: [...mergedMap.values()],
         updatedAt: value.updatedAt || Date.now()
       }
@@ -1253,6 +1326,46 @@ async function _doInit (dir, attempt = 0) {
     for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
       groups.push(value)
     }
+
+    // Startup dedup: clean up same-name duplicate members left over from
+    // reinstall/wipe rejoins that occurred before the dedup logic was deployed.
+    // Also adds stale entries to removedMembers so the cleanup propagates via Autobase.
+    for (const g of groups) {
+      const members = g.members ?? []
+      if (members.length < 2) continue
+      const nameCount = new Map()
+      for (const m of members) {
+        if (m.name && m.name !== 'Inviter') nameCount.set(m.name, (nameCount.get(m.name) || 0) + 1)
+      }
+      // Any name appearing more than once → run dedup
+      if ([...nameCount.values()].some(c => c > 1)) {
+        const deduped = new Map()
+        for (const m of members) deduped.set(m.id, m)
+        const staleRemoved = []
+        const nameToId = new Map()
+        for (const [id, m] of deduped) {
+          if (!m.name || m.name === 'Inviter') continue
+          const prevId = nameToId.get(m.name)
+          if (prevId && prevId !== id) {
+            const prevM = deduped.get(prevId)
+            if (prevM?.nickname) deduped.set(id, { ...deduped.get(id), nickname: prevM.nickname })
+            staleRemoved.push(prevM)
+            deduped.delete(prevId)
+          }
+          nameToId.set(m.name, id)
+        }
+        if (deduped.size < members.length) {
+          // Merge stale entries into removedMembers so the removal propagates
+          const removedMap = new Map()
+          for (const m of (g.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
+          for (const m of staleRemoved)              removedMap.set(m.id, m)
+          const cleaned = { ...g, members: [...deduped.values()], removedMembers: [...removedMap.values()] }
+          await db.put(NS.groups + g.id, cleaned).catch(() => {})
+          console.log('[STARTUP_DEDUP] cleaned duplicate members in group:', g.id, 'removed:', staleRemoved.map(m => m.name))
+        }
+      }
+    }
+
     // Initialize blind peering from user-configured key (if any)
     const savedKey = await getBlindPeerKey()
     if (savedKey) {
