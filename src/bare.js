@@ -655,6 +655,9 @@ function makeApply (groupId) {
             // Skip notification if user locally deleted this event
             const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
             if (notifTombstone) continue
+            // Skip notification for past events (prevents overnight flood from background sync replay)
+            const eventDate = val.value.date
+            if (eventDate && eventDate < new Date().toISOString().slice(0, 10)) continue
             // Skip notification if only color changed
             const onlyColorChanged = localPrev &&
               val.value.color !== localPrev.color &&
