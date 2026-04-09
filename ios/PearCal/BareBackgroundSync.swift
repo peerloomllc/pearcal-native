@@ -2,12 +2,14 @@ import BackgroundTasks
 
 @objc(PearCalBGSync)
 class BareBackgroundSync: NSObject {
-  static let taskIdentifier = "com.pearcal.bgsync"
+  static let refreshIdentifier = "com.pearcal.bgsync"
+  static let processingIdentifier = "com.pearcal.bgprocessing"
   // Lock guards all access to pendingTask and expirationTimer (accessed from BGTask callback + JS thread)
   private static let lock = NSLock()
-  private static var pendingTask: BGAppRefreshTask?
+  private static var pendingTask: BGTask?
   private static var expirationTimer: Timer?
 
+  // --- BGAppRefreshTask (short ~25s sync, fires every ~15 min) ---
   static func handleBGTask(_ task: BGAppRefreshTask) {
     lock.lock()
     pendingTask = task
@@ -33,12 +35,48 @@ class BareBackgroundSync: NSObject {
       pendingTask = nil
       lock.unlock()
     }
-    scheduleNext()
+    scheduleNextRefresh()
   }
 
-  static func scheduleNext() {
-    let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
+  // --- BGProcessingTask (long sync, runs when charging + WiFi) ---
+  static func handleProcessingTask(_ task: BGProcessingTask) {
+    lock.lock()
+    pendingTask = task
+    lock.unlock()
+    // Allow up to 120s for full Hyperswarm reconnect + replication
+    DispatchQueue.main.async {
+      let timer = Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { _ in
+        lock.lock()
+        pendingTask?.setTaskCompleted(success: false)
+        pendingTask = nil
+        expirationTimer = nil
+        lock.unlock()
+      }
+      lock.lock()
+      expirationTimer = timer
+      lock.unlock()
+    }
+    task.expirationHandler = {
+      lock.lock()
+      expirationTimer?.invalidate()
+      expirationTimer = nil
+      pendingTask?.setTaskCompleted(success: false)
+      pendingTask = nil
+      lock.unlock()
+    }
+    scheduleNextProcessing()
+  }
+
+  static func scheduleNextRefresh() {
+    let request = BGAppRefreshTaskRequest(identifier: refreshIdentifier)
     request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+    try? BGTaskScheduler.shared.submit(request)
+  }
+
+  static func scheduleNextProcessing() {
+    let request = BGProcessingTaskRequest(identifier: processingIdentifier)
+    request.earliestBeginDate = Date(timeIntervalSinceNow: 60 * 60) // every ~1 hour
+    request.requiresNetworkConnectivity = true
     try? BGTaskScheduler.shared.submit(request)
   }
 

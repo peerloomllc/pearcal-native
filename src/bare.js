@@ -17,6 +17,9 @@ let dataDir = null
 
 const bases = new Map()   // groupId → Autobase
 let buf = ''
+let _dbReady = false
+let _dbReadyResolve = null
+const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
 
 // ── Blind peering ────────────────────────────────────────────────────────────
 // Blind peer key is now user-configurable via Settings → Seed Peer.
@@ -41,6 +44,7 @@ BareKit.IPC.on('data', chunk => {
 
 async function dispatch (method, args, id) {
   try {
+    if (!_dbReady) await _dbReadyPromise
     const result = await handle(method, args)
     send({ type: 'response', id, result })
   } catch(e) {
@@ -85,6 +89,7 @@ async function handle (method, args) {
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
     case 'sync':               return bgSync()
+    case 'foregroundSync':     return foregroundSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
     // Notifications handled on RN side
@@ -463,9 +468,15 @@ async function syncMemberLeft (groupId, memberId) {
 }
 
 // Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
-// Runs base.update() on every active group, then emits a sync event so the RN layer
-// can call completeBGSync() to properly close the BGTask (rather than letting it time out).
+// Flushes Hyperswarm to re-establish peer connections, waits for replication,
+// then runs base.update() on every active group.
 async function bgSync () {
+  // Kick Hyperswarm to reconnect — connections drop when iOS suspends the app
+  if (swarm) {
+    await swarm.flush().catch(() => {})
+    // Give peers a few seconds to connect and replicate cores
+    await new Promise(r => setTimeout(r, 5000))
+  }
   const updates = []
   for (const [, base] of bases) {
     updates.push(base.update().catch(e => console.warn('[BGSYNC] update error:', e.message)))
@@ -474,6 +485,17 @@ async function bgSync () {
   // Emit sync so completeBGSync is always called, even if no new data arrived.
   // apply() may have already emitted sync events for changed groups; this is a no-op fallback.
   send({ type: 'event', event: 'sync', data: null })
+}
+
+// Called when app returns to foreground — flush Hyperswarm to reconnect peers
+// and update all Autobases so the UI shows fresh data immediately.
+async function foregroundSync () {
+  if (swarm) await swarm.flush().catch(() => {})
+  const updates = []
+  for (const [, base] of bases) {
+    updates.push(base.update().catch(e => console.warn('[FGSYNC] update error:', e.message)))
+  }
+  await Promise.all(updates)
 }
 
 async function resyncGroup (groupId) {
@@ -1237,6 +1259,8 @@ async function _doInit (dir, attempt = 0) {
     } catch(e) {}
 
     console.log('DB ready, groups rejoined:', groups.length)
+    _dbReady = true
+    _dbReadyResolve()
     send({ type: 'event', event: 'ready' })
   } catch(e) {
     console.error('Init failed:', e.message)

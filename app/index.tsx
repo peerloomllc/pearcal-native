@@ -6,7 +6,7 @@ const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
   if (!isFatal && error?.message?.includes('keep awake')) return
   originalHandler?.(error, isFatal)
 })
-import { View, Text, Image, StyleSheet, NativeModules, Platform, BackHandler , Animated, Easing } from 'react-native'
+import { View, Text, Image, StyleSheet, NativeModules, Platform, BackHandler, AppState, Animated, Easing } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -469,6 +469,16 @@ webViewRef.current?.injectJavaScript(
     return () => sub.remove()
   }, [])
 
+  // Trigger resync when app returns to foreground
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: string) => {
+      if (state === 'active' && dbReadyRef.current) {
+        sendToWorklet({ method: 'foregroundSync', id: -98, args: [] })
+      }
+    })
+    return () => sub.remove()
+  }, [])
+
   if (error) return (
     <View style={styles.center}>
       <Text style={styles.emoji}>warning</Text>
@@ -477,7 +487,7 @@ webViewRef.current?.injectJavaScript(
     </View>
   )
 
-  if (!html) return <PearLoadingScreen />
+  if (!dbReady || !html) return <PearLoadingScreen />
 
   return (
     <WebView
