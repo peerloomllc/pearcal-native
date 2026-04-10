@@ -287,6 +287,7 @@ async function reinviteMember (groupId, memberId) {
 
 async function deleteGroup (id) {
   await db.del(NS.groups + id)
+  await db.del('joinedAt:' + id).catch(() => {})
   // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
     await db.del(key)
@@ -341,6 +342,13 @@ const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pendi
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
+
+  // Persist joinedAt as a dedicated key so it survives group record overwrites
+  const joinedAtKey = 'joinedAt:' + group.id
+  const existingJoin = await db.get(joinedAtKey).catch(() => null)
+  if (!existingJoin) {
+    await db.put(joinedAtKey, { ts: group.joinedAt || Date.now() })
+  }
 
   console.log('Joining group swarm:', group.id)
 
@@ -563,6 +571,7 @@ async function foregroundSync () {
             name:  gNode.value.name  || lv?.name,
             emoji: gNode.value.emoji || lv?.emoji,
             icon:  gNode.value.icon  ?? lv?.icon,
+            joinedAt: lv?.joinedAt || gNode.value.joinedAt,
             nickname: lv?.nickname || gNode.value.nickname,
           })
           send({ type: 'event', event: 'sync', data: groupId })
@@ -635,6 +644,7 @@ async function resyncGroup (groupId) {
           name:    value.name    || ev?.name,
           emoji:   value.emoji   || ev?.emoji,
           icon:    value.icon    ?? ev?.icon,
+          joinedAt: ev?.joinedAt || value.joinedAt,
           removedMembers: [...removedMap.values()],
           members: [...mergedMap.values()]
         })
@@ -798,8 +808,8 @@ function makeApply (groupId) {
             const eventDate = val.value.date
             if (eventDate && eventDate < new Date().toISOString().slice(0, 10)) continue
             // Skip notifications for events that predate our join (initial sync flood)
-            const localGroupJoin = await db.get(NS.groups + groupId).catch(() => null)
-            const joinedAt = localGroupJoin?.value?.joinedAt ?? 0
+            const joinNode = await db.get('joinedAt:' + groupId).catch(() => null)
+            const joinedAt = joinNode?.value?.ts ?? 0
             if (joinedAt && val.value.updatedAt && val.value.updatedAt < joinedAt) continue
             // Skip notification if only color changed
             const onlyColorChanged = localPrev &&
@@ -1048,6 +1058,10 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
         } else if (prev.location && value.location && prev.location !== value.location) {
           title = who + ' updated location for ' + what
           body  = value.location
+
+        } else if (prev.editPermission !== value.editPermission) {
+          // Permission-only change — no notification needed
+          return
 
         } else {
           title = who + ' updated ' + what
