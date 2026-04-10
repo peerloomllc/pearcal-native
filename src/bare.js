@@ -913,6 +913,8 @@ function makeApply (groupId) {
           send({ type: 'event', event: 'sync', data: groupId })
           if (isRemote && val.type === 'event') {
             const eventId = val.key.split(':').pop()
+            // Cancel any scheduled notification for this deleted event
+            send({ type: 'event', event: 'cancelNotification', data: eventId })
             const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
             if (!delTombstone) {
               const delRid = val.recurrenceId || val.value?.recurrenceId || null

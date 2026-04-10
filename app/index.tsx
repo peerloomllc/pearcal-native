@@ -371,6 +371,12 @@ webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupKeyUpdated",' + JSON.stringify(group) + ');true;'
         )
       })
+      onEvent('cancelNotification', (eventId: string) => {
+        const base = notifId(eventId)
+        for (let i = 0; i < 4; i++) {
+          PearCalNotifications?.cancel?.(base + i).catch(() => {})
+        }
+      })
       onEvent('sync', (groupId: string) => {
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
