@@ -338,6 +338,7 @@ const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex
 const activeChannels = new Set() // active writer-announce message objects
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
 const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
+const notifiedMemberJoins = new Map() // groupId → Set<memberId>; prevents duplicate member-join notifications across apply() replays
 const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
 
 async function joinGroup (group) {
@@ -748,19 +749,38 @@ function makeApply (groupId) {
           if (isRemote && val.type === 'group' && existing) {
             try {
               const profile = await getProfile()
+              // Skip notifications for group updates that predate our join —
+              // these are historical replays during initial Autobase catch-up
+              const joinedAtEntry = await db.get('joinedAt:' + groupId).catch(() => null)
+              const joinedAt = joinedAtEntry?.value?.ts ?? 0
+              if (val.value.updatedAt && val.value.updatedAt < joinedAt) {
+                // Historical replay — skip but still track members as seen
+                if (!notifiedMemberJoins.has(groupId)) notifiedMemberJoins.set(groupId, new Set())
+                const notifiedSet = notifiedMemberJoins.get(groupId)
+                for (const m of (val.value.members ?? [])) notifiedSet.add(m.id)
+              } else {
               // Use local DB snapshot (captured before mirrorToLocal) as authoritative source —
               // Autobase view may have stale/partial member lists during view rebuilds.
               // Falls back to Autobase view, then empty (owner's first joiner case).
               const existingMembers = localGroupBeforeMirror?.value?.members ?? existing?.value?.members ?? []
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
+              // Dedup: seed notified set from local DB members on first encounter per group
+              // so members already known before app restart don't trigger duplicate notifications
+              if (!notifiedMemberJoins.has(groupId)) {
+                const localMembers = localGroupBeforeMirror?.value?.members ?? []
+                notifiedMemberJoins.set(groupId, new Set(localMembers.map(m => m.id)))
+              }
+              const notifiedSet = notifiedMemberJoins.get(groupId)
               const newMembers = incomingMembers.filter(m =>
                 m.id !== profile?.id &&
                 m.name !== 'Inviter' &&
                 !existingIds.has(m.id) &&
+                !notifiedSet.has(m.id) &&
                 m.id !== val.value.ownerId  // owner was always there, never a "new" joiner
               )
               for (const m of newMembers) {
+                notifiedSet.add(m.id)
                 const groupName = val.value.name || existing?.value?.name || localGroupBeforeMirror?.value?.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
                   title: (m.nickname || m.name || 'Someone') + ' joined ' + groupName,
@@ -776,6 +796,7 @@ function makeApply (groupId) {
                   send({ type: 'event', event: 'sync', data: groupId })
                 }
               }
+              } // end else (non-historical)
             } catch(e) { console.error('[MEMBER_JOIN_NOTIF] error:', e.message) }
           }
           // Admin role change — notify only the affected member (self-check)
