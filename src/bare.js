@@ -1049,6 +1049,10 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
           title = who + ' updated location for ' + what
           body  = value.location
 
+        } else if (prev.editPermission !== value.editPermission) {
+          // Permission-only change — no notification needed
+          return
+
         } else {
           title = who + ' updated ' + what
           body  = value.date ? formatDate(value.date) : ''
