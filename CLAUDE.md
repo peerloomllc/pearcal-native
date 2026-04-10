@@ -64,7 +64,7 @@ ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buil
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
 # 2. Sync, build, package, install
-rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/peerloomllc/pearcal-native/ \
   Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
@@ -84,6 +84,7 @@ ideviceinstaller install /tmp/PearCal-release.ipa
 ```bash
 node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
 node_modules/.bin/bare-pack --host ios-arm64 --linked src/bare.js -o assets/bare-ios.bundle
+cp assets/bare-ios.bundle assets/bare-ios-sim.bundle
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
 # Then sync + build as above
@@ -91,7 +92,7 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
 
 **Swift/native module changes** (also runs `pod install` first):
 ```bash
-rsync -az --exclude='.git' --exclude='node_modules' --exclude='android' \
+rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/peerloomllc/pearcal-native/ \
   Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
 ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
@@ -106,6 +107,8 @@ ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa
 ```
+
+**iOS bundle caching:** Expo's asset cache survives install-over-top. If iOS behaves differently than expected after a deploy, do a full uninstall first: `ideviceinstaller uninstall com.pearcal` (this wipes app data). Also always keep `bare-ios-sim.bundle` in sync with `bare-ios.bundle` and use `--checksum` with rsync.
 
 **Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
 
