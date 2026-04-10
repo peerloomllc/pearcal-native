@@ -369,11 +369,14 @@ async function joinGroup (group) {
     send({ type: 'event', event: 'groupKeyUpdated', data: group })
   }
 
-  // Owner adds self as writer, then processes any pending joiner announcements
+  // Owner adds self as writer, seeds group into Autobase view, then processes pending joiners
   if (isOwner) {
     try {
       const writerKey = b4a.toString(base.local.key, 'hex')
       await base.append({ addWriter: writerKey })
+      // Seed the group record into the Autobase view so apply()'s existing check
+      // is non-null when a joiner's broadcastSelf arrives (enables join notifications)
+      await base.append({ op: 'put', type: 'group', key: NS.groups + group.id, value: { ...group, updatedAt: Date.now() } })
     } catch(e) {
     }
 
@@ -381,9 +384,12 @@ async function joinGroup (group) {
     const pending = pendingWriterAnnouncements.get(group.id)
     if (pending) {
       for (const writerKey of pending) {
-          base.append({ addWriter: writerKey }).catch(e =>
-          console.error('[OWNER] pending addWriter error:', e.message)
-        )
+        const knownKey = 'knownWriter:' + group.id + ':' + writerKey
+        const already = await db.get(knownKey).catch(() => null)
+        if (already) continue
+        base.append({ addWriter: writerKey })
+          .then(() => db.put(knownKey, { ts: Date.now() }).catch(() => {}))
+          .catch(e => console.error('[OWNER] pending addWriter error:', e.message))
       }
       pendingWriterAnnouncements.delete(group.id)
     }
@@ -419,6 +425,12 @@ async function joinGroup (group) {
     base.once('writable', doBroadcastSelf)
   }
 
+  // Register onAppend for this base so replication triggers apply() even if the
+  // peer connection predates joinGroup (e.g. rejoin after voluntary leave).
+  // The onopen handler only covers bases that existed when the connection opened.
+  const onLateAppend = () => base.update().catch(e => console.warn('[REPL] late-join update error:', e.message))
+  base.on('append', onLateAppend)
+
   // Announce our writer key to any already-connected peers
   const writerKey = b4a.toString(base.local.key, 'hex')
   for (const ch of activeChannels) {
@@ -444,6 +456,10 @@ async function leaveGroup (groupId) {
     bases.delete(groupId)
   }
   await db.del('selfBroadcasted:' + groupId).catch(() => {})
+  // Clean up knownWriter keys so members can rejoin cleanly after group recreation
+  for await (const { key } of db.createReadStream({ gt: 'knownWriter:' + groupId + ':', lt: 'knownWriter:' + groupId + ':ÿ' })) {
+    await db.del(key).catch(() => {})
+  }
 }
 
 async function syncPutEvent (groupId, event) {
@@ -662,6 +678,12 @@ function makeApply (groupId) {
         const existing = await view.get(val.key)
         console.log('[APPLY]', val.type, val.op, 'incoming:', val.value.updatedAt, 'existing:', existing?.value?.updatedAt, 'win:', !existing || val.value.updatedAt >= (existing?.value?.updatedAt??0))
         if (!existing || !existing.value.updatedAt || !val.value.updatedAt || val.value.updatedAt >= existing.value.updatedAt) {
+          // Snapshot local DB group record BEFORE mirrorToLocal so the member-join
+          // notification diff sees pre-mirror state (prevents false "already known" on new joins)
+          let localGroupBeforeMirror = null
+          if (isRemote && val.type === 'group') {
+            localGroupBeforeMirror = await db.get(NS.groups + groupId).catch(() => null)
+          }
           // Fetch prev from local DB BEFORE mirroring so we can diff in notifySyncChange
           // If date changed, the old entry lives under _prevDate key, not the new key
           let localPrev = null
@@ -716,7 +738,10 @@ function makeApply (groupId) {
           if (isRemote && val.type === 'group' && existing) {
             try {
               const profile = await getProfile()
-              const existingMembers = existing?.value?.members ?? []
+              // Use local DB snapshot (captured before mirrorToLocal) as authoritative source —
+              // Autobase view may have stale/partial member lists during view rebuilds.
+              // Falls back to Autobase view, then empty (owner's first joiner case).
+              const existingMembers = localGroupBeforeMirror?.value?.members ?? existing?.value?.members ?? []
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
               const newMembers = incomingMembers.filter(m =>
@@ -726,7 +751,7 @@ function makeApply (groupId) {
                 m.id !== val.value.ownerId  // owner was always there, never a "new" joiner
               )
               for (const m of newMembers) {
-                const groupName = val.value.name || existing?.value?.name || 'a group'
+                const groupName = val.value.name || existing?.value?.name || localGroupBeforeMirror?.value?.name || 'a group'
                 send({ type: 'event', event: 'syncNotify', data: {
                   title: (m.nickname || m.name || 'Someone') + ' joined ' + groupName,
                   body: 'Tap to view the group',
@@ -772,6 +797,10 @@ function makeApply (groupId) {
             // Skip notification for past events (prevents overnight flood from background sync replay)
             const eventDate = val.value.date
             if (eventDate && eventDate < new Date().toISOString().slice(0, 10)) continue
+            // Skip notifications for events that predate our join (initial sync flood)
+            const localGroupJoin = await db.get(NS.groups + groupId).catch(() => null)
+            const joinedAt = localGroupJoin?.value?.joinedAt ?? 0
+            if (joinedAt && val.value.updatedAt && val.value.updatedAt < joinedAt) continue
             // Skip notification if only color changed
             const onlyColorChanged = localPrev &&
               val.value.color !== localPrev.color &&
@@ -914,9 +943,14 @@ function makeApply (groupId) {
           await db.put(gKey, updated)
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.ts }).catch(() => {})
-          // Clear blockedWriter keys for this member so they can rejoin
+          // Clear blockedWriter and knownWriter keys for this member so they can rejoin
           for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + val.groupId + ':', lt: 'blockedWriter:' + val.groupId + ':ÿ' })) {
-            if (value?.memberId === val.memberId) await db.del(key).catch(() => {})
+            if (value?.memberId === val.memberId) {
+              await db.del(key).catch(() => {})
+              // Also clear the corresponding knownWriter key so addWriter fires on rejoin
+              const writerHex = key.split(':').pop()
+              await db.del('knownWriter:' + val.groupId + ':' + writerHex).catch(() => {})
+            }
           }
         }
         send({ type: 'event', event: 'sync', data: val.groupId })
@@ -1124,6 +1158,7 @@ async function mirrorToLocal (type, key, value, groupId) {
         name:    value.name    || existing?.value?.name,
         emoji:   value.emoji   || existing?.value?.emoji,
         icon:    value.icon    ?? existing?.value?.icon,
+        joinedAt: existing?.value?.joinedAt || value.joinedAt,
         removedMembers: [...removedMap.values()],
         members: [...mergedMap.values()],
         updatedAt: value.updatedAt || Date.now()
@@ -1328,14 +1363,24 @@ async function _doInit (dir, attempt = 0) {
                   return
                 }
                 if (group && profile && group.ownerId === profile.id) {
-                  const updated = { ...group, members: (group.members ?? []).filter(m => m.id !== memberId), updatedAt: Date.now() }
+                  const leavingMember = (group.members ?? []).find(m => m.id === memberId)
+                  // Already processed — member is no longer in the group
+                  if (!leavingMember) {
+                    await db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
+                    return
+                  }
+                  const updated = {
+                    ...group,
+                    members: (group.members ?? []).filter(m => m.id !== memberId),
+                    removedMembers: [...(group.removedMembers ?? []), { ...leavingMember, voluntary: true }],
+                    updatedAt: Date.now()
+                  }
                   await putGroup(updated)
                   // Clear writer announcements for this group so the member can rejoin cleanly
                   pendingWriterAnnouncements.delete(groupId)
                   // Remove persisted pending leave now that it's been processed
                   await db.del('pendingLeave:' + groupId + ':' + memberId).catch(() => {})
                   // Notify owner that member left
-                  const leavingMember = (group.members ?? []).find(m => m.id === memberId)
                   const leavingName = leavingMember?.nickname || leavingMember?.name || 'Someone'
                   send({ type: 'event', event: 'syncNotify', data: {
                     title: leavingName + ' left ' + (group.name || 'your group'),
@@ -1389,13 +1434,12 @@ async function _doInit (dir, attempt = 0) {
                     connSeenWriters.add(connKey)
                     // Still track globally to handle duplicate announcements from same peer
                     const set = pendingWriterAnnouncements.get(groupId) || new Set()
-                    const alreadyKnown = set.has(writerKey)
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
-                    // Check blocklist before granting write access
+                    // Check blocklist before granting write access (skip voluntary leaves — they can rejoin)
                     const removedMembers = group.removedMembers ?? []
                     const parsed_memberId = parsed.memberId ?? null
-                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId)) {
+                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId && !m.voluntary)) {
                       // Store writerKey so apply() can also block Autobase log replay
                       await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
                       try {
@@ -1404,16 +1448,42 @@ async function _doInit (dir, attempt = 0) {
                       } catch(e) {}
                       return
                     }
+                    // If this member was in removedMembers as voluntary, clear them now (rejoin)
+                    if (parsed_memberId) {
+                      const volMember = removedMembers.find(m => (m.id ?? m) === parsed_memberId && m.voluntary)
+                      if (volMember) {
+                        const g = await getGroup(groupId)
+                        if (g) {
+                          const cleaned = { ...g, removedMembers: (g.removedMembers ?? []).filter(m => (m.id ?? m) !== parsed_memberId) }
+                          await putGroup(cleaned)
+                        }
+                        // Clear the knownWriter key so addWriter fires for this rejoin
+                        await db.del('knownWriter:' + groupId + ':' + writerKey).catch(() => {})
+                      }
+                    }
+                    // Skip addWriter + rebroadcast if this writer is already known (persisted across restarts)
+                    const knownWriterKey = 'knownWriter:' + groupId + ':' + writerKey
+                    const alreadyGranted = await db.get(knownWriterKey).catch(() => null)
+                    if (alreadyGranted) {
+                      console.log('[ADDWRITER] writer already known, skipping:', writerKey.slice(0, 16), 'for group:', groupId)
+                      return
+                    }
                     console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId)
                     base.append({ addWriter: writerKey })
                       .then(async () => {
+                        // Persist so we skip redundant addWriter on future reconnects
+                        await db.put(knownWriterKey, { ts: Date.now() }).catch(() => {})
                         // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
                         // so we can merge their real name into the group record
                         await new Promise(r => setTimeout(r, 2000))
                         try {
                           const g = await getGroup(groupId)
                           if (g) {
-                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
+                            // Clear voluntary-leave entries from removedMembers so rejoining member reappears
+                            const cleanedRemoved = (g.removedMembers ?? []).filter(m =>
+                              !m.voluntary || (m.id ?? m) !== parsed_memberId
+                            )
+                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, removedMembers: cleanedRemoved, updatedAt: Date.now() } })
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
