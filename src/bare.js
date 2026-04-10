@@ -70,6 +70,7 @@ async function handle (method, args) {
     case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
     case 'clearBlockedFromGroup': return db.del('blockedFromGroup:' + args[0]).catch(() => {})
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
+    case 'debugGroup':       return debugGroup(args[0])
     case 'listMembers':      return listMembers(args[0])
     case 'putMember':        return putMember(args[0], args[1])
     case 'removeMember':     return removeMember(args[0], args[1])
@@ -87,6 +88,8 @@ async function handle (method, args) {
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
+    case 'purgeMember:sync':      return syncPurgeMember(args[0], args[1])
+    case 'reinviteMember:sync':   return syncReinviteMember(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
     case 'sync':               return bgSync()
     case 'foregroundSync':     return foregroundSync()
@@ -231,6 +234,23 @@ async function getGroup (id) {
   return node?.value ?? null
 }
 
+async function debugGroup (id) {
+  const localNode = await db.get(NS.groups + id).catch(() => null)
+  const local = localNode?.value
+    ? { m: (localNode.value.members ?? []).map(m => m.name), r: (localNode.value.removedMembers ?? []).map(m => m.name || m.id) }
+    : null
+  const base = bases.get(id)
+  if (!base) return { l: local, v: null, b: false }
+  let viewData = null
+  try {
+    const vNode = await base.view.get(NS.groups + id)
+    if (vNode?.value) {
+      viewData = { m: (vNode.value.members ?? []).map(m => m.name), r: (vNode.value.removedMembers ?? []).map(m => m.name || m.id) }
+    }
+  } catch (e) { viewData = { err: e.message } }
+  return { l: local, v: viewData, b: true }
+}
+
 async function listGroups () {
   const groups = []
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
@@ -247,20 +267,22 @@ async function putGroup (group) {
 async function reinviteMember (groupId, memberId) {
   const group = await getGroup(groupId)
   if (!group) return
-  // Move from removedMembers → pendingInvites
+  // Move from removedMembers → pendingInvites locally for immediate UI responsiveness
   const memberRecord = (group.removedMembers ?? []).find(m => (m.id ?? m) === memberId)
   const removedMembers = (group.removedMembers ?? []).filter(m => (m.id ?? m) !== memberId)
   const pendingInvites = [...(group.pendingInvites ?? [])]
   if (memberRecord && !pendingInvites.some(m => (m.id ?? m) === memberId)) {
     pendingInvites.push(memberRecord)
   }
-  // Preserve existing updatedAt — do NOT bump timestamp here or it races with joiner's broadcastSelf
   const updated = { ...group, removedMembers, pendingInvites }
   await db.put(NS.groups + group.id, updated).catch(() => {})
-  // Clear all blockedWriter keys for this member
+  // Clear all blockedWriter keys for this member locally
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
   }
+  // Append dedicated Autobase op so all devices process the reinvite deterministically
+  // (the local-only group update above would lose LWW against the removal record)
+  await syncReinviteMember(groupId, memberId)
 }
 
 async function deleteGroup (id) {
@@ -296,6 +318,8 @@ async function putMember (groupId, member) {
 
 async function removeMember (groupId, memberId) {
   await db.del(NS.members + groupId + ':' + memberId)
+  // Clear reinstated flag so future removedMembers propagation works
+  await db.del('reinstated:' + groupId + ':' + memberId).catch(() => {})
 }
 
 // ── Sync ──────────────────────────────────────────────────────────────────────
@@ -467,6 +491,18 @@ async function syncMemberLeft (groupId, memberId) {
   }
 }
 
+async function syncPurgeMember (groupId, memberId) {
+  const base = bases.get(groupId)
+  if (!base) return
+  await base.append({ op: 'purgeMember', groupId, memberId, purgedAt: Date.now() })
+}
+
+async function syncReinviteMember (groupId, memberId) {
+  const base = bases.get(groupId)
+  if (!base) return
+  await base.append({ op: 'reinviteMember', groupId, memberId, ts: Date.now() })
+}
+
 // Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
 // Flushes Hyperswarm to re-establish peer connections, waits for replication,
 // then runs base.update() on every active group.
@@ -491,11 +527,33 @@ async function bgSync () {
 // and update all Autobases so the UI shows fresh data immediately.
 async function foregroundSync () {
   if (swarm) await swarm.flush().catch(() => {})
-  const updates = []
-  for (const [, base] of bases) {
-    updates.push(base.update().catch(e => console.warn('[FGSYNC] update error:', e.message)))
+  for (const [groupId, base] of bases) {
+    try {
+      await base.update()
+      // Re-mirror group record from Autobase view to local DB to catch any
+      // membership changes that mirrorToLocal may have missed during apply()
+      const gNode = await base.view.get(NS.groups + groupId)
+      if (gNode?.value) {
+        const localNode = await db.get(NS.groups + groupId).catch(() => null)
+        const localMembers = localNode?.value?.members ?? []
+        const viewMembers = gNode.value.members ?? []
+        // If the view has fewer members (removal happened), update local DB
+        if (viewMembers.length !== localMembers.length ||
+            !viewMembers.every(vm => localMembers.some(lm => lm.id === vm.id))) {
+          const lv = localNode?.value
+          await db.put(NS.groups + groupId, {
+            ...gNode.value,
+            color: gNode.value.color || lv?.color,
+            name:  gNode.value.name  || lv?.name,
+            emoji: gNode.value.emoji || lv?.emoji,
+            icon:  gNode.value.icon  ?? lv?.icon,
+            nickname: lv?.nickname || gNode.value.nickname,
+          })
+          send({ type: 'event', event: 'sync', data: groupId })
+        }
+      }
+    } catch (e) { console.warn('[FGSYNC] error:', e.message) }
   }
-  await Promise.all(updates)
 }
 
 async function resyncGroup (groupId) {
@@ -613,9 +671,41 @@ function makeApply (groupId) {
               localPrev = await db.get('events:' + val.value._prevDate + ':' + val.value.id).then(n => n?.value ?? null).catch(() => null)
             }
           }
-          await view.put(val.key, val.value)
+          // For groups: preserve metadata AND merge members from existing view record
+          // so that broadcastSelf (which only carries the joiner's member data) can't wipe
+          // group metadata or other members via LWW
+          let viewValue = val.value
+          if (val.type === 'group' && existing?.value) {
+            const existMembers = existing.value.members ?? []
+            const incMembers = val.value.members ?? []
+            // Union removedMembers by ID
+            const existRemoved = existing.value.removedMembers ?? []
+            const incRemoved = val.value.removedMembers ?? []
+            const removedMap = new Map()
+            for (const m of existRemoved) removedMap.set(m.id ?? m, m)
+            for (const m of incRemoved) removedMap.set(m.id ?? m, m)
+            const removedIds = new Set(removedMap.keys())
+            // Union members: incoming wins for same ID, keep existing not in incoming
+            // but filter out anyone in removedMembers
+            const incIds = new Set(incMembers.map(m => m.id))
+            const merged = [...incMembers, ...existMembers.filter(m => !incIds.has(m.id))]
+              .filter(m => !removedIds.has(m.id))
+            // Don't keep active members in removedMembers
+            const activeIds = new Set(merged.map(m => m.id))
+            const mergedRemoved = [...removedMap.values()].filter(m => !activeIds.has(m.id ?? m))
+            viewValue = {
+              ...val.value,
+              color: val.value.color || existing.value.color,
+              name:  val.value.name  || existing.value.name,
+              emoji: val.value.emoji || existing.value.emoji,
+              icon:  val.value.icon  ?? existing.value.icon,
+              members: merged,
+              removedMembers: mergedRemoved,
+            }
+          }
+          await view.put(val.key, viewValue)
           // Always mirror so local DB has latest invitees list — listEvents filters at read time.
-          await mirrorToLocal(val.type, val.key, val.value, groupId)
+          await mirrorToLocal(val.type, val.key, viewValue, groupId)
           // Invitee filter: skip notifications for uninvited events (mirrorToLocal already sent sync).
           if (isRemote && val.type === 'event') {
             const profile = await getProfile()
@@ -752,6 +842,11 @@ function makeApply (groupId) {
             for (const m of (winningValue.removedMembers ?? []))      removedMap.set(m.id ?? m, m)
             for (const m of (val.value.removedMembers ?? []))         removedMap.set(m.id ?? m, m)
             for (const m of dedupRemoved)                             removedMap.set(m.id, m)
+            // Exclude reinstated members (reinvited or purged via Autobase op)
+            for (const id of [...removedMap.keys()]) {
+              const reinstated = await db.get('reinstated:' + groupId + ':' + id).catch(() => null)
+              if (reinstated) removedMap.delete(id)
+            }
             for (const id of removedMap.keys()) mergedMap.delete(id)
 
             // Preserve metadata: winning record (view) → local DB → losing record
@@ -804,6 +899,43 @@ function makeApply (groupId) {
             }
           }
         }
+      } else if (val.op === 'reinviteMember') {
+        const gKey = NS.groups + val.groupId
+        const gNode = await view.get(gKey)
+        if (gNode?.value) {
+          const memberRecord = (gNode.value.removedMembers ?? []).find(m => (m.id ?? m) === val.memberId)
+          const updated = {
+            ...gNode.value,
+            removedMembers: (gNode.value.removedMembers ?? []).filter(m => (m.id ?? m) !== val.memberId),
+            pendingInvites: [...(gNode.value.pendingInvites ?? []).filter(p => (p.id ?? p) !== val.memberId),
+              ...(memberRecord ? [memberRecord] : [])],
+          }
+          await view.put(gKey, updated)
+          await db.put(gKey, updated)
+          // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
+          await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.ts }).catch(() => {})
+          // Clear blockedWriter keys for this member so they can rejoin
+          for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + val.groupId + ':', lt: 'blockedWriter:' + val.groupId + ':ÿ' })) {
+            if (value?.memberId === val.memberId) await db.del(key).catch(() => {})
+          }
+        }
+        send({ type: 'event', event: 'sync', data: val.groupId })
+      } else if (val.op === 'purgeMember') {
+        const gKey = NS.groups + val.groupId
+        const gNode = await view.get(gKey)
+        if (gNode?.value) {
+          const updated = {
+            ...gNode.value,
+            members: (gNode.value.members ?? []).filter(m => m.id !== val.memberId),
+            removedMembers: (gNode.value.removedMembers ?? []).filter(m => (m.id ?? m) !== val.memberId),
+          }
+          await view.put(gKey, updated)
+          await db.put(gKey, updated)
+          await db.del(NS.members + val.groupId + ':' + val.memberId).catch(() => {})
+          // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
+          await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
+        }
+        send({ type: 'event', event: 'sync', data: val.groupId })
       }
     }
   }
@@ -978,6 +1110,12 @@ async function mirrorToLocal (type, key, value, groupId) {
       for (const m of (existing?.value?.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
       for (const m of (value.removedMembers ?? []))           removedMap.set(m.id ?? m, m)
       for (const m of dedupRemoved)                           removedMap.set(m.id, m)
+      // Exclude members that were reinstated (reinvited or purged) — the reinstated:
+      // key is set by the reinviteMember/purgeMember Autobase ops in apply()
+      for (const id of [...removedMap.keys()]) {
+        const reinstated = await db.get('reinstated:' + groupId + ':' + id).catch(() => null)
+        if (reinstated) removedMap.delete(id)
+      }
       // Filter out any member who appears in removedMembers
       for (const id of removedMap.keys()) mergedMap.delete(id)
       const merged = {

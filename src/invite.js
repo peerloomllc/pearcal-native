@@ -42,14 +42,7 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
 
   const { groupId, groupName, groupKey, inviterKey } = parsed
 
-  // 2. Check we're not already a member
-  const existing = await db.getGroup(groupId)
-  if (existing) {
-    return { ok: false, error: 'already_member', group: existing }
-  }
-
-  // 2b. Check if we were blocked from this group
-  // If link contains reinvite=1, owner has explicitly re-granted access — clear tombstone
+  // 2. Check if we were blocked / already a member
   const isReinvite = parsed.reinvite === true
   if (isReinvite) {
     await db.clearBlockedFromGroup(groupId).catch(() => {})
@@ -58,6 +51,17 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
     if (isBlocked) {
       return { ok: false, error: 'blocked_from_group' }
     }
+  }
+
+  const existing = await db.getGroup(groupId)
+  if (existing && !isReinvite) {
+    return { ok: false, error: 'already_member', group: existing }
+  }
+  // Reinvite + already have group: member was removed while offline (never got
+  // the blocked message). Delete stale local record so we can rejoin cleanly.
+  if (existing && isReinvite) {
+    await db.deleteGroup(groupId).catch(() => {})
+    await sync.leaveGroup(groupId).catch(() => {})
   }
 
   // 3. Build a local group record and persist it

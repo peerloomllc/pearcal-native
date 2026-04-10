@@ -14378,10 +14378,6 @@
     const parsed = parseInviteLink(url);
     if (!parsed.ok) return parsed;
     const { groupId, groupName, groupKey, inviterKey } = parsed;
-    const existing = await db2.getGroup(groupId);
-    if (existing) {
-      return { ok: false, error: "already_member", group: existing };
-    }
     const isReinvite = parsed.reinvite === true;
     if (isReinvite) {
       await db2.clearBlockedFromGroup(groupId).catch(() => {
@@ -14391,6 +14387,16 @@
       if (isBlocked) {
         return { ok: false, error: "blocked_from_group" };
       }
+    }
+    const existing = await db2.getGroup(groupId);
+    if (existing && !isReinvite) {
+      return { ok: false, error: "already_member", group: existing };
+    }
+    if (existing && isReinvite) {
+      await db2.deleteGroup(groupId).catch(() => {
+      });
+      await sync2.leaveGroup(groupId).catch(() => {
+      });
     }
     const profile = await db2.getProfile();
     const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey, ...nickname ? { nickname } : {} };
@@ -16620,6 +16626,15 @@
       await sync2?.memberLeft(g.id, uid).catch(() => {
       });
     }, [updateGroup, sync2]);
+    const purgeMember = (0, import_react2.useCallback)(async (g, memberId) => {
+      const updated = {
+        ...g,
+        removedMembers: (g.removedMembers ?? []).filter((m3) => (m3.id ?? m3) !== memberId)
+      };
+      await updateGroup(updated);
+      await sync2?.purgeMember(g.id, memberId).catch(() => {
+      });
+    }, [updateGroup, sync2]);
     const updateProfile = (0, import_react2.useCallback)(async (updates) => {
       if (db2) {
         const hasPhoto = updates.avatar?.startsWith?.("data:") || profile?.avatar?.startsWith?.("data:");
@@ -17123,6 +17138,17 @@
                 confirmLabel: "Remove",
                 dangerous: true,
                 onConfirm: () => removeMember(req.g, req.memberId)
+              });
+            } else if (req.type === "purgeMember") {
+              setSettingsGroup(null);
+              const member = (req.g.removedMembers ?? []).find((m3) => (m3.id ?? m3) === req.memberId);
+              setConfirmSheet({
+                title: `Permanently delete ${member?.name ?? "member"}?`,
+                message: `This will remove all traces of this member ID from all devices. They can still rejoin with a new invite.`,
+                icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 36, weight: "thin", color: "#D45F7A" }),
+                confirmLabel: "Delete",
+                dangerous: true,
+                onConfirm: () => purgeMember(req.g, req.memberId)
               });
             } else if (req.type === "makeAdmin") {
               setConfirmSheet({
@@ -19989,9 +20015,9 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 15, ...th.text }, children: g.name }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: [
-                g.members.length,
+                (g.members ?? []).length,
                 " member",
-                g.members.length !== 1 ? "s" : ""
+                (g.members ?? []).length !== 1 ? "s" : ""
               ] })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -20003,7 +20029,7 @@
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: g.members.map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: (g.members ?? []).map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.nickname || m3.name, color: g.color, size: 34, fontSize: 13 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m3.nickname || m3.name })
           ] }, m3.id)) }),
@@ -20330,7 +20356,6 @@ ${link}`;
                     pendingInvites: [...g.pendingInvites ?? [], memberRecord]
                   };
                   setG(updated);
-                  await onUpdate(updated);
                   const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? "unknown");
                   if (!link) return;
                   if (sync2) sync2.nativeShare(`Join ${g.name} on PearCal`, link);
@@ -20350,6 +20375,29 @@ ${link}`;
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n7, { size: 14, weight: "thin", style: { display: "inline", verticalAlign: "middle" } }),
                   " Reinvite"
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  onRequestConfirm({ type: "purgeMember", g, memberId: m3.id });
+                },
+                style: {
+                  background: "transparent",
+                  border: "1px solid #D45F7A44",
+                  borderRadius: 8,
+                  color: "#D45F7A",
+                  fontSize: 12,
+                  padding: "5px 10px",
+                  cursor: "pointer",
+                  fontWeight: 300,
+                  fontFamily: FONT
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 14, weight: "thin", style: { display: "inline", verticalAlign: "middle" } }),
+                  " Delete"
                 ]
               }
             )
@@ -22467,6 +22515,8 @@ ${link}`;
     deleteEvent: (gid, id, d, who, whoId, rid) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId, rid),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g),
     memberLeft: (groupId, memberId) => window.__pearDB.call("memberLeft:sync", groupId, memberId),
+    purgeMember: (groupId, memberId) => window.__pearDB.call("purgeMember:sync", groupId, memberId),
+    debugGroup: (id) => window.__pearDB.call("debugGroup", id),
     nativeShare: (title, text) => window.__pearDB.call("nativeShare", title, text),
     exportIcs: (content) => window.__pearDB.call("exportIcs", content),
     qrScan: () => window.__pearDB.call("qrScan"),

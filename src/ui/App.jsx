@@ -801,6 +801,15 @@ export default function App ({ db, notifs, sync }) {
     await sync?.memberLeft(g.id, uid).catch(() => {})
   }, [updateGroup, sync])
 
+  const purgeMember = useCallback(async (g, memberId) => {
+    const updated = {
+      ...g,
+      removedMembers: (g.removedMembers ?? []).filter(m => (m.id ?? m) !== memberId),
+    }
+    await updateGroup(updated)
+    await sync?.purgeMember(g.id, memberId).catch(() => {})
+  }, [updateGroup, sync])
+
   const updateProfile = useCallback(async updates => {
     if (db) {
       // Only generate initials if: (a) name changed AND (b) no photo is being set AND (c) no photo already stored
@@ -1157,6 +1166,17 @@ export default function App ({ db, notifs, sync }) {
                   confirmLabel: 'Remove',
                   dangerous: true,
                   onConfirm: () => removeMember(req.g, req.memberId),
+                })
+              } else if (req.type === 'purgeMember') {
+                setSettingsGroup(null)
+                const member = (req.g.removedMembers ?? []).find(m => (m.id ?? m) === req.memberId)
+                setConfirmSheet({
+                  title: `Permanently delete ${member?.name ?? 'member'}?`,
+                  message: `This will remove all traces of this member ID from all devices. They can still rejoin with a new invite.`,
+                  icon: <Trash size={36} weight="thin" color="#D45F7A" />,
+                  confirmLabel: 'Delete',
+                  dangerous: true,
+                  onConfirm: () => purgeMember(req.g, req.memberId),
                 })
               } else if (req.type === 'makeAdmin') {
                 setConfirmSheet({
@@ -3174,7 +3194,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
               <div style={{ flex:1 }}>
                 <div style={{ fontWeight:300, fontSize:15, ...th.text }}>{g.name}</div>
                 <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>
-                  {g.members.length} member{g.members.length !== 1 ? 's' : ''}
+                  {(g.members ?? []).length} member{(g.members ?? []).length !== 1 ? 's' : ''}
                 </div>
               </div>
               <button onClick={() => onSettings(g)}
@@ -3185,13 +3205,14 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
 
             {/* Member avatars */}
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
-              {g.members.map(m => (
+              {(g.members ?? []).map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
                   <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={g.color} size={34} fontSize={13} />
                   <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.nickname || m.name}</span>
                 </div>
               ))}
             </div>
+
 
             <button onClick={async e => {
                 e.stopPropagation()
@@ -3421,7 +3442,6 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                           removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id),
                           pendingInvites: [...(g.pendingInvites ?? []), memberRecord] }
                         setG(updated)
-                        await onUpdate(updated)
                         const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
                         if (!link) return
                         if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
@@ -3431,6 +3451,12 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
                       <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Reinvite
+                    </button>
+                    <button onClick={() => { onRequestConfirm({ type: 'purgeMember', g, memberId: m.id }) }}
+                      style={{ background:'transparent', border:'1px solid #D45F7A44', borderRadius:8,
+                        color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT }}>
+                      <Trash size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Delete
                     </button>
                   </div>
                 ))}
