@@ -1,5 +1,6 @@
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 @objc(PearCalCamera)
 class CameraModule: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate, PHPickerViewControllerDelegate {
@@ -81,19 +82,45 @@ class CameraModule: NSObject, UIImagePickerControllerDelegate, UINavigationContr
 
   func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
     picker.dismiss(animated: true)
-    guard let provider = results.first?.itemProvider,
-          provider.canLoadObject(ofClass: UIImage.self) else {
+    guard let provider = results.first?.itemProvider else {
       captureReject?("CANCELLED", "Cancelled", nil)
       captureResolve = nil; captureReject = nil
       return
     }
-    provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
-      guard let image = object as? UIImage else {
-        self?.captureReject?("NO_IMAGE", "Could not load image", nil)
+
+    // Try GIF first, then WebP — preserve animated formats as raw data
+    if provider.hasItemConformingToTypeIdentifier(UTType.gif.identifier) {
+      provider.loadDataRepresentation(forTypeIdentifier: UTType.gif.identifier) { [weak self] data, _ in
+        guard let data = data else {
+          self?.captureReject?("NO_IMAGE", "Could not load GIF", nil)
+          self?.captureResolve = nil; self?.captureReject = nil
+          return
+        }
+        self?.captureResolve?("data:image/gif;base64,\(data.base64EncodedString())")
         self?.captureResolve = nil; self?.captureReject = nil
-        return
       }
-      self?.resolveWithImage(image)
+    } else if provider.hasItemConformingToTypeIdentifier(UTType.webP.identifier) {
+      provider.loadDataRepresentation(forTypeIdentifier: UTType.webP.identifier) { [weak self] data, _ in
+        guard let data = data else {
+          self?.captureReject?("NO_IMAGE", "Could not load WebP", nil)
+          self?.captureResolve = nil; self?.captureReject = nil
+          return
+        }
+        self?.captureResolve?("data:image/webp;base64,\(data.base64EncodedString())")
+        self?.captureResolve = nil; self?.captureReject = nil
+      }
+    } else if provider.canLoadObject(ofClass: UIImage.self) {
+      provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+        guard let image = object as? UIImage else {
+          self?.captureReject?("NO_IMAGE", "Could not load image", nil)
+          self?.captureResolve = nil; self?.captureReject = nil
+          return
+        }
+        self?.resolveWithImage(image)
+      }
+    } else {
+      captureReject?("NO_IMAGE", "Unsupported image format", nil)
+      captureResolve = nil; captureReject = nil
     }
   }
 
