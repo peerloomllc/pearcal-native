@@ -470,7 +470,29 @@ export default function App ({ db, notifs, sync }) {
     async function onSync (groupId) {
       // Reload events (group-filtered for efficiency on large datasets)
       const fresh = await db.listEvents()
-      setEvents(fresh)
+      setEvents(prev => {
+        // Apply user's default reminder to newly synced events that have no local reminders
+        const prevIds = new Set(prev.map(e => e.id))
+        const newEvents = fresh.filter(e =>
+          !prevIds.has(e.id) && (e.groups ?? []).includes(groupId)
+        )
+        if (newEvents.length > 0) {
+          db.getProfile().then(prof => {
+            const defaultReminder = typeof prof?.defaultReminder === 'number'
+              ? prof.defaultReminder : 15
+            if (defaultReminder <= 0) return
+            for (const ev of newEvents) {
+              db.getReminders(ev.id).then(existing => {
+                if (existing && existing.length > 0) return
+                const reminders = [defaultReminder]
+                db.putReminders(ev.id, reminders).catch(() => {})
+                notifs?.scheduleForEvent(ev, reminders).catch(() => {})
+              }).catch(() => {})
+            }
+          }).catch(() => {})
+        }
+        return fresh
+      })
 
       // Reload the updated group record (membership may have changed)
       const g = await db.getGroup(groupId)
