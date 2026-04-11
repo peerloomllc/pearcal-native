@@ -721,6 +721,11 @@ export default function App ({ db, notifs, sync }) {
     }, nick)
     if (result?.ok && result.group) {
       setGroups(prev => prev.find(x => x.id === result.group.id) ? prev : [...prev, result.group])
+      // Re-mirror Autobase view → local DB so pre-existing events sync on rejoin
+      db.resyncGroup(result.group.id).catch(() => {}).then(async () => {
+        const evts = await db.listEvents()
+        setEvents(evts)
+      })
     }
     if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
     setPendingJoin(null)

@@ -718,11 +718,19 @@ function makeApply (groupId) {
             for (const m of existRemoved) removedMap.set(m.id ?? m, m)
             for (const m of incRemoved) removedMap.set(m.id ?? m, m)
             const removedIds = new Set(removedMap.keys())
-            // Union members: incoming wins for same ID, keep existing not in incoming
-            // but filter out anyone in removedMembers
+            // Determine if incoming record is authoritative (sent by owner with full member list)
+            // vs a broadcastSelf (joiner sending only their own member record).
+            // Owner records include the owner in members[]; broadcastSelf does not.
+            const ownerId = val.value.ownerId || existing.value.ownerId
+            const isAuthoritative = ownerId && incMembers.some(m => m.id === ownerId)
             const incIds = new Set(incMembers.map(m => m.id))
-            const merged = [...incMembers, ...existMembers.filter(m => !incIds.has(m.id))]
-              .filter(m => !removedIds.has(m.id))
+            // Authoritative: trust incoming members list (owner has full picture);
+            // only filter out removedMembers.
+            // Non-authoritative (broadcastSelf): union members so partial records don't wipe others.
+            const merged = isAuthoritative
+              ? incMembers.filter(m => !removedIds.has(m.id))
+              : [...incMembers, ...existMembers.filter(m => !incIds.has(m.id))]
+                  .filter(m => !removedIds.has(m.id))
             // Don't keep active members in removedMembers
             const activeIds = new Set(merged.map(m => m.id))
             const mergedRemoved = [...removedMap.values()].filter(m => !activeIds.has(m.id ?? m))
@@ -1163,16 +1171,23 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existingMembers = existing?.value?.members ?? []
       const incomingMembers = value.members ?? []
       const mergedMap = new Map()
-      // First pass: seed with existing members
-      for (const m of existingMembers) mergedMap.set(m.id, m)
-      // Second pass: incoming members override existing
-      // - Always replace 'Inviter' placeholder
-      // - Always update name/avatar (profile name changes)
-      // - Add new members not yet in existing
-      for (const m of incomingMembers) {
-        const prev = mergedMap.get(m.id)
-        if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
+      // Determine if incoming is authoritative (owner in members list = full picture)
+      const ownerId = value.ownerId || existing?.value?.ownerId
+      const isAuthoritative = ownerId && incomingMembers.some(m => m.id === ownerId)
+      if (isAuthoritative) {
+        // Authoritative: trust incoming member list, only preserve nicknames from existing
+        for (const m of incomingMembers) {
+          const prev = existingMembers.find(e => e.id === m.id)
           mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+        }
+      } else {
+        // Non-authoritative (broadcastSelf): union members so partial records don't wipe others
+        for (const m of existingMembers) mergedMap.set(m.id, m)
+        for (const m of incomingMembers) {
+          const prev = mergedMap.get(m.id)
+          if (!prev || prev.name === 'Inviter' || m.name !== 'Inviter') {
+            mergedMap.set(m.id, { ...m, nickname: m.nickname || prev?.nickname || '' })
+          }
         }
       }
       const dedupRemoved = deduplicateReinstalls(mergedMap, existingMembers, incomingMembers)
@@ -1409,7 +1424,6 @@ async function _doInit (dir, attempt = 0) {
                   const updated = {
                     ...group,
                     members: (group.members ?? []).filter(m => m.id !== memberId),
-                    removedMembers: [...(group.removedMembers ?? []), { ...leavingMember, voluntary: true }],
                     updatedAt: Date.now()
                   }
                   await putGroup(updated)
@@ -1473,10 +1487,11 @@ async function _doInit (dir, attempt = 0) {
                     const set = pendingWriterAnnouncements.get(groupId) || new Set()
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
-                    // Check blocklist before granting write access (skip voluntary leaves — they can rejoin)
+                    // Check blocklist before granting write access — only block members
+                    // explicitly removed (kicked) by the owner
                     const removedMembers = group.removedMembers ?? []
                     const parsed_memberId = parsed.memberId ?? null
-                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId && !m.voluntary)) {
+                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId)) {
                       // Store writerKey so apply() can also block Autobase log replay
                       await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
                       try {
@@ -1485,18 +1500,9 @@ async function _doInit (dir, attempt = 0) {
                       } catch(e) {}
                       return
                     }
-                    // If this member was in removedMembers as voluntary, clear them now (rejoin)
+                    // Clear knownWriter so addWriter fires for rejoining members
                     if (parsed_memberId) {
-                      const volMember = removedMembers.find(m => (m.id ?? m) === parsed_memberId && m.voluntary)
-                      if (volMember) {
-                        const g = await getGroup(groupId)
-                        if (g) {
-                          const cleaned = { ...g, removedMembers: (g.removedMembers ?? []).filter(m => (m.id ?? m) !== parsed_memberId) }
-                          await putGroup(cleaned)
-                        }
-                        // Clear the knownWriter key so addWriter fires for this rejoin
-                        await db.del('knownWriter:' + groupId + ':' + writerKey).catch(() => {})
-                      }
+                      await db.del('knownWriter:' + groupId + ':' + writerKey).catch(() => {})
                     }
                     // Skip addWriter + rebroadcast if this writer is already known (persisted across restarts)
                     const knownWriterKey = 'knownWriter:' + groupId + ':' + writerKey
@@ -1516,11 +1522,7 @@ async function _doInit (dir, attempt = 0) {
                         try {
                           const g = await getGroup(groupId)
                           if (g) {
-                            // Clear voluntary-leave entries from removedMembers so rejoining member reappears
-                            const cleanedRemoved = (g.removedMembers ?? []).filter(m =>
-                              !m.voluntary || (m.id ?? m) !== parsed_memberId
-                            )
-                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, removedMembers: cleanedRemoved, updatedAt: Date.now() } })
+                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })

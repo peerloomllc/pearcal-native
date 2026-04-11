@@ -16549,6 +16549,11 @@
       }, nick);
       if (result?.ok && result.group) {
         setGroups((prev) => prev.find((x) => x.id === result.group.id) ? prev : [...prev, result.group]);
+        db2.resyncGroup(result.group.id).catch(() => {
+        }).then(async () => {
+          const evts = await db2.listEvents();
+          setEvents(evts);
+        });
       }
       if (result?.error === "blocked_from_group") {
         setBlockedToast(true);
