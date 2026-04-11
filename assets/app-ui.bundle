@@ -16262,7 +16262,31 @@
       if (!db2) return;
       async function onSync(groupId) {
         const fresh = await db2.listEvents();
-        setEvents(fresh);
+        setEvents((prev) => {
+          const prevIds = new Set(prev.map((e53) => e53.id));
+          const newEvents = fresh.filter(
+            (e53) => !prevIds.has(e53.id) && (e53.groups ?? []).includes(groupId)
+          );
+          if (newEvents.length > 0) {
+            db2.getProfile().then((prof) => {
+              const defaultReminder = typeof prof?.defaultReminder === "number" ? prof.defaultReminder : 15;
+              if (defaultReminder <= 0) return;
+              for (const ev of newEvents) {
+                db2.getReminders(ev.id).then((existing) => {
+                  if (existing && existing.length > 0) return;
+                  const reminders = [defaultReminder];
+                  db2.putReminders(ev.id, reminders).catch(() => {
+                  });
+                  notifs2?.scheduleForEvent(ev, reminders).catch(() => {
+                  });
+                }).catch(() => {
+                });
+              }
+            }).catch(() => {
+            });
+          }
+          return fresh;
+        });
         const g = await db2.getGroup(groupId);
         if (g) setGroups((prev) => prev.map((x) => x.id === groupId ? g : x));
       }

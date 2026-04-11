@@ -1093,6 +1093,18 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
           return
 
         } else {
+          // No meaningful fields changed (e.g. reminder-only edit) — skip notification
+          const noChange =
+            prev.title === value.title &&
+            prev.date === value.date &&
+            prev.start === value.start &&
+            prev.end === value.end &&
+            prev.allDay === value.allDay &&
+            prev.desc === value.desc &&
+            prev.location === value.location &&
+            prev.color === value.color &&
+            JSON.stringify(prev.groups) === JSON.stringify(value.groups)
+          if (noChange) return
           title = who + ' updated ' + what
           body  = value.date ? formatDate(value.date) : ''
         }
