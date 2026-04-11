@@ -25,6 +25,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Camera, Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
+  FunnelSimple,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -1541,7 +1542,11 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
-          scrollbarWidth:'none', flexShrink:0 }}>
+          scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
+          <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
+            fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.03em' }}>
+            <FunnelSimple size={12} weight="bold" /> Group Filter
+          </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
             flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
@@ -1718,7 +1723,11 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
-          scrollbarWidth:'none', flexShrink:0 }}>
+          scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
+          <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
+            fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.03em' }}>
+            <FunnelSimple size={12} weight="bold" /> Group Filter
+          </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
             flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
@@ -2098,7 +2107,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       {/* Group filter pills */}
       {groups && groups.length > 0 && (
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
-          scrollbarWidth:'none', flexShrink:0 }}>
+          scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
+          <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
+            fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.03em' }}>
+            <FunnelSimple size={12} weight="bold" /> Group Filter
+          </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
             flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? th.accent : th.border),
