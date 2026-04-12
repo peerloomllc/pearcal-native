@@ -13,10 +13,18 @@ import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
 
+  private fun isInviteLink(uri: Uri): Boolean {
+    // https://peerloomllc.com/join?...
+    if (uri.scheme == "https" && uri.host == "peerloomllc.com" && uri.path?.startsWith("/join") == true) return true
+    // pear://pearcal/join?... (legacy)
+    if (uri.scheme == "pear" && uri.host == "pearcal") return true
+    return false
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     setTheme(R.style.AppTheme)
     val uri = intent?.data
-    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
+    if (uri != null && isInviteLink(uri)) {
       Log.d("PearCal", "Storing link: $uri")
       LinkModule.pendingLink = uri.toString()
       intent = Intent(this, MainActivity::class.java)
@@ -37,7 +45,7 @@ class MainActivity : ReactActivity() {
 
   override fun onNewIntent(intent: Intent) {
     val uri = intent.data
-    if (uri != null && uri.scheme == "pear" && uri.host == "pearcal") {
+    if (uri != null && isInviteLink(uri)) {
       Log.d("PearCal", "onNewIntent storing link: $uri")
       LinkModule.pendingLink = uri.toString()
       setIntent(Intent(this, MainActivity::class.java))

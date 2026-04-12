@@ -10,7 +10,7 @@ export default function JoinRoute() {
       .filter(([k]) => k !== 'screen')
       .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
       .join('&')
-    const url = `pear://pearcal/join?${entries}`
+    const url = `https://peerloomllc.com/join?${entries}`
     console.log('JoinRoute emitting pearLink:', url)
 
     // Delay to ensure WebView is mounted

@@ -14371,7 +14371,7 @@
   });
 
   // src/invite.js
-  var SCHEME = "pear://pearcal";
+  var SCHEME = "https://peerloomllc.com";
   var MAX_NAME = 64;
   var KEY_LEN = 64;
   async function handleInviteLink(url, db2, sync2, onJoined, nickname = null) {
@@ -14455,14 +14455,14 @@
     if (typeof url !== "string") {
       return { ok: false, error: "invalid_url" };
     }
-    const normalised = url.replace(/^pear:\/\//, "https://");
+    const normalised = url.replace(/^pear:\/\/pearcal\//, "https://peerloomllc.com/").replace(/^pearcal:\/\//, "https://peerloomllc.com/");
     let u;
     try {
       u = new URL(normalised);
     } catch {
       return { ok: false, error: "malformed_url" };
     }
-    if (!url.startsWith(`${SCHEME}/join`)) {
+    if (u.host !== "peerloomllc.com" || !u.pathname.startsWith("/join")) {
       return { ok: false, error: "wrong_path" };
     }
     const raw = {
@@ -19887,7 +19887,7 @@
     }, []);
     function handlePasteJoin() {
       const url = pasteUrl.trim();
-      if (!url.startsWith("pear://pearcal/join")) {
+      if (!url.startsWith("https://peerloomllc.com/join") && !url.startsWith("pear://pearcal/join") && !url.startsWith("pearcal://join")) {
         setPasteErr("Not a valid PearCal invite link.");
         return;
       }
