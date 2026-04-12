@@ -45,11 +45,11 @@ Joining a group works via an invite link or QR code. The link encodes the crypto
 ## Screenshots
 
 <p align="center">
-  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-1.png" width="180" alt="Month view (light)" />
-  <img src="metadata/android/screenshots/Pixel_9_Pro/dark/scene-2.png" width="180" alt="Event details (dark)" />
-  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-3.png" width="180" alt="Group sharing (light)" />
-  <img src="metadata/android/screenshots/Pixel_9_Pro/dark/scene-4.png" width="180" alt="Invite (dark)" />
-  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-5.png" width="180" alt="Profile (light)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro_Framed/light/scene-1.png" width="180" alt="Month view (light)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro_Framed/dark/scene-2.png" width="180" alt="Event details (dark)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro_Framed/light/scene-3.png" width="180" alt="Group sharing (light)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro_Framed/dark/scene-4.png" width="180" alt="Invite (dark)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro_Framed/light/scene-5.png" width="180" alt="Profile (light)" />
 </p>
 
 ---
