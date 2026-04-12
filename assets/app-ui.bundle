@@ -3249,8 +3249,8 @@
           currentEntangledActionThenable = {
             status: "pending",
             value: void 0,
-            then: function(resolve) {
-              entangledListeners.push(resolve);
+            then: function(resolve2) {
+              entangledListeners.push(resolve2);
             }
           };
         }
@@ -3273,8 +3273,8 @@
           status: "pending",
           value: null,
           reason: null,
-          then: function(resolve) {
-            listeners.push(resolve);
+          then: function(resolve2) {
+            listeners.push(resolve2);
           }
         };
         thenable.then(
@@ -11183,8 +11183,8 @@
               var link = resource = ownerDocument.createElement("link");
               markNodeAsHoistable(link);
               setInitialProperties(link, "link", href);
-              link._p = new Promise(function(resolve, reject) {
-                link.onload = resolve;
+              link._p = new Promise(function(resolve2, reject) {
+                link.onload = resolve2;
                 link.onerror = reject;
               });
               link.addEventListener("load", function() {
@@ -11356,8 +11356,8 @@
               instance$250 = (hoistableRoot.ownerDocument || hoistableRoot).createElement("link");
               markNodeAsHoistable(instance$250);
               var linkInstance = instance$250;
-              linkInstance._p = new Promise(function(resolve, reject) {
-                linkInstance.onload = resolve;
+              linkInstance._p = new Promise(function(resolve2, reject) {
+                linkInstance.onload = resolve2;
                 linkInstance.onerror = reject;
               });
               setInitialProperties(instance$250, "link", instance);
@@ -11490,8 +11490,8 @@
             instance = instance.createElement("link");
             markNodeAsHoistable(instance);
             var linkInstance = instance;
-            linkInstance._p = new Promise(function(resolve, reject) {
-              linkInstance.onload = resolve;
+            linkInstance._p = new Promise(function(resolve2, reject) {
+              linkInstance.onload = resolve2;
               linkInstance.onerror = reject;
             });
             setInitialProperties(instance, "link", props);
@@ -14303,10 +14303,10 @@
             text = canvas;
             canvas = void 0;
           }
-          return new Promise(function(resolve, reject) {
+          return new Promise(function(resolve2, reject) {
             try {
               const data = QRCode2.create(text, opts);
-              resolve(renderFunc(data, canvas, opts));
+              resolve2(renderFunc(data, canvas, opts));
             } catch (e55) {
               reject(e55);
             }
@@ -15975,26 +15975,26 @@
       "CALSCALE:GREGORIAN",
       "METHOD:PUBLISH"
     ];
-    for (const ev of events) {
+    for (const ev2 of events) {
       lines.push("BEGIN:VEVENT");
-      lines.push("UID:" + ev.id + "@pearcal");
+      lines.push("UID:" + ev2.id + "@pearcal");
       lines.push("DTSTAMP:" + now);
-      if (ev.allDay) {
-        lines.push("DTSTART;VALUE=DATE:" + _icsDate(ev.date));
-        const endDate = ev.endDate || ev.date;
+      if (ev2.allDay) {
+        lines.push("DTSTART;VALUE=DATE:" + _icsDate(ev2.date));
+        const endDate = ev2.endDate || ev2.date;
         const d = /* @__PURE__ */ new Date(endDate + "T12:00:00");
         d.setDate(d.getDate() + 1);
         lines.push("DTEND;VALUE=DATE:" + d.toISOString().slice(0, 10).replace(/-/g, ""));
       } else {
-        lines.push("DTSTART:" + _icsDateTime(ev.date, ev.start || "00:00"));
-        if (ev.end) lines.push("DTEND:" + _icsDateTime(ev.date, ev.end));
+        lines.push("DTSTART:" + _icsDateTime(ev2.date, ev2.start || "00:00"));
+        if (ev2.end) lines.push("DTEND:" + _icsDateTime(ev2.date, ev2.end));
       }
-      lines.push("SUMMARY:" + _icsEscape(ev.title));
-      if (ev.desc) lines.push("DESCRIPTION:" + _icsEscape(ev.desc));
-      if (ev.location) lines.push("LOCATION:" + _icsEscape(ev.location));
-      if (ev.meetingLink) lines.push("URL:" + _icsEscape(ev.meetingLink));
-      if (Array.isArray(ev.groups) && ev.groups.length) {
-        lines.push("X-PEARCAL-GROUPS:" + ev.groups.join(","));
+      lines.push("SUMMARY:" + _icsEscape(ev2.title));
+      if (ev2.desc) lines.push("DESCRIPTION:" + _icsEscape(ev2.desc));
+      if (ev2.location) lines.push("LOCATION:" + _icsEscape(ev2.location));
+      if (ev2.meetingLink) lines.push("URL:" + _icsEscape(ev2.meetingLink));
+      if (Array.isArray(ev2.groups) && ev2.groups.length) {
+        lines.push("X-PEARCAL-GROUPS:" + ev2.groups.join(","));
       }
       lines.push("END:VEVENT");
     }
@@ -16320,13 +16320,13 @@
             db2.getProfile().then((prof) => {
               const defaultReminder = typeof prof?.defaultReminder === "number" ? prof.defaultReminder : 15;
               if (defaultReminder <= 0) return;
-              for (const ev of newEvents) {
-                db2.getReminders(ev.id).then((existing) => {
+              for (const ev2 of newEvents) {
+                db2.getReminders(ev2.id).then((existing) => {
                   if (existing && existing.length > 0) return;
                   const reminders = [defaultReminder];
-                  db2.putReminders(ev.id, reminders).catch(() => {
+                  db2.putReminders(ev2.id, reminders).catch(() => {
                   });
-                  notifs2?.scheduleForEvent(ev, reminders).catch(() => {
+                  notifs2?.scheduleForEvent(ev2, reminders).catch(() => {
                   });
                 }).catch(() => {
                 });
@@ -16403,6 +16403,21 @@
     (0, import_react2.useEffect)(() => {
       tabRef.current = tab;
     }, [tab]);
+    const _scene = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
+    (0, import_react2.useEffect)(() => {
+      if (!_scene) return;
+      if (_scene.tab) setTab(_scene.tab);
+      if (_scene.date) {
+        setSelectedDate(_scene.date);
+        const [y, m3] = _scene.date.split("-");
+        setViewDate({ y: parseInt(y), m: parseInt(m3) - 1 });
+      }
+    }, []);
+    (0, import_react2.useEffect)(() => {
+      if (!_scene?.openEventId || !events.length) return;
+      const ev2 = events.find((e55) => e55.id === _scene.openEventId);
+      if (ev2) setModal({ mode: "edit", event: { ...ev2 } });
+    }, [events]);
     (0, import_react2.useEffect)(() => {
       backHandlerRef.current = () => {
         if (showOnboarding) {
@@ -16474,9 +16489,9 @@
         restoreNotifications: () => notifs2?.restoreAll(),
         navigateTo: (type, id) => {
           if (type === "event") {
-            const ev = events.find((e55) => e55.id === id);
-            if (ev) {
-              setSelectedDate(ev.date);
+            const ev2 = events.find((e55) => e55.id === id);
+            if (ev2) {
+              setSelectedDate(ev2.date);
               setTab("calendar");
             }
           }
@@ -16486,10 +16501,10 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const saveEvent = (0, import_react2.useCallback)((ev, scope = "one", options = {}, reminders = []) => {
-      const { _prevDate, ...evClean } = ev;
-      ev = evClean;
-      const occurrences = ev.recurrence && ev.recurrence !== "none" && ev.recurrenceEnd && !ev.recurrenceId ? expandRecurring(ev) : scope === "future" && ev.recurrenceId ? (() => {
+    const saveEvent = (0, import_react2.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
+      const { _prevDate, ...evClean } = ev2;
+      ev2 = evClean;
+      const occurrences = ev2.recurrence && ev2.recurrence !== "none" && ev2.recurrenceEnd && !ev2.recurrenceId ? expandRecurring(ev2) : scope === "future" && ev2.recurrenceId ? (() => {
         const PROPAGATE = [
           "title",
           "allDay",
@@ -16508,9 +16523,9 @@
           "editPermission"
         ];
         const patch = {};
-        for (const k of PROPAGATE) patch[k] = ev[k];
-        return events.filter((e55) => e55.recurrenceId === ev.recurrenceId && e55.date >= ev.date).map((e55) => ({ ...e55, ...patch }));
-      })() : [ev];
+        for (const k of PROPAGATE) patch[k] = ev2[k];
+        return events.filter((e55) => e55.recurrenceId === ev2.recurrenceId && e55.date >= ev2.date).map((e55) => ({ ...e55, ...patch }));
+      })() : [ev2];
       const withAuthor = occurrences.map((occ) => ({
         ...occ,
         updatedByName: profile?.name ?? "Someone",
@@ -16518,8 +16533,8 @@
       }));
       setEvents((prev) => {
         let next = [...prev];
-        if (_prevDate && _prevDate !== ev.date) {
-          next = next.filter((e55) => !(e55.id === ev.id && e55.date === _prevDate));
+        if (_prevDate && _prevDate !== ev2.date) {
+          next = next.filter((e55) => !(e55.id === ev2.id && e55.date === _prevDate));
         }
         for (const occ of withAuthor) {
           const i2 = next.findIndex((e55) => e55.id === occ.id);
@@ -16530,8 +16545,8 @@
       });
       setModal(null);
       if (db2) {
-        if (_prevDate && _prevDate !== ev.date) {
-          db2.deleteEvent(_prevDate, ev.id).catch(() => {
+        if (_prevDate && _prevDate !== ev2.date) {
+          db2.deleteEvent(_prevDate, ev2.id).catch(() => {
           });
         }
         for (const occ of withAuthor) {
@@ -16544,7 +16559,7 @@
             notifs2?.scheduleForEvent(occ, reminders).catch(() => {
             });
           }
-          const evToSync = _prevDate && occ.id === ev.id ? { ...occ, _prevDate } : occ;
+          const evToSync = _prevDate && occ.id === ev2.id ? { ...occ, _prevDate } : occ;
           for (const gid of occ.groups ?? []) {
             sync2?.putEvent(gid, evToSync).catch((e55) => console.warn("[SYNC-ERR]", e55?.message));
           }
@@ -16558,19 +16573,19 @@
       }
     }, [db2, notifs2, sync2, profile, events, myRsvps]);
     const deleteEvent = (0, import_react2.useCallback)(async (id) => {
-      const ev = events.find((e55) => e55.id === id);
-      if (!ev) return;
-      const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
+      const ev2 = events.find((e55) => e55.id === id);
+      if (!ev2) return;
+      const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
       if (db2) {
         if (isCreator) {
-          await db2.deleteEvent(ev.date, id);
+          await db2.deleteEvent(ev2.date, id);
           await notifs2?.cancelForEvent(id);
-          for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, id, ev.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+          for (const gid of ev2.groups ?? []) {
+            await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         } else {
-          await db2.localDeleteEvent(ev.date, id);
+          await db2.localDeleteEvent(ev2.date, id);
           await notifs2?.cancelForEvent(id);
         }
       }
@@ -16582,12 +16597,12 @@
       await db2.deleteEventSeries(recurrenceId).catch(() => {
       });
       const seriesEvents = events.filter((e55) => e55.recurrenceId === recurrenceId);
-      for (const ev of seriesEvents) {
-        await notifs2?.cancelForEvent(ev.id);
-        const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
+      for (const ev2 of seriesEvents) {
+        await notifs2?.cancelForEvent(ev2.id);
+        const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
         if (isCreator) {
-          for (const gid of ev.groups ?? []) {
-            await sync2?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? "Someone", profile?.id ?? "", ev.recurrenceId ?? "").catch(() => {
+          for (const gid of ev2.groups ?? []) {
+            await sync2?.deleteEvent(gid, ev2.id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", ev2.recurrenceId ?? "").catch(() => {
             });
           }
         }
@@ -17052,7 +17067,7 @@
         {
           th,
           ev: scopeSheet.ev,
-          onSave: (ev, scope, opts) => saveEvent(ev, scope, opts, scopeSheet.reminders ?? []),
+          onSave: (ev2, scope, opts) => saveEvent(ev2, scope, opts, scopeSheet.reminders ?? []),
           onDismiss: () => setScopeSheet(null),
           closeRef: closeScopeSheetRef
         }
@@ -17337,16 +17352,16 @@
   }
   function compressAvatar(file) {
     if (file.type === "image/gif" || file.type === "image/webp") {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve2, reject) => {
         const reader = new FileReader();
-        reader.onload = (e55) => resolve(e55.target.result);
+        reader.onload = (e55) => resolve2(e55.target.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
     }
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve2, reject) => {
       const reader = new FileReader();
-      reader.onload = (ev) => {
+      reader.onload = (ev2) => {
         const img = document.createElement("img");
         const timeout = setTimeout(() => reject(new Error("Image load timed out")), 15e3);
         img.onload = () => {
@@ -17360,13 +17375,13 @@
           const sx = (img.width - side) / 2;
           const sy = (img.height - side) / 2;
           ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
-          resolve(canvas.toDataURL("image/jpeg", 0.7));
+          resolve2(canvas.toDataURL("image/jpeg", 0.7));
         };
         img.onerror = () => {
           clearTimeout(timeout);
           reject(new Error("Image load failed"));
         };
-        img.src = ev.target.result;
+        img.src = ev2.target.result;
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
@@ -17690,18 +17705,18 @@
                 "en-US",
                 { weekday: "long", month: "short", day: "numeric" }
               ).toUpperCase() }),
-              dayEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, padding: "8px 0", fontStyle: "italic" }, children: "No events" }) : dayEvents.map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              dayEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, padding: "8px 0", fontStyle: "italic" }, children: "No events" }) : dayEvents.map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 EventCard,
                 {
-                  ev,
+                  ev: ev2,
                   th,
                   isPast: ds < todayStr2,
-                  myRsvpStatus: myRsvps[ev.id],
+                  myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
                   use24h,
-                  onClick: () => setModal({ mode: "edit", event: { ...ev } })
+                  onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
                 }
-              ) }, ev.id))
+              ) }, ev2.id))
             ] }, ds);
           }) })
         ] })
@@ -17754,15 +17769,15 @@
     const positioned = (0, import_react2.useMemo)(() => {
       const sorted = [...timedEvents].sort((a36, b) => (a36.start || "").localeCompare(b.start || ""));
       const cols = [];
-      return sorted.map((ev) => {
-        const top = timeToY(ev.start);
-        const bot = timeToY(ev.end || ev.start);
+      return sorted.map((ev2) => {
+        const top = timeToY(ev2.start);
+        const bot = timeToY(ev2.end || ev2.start);
         const height = Math.max(bot - top, 30);
         let col = 0;
         while (cols[col] && cols[col] > top) col++;
         cols[col] = top + height;
         const totalCols = cols.length;
-        return { ev, top, height, col, totalCols };
+        return { ev: ev2, top, height, col, totalCols };
       });
     }, [dayEvents]);
     (0, import_react2.useEffect)(() => {
@@ -17891,24 +17906,24 @@
             }, children: g.name }, g.id))
           ] }),
           allDayEvents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px", maxHeight: 80, overflowY: "auto" }, children: [
-            allDayEvents.slice(0, 3).map((ev) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            allDayEvents.slice(0, 3).map((ev2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "div",
               {
                 onClick: () => {
                   window.__pearSync?.haptic("light");
-                  setModal({ mode: "edit", event: { ...ev } });
+                  setModal({ mode: "edit", event: { ...ev2 } });
                 },
                 style: {
                   padding: "4px 10px",
                   borderRadius: 8,
                   marginBottom: 4,
                   cursor: "pointer",
-                  background: (ev.colors?.[0] ?? ev.color) + "22",
-                  borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`
+                  background: (ev2.colors?.[0] ?? ev2.color) + "22",
+                  borderLeft: `3px solid ${ev2.colors?.[0] ?? ev2.color}`
                 },
-                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: ev.title })
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: ev2.title })
               },
-              ev.id
+              ev2.id
             )),
             allDayEvents.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
               "+",
@@ -17945,7 +17960,7 @@
               },
               h2
             )),
-            positioned.map(({ ev, top, height, col, totalCols }) => {
+            positioned.map(({ ev: ev2, top, height, col, totalCols }) => {
               const gutterPx = 56;
               const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`;
               const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`;
@@ -17955,7 +17970,7 @@
                   onClick: (e55) => {
                     e55.stopPropagation();
                     window.__pearSync?.haptic("light");
-                    setModal({ mode: "edit", event: { ...ev } });
+                    setModal({ mode: "edit", event: { ...ev2 } });
                   },
                   style: {
                     position: "absolute",
@@ -17966,25 +17981,25 @@
                     borderRadius: 8,
                     cursor: "pointer",
                     overflow: "hidden",
-                    background: (ev.colors?.[0] ?? ev.color) + "22",
-                    borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`,
+                    background: (ev2.colors?.[0] ?? ev2.color) + "22",
+                    borderLeft: `3px solid ${ev2.colors?.[0] ?? ev2.color}`,
                     zIndex: 10,
                     display: "flex",
                     gap: 0
                   },
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0, padding: "4px 8px" }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, ...th.text, lineHeight: "1.3" }, children: ev.title }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, ...th.text, lineHeight: "1.3" }, children: ev2.title }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: [
-                        formatTime(ev.start, use24h),
-                        ev.end ? ` \u2013 ${formatTime(ev.end, use24h)}` : ""
+                        formatTime(ev2.start, use24h),
+                        ev2.end ? ` \u2013 ${formatTime(ev2.end, use24h)}` : ""
                       ] }),
-                      ev.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                      ev2.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                         "div",
                         {
                           onClick: (e210) => {
                             e210.stopPropagation();
-                            window.__pearSync?.openURL(ev.meetingLink.trim());
+                            window.__pearSync?.openURL(ev2.meetingLink.trim());
                           },
                           style: { display: "flex", alignItems: "center", gap: 3, marginTop: 2, cursor: "pointer", minWidth: 0 },
                           children: [
@@ -17997,19 +18012,19 @@
                               overflow: "hidden",
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap"
-                            }, children: ev.meetingLink.trim().replace(/^https?:\/\//, "") })
+                            }, children: ev2.meetingLink.trim().replace(/^https?:\/\//, "") })
                           ]
                         }
                       )
                     ] }),
-                    ev.location && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                    ev2.location && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 1, background: th.border, flexShrink: 0, marginTop: 4, marginBottom: 4 } }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                         "div",
                         {
                           onClick: (e210) => {
                             e210.stopPropagation();
-                            window.__pearSync?.openURL("geo:0,0?q=" + encodeURIComponent(ev.location));
+                            window.__pearSync?.openURL("geo:0,0?q=" + encodeURIComponent(ev2.location));
                           },
                           style: {
                             width: 56,
@@ -18026,7 +18041,7 @@
                     ] })
                   ]
                 },
-                ev.id
+                ev2.id
               );
             }),
             selectedDate === todayStr2 && (() => {
@@ -18093,7 +18108,10 @@
     const userScrollTimer = (0, import_react2.useRef)(null);
     const scrollToDateRef = (0, import_react2.useRef)(null);
     const [filterGroupIds, setFilterGroupIds] = (0, import_react2.useState)(/* @__PURE__ */ new Set());
-    const [calView, setCalView] = (0, import_react2.useState)("month");
+    const [calView, setCalView] = (0, import_react2.useState)(() => {
+      const s9 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
+      return s9?.calendarView || "month";
+    });
     const handleScroll = () => {
       if (isProgrammaticScroll.current) return;
       isUserScrolling.current = true;
@@ -18474,18 +18492,18 @@
                 "en-US",
                 { weekday: "long", month: "short", day: "numeric" }
               ).toUpperCase() }),
-              seen.get(date).map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              seen.get(date).map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 EventCard,
                 {
-                  ev,
+                  ev: ev2,
                   th,
                   isPast: date < todayStr2,
-                  myRsvpStatus: myRsvps[ev.id],
+                  myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
                   use24h,
-                  onClick: () => setModal({ mode: "edit", event: { ...ev } })
+                  onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
                 }
-              ) }, ev.id))
+              ) }, ev2.id))
             ] }, date));
           })()
         ] }),
@@ -19025,9 +19043,9 @@
       }
     );
   }
-  function EventCard({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
-    const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId;
-    const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator;
+  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+    const viewerIsCreator = ev2.creatorId && myProfileId && ev2.creatorId === myProfileId;
+    const showRsvpPill = ev2.rsvpEnabled && !viewerIsCreator;
     const isDeclined = showRsvpPill && myRsvpStatus === "declined";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
@@ -19044,7 +19062,7 @@
           borderRadius: 12,
           cursor: "pointer",
           ...th.card,
-          borderLeft: `4px solid ${ev.colors?.[0] ?? ev.color}`,
+          borderLeft: `4px solid ${ev2.colors?.[0] ?? ev2.color}`,
           marginBottom: compact ? 0 : 8,
           opacity: isPast || isDeclined ? 0.5 : 1
         },
@@ -19059,21 +19077,21 @@
               showRsvpPill && myRsvpStatus === "going" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A", marginRight: 6 }, children: "\u2713" }),
               showRsvpPill && myRsvpStatus === "declined" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A", marginRight: 6 }, children: "\u2717" }),
               showRsvpPill && (!myRsvpStatus || myRsvpStatus === "pending") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted, marginRight: 6 }, children: "?" }),
-              ev.title
+              ev2.title
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
-              ev.allDay ? ev.endDate && ev.endDate !== ev.date ? `${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
-              compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
+              ev2.allDay ? ev2.endDate && ev2.endDate !== ev2.date ? `${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev2.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev2.start, use24h)} \u2013 ${formatTime(ev2.end, use24h)}`,
+              compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString(
                 "en-US",
                 { month: "short", day: "numeric" }
               )}`
             ] }),
-            !compact && ev.meetingLink ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            !compact && ev2.meetingLink ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "div",
               {
                 onClick: (e55) => {
                   e55.stopPropagation();
-                  window.__pearSync?.openURL(ev.meetingLink.trim());
+                  window.__pearSync?.openURL(ev2.meetingLink.trim());
                 },
                 style: { display: "flex", alignItems: "center", gap: 4, marginTop: 4, cursor: "pointer", minWidth: 0 },
                 children: [
@@ -19086,11 +19104,11 @@
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap"
-                  }, children: ev.meetingLink.trim().replace(/^https?:\/\//, "") })
+                  }, children: ev2.meetingLink.trim().replace(/^https?:\/\//, "") })
                 ]
               }
             ) : null,
-            !compact && ev.desc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            !compact && ev2.desc ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
               fontSize: 12,
               color: th.muted,
               marginTop: 4,
@@ -19100,16 +19118,16 @@
               WebkitLineClamp: 2,
               WebkitBoxOrient: "vertical",
               lineHeight: "1.35"
-            }, children: ev.desc }) : null
+            }, children: ev2.desc }) : null
           ] }),
-          !compact && ev.location ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          !compact && ev2.location ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 1, background: th.border, alignSelf: "stretch", marginTop: 2, marginBottom: 2, flexShrink: 0 } }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "div",
               {
                 onClick: (e55) => {
                   e55.stopPropagation();
-                  window.__pearSync?.openURL("geo:0,0?q=" + encodeURIComponent(ev.location));
+                  window.__pearSync?.openURL("geo:0,0?q=" + encodeURIComponent(ev2.location));
                 },
                 style: {
                   width: 96,
@@ -19134,40 +19152,40 @@
                     display: "-webkit-box",
                     WebkitLineClamp: 3,
                     WebkitBoxOrient: "vertical"
-                  }, children: ev.location })
+                  }, children: ev2.location })
                 ]
               }
             )
           ] }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 3, alignItems: "center", marginTop: 2, flexShrink: 0 }, children: (ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c8, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 8, height: 8, borderRadius: "50%", background: c8 } }, i2)) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 3, alignItems: "center", marginTop: 2, flexShrink: 0 }, children: (ev2.colors?.length > 0 ? ev2.colors : [ev2.color]).map((c8, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 8, height: 8, borderRadius: "50%", background: c8 } }, i2)) })
         ]
       }
     );
   }
-  function expandRecurring(ev) {
-    if (!ev.recurrence || ev.recurrence === "none" || !ev.recurrenceEnd) return [ev];
+  function expandRecurring(ev2) {
+    if (!ev2.recurrence || ev2.recurrence === "none" || !ev2.recurrenceEnd) return [ev2];
     const fmt = (d) => String(d.getFullYear()) + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     const parse = (s9) => {
       const [y, m3, d] = s9.split("-").map(Number);
       return new Date(y, m3 - 1, d);
     };
-    const end = parse(ev.recurrenceEnd);
-    let cur = parse(ev.date);
-    if (cur > end) return [ev];
-    const recurrenceId = ev.id;
+    const end = parse(ev2.recurrenceEnd);
+    let cur = parse(ev2.date);
+    if (cur > end) return [ev2];
+    const recurrenceId = ev2.id;
     const out = [];
     let i2 = 0;
     while (cur <= end && i2 < 500) {
-      out.push({ ...ev, id: i2 === 0 ? ev.id : ev.id + "_r" + i2, date: fmt(cur), recurrenceId });
-      if (ev.recurrence === "daily") cur.setDate(cur.getDate() + 1);
-      else if (ev.recurrence === "weekly") cur.setDate(cur.getDate() + 7);
-      else if (ev.recurrence === "biweekly") cur.setDate(cur.getDate() + 14);
-      else if (ev.recurrence === "monthly") cur.setMonth(cur.getMonth() + 1);
-      else if (ev.recurrence === "monthly-nth") {
+      out.push({ ...ev2, id: i2 === 0 ? ev2.id : ev2.id + "_r" + i2, date: fmt(cur), recurrenceId });
+      if (ev2.recurrence === "daily") cur.setDate(cur.getDate() + 1);
+      else if (ev2.recurrence === "weekly") cur.setDate(cur.getDate() + 7);
+      else if (ev2.recurrence === "biweekly") cur.setDate(cur.getDate() + 14);
+      else if (ev2.recurrence === "monthly") cur.setMonth(cur.getMonth() + 1);
+      else if (ev2.recurrence === "monthly-nth") {
         cur.setDate(1);
         cur.setMonth(cur.getMonth() + 1);
-        const wd = ev.recurrenceWeekday ?? 0;
-        const nth = ev.recurrenceNth ?? 1;
+        const wd = ev2.recurrenceWeekday ?? 0;
+        const nth = ev2.recurrenceNth ?? 1;
         let count = 0;
         while (true) {
           if (cur.getDay() === wd) {
@@ -19176,7 +19194,7 @@
           }
           cur.setDate(cur.getDate() + 1);
         }
-      } else if (ev.recurrence === "yearly") cur.setFullYear(cur.getFullYear() + 1);
+      } else if (ev2.recurrence === "yearly") cur.setFullYear(cur.getFullYear() + 1);
       i2++;
     }
     return out;
@@ -19267,7 +19285,7 @@
     ] });
   }
   function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
-    const [ev, setEv] = (0, import_react2.useState)(modal.event);
+    const [ev2, setEv] = (0, import_react2.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e55) => ({ ...e55, [k]: v }));
     function toggleGroup(gid) {
@@ -19275,7 +19293,7 @@
     }
     const allMembers = (0, import_react2.useMemo)(() => {
       const seen = {}, res = [];
-      ev.groups.forEach((gid) => {
+      ev2.groups.forEach((gid) => {
         const g = groups.find((x) => x.id === gid);
         if (g) g.members.forEach((m3) => {
           if (!seen[m3.id] && m3.id !== "u1" && m3.id !== profile?.id) {
@@ -19285,15 +19303,15 @@
         });
       });
       return res;
-    }, [ev.groups, groups]);
+    }, [ev2.groups, groups]);
     function toggleInvitee(uid) {
       setEv((e55) => ({ ...e55, invitees: e55.invitees.includes(uid) ? e55.invitees.filter((x) => x !== uid) : [...e55.invitees, uid] }));
     }
     (0, import_react2.useEffect)(() => {
-      const cols = ev.groups.map((gid) => groups.find((x) => x.id === gid)?.color).filter(Boolean);
+      const cols = ev2.groups.map((gid) => groups.find((x) => x.id === gid)?.color).filter(Boolean);
       if (cols.length > 0) setEv((e55) => ({ ...e55, color: cols[0], colors: cols }));
       else setEv((e55) => ({ ...e55, colors: [] }));
-    }, [ev.groups, groups]);
+    }, [ev2.groups, groups]);
     const [reminders, setReminders] = (0, import_react2.useState)([]);
     (0, import_react2.useEffect)(() => {
       if (!db2) return;
@@ -19310,14 +19328,14 @@
       }).catch(() => {
       });
     }, [modal.event?.id]);
-    const isEventCreator = !ev.creatorId || ev.creatorId === profile?.id;
+    const isEventCreator = !ev2.creatorId || ev2.creatorId === profile?.id;
     const [myRsvp, setMyRsvp] = (0, import_react2.useState)(null);
     const [rsvpList, setRsvpList] = (0, import_react2.useState)([]);
     const [rsvpExpanded, setRsvpExpanded] = (0, import_react2.useState)(false);
     (0, import_react2.useEffect)(() => {
       if (!db2 || modal.mode !== "edit") return;
       const eid = modal.event?.id;
-      if (!eid || !ev.rsvpEnabled) return;
+      if (!eid || !ev2.rsvpEnabled) return;
       if (isEventCreator) {
         db2.listRsvps(eid).then((r7) => setRsvpList(r7 ?? [])).catch(() => {
         });
@@ -19325,7 +19343,7 @@
         db2.getRsvp(eid, profile.id).then((r7) => setMyRsvp(r7?.status ?? "pending")).catch(() => {
         });
       }
-    }, [modal.event?.id, ev.rsvpEnabled, isEventCreator]);
+    }, [modal.event?.id, ev2.rsvpEnabled, isEventCreator]);
     async function respondRsvp(status) {
       const eid = modal.event?.id;
       if (!db2 || !eid || !profile?.id) return;
@@ -19369,13 +19387,13 @@
       });
     }, []);
     function handleSave() {
-      if (!ev.title.trim()) {
+      if (!ev2.title.trim()) {
         setTitleErr("Event title is required.");
         return;
       }
       setTitleErr("");
-      const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev;
-      if (modal.mode === "edit" && ev.recurrenceId) {
+      const toSave = origDate && origDate !== ev2.date ? { ...ev2, _prevDate: origDate } : ev2;
+      if (modal.mode === "edit" && ev2.recurrenceId) {
         const origGroups = [...modal.event.groups ?? []].sort().join(",");
         const newGroups = [...toSave.groups ?? []].sort().join(",");
         const origInvitees = [...modal.event.invitees ?? []].sort().join(",");
@@ -19440,9 +19458,9 @@
           whiteSpace: "nowrap"
         }, children: modal.mode === "create" ? "New Event" : "Edit Event" }),
         (() => {
-          const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
-          const isHoliday = modal.mode === "edit" && ev.creatorId === "system";
-          const isReadOnly = modal.mode === "edit" && ev.editPermission === "creator" && !isCreator;
+          const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
+          const isHoliday = modal.mode === "edit" && ev2.creatorId === "system";
+          const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
           if (isHoliday || isReadOnly) return null;
           return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
@@ -19464,7 +19482,7 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
       (() => {
-        const _ro = modal.mode === "edit" && ev.editPermission === "creator" && !(ev.creatorId && profile?.id && ev.creatorId === profile.id);
+        const _ro = modal.mode === "edit" && ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id);
         return null;
       })(),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -19478,20 +19496,20 @@
           display: "flex",
           flexDirection: "column",
           gap: 14,
-          opacity: modal.mode === "edit" && (ev.creatorId === "system" || ev.editPermission === "creator" && !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 0.45 : 1,
-          pointerEvents: modal.mode === "edit" && (ev.creatorId === "system" || ev.editPermission === "creator" && !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? "none" : "auto"
+          opacity: modal.mode === "edit" && (ev2.creatorId === "system" || ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id)) ? 0.45 : 1,
+          pointerEvents: modal.mode === "edit" && (ev2.creatorId === "system" || ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id)) ? "none" : "auto"
         }, children: [
-          modal.mode === "edit" && ev.rsvpEnabled && isEventCreator && (() => {
+          modal.mode === "edit" && ev2.rsvpEnabled && isEventCreator && (() => {
             const going = rsvpList.filter((r7) => r7.status === "going");
             const declined = rsvpList.filter((r7) => r7.status === "declined");
             const respIds = new Set(rsvpList.map((r7) => r7.memberId));
             const invited = [];
             const seen = /* @__PURE__ */ new Set();
-            for (const gid of ev.groups ?? []) {
+            for (const gid of ev2.groups ?? []) {
               const g = groups.find((x) => x.id === gid);
               if (!g) continue;
               for (const m3 of g.members ?? []) {
-                if (m3.id === ev.creatorId || m3.id === profile?.id) continue;
+                if (m3.id === ev2.creatorId || m3.id === profile?.id) continue;
                 if (!seen.has(m3.id)) {
                   seen.add(m3.id);
                   invited.push(m3);
@@ -19570,7 +19588,7 @@
               {
                 style: { ...inp, borderColor: titleErr ? "#D45F7A" : inp.border },
                 placeholder: "Event title",
-                value: ev.title,
+                value: ev2.title,
                 onChange: (e55) => {
                   const val = e55.target.value;
                   set("title", val);
@@ -19654,32 +19672,32 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Date" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "date", style: inp, value: ev.date, onChange: (e55) => set("date", e55.target.value) })
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "date", style: inp, value: ev2.date, onChange: (e55) => set("date", e55.target.value) })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "All Day" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => {
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev2.allDay, onChange: (v) => {
                   set("allDay", v);
                   if (!v) set("endDate", "");
                 }, accent: th.accent })
               ] }),
-              ev.allDay && !ev.recurrenceId && ev.recurrence === "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              ev2.allDay && !ev2.recurrenceId && ev2.recurrence === "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End Date" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "input",
                   {
                     type: "date",
                     style: inp,
-                    value: ev.endDate || ev.date,
-                    min: ev.date,
-                    onChange: (e55) => set("endDate", e55.target.value === ev.date ? "" : e55.target.value)
+                    value: ev2.endDate || ev2.date,
+                    min: ev2.date,
+                    onChange: (e55) => set("endDate", e55.target.value === ev2.date ? "" : e55.target.value)
                   }
                 )
               ] }),
-              !ev.allDay && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }, children: [
+              !ev2.allDay && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Start" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.start, onChange: (e55) => {
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev2.start, onChange: (e55) => {
                     const newStart = e55.target.value;
                     set("start", newStart);
                     const [h2, mins] = newStart.split(":").map(Number);
@@ -19689,7 +19707,7 @@
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.end, onChange: (e55) => set("end", e55.target.value) })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev2.end, onChange: (e55) => set("end", e55.target.value) })
                 ] })
               ] })
             ] })
@@ -19717,7 +19735,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
-                const sel = ev.groups.includes(g.id);
+                const sel = ev2.groups.includes(g.id);
                 return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "button",
                   {
@@ -19769,7 +19787,7 @@
               mlOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Meeting Link" }),
-                  !ev.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  !ev2.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
                       onClick: () => setMlOpen(false),
@@ -19791,16 +19809,16 @@
                   {
                     style: inp,
                     placeholder: "Zoom, Meet, Webex, or Keet link\u2026",
-                    value: ev.meetingLink ?? "",
+                    value: ev2.meetingLink ?? "",
                     onChange: (e55) => set("meetingLink", e55.target.value)
                   }
                 ),
-                ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                ev2.meetingLink && /^https?:\/\//i.test(ev2.meetingLink.trim()) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "div",
                   {
                     onClick: (e55) => {
                       e55.stopPropagation();
-                      window.__pearSync?.openURL(ev.meetingLink.trim());
+                      window.__pearSync?.openURL(ev2.meetingLink.trim());
                     },
                     style: {
                       pointerEvents: "auto",
@@ -19823,7 +19841,7 @@
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap"
-                      }, children: ev.meetingLink.trim() })
+                      }, children: ev2.meetingLink.trim() })
                     ]
                   }
                 )
@@ -19852,7 +19870,7 @@
               locOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
-                  !ev.location && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  !ev2.location && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
                       onClick: () => setLocOpen(false),
@@ -19874,7 +19892,7 @@
                   {
                     style: inp,
                     placeholder: "Address, place, or landmark\u2026",
-                    value: ev.location ?? "",
+                    value: ev2.location ?? "",
                     onChange: (e55) => set("location", e55.target.value)
                   }
                 )
@@ -19903,7 +19921,7 @@
               notesOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
-                  !ev.desc && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  !ev2.desc && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
                       onClick: () => setNotesOpen(false),
@@ -19925,11 +19943,11 @@
                   {
                     style: { ...inp, resize: "none", minHeight: 60 },
                     placeholder: "Optional notes\u2026",
-                    value: ev.desc,
+                    value: ev2.desc,
                     onChange: (e55) => set("desc", e55.target.value)
                   }
                 ),
-                extractURLs(ev.desc).map((url) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                extractURLs(ev2.desc).map((url) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "div",
                   {
                     onClick: (e55) => {
@@ -20026,18 +20044,18 @@
               overflow: "hidden",
               transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
             }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14, paddingTop: 12 }, children: [
-              (modal.mode === "create" || !ev.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              (modal.mode === "create" || !ev2.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                   "select",
                   {
                     style: { ...inp, appearance: "none" },
-                    value: ev.recurrence ?? "none",
+                    value: ev2.recurrence ?? "none",
                     onChange: (e55) => {
                       const val = e55.target.value;
                       set("recurrence", val);
-                      if (val === "monthly-nth" && ev.date) {
-                        const d = /* @__PURE__ */ new Date(ev.date + "T12:00:00");
+                      if (val === "monthly-nth" && ev2.date) {
+                        const d = /* @__PURE__ */ new Date(ev2.date + "T12:00:00");
                         const weekday = d.getDay();
                         let nth = 0;
                         const tmp = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -20048,8 +20066,8 @@
                         set("recurrenceNth", nth);
                         set("recurrenceWeekday", weekday);
                       }
-                      if (val !== "none" && !ev.recurrenceEnd) {
-                        const [y, m3, d] = ev.date.split("-").map(Number);
+                      if (val !== "none" && !ev2.recurrenceEnd) {
+                        const [y, m3, d] = ev2.date.split("-").map(Number);
                         const end = new Date(y + 1, m3 - 1, d);
                         const fmt = (dt) => String(dt.getFullYear()) + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
                         set("recurrenceEnd", fmt(end));
@@ -20067,38 +20085,38 @@
                   }
                 )
               ] }),
-              (modal.mode === "create" || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              (modal.mode === "create" || !ev2.recurrenceId) && ev2.recurrence && ev2.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "input",
                   {
                     type: "date",
                     style: inp,
-                    value: ev.recurrenceEnd ?? "",
+                    value: ev2.recurrenceEnd ?? "",
                     onChange: (e55) => set("recurrenceEnd", e55.target.value)
                   }
                 )
               ] }),
-              ev.groups && ev.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
+              ev2.groups && ev2.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Request RSVP" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
                   {
-                    onClick: () => set("rsvpEnabled", !ev.rsvpEnabled),
+                    onClick: () => set("rsvpEnabled", !ev2.rsvpEnabled),
                     style: {
                       width: 44,
                       height: 26,
                       borderRadius: 13,
                       border: "none",
                       cursor: "pointer",
-                      background: ev.rsvpEnabled ? th.accent : th.border,
+                      background: ev2.rsvpEnabled ? th.accent : th.border,
                       position: "relative",
                       transition: "background 150ms var(--easing)"
                     },
                     children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
                       position: "absolute",
                       top: 3,
-                      left: ev.rsvpEnabled ? 21 : 3,
+                      left: ev2.rsvpEnabled ? 21 : 3,
                       width: 20,
                       height: 20,
                       borderRadius: 10,
@@ -20111,7 +20129,7 @@
               allMembers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Invite Select Members" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: allMembers.map((m3) => {
-                  const sel = ev.invitees.includes(m3.id);
+                  const sel = ev2.invitees.includes(m3.id);
                   const g = groups.find((x) => x.members.some((mb) => mb.id === m3.id));
                   const col = g ? g.color : "#888";
                   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -20138,7 +20156,7 @@
                   );
                 }) })
               ] }),
-              (modal.mode === "create" || modal.mode === "edit" && ev.creatorId !== "system" && ev.creatorId && profile?.id && ev.creatorId === profile.id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              (modal.mode === "create" || modal.mode === "edit" && ev2.creatorId !== "system" && ev2.creatorId && profile?.id && ev2.creatorId === profile.id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Who can edit?" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["everyone", "Everyone"], ["creator", "Only me"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                   "button",
@@ -20151,9 +20169,9 @@
                       fontSize: 13,
                       fontWeight: 300,
                       cursor: "pointer",
-                      border: "1.5px solid " + (ev.editPermission === val ? th.accent : th.border),
-                      background: ev.editPermission === val ? th.accent : "transparent",
-                      color: ev.editPermission === val ? "#fff" : th.muted
+                      border: "1.5px solid " + (ev2.editPermission === val ? th.accent : th.border),
+                      background: ev2.editPermission === val ? th.accent : "transparent",
+                      color: ev2.editPermission === val ? "#fff" : th.muted
                     },
                     children: label
                   },
@@ -20162,7 +20180,7 @@
               ] })
             ] }) })
           ] }),
-          modal.mode === "edit" && ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          modal.mode === "edit" && ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
             fontSize: 12,
             fontWeight: 300,
             color: th.muted,
@@ -20175,7 +20193,7 @@
             "Recurring series \u2014 editing this occurrence only"
           ] })
         ] }),
-        modal.mode === "edit" && ev.rsvpEnabled && !isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+        modal.mode === "edit" && ev2.rsvpEnabled && !isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Your Response" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["going", "Going"], ["declined", "Decline"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
@@ -20198,9 +20216,9 @@
           )) })
         ] }),
         (() => {
-          const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
-          const isHoliday = modal.mode === "edit" && ev.creatorId === "system";
-          const isReadOnly = modal.mode === "edit" && ev.editPermission === "creator" && !isCreator;
+          const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
+          const isHoliday = modal.mode === "edit" && ev2.creatorId === "system";
+          const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
           if (isHoliday) return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
             fontSize: 12,
             fontWeight: 300,
@@ -20226,12 +20244,12 @@
           return null;
         })(),
         modal.mode === "edit" && (() => {
-          const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
+          const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
           return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteEvent", ev })) : onDelete(ev.id),
+                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteEvent", ev: ev2 })) : onDelete(ev2.id),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -20247,10 +20265,10 @@
                 children: isCreator ? "Delete" : "Remove for Me"
               }
             ),
-            ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "button",
               {
-                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteSeries", ev })) : onDeleteSeries?.(ev.recurrenceId),
+                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteSeries", ev: ev2 })) : onDeleteSeries?.(ev2.recurrenceId),
                 style: {
                   background: "transparent",
                   border: `1px solid #D45F7A`,
@@ -20510,6 +20528,13 @@
   function GroupsTab({ th, groups, profile, sync: sync2, db: db2, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
     const [copiedId, setCopiedId] = (0, import_react2.useState)(null);
     const [inviteModalGroup, setInviteModalGroup] = (0, import_react2.useState)(null);
+    (0, import_react2.useEffect)(() => {
+      const s9 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
+      if (s9?.openInviteGroupId) {
+        const g = groups.find((gr) => gr.id === s9.openInviteGroupId);
+        if (g) setInviteModalGroup(g);
+      }
+    }, [groups]);
     async function copyInvite(g, e55) {
       e55.stopPropagation();
       if (!readyGroupKeys.has(g.id)) return;
@@ -20739,7 +20764,7 @@ ${link}`;
       const file = e55.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
       const reader = new FileReader();
-      reader.onload = (ev) => set("icon", ev.target.result);
+      reader.onload = (ev2) => set("icon", ev2.target.result);
       reader.readAsDataURL(file);
     }
     async function save() {
@@ -21265,7 +21290,7 @@ ${link}`;
       const file = e55.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
       const reader = new FileReader();
-      reader.onload = (ev) => setIcon(ev.target.result);
+      reader.onload = (ev2) => setIcon(ev2.target.result);
       reader.readAsDataURL(file);
     }
     async function handleCreate() {
@@ -21459,7 +21484,7 @@ ${link}`;
       ] })
     ] });
   }
-  function ScopeSheet({ th, ev, onSave, onDismiss, closeRef }) {
+  function ScopeSheet({ th, ev: ev2, onSave, onDismiss, closeRef }) {
     const bsCloseRef = (0, import_react2.useRef)(null);
     (0, import_react2.useEffect)(() => {
       if (closeRef) {
@@ -21482,7 +21507,7 @@ ${link}`;
           {
             onClick: () => {
               bsCloseRef.current?.();
-              setTimeout(() => onSave(ev, "one"), 280);
+              setTimeout(() => onSave(ev2, "one"), 280);
             },
             style: {
               flex: 1,
@@ -21504,7 +21529,7 @@ ${link}`;
           {
             onClick: () => {
               bsCloseRef.current?.();
-              setTimeout(() => onSave(ev, "future"), 280);
+              setTimeout(() => onSave(ev2, "future"), 280);
             },
             style: {
               flex: 1,
@@ -21694,11 +21719,11 @@ ${link}`;
   function ImportIcsSheet({ th, events, filename, groups, existingEventIds, onImport, onClose }) {
     const bsClose = (0, import_react2.useRef)(null);
     const memberIds = new Set((groups ?? []).map((g) => g.id));
-    const routed = events.map((ev) => {
-      const uid = ev.uid ? ev.uid.replace(/@pearcal$/, "") : null;
+    const routed = events.map((ev2) => {
+      const uid = ev2.uid ? ev2.uid.replace(/@pearcal$/, "") : null;
       const skipped = uid && existingEventIds?.has(uid);
-      const keptGroups = Array.isArray(ev.groups) ? ev.groups.filter((gid) => memberIds.has(gid)) : [];
-      return { ev, uid, skipped, keptGroups };
+      const keptGroups = Array.isArray(ev2.groups) ? ev2.groups.filter((gid) => memberIds.has(gid)) : [];
+      return { ev: ev2, uid, skipped, keptGroups };
     });
     const toImport = routed.filter((r7) => !r7.skipped);
     const skippedCount = routed.length - toImport.length;
@@ -21820,15 +21845,15 @@ ${link}`;
     async function handleDonate() {
       if (!sync2) return;
       sync2.canOpenLightning();
-      const result = await new Promise((resolve) => {
+      const result = await new Promise((resolve2) => {
         const handler = (e55) => {
           window.removeEventListener("pear:canOpenLightning", handler);
-          resolve(e55.detail);
+          resolve2(e55.detail);
         };
         window.addEventListener("pear:canOpenLightning", handler);
         setTimeout(() => {
           window.removeEventListener("pear:canOpenLightning", handler);
-          resolve(false);
+          resolve2(false);
         }, 3e3);
       });
       if (result) {
@@ -22548,8 +22573,8 @@ ${link}`;
                 if (!file) return;
                 e55.target.value = "";
                 const reader = new FileReader();
-                reader.onload = (ev) => {
-                  const parsed = parseIcs(ev.target.result);
+                reader.onload = (ev2) => {
+                  const parsed = parseIcs(ev2.target.result);
                   if (parsed.length === 0) return;
                   setIcsImport({ events: parsed, filename: file.name });
                 };
@@ -22622,20 +22647,20 @@ ${link}`;
           onImport: (toImport) => {
             if (!saveEvent) return;
             for (const r7 of toImport) {
-              const { ev, uid, keptGroups } = r7;
+              const { ev: ev2, uid, keptGroups } = r7;
               const id = uid || "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
               const firstGroup = keptGroups.length ? (groups ?? []).find((g) => g.id === keptGroups[0]) : null;
               saveEvent({
                 id,
-                title: ev.title,
-                date: ev.date,
-                allDay: ev.allDay ?? true,
-                start: ev.start ?? "",
-                end: ev.end ?? "",
-                endDate: ev.endDate ?? "",
-                desc: ev.desc ?? "",
-                location: ev.location ?? "",
-                meetingLink: ev.meetingLink ?? "",
+                title: ev2.title,
+                date: ev2.date,
+                allDay: ev2.allDay ?? true,
+                start: ev2.start ?? "",
+                end: ev2.end ?? "",
+                endDate: ev2.endDate ?? "",
+                desc: ev2.desc ?? "",
+                location: ev2.location ?? "",
+                meetingLink: ev2.meetingLink ?? "",
                 groups: keptGroups,
                 invitees: [],
                 color: firstGroup?.color ?? "#6C9BF5",
@@ -22677,7 +22702,7 @@ ${link}`;
                 const id = makeId(h2);
                 const key = h2.date + "|" + h2.title;
                 if (existingIds.has(id) || existingKeys.has(key)) continue;
-                const ev = {
+                const ev2 = {
                   id,
                   title: h2.title,
                   date: h2.date,
@@ -22699,9 +22724,9 @@ ${link}`;
                   editPermission: "everyone",
                   updatedAt: Date.now()
                 };
-                await db2?.putEvent(ev).catch(() => {
+                await db2?.putEvent(ev2).catch(() => {
                 });
-                setEvents((prev) => prev.find((e55) => e55.id === ev.id) ? prev : [...prev, ev]);
+                setEvents((prev) => prev.find((e55) => e55.id === ev2.id) ? prev : [...prev, ev2]);
                 existingIds.add(id);
                 existingKeys.add(key);
               }
@@ -22719,9 +22744,9 @@ ${link}`;
               for (const h2 of fn(yr)) {
                 const id = makeId(h2);
                 if (keepIds.has(id)) continue;
-                const ev = (events ?? []).find((e55) => e55.id === id);
-                if (ev) {
-                  await db2?.localDeleteEvent(ev.date, ev.id).catch(() => {
+                const ev2 = (events ?? []).find((e55) => e55.id === id);
+                if (ev2) {
+                  await db2?.localDeleteEvent(ev2.date, ev2.id).catch(() => {
                   });
                   setEvents((prev) => prev.filter((e55) => e55.id !== id));
                 }
@@ -23015,27 +23040,259 @@ ${link}`;
     ] });
   }
 
+  // src/ui/screenshot-fixtures.js
+  var FROZEN_TODAY = "2027-01-03";
+  var FROZEN_MS = (/* @__PURE__ */ new Date(FROZEN_TODAY + "T10:15:00")).getTime();
+  var ME = { id: "u-satoshi", name: "Satoshi Nakamoto", avatar: "SN" };
+  var HAL = { id: "u-hal", name: "Hal Finney", avatar: "HF" };
+  var ADAM = { id: "u-adam", name: "Adam Back", avatar: "AB" };
+  var NICK = { id: "u-nick", name: "Nick Szabo", avatar: "NS" };
+  var AIKO = { id: "u-aiko", name: "Aiko", avatar: "A" };
+  var KENJI = { id: "u-kenji", name: "Kenji", avatar: "K" };
+  var REN = { id: "u-ren", name: "Ren", avatar: "R" };
+  var MAYA = { id: "u-maya", name: "Maya Chen", avatar: "MC" };
+  var DIEGO = { id: "u-diego", name: "Diego Ruiz", avatar: "DR" };
+  var PRIYA = { id: "u-priya", name: "Priya Patel", avatar: "PP" };
+  var JAMIE = { id: "u-jamie", name: "Jamie Torres", avatar: "JT" };
+  var ELI = { id: "u-eli", name: "Eli Weiss", avatar: "EW" };
+  var ANDREAS = { id: "u-andreas", name: "Andreas", avatar: "A" };
+  var G_FAMILY = {
+    id: "g-family",
+    name: "Family",
+    emoji: "\u{1F3E1}",
+    color: "#6C9BF5",
+    ownerId: ME.id,
+    members: [ME, AIKO, KENJI, REN],
+    groupKey: "f1a2b3c4d5e6f7081928374655647382910abcdef1234567890fedcba9876543",
+    removedMembers: []
+  };
+  var G_WORK = {
+    id: "g-work",
+    name: "Work",
+    emoji: "\u{1F4BC}",
+    color: "#5DBF8A",
+    ownerId: ME.id,
+    members: [ME, HAL, MAYA, DIEGO, PRIYA, JAMIE],
+    groupKey: "a9b8c7d6e5f4032110fedcba9876543210abcdef0123456789fedcba98765432",
+    removedMembers: []
+  };
+  var G_BITCOIN = {
+    id: "g-bitcoin",
+    name: "Bitcoin",
+    emoji: "\u20BF",
+    color: "#F7931A",
+    ownerId: ME.id,
+    members: [ME, HAL, ADAM, NICK, ANDREAS, ELI],
+    groupKey: "b17c017b17c017b17c017b17c017b17c017b17c017b17c017b17c017b17c017b",
+    removedMembers: []
+  };
+  var GROUPS = [G_FAMILY, G_WORK, G_BITCOIN];
+  function ev(id, date, title, { allDay = false, start = "", end = "", groups = [], desc = "", location = "", meetingLink = "", endDate = "", rsvpEnabled = false, recurrence = "none", creatorId = ME.id, invitees = [] } = {}) {
+    const gObj = groups[0] ? GROUPS.find((g) => g.id === groups[0]) : null;
+    const color = gObj?.color ?? "#6C9BF5";
+    const colors = groups.map((gid) => GROUPS.find((g) => g.id === gid)?.color).filter(Boolean);
+    return {
+      id,
+      title,
+      date,
+      allDay,
+      start,
+      end,
+      groups,
+      invitees,
+      color,
+      colors,
+      reminder: 15,
+      desc,
+      location,
+      meetingLink,
+      creatorId,
+      recurrence,
+      recurrenceId: "",
+      recurrenceEnd: "",
+      recurrenceNth: 0,
+      recurrenceWeekday: 0,
+      editPermission: "everyone",
+      endDate,
+      rsvpEnabled,
+      updatedAt: FROZEN_MS - 864e5
+    };
+  }
+  var BITCOIN_MEETUP_ID = "e-btc-meetup-0103";
+  var EVENTS = [
+    ev("e-church-0103", "2027-01-03", "Church", { start: "10:30", end: "12:00", location: "Grace Cathedral" }),
+    // Week of Jan 4 – Jan 10
+    ev("e-run-0104", "2027-01-04", "Morning Run", { start: "07:00", end: "07:45" }),
+    ev("e-1on1-0105", "2027-01-05", "1:1 with Hal", { start: "10:30", end: "11:00", groups: ["g-work"], location: "Zoom", meetingLink: "https://zoom.us/j/1234567890" }),
+    ev("e-standup-0106", "2027-01-06", "Team Standup", { start: "09:00", end: "09:30", groups: ["g-work"], meetingLink: "https://meet.google.com/abc-defg-hij" }),
+    ev("e-dentist-0106", "2027-01-06", "Dentist", { start: "14:00", end: "15:00", location: "400 Market St, SF" }),
+    ev(BITCOIN_MEETUP_ID, "2027-01-03", "Bitcoin Meetup", {
+      start: "17:30",
+      end: "19:00",
+      groups: ["g-bitcoin"],
+      location: "The Blockchain Pub, 2121 Mission St",
+      meetingLink: "https://meet.jit.si/bitcoin-meetup-sf",
+      desc: "Monthly SF Bitcoin meetup. Topic this month: Covenants and OP_CTV. Pizza + beer sponsored by BitGo.",
+      rsvpEnabled: true
+    }),
+    ev("e-moms-bday", "2027-01-07", "Mom's Birthday", { allDay: true, groups: ["g-family"] }),
+    ev("e-kickoff-0108", "2027-01-08", "Project Genesis Kickoff", { start: "13:00", end: "15:00", groups: ["g-work"], location: "Conference Room A", meetingLink: "https://meet.google.com/xyz-abcd-efg" }),
+    ev("e-ski-0109", "2027-01-09", "Ski Trip", { allDay: true, groups: ["g-family"], endDate: "2027-01-11", location: "Lake Tahoe" }),
+    // Week of Jan 11 – Jan 17
+    ev("e-run-0111", "2027-01-11", "Morning Run", { start: "07:00", end: "07:45" }),
+    ev("e-standup-0111", "2027-01-11", "Team Standup", { start: "09:00", end: "09:30", groups: ["g-work"] }),
+    ev("e-ln-workshop", "2027-01-12", "Lightning Workshop", { start: "19:00", end: "21:00", groups: ["g-bitcoin"], meetingLink: "https://meet.jit.si/ln-workshop" }),
+    ev("e-lunch-0114", "2027-01-14", "Lunch with Hal", { start: "12:30", end: "13:30", location: "Blue Bottle, Mint Plaza" }),
+    ev("e-planning-0115", "2027-01-15", "Q1 Planning", { start: "15:00", end: "16:30", groups: ["g-work"] }),
+    ev("e-brunch-0117", "2027-01-17", "Family Brunch", { start: "10:00", end: "12:00", groups: ["g-family"], location: "Zazie" }),
+    // Week of Jan 18 – Jan 24
+    ev("e-mlk", "2027-01-18", "Martin Luther King Jr. Day", { allDay: true, creatorId: "system", desc: "Public Holiday" }),
+    ev("e-standup-0120", "2027-01-20", "Team Standup", { start: "09:00", end: "09:30", groups: ["g-work"] }),
+    ev("e-book-0120", "2027-01-20", "Book Club: Bitcoin Standard", { start: "19:00", end: "20:30", groups: ["g-bitcoin"] }),
+    ev("e-review-0121", "2027-01-21", "Design Review", { start: "09:00", end: "10:00", groups: ["g-work"] }),
+    ev("e-parents-0123", "2027-01-23", "Parents Visiting", { allDay: true, groups: ["g-family"], endDate: "2027-01-24" }),
+    // Week of Jan 25 – Jan 31
+    ev("e-standup-0127", "2027-01-27", "Team Standup", { start: "09:00", end: "09:30", groups: ["g-work"] }),
+    ev("e-movie-0129", "2027-01-29", "Movie Night", { start: "20:00", end: "22:00", groups: ["g-family"] })
+  ];
+  var COLOR_BY_GID = Object.fromEntries(GROUPS.map((g) => [g.id, g.color]));
+  var PROFILE = {
+    id: ME.id,
+    name: ME.name,
+    avatar: ME.avatar,
+    use24h: false,
+    weekStart: 0,
+    holidayCountries: ["us"],
+    defaultReminder: 15,
+    onboardingComplete: true
+  };
+  var REMINDERS_BY_EVENT = {
+    [BITCOIN_MEETUP_ID]: [60, 15]
+  };
+  var RSVPS_BY_EVENT = {
+    [BITCOIN_MEETUP_ID]: [
+      { eventId: BITCOIN_MEETUP_ID, memberId: HAL.id, status: "going", updatedAt: FROZEN_MS },
+      { eventId: BITCOIN_MEETUP_ID, memberId: ADAM.id, status: "going", updatedAt: FROZEN_MS },
+      { eventId: BITCOIN_MEETUP_ID, memberId: NICK.id, status: "going", updatedAt: FROZEN_MS },
+      { eventId: BITCOIN_MEETUP_ID, memberId: ANDREAS.id, status: "going", updatedAt: FROZEN_MS },
+      { eventId: BITCOIN_MEETUP_ID, memberId: ELI.id, status: "declined", updatedAt: FROZEN_MS }
+    ]
+  };
+  var SCENES = {
+    1: { tab: "calendar", calendarView: "month", date: FROZEN_TODAY },
+    2: { tab: "calendar", calendarView: "month", date: FROZEN_TODAY, openEventId: BITCOIN_MEETUP_ID },
+    3: { tab: "groups" },
+    4: { tab: "groups", openInviteGroupId: "g-bitcoin" },
+    5: { tab: "calendar", calendarView: "day", date: FROZEN_TODAY }
+  };
+  function freezeDate() {
+    const OrigDate = window.Date;
+    const FrozenDate = function(...args) {
+      if (args.length === 0) return new OrigDate(FROZEN_MS);
+      return new OrigDate(...args);
+    };
+    FrozenDate.now = () => FROZEN_MS;
+    FrozenDate.parse = OrigDate.parse;
+    FrozenDate.UTC = OrigDate.UTC;
+    FrozenDate.prototype = OrigDate.prototype;
+    window.Date = FrozenDate;
+  }
+  function resolve(v) {
+    return Promise.resolve(v);
+  }
+  function makeDb() {
+    return {
+      getProfile: () => resolve(PROFILE),
+      updateProfile: () => resolve(true),
+      listEvents: () => resolve(EVENTS),
+      putEvent: () => resolve(true),
+      deleteEvent: () => resolve(true),
+      deleteEventSeries: () => resolve(true),
+      localDeleteEvent: () => resolve(true),
+      getGroup: (id) => resolve(GROUPS.find((g) => g.id === id) ?? null),
+      listGroups: () => resolve(GROUPS),
+      putGroup: () => resolve(true),
+      deleteGroup: () => resolve(true),
+      isBlockedFromGroup: () => resolve(false),
+      clearBlockedFromGroup: () => resolve(true),
+      reinviteMember: () => resolve(null),
+      listMembers: (gid) => resolve(GROUPS.find((g) => g.id === gid)?.members ?? []),
+      putMember: () => resolve(true),
+      removeMember: () => resolve(true),
+      resyncGroup: () => resolve(true),
+      setMemberNickname: () => resolve(true),
+      getReminders: (id) => resolve(REMINDERS_BY_EVENT[id] ?? []),
+      putReminders: () => resolve(true),
+      getRsvp: (eid, mid) => resolve((RSVPS_BY_EVENT[eid] ?? []).find((r7) => r7.memberId === mid) ?? null),
+      listRsvps: (eid) => resolve(RSVPS_BY_EVENT[eid] ?? []),
+      listMyRsvps: () => resolve({}),
+      putRsvp: () => resolve(true),
+      getBlindPeerKey: () => resolve(null),
+      setBlindPeerKey: () => resolve(true),
+      removeBlindPeerKey: () => resolve(true)
+    };
+  }
+  function makeNotifs() {
+    return {
+      scheduleForEvent: () => resolve(true),
+      cancelForEvent: () => resolve(true),
+      restoreAll: () => resolve(true)
+    };
+  }
+  function makeSync() {
+    return {
+      joinGroup: () => resolve(true),
+      leaveGroup: () => resolve(true),
+      deleteGroup: () => resolve(true),
+      putEvent: () => resolve(true),
+      deleteEvent: () => resolve(true),
+      putGroup: () => resolve(true),
+      memberLeft: () => resolve(true),
+      purgeMember: () => resolve(true),
+      debugGroup: () => resolve(true),
+      nativeShare: () => resolve(true),
+      exportIcs: () => resolve(true),
+      qrScan: () => resolve(null),
+      takePhoto: () => resolve(null),
+      haptic: () => resolve(true),
+      openURL: () => resolve(true),
+      canOpenLightning: () => resolve(false),
+      openLightning: () => resolve(true)
+    };
+  }
+  function installFixtures(sceneNum) {
+    const scene = SCENES[sceneNum];
+    if (!scene) {
+      console.warn("[screenshot] unknown scene", sceneNum);
+      return null;
+    }
+    freezeDate();
+    window.__pearScreenshotScene = scene;
+    return { db: makeDb(), sync: makeSync(), notifs: makeNotifs(), scene };
+  }
+
   // src/ui/main.jsx
   var import_jsx_runtime2 = __toESM(require_jsx_runtime());
+  window.__PEARCAL_SCREENSHOT_SCENE = 5;
   var _nextId = 1;
   var _pending = /* @__PURE__ */ new Map();
   window.__pearDB = {
     call(method, ...args) {
-      return new Promise((resolve, reject) => {
+      return new Promise((resolve2, reject) => {
         const id = _nextId++;
         _pending.set(id, (msg) => {
           if (msg.error) reject(new Error(msg.error));
-          else resolve(msg.result);
+          else resolve2(msg.result);
         });
         window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args }));
       });
     }
   };
   window.__pearResponse = function(msg) {
-    const resolve = _pending.get(msg.id);
-    if (resolve) {
+    const resolve2 = _pending.get(msg.id);
+    if (resolve2) {
       _pending.delete(msg.id);
-      resolve(msg);
+      resolve2(msg);
     }
   };
   window.__pearEvent = function(event, data) {
@@ -23054,7 +23311,7 @@ ${link}`;
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),
     listEvents: (opts) => window.__pearDB.call("listEvents", opts),
-    putEvent: (ev) => window.__pearDB.call("putEvent", ev),
+    putEvent: (ev2) => window.__pearDB.call("putEvent", ev2),
     deleteEvent: (d, id) => window.__pearDB.call("deleteEvent", d, id),
     deleteEventSeries: (rid) => window.__pearDB.call("deleteEventSeries", rid),
     localDeleteEvent: (d, id) => window.__pearDB.call("localDeleteEvent", d, id),
@@ -23081,7 +23338,7 @@ ${link}`;
     removeBlindPeerKey: () => window.__pearDB.call("removeBlindPeerKey")
   };
   var notifs = {
-    scheduleForEvent: (ev, reminders) => window.__pearDB.call("scheduleForEvent", ev, reminders),
+    scheduleForEvent: (ev2, reminders) => window.__pearDB.call("scheduleForEvent", ev2, reminders),
     cancelForEvent: (id) => window.__pearDB.call("cancelForEvent", id),
     restoreAll: () => window.__pearDB.call("restoreAll")
   };
@@ -23089,7 +23346,7 @@ ${link}`;
     joinGroup: (g) => window.__pearDB.call("joinGroup", g),
     leaveGroup: (id) => window.__pearDB.call("leaveGroup", id),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup:sync", id),
-    putEvent: (gid, ev) => window.__pearDB.call("putEvent:sync", gid, ev),
+    putEvent: (gid, ev2) => window.__pearDB.call("putEvent:sync", gid, ev2),
     deleteEvent: (gid, id, d, who, whoId, rid) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId, rid),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g),
     memberLeft: (groupId, memberId) => window.__pearDB.call("memberLeft:sync", groupId, memberId),
@@ -23129,7 +23386,17 @@ ${link}`;
     window.dispatchEvent(new CustomEvent("pear:pendingJoin", { detail: url }));
   };
   var root = (0, import_client.createRoot)(document.getElementById("root"));
-  root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));
+  var _screenshotScene = window.__PEARCAL_SCREENSHOT_SCENE;
+  if (_screenshotScene) {
+    const fx = installFixtures(_screenshotScene);
+    if (fx) {
+      root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db: fx.db, notifs: fx.notifs, sync: fx.sync }));
+    } else {
+      root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));
+    }
+  } else {
+    root.render(/* @__PURE__ */ (0, import_jsx_runtime2.jsx)(App, { db, notifs, sync }));
+  }
 })();
 /*! Bundled license information:
 

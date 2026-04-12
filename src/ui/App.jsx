@@ -572,6 +572,23 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])
+
+  // Screenshot mode: drive tab/date/modal from preconfigured scene
+  const _scene = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
+  useEffect(() => {
+    if (!_scene) return
+    if (_scene.tab) setTab(_scene.tab)
+    if (_scene.date) {
+      setSelectedDate(_scene.date)
+      const [y, m] = _scene.date.split('-')
+      setViewDate({ y: parseInt(y), m: parseInt(m) - 1 })
+    }
+  }, [])
+  useEffect(() => {
+    if (!_scene?.openEventId || !events.length) return
+    const ev = events.find(e => e.id === _scene.openEventId)
+    if (ev) setModal({ mode: 'edit', event: { ...ev } })
+  }, [events])
   useEffect(() => {
     backHandlerRef.current = () => {
       if (showOnboarding) {
@@ -1874,7 +1891,10 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
   const userScrollTimer = useRef(null)
   const scrollToDateRef = useRef(null)
   const [filterGroupIds, setFilterGroupIds] = useState(new Set())
-  const [calView, setCalView] = useState('month') // 'month' | 'week' | 'day'
+  const [calView, setCalView] = useState(() => {
+    const s = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
+    return s?.calendarView || 'month'
+  }) // 'month' | 'week' | 'day'
 
 
   const handleScroll = () => {
@@ -3426,6 +3446,14 @@ function NicknameBeforeJoinSheet ({ th, groupName, defaultName, onConfirm, onClo
 function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
   const [copiedId,         setCopiedId]         = useState(null)
   const [inviteModalGroup, setInviteModalGroup] = useState(null)
+
+  useEffect(() => {
+    const s = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
+    if (s?.openInviteGroupId) {
+      const g = groups.find(gr => gr.id === s.openInviteGroupId)
+      if (g) setInviteModalGroup(g)
+    }
+  }, [groups])
 
   async function copyInvite (g, e) {
     e.stopPropagation()

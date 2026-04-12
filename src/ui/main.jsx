@@ -1,6 +1,7 @@
 import { handleInviteLink, buildReinviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
+import { installFixtures } from './screenshot-fixtures.js'
 
 // IPC bridge
 let _nextId = 1
@@ -122,4 +123,14 @@ window.__pearHandleInvite = function(url) {
 }
 
 const root = createRoot(document.getElementById('root'))
-root.render(<App db={db} notifs={notifs} sync={sync} />)
+const _screenshotScene = window.__PEARCAL_SCREENSHOT_SCENE
+if (_screenshotScene) {
+  const fx = installFixtures(_screenshotScene)
+  if (fx) {
+    root.render(<App db={fx.db} notifs={fx.notifs} sync={fx.sync} />)
+  } else {
+    root.render(<App db={db} notifs={notifs} sync={sync} />)
+  }
+} else {
+  root.render(<App db={db} notifs={notifs} sync={sync} />)
+}
