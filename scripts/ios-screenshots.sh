@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT_DIR="/tmp/pearcal-screenshots"
+OUT_DIR="${OUT_DIR:-$REPO_ROOT/metadata/ios/screenshots}"
 BUNDLE_ID="com.pearcal"
 SCENES=(1 2 3 4 5)
 APPEARANCES=(light dark)
