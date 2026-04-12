@@ -3090,7 +3090,7 @@ function JoinGroupModal ({ th, onClose, closeRef, db, sync, onJoined, onPendingJ
 
   function handlePasteJoin () {
     const url = pasteUrl.trim()
-    if (!url.startsWith('pear://pearcal/join')) { setPasteErr('Not a valid PearCal invite link.'); return }
+    if (!url.startsWith('https://peerloomllc.com/join') && !url.startsWith('pear://pearcal/join') && !url.startsWith('pearcal://join')) { setPasteErr('Not a valid PearCal invite link.'); return }
     const groupName = (() => { try { return new URL(url).searchParams.get('name') || 'a group' } catch { return 'a group' } })()
     bsCloseRef.current?.()
     onPendingJoin?.({ url, groupName })

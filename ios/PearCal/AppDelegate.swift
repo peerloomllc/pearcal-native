@@ -67,6 +67,13 @@ public class AppDelegate: ExpoAppDelegate {
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
   ) -> Bool {
+    if userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+       let url = userActivity.webpageURL,
+       url.host == "peerloomllc.com",
+       url.path.hasPrefix("/join") {
+      LinkModule.pendingLink = url.absoluteString
+      return true  // Handled — don't let Expo Router navigate to /join
+    }
     let result = RCTLinkingManager.application(application, continue: userActivity, restorationHandler: restorationHandler)
     return super.application(application, continue: userActivity, restorationHandler: restorationHandler) || result
   }

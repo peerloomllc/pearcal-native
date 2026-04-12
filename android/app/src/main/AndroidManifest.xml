@@ -42,6 +42,12 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <category android:name="android.intent.category.DEFAULT"/>
       </intent-filter>
+      <intent-filter android:autoVerify="true">
+        <action android:name="android.intent.action.VIEW"/>
+        <data android:scheme="https" android:host="peerloomllc.com" android:pathPrefix="/join"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
     </activity>
       <receiver android:name=".NotificationReceiver" android:exported="false"/>
     <receiver android:name=".BootReceiver" android:exported="true">

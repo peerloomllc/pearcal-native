@@ -1,12 +1,16 @@
 /**
  * PearCal — Invite Link Handler
  *
- * Invite link format:
- *   pear://pearcal/join?group={base64(groupId)}&name={groupName}&key={groupKey}&inviter={publicKey}
+ * Invite link format (current):
+ *   https://peerloomllc.com/join?group={base64(groupId)}&name={groupName}&key={groupKey}&inviter={publicKey}
+ *
+ * Legacy formats (still accepted for backward compatibility):
+ *   pear://pearcal/join?group=...
+ *   pearcal://join?group=...
  *
  * Flow:
- *   1. Link is intercepted by Android intent filter → passed to Pear runtime
- *   2. Pear runtime fires the 'link' event in src/index.js
+ *   1. Link is intercepted by Universal Links (iOS) / App Links (Android) → passed to native
+ *   2. Native stores the link in LinkModule.pendingLink
  *   3. handleInviteLink() is called with the raw URL string
  *   4. We parse + validate the params, prompt the user to confirm, then:
  *      a. Write the group to local Hyperbee
@@ -19,7 +23,7 @@
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SCHEME   = 'pear://pearcal'
+const SCHEME   = 'https://peerloomllc.com'
 const MAX_NAME = 64    // chars
 const KEY_LEN  = 64    // hex chars (32-byte public key)
 
@@ -143,7 +147,7 @@ export function buildInviteLink (group, myPublicKey) {
 }
 
 /**
- * Parse and validate a raw pear:// invite URL.
+ * Parse and validate an invite URL (https://peerloomllc.com/join or legacy pear:// format).
  * Returns { ok: true, ...fields } or { ok: false, error: string }.
  *
  * @param {string} url
@@ -154,15 +158,20 @@ export function parseInviteLink (url) {
     return { ok: false, error: 'invalid_url' }
   }
 
-  // Strip the custom scheme so URL() can parse it
-  const normalised = url.replace(/^pear:\/\//, 'https://')
+  // Accept three formats:
+  //   https://peerloomllc.com/join?...  (current)
+  //   pear://pearcal/join?...           (legacy)
+  //   pearcal://join?...                (legacy)
+  const normalised = url
+    .replace(/^pear:\/\/pearcal\//, 'https://peerloomllc.com/')
+    .replace(/^pearcal:\/\//, 'https://peerloomllc.com/')
   let u
   try { u = new URL(normalised) } catch {
     return { ok: false, error: 'malformed_url' }
   }
 
-  // Must match pear://pearcal/join
-  if (!url.startsWith(`${SCHEME}/join`)) {
+  // Must end up at peerloomllc.com/join (after normalisation)
+  if (u.host !== 'peerloomllc.com' || !u.pathname.startsWith('/join')) {
     return { ok: false, error: 'wrong_path' }
   }
 
