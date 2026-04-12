@@ -504,7 +504,13 @@ webViewRef.current?.injectJavaScript(
       javaScriptEnabled
       domStorageEnabled
       originWhitelist={['*']}
-      injectedJavaScriptBeforeContentLoaded={`window.__pearPlatform=${JSON.stringify(Platform.OS)};true;`}
+      injectedJavaScriptBeforeContentLoaded={`window.__pearPlatform=${JSON.stringify(Platform.OS)};${(() => {
+        const mod = (NativeModules as any).PearCalScreenshot
+        const scene = mod?.scene ?? 0
+        const dark = mod?.dark ?? -1
+        if (scene <= 0) return ''
+        return `window.__PEARCAL_SCREENSHOT_SCENE=${scene};window.__PEARCAL_SCREENSHOT_DARK=${dark};`
+      })()}true;`}
       onLoadEnd={() => setWebViewReady(true)}
       onError={e => setError(e.nativeEvent.description)}
     />
