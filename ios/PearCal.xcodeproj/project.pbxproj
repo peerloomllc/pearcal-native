@@ -24,12 +24,14 @@
 		92B051FA843A24860CCC167F /* NotificationsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB86438FC337C227BD692415 /* NotificationsModule.swift */; };
 		92E985E6CB0416747F8A9DC4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
+		C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 30846C24E6F5560A4622850B /* ScreenshotModule.m */; };
 		C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */; };
 		DAF5708BAC84EEC6349AA1EF /* DeepLinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 17086FDCA2812725DD101353 /* DeepLinkModule.m */; };
 		E0DA430E00A88A151E604B9D /* ShareModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A19A60265BF82560F78ECA2 /* ShareModule.swift */; };
 		E8B53D8043C690B658D2DDC2 /* LinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DC41E56E5833C624E0BBE6 /* LinkModule.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F3E8E86DD263668B0AE11972 /* QRScannerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */; };
+		F4236CF8643B8098716600C7 /* ScreenshotModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */; };
 		FC2CE1543547C11B3FD49A2D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
@@ -42,7 +44,7 @@
 		17086FDCA2812725DD101353 /* DeepLinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = DeepLinkModule.m; path = PearCal/DeepLinkModule.m; sourceTree = "<group>"; };
 		278CCBB93EB9E31D691C8817 /* CameraModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = CameraModule.swift; path = PearCal/CameraModule.swift; sourceTree = "<group>"; };
 		2C29454412519534F243D013 /* BareBackgroundSync.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = BareBackgroundSync.m; path = PearCal/BareBackgroundSync.m; sourceTree = "<group>"; };
-		6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = RCTThirdPartyComponentsFix.m; path = PearCal/RCTThirdPartyComponentsFix.m; sourceTree = "<group>"; };
+		30846C24E6F5560A4622850B /* ScreenshotModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ScreenshotModule.m; path = PearCal/ScreenshotModule.m; sourceTree = "<group>"; };
 		3A19A60265BF82560F78ECA2 /* ShareModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareModule.swift; path = PearCal/ShareModule.swift; sourceTree = "<group>"; };
 		3D8DB875303C7D5BBE17A5A3 /* Pods-PearCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.release.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.release.xcconfig"; sourceTree = "<group>"; };
 		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
@@ -52,12 +54,14 @@
 		6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = CameraModule.m; path = PearCal/CameraModule.m; sourceTree = "<group>"; };
 		6466122AC83FA96405613F46 /* ShareModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShareModule.m; path = PearCal/ShareModule.m; sourceTree = "<group>"; };
 		672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = QRScannerModule.m; path = PearCal/QRScannerModule.m; sourceTree = "<group>"; };
+		6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = RCTThirdPartyComponentsFix.m; path = PearCal/RCTThirdPartyComponentsFix.m; sourceTree = "<group>"; };
 		718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRScannerModule.swift; path = PearCal/QRScannerModule.swift; sourceTree = "<group>"; };
 		8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PearCal.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		98DC41E56E5833C624E0BBE6 /* LinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LinkModule.swift; path = PearCal/LinkModule.swift; sourceTree = "<group>"; };
 		A58EAE82C681BCCDFCF5ED48 /* Pods-PearCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.debug.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.debug.xcconfig"; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = PearCal/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
+		CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ScreenshotModule.swift; path = PearCal/ScreenshotModule.swift; sourceTree = "<group>"; };
 		D3E67A47AAF9D133026769D3 /* HapticModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = HapticModule.m; path = PearCal/HapticModule.m; sourceTree = "<group>"; };
 		EB86438FC337C227BD692415 /* NotificationsModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationsModule.swift; path = PearCal/NotificationsModule.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -99,6 +103,8 @@
 				54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */,
 				2C29454412519534F243D013 /* BareBackgroundSync.m */,
 				6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */,
+				CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */,
+				30846C24E6F5560A4622850B /* ScreenshotModule.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -420,6 +426,8 @@
 				68A7206C8C2D7AB3BBC59921 /* BareBackgroundSync.swift in Sources */,
 				28708F085289B2D9F4818BFD /* BareBackgroundSync.m in Sources */,
 				11FDE0150D82225E81D929EB /* RCTThirdPartyComponentsFix.m in Sources */,
+				F4236CF8643B8098716600C7 /* ScreenshotModule.swift in Sources */,
+				C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

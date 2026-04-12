@@ -23273,7 +23273,6 @@ ${link}`;
 
   // src/ui/main.jsx
   var import_jsx_runtime2 = __toESM(require_jsx_runtime());
-  window.__PEARCAL_SCREENSHOT_SCENE = 5;
   var _nextId = 1;
   var _pending = /* @__PURE__ */ new Map();
   window.__pearDB = {
