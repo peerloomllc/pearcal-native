@@ -23156,6 +23156,8 @@ ${link}`;
     ev("e-movie-0129", "2027-01-29", "Movie Night", { start: "20:00", end: "22:00", groups: ["g-family"] })
   ];
   var COLOR_BY_GID = Object.fromEntries(GROUPS.map((g) => [g.id, g.color]));
+  var _darkFlag = typeof window !== "undefined" ? window.__PEARCAL_SCREENSHOT_DARK : -1;
+  var PREFERS_DARK = _darkFlag === 1 ? true : _darkFlag === 0 ? false : typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
   var PROFILE = {
     id: ME.id,
     name: ME.name,
@@ -23164,7 +23166,8 @@ ${link}`;
     weekStart: 0,
     holidayCountries: ["us"],
     defaultReminder: 15,
-    onboardingComplete: true
+    onboardingComplete: true,
+    dark: PREFERS_DARK
   };
   var REMINDERS_BY_EVENT = {
     [BITCOIN_MEETUP_ID]: [60, 15]

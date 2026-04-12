@@ -7,6 +7,7 @@ class ScreenshotModule: NSObject {
   @objc func constantsToExport() -> [AnyHashable: Any]! {
     let args = ProcessInfo.processInfo.arguments
     var scene = 0
+    var dark = -1  // -1 = not set; 0 = light; 1 = dark
     if let idx = args.firstIndex(of: "-screenshotScene"),
        idx + 1 < args.count,
        let n = Int(args[idx + 1]) {
@@ -15,6 +16,11 @@ class ScreenshotModule: NSObject {
               let n = Int(envN) {
       scene = n
     }
-    return ["scene": scene]
+    if let idx = args.firstIndex(of: "-screenshotDark"),
+       idx + 1 < args.count,
+       let n = Int(args[idx + 1]) {
+      dark = n
+    }
+    return ["scene": scene, "dark": dark]
   }
 }

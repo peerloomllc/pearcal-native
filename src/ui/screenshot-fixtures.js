@@ -118,6 +118,12 @@ const EVENTS = [
 const COLOR_BY_GID = Object.fromEntries(GROUPS.map(g => [g.id, g.color]))
 
 // ─── Profile ─────────────────────────────────────────────────────────────────
+const _darkFlag = typeof window !== 'undefined' ? window.__PEARCAL_SCREENSHOT_DARK : -1
+const PREFERS_DARK = _darkFlag === 1 ? true
+  : _darkFlag === 0 ? false
+  : (typeof window !== 'undefined' && window.matchMedia
+      && window.matchMedia('(prefers-color-scheme: dark)').matches)
+
 const PROFILE = {
   id: ME.id,
   name: ME.name,
@@ -127,6 +133,7 @@ const PROFILE = {
   holidayCountries: ['us'],
   defaultReminder: 15,
   onboardingComplete: true,
+  dark: PREFERS_DARK,
 }
 
 // ─── Reminders / RSVPs ───────────────────────────────────────────────────────
