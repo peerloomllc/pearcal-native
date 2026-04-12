@@ -2790,10 +2790,26 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
-      <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontWeight:300, fontSize:17, ...th.text }}>
+      <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
+        padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center',
+        gap:10, borderBottom:`1px solid ${th.border}` }}>
+          <span style={{ fontWeight:300, fontSize:17, ...th.text, flex:1, minWidth:0,
+            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {modal.mode === 'create' ? 'New Event' : 'Edit Event'}
           </span>
+          {(() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const isHoliday = modal.mode === 'edit' && ev.creatorId === 'system'
+            const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+            if (isHoliday || isReadOnly) return null
+            return (
+              <button onClick={handleSave}
+                style={{ ...th.pillBtn, padding:'7px 16px', fontSize:13, fontWeight:300,
+                  display:'flex', alignItems:'center', gap:4 }}>
+                {modal.mode === 'create' ? 'Create' : 'Save'}
+              </button>
+            )
+          })()}
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
                 {(() => {
@@ -2808,6 +2824,49 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
             pointerEvents: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 'none' : 'auto' }}>
+
+          {/* ── Responses banner (edit + RSVP + creator) ── */}
+          {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (() => {
+            const going    = rsvpList.filter(r => r.status === 'going')
+            const declined = rsvpList.filter(r => r.status === 'declined')
+            const respIds = new Set(rsvpList.map(r => r.memberId))
+            const invited = []
+            const seen = new Set()
+            for (const gid of (ev.groups ?? [])) {
+              const g = groups.find(x => x.id === gid)
+              if (!g) continue
+              for (const m of (g.members ?? [])) {
+                if (m.id === ev.creatorId || m.id === profile?.id) continue
+                if (!seen.has(m.id)) { seen.add(m.id); invited.push(m) }
+              }
+            }
+            const pending = invited.filter(m => !respIds.has(m.id))
+            const nameFor = (id) => invited.find(m => m.id === id)?.name || id.slice(0,6)
+            return (
+              <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
+                padding:'10px 14px', border:`1px solid ${th.border}`, borderRadius:10,
+                fontSize:13, fontWeight:300, color:th.text.color,
+                display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ display:'flex', gap:10 }}>
+                    <span><span style={{ color:'#5DBF8A' }}>✓</span> {going.length} going</span>
+                    <span><span style={{ color:'#D45F7A' }}>✗</span> {declined.length} declined</span>
+                    <span style={{ color:th.muted }}>? {pending.length} pending</span>
+                  </div>
+                  <CaretRight size={13} weight="thin" color="var(--color-muted)"
+                    style={{ transition:'transform 0.25s',
+                      transform: rsvpExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+                </div>
+                {rsvpExpanded && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, marginTop:2 }}>
+                    {going.length > 0 && <div><span style={{ color:'#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                    {declined.length > 0 && <div><span style={{ color:'#D45F7A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                    {pending.length > 0 && <div><span style={{ color:th.muted }}>?</span> {pending.map(m => m.name).join(', ')}</div>}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── Title (top, no section) ── */}
           <div style={{ position:'relative' }}>
@@ -2940,42 +2999,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                   })}
                 </div>
               </div>
-              {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (
-                <div>
-                  <Label th={th}>Responses</Label>
-                  {(() => {
-                    const going    = rsvpList.filter(r => r.status === 'going')
-                    const declined = rsvpList.filter(r => r.status === 'declined')
-                    const respIds = new Set(rsvpList.map(r => r.memberId))
-                    const invited = []
-                    const seen = new Set()
-                    for (const gid of (ev.groups ?? [])) {
-                      const g = groups.find(x => x.id === gid)
-                      if (!g) continue
-                      for (const m of (g.members ?? [])) {
-                        if (m.id === ev.creatorId || m.id === profile?.id) continue
-                        if (!seen.has(m.id)) { seen.add(m.id); invited.push(m) }
-                      }
-                    }
-                    const pending = invited.filter(m => !respIds.has(m.id))
-                    const nameFor = (id) => invited.find(m => m.id === id)?.name || id.slice(0,6)
-                    return (
-                      <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
-                        padding:'10px 14px', border:`1px solid ${th.border}`, borderRadius:8,
-                        fontSize:13, fontWeight:300, color:th.text.color }}>
-                        <div>{going.length} going · {declined.length} declined · {pending.length} pending</div>
-                        {rsvpExpanded && (
-                          <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4, fontSize:12 }}>
-                            {going.length > 0 && <div><span style={{ color:'#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
-                            {declined.length > 0 && <div><span style={{ color:'#D45F7A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
-                            {pending.length > 0 && <div><span style={{ color:th.muted }}>?</span> {pending.map(m => m.name).join(', ')}</div>}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
-                </div>
-              )}
             </div>
           </div>
 
@@ -3136,26 +3159,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                   </div>
                 )}
 
-                {/* Who can edit? (consolidated — shown in create mode or edit-mode-if-creator) */}
-                {(modal.mode === 'create' ||
-                  (modal.mode === 'edit' && ev.creatorId !== 'system' &&
-                   ev.creatorId && profile?.id && ev.creatorId === profile.id)) && (
-                  <div><Label th={th}>Who can edit?</Label>
-                    <div style={{ display:'flex', gap:8 }}>
-                      {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
-                        <button key={val} onClick={() => set('editPermission', val)}
-                          style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
-                            cursor:'pointer',
-                            border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
-                            background: ev.editPermission === val ? th.accent : 'transparent',
-                            color: ev.editPermission === val ? '#fff' : th.muted }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
                 {/* Request RSVP */}
                 {ev.groups && ev.groups.length > 0 && isEventCreator && (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
@@ -3174,7 +3177,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 {/* Invite Members */}
                 {allMembers.length > 0 && (
                   <div>
-                    <Label th={th}>Invite Members</Label>
+                    <Label th={th}>Invite Select Members</Label>
                     <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
                       {allMembers.map(m => {
                         const sel = ev.invitees.includes(m.id)
@@ -3191,6 +3194,26 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                           </button>
                         )
                       })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Who can edit? (consolidated — shown in create mode or edit-mode-if-creator) */}
+                {(modal.mode === 'create' ||
+                  (modal.mode === 'edit' && ev.creatorId !== 'system' &&
+                   ev.creatorId && profile?.id && ev.creatorId === profile.id)) && (
+                  <div><Label th={th}>Who can edit?</Label>
+                    <div style={{ display:'flex', gap:8 }}>
+                      {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                        <button key={val} onClick={() => set('editPermission', val)}
+                          style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                            cursor:'pointer',
+                            border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                            background: ev.editPermission === val ? th.accent : 'transparent',
+                            color: ev.editPermission === val ? '#fff' : th.muted }}>
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
                 )}
@@ -3244,14 +3267,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 {' '}Read only — only the creator can edit this event
               </div>
             )
-            return (
-              <button onClick={handleSave}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-                  marginTop:4,
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
-              </button>
-            )
+            return null
           })()}
 
           {modal.mode === 'edit' && (() => {
