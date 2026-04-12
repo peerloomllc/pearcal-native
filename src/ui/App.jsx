@@ -391,6 +391,7 @@ export default function App ({ db, notifs, sync }) {
   const [profile,       setProfile]       = useState(null)
   const [groups,        setGroups]        = useState([])
   const [events,        setEvents]        = useState([])
+  const [myRsvps,       setMyRsvps]       = useState({})  // { eventId: 'going'|'declined'|'pending' }
   const [selectedDate,  setSelectedDate]  = useState(todayStr())
   const [viewDate,      setViewDate]      = useState(() => {
     const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }
@@ -440,11 +441,12 @@ export default function App ({ db, notifs, sync }) {
 
     async function load () {
       try {
-        const [prof, grps, evts, bpk] = await Promise.all([
+        const [prof, grps, evts, bpk, rsvps] = await Promise.all([
           db.getProfile(),
           db.listGroups(),
           db.listEvents(),
           db.getBlindPeerKey().catch(() => null),
+          db.listMyRsvps().catch(() => ({})),
         ])
         if (cancelled) return
         setProfile(prof)
@@ -452,6 +454,7 @@ export default function App ({ db, notifs, sync }) {
         setGroups(grps)
         setReadyGroupKeys(new Set(grps.map(g => g.id)))
         setEvents(evts)
+        setMyRsvps(rsvps ?? {})
         setBlindPeerKey(bpk)
         eventsReady.current = true
         setReady(true)
@@ -499,6 +502,8 @@ export default function App ({ db, notifs, sync }) {
       const g = await db.getGroup(groupId)
       if (g) setGroups(prev => prev.map(x => x.id === groupId ? g : x))
 
+      // Refresh my RSVPs in case a peer-synced response arrived (or event deleted)
+      db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})
     }
 
     emitter.on('sync', onSync)
@@ -669,7 +674,9 @@ export default function App ({ db, notifs, sync }) {
         db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
         db.putReminders(occ.id, reminders).catch(() => {})
         notifs?.cancelForEvent(occ.id).catch(() => {})
-        notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+        if (myRsvps[occ.id] !== 'declined') {
+          notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+        }
         const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
         for (const gid of occ.groups ?? []) {
           sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
@@ -681,7 +688,7 @@ export default function App ({ db, notifs, sync }) {
         }
       }
     }
-  }, [db, notifs, sync, profile, events])
+  }, [db, notifs, sync, profile, events, myRsvps])
 
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
@@ -929,7 +936,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'',
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false,
     }})
   }
 
@@ -977,7 +984,7 @@ export default function App ({ db, notifs, sync }) {
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
               setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
-              saveEvent={saveEvent} profile={profile} sync={sync} />
+              saveEvent={saveEvent} profile={profile} sync={sync} myRsvps={myRsvps} myProfileId={profile?.id} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
@@ -1101,7 +1108,7 @@ export default function App ({ db, notifs, sync }) {
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
-            closeRef={closeEventModalRef}
+            closeRef={closeEventModalRef} notifs={notifs} setMyRsvps={setMyRsvps}
             onRequestConfirm={req => {
               if (req.type === 'editScope') {
                 setModal(null)
@@ -1487,7 +1494,7 @@ function getUKHolidays (year) {
 // ─── Week View ───────────────────────────────────────────────────────────────
 function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, todayStr, dateStr,
   openCreate, setModal, use24h, events, groups, filterGroupIds, setFilterGroupIds,
-  onTouchStart, onTouchEnd, slideDir, isSliding }) {
+  onTouchStart, onTouchEnd, slideDir, isSliding, myRsvps = {}, myProfileId }) {
 
   const weekDays = useMemo(() => {
     const d = new Date(selectedDate + 'T12:00:00')
@@ -1609,7 +1616,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
                 </div>
               ) : dayEvents.map((ev, i) => (
                 <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
-                  <EventCard ev={ev} th={th} isPast={ds < todayStr}
+                  <EventCard ev={ev} th={th} isPast={ds < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
                     use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
                 </div>
               ))}
@@ -1625,7 +1632,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
 // ─── Day View ────────────────────────────────────────────────────────────────
 function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, todayStr, dateStr,
   openCreate, setModal, use24h, groups, filterGroupIds, setFilterGroupIds,
-  onTouchStart, onTouchEnd, slideDir, isSliding }) {
+  onTouchStart, onTouchEnd, slideDir, isSliding, myRsvps = {}, myProfileId }) {
 
   const HOUR_H = 60
   const hourGridRef = useRef(null)
@@ -1848,7 +1855,7 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
 
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
   eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady,
-  saveEvent, profile, sync }) {
+  saveEvent, profile, sync, myRsvps = {}, myProfileId }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -2166,7 +2173,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             </div>
             {seen.get(date).map((ev, i) => (
               <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
-                <EventCard ev={ev} th={th} isPast={date < todayStr}
+                <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
                   use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
               </div>
             ))}
@@ -2198,7 +2205,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           openCreate={openCreate} setModal={setModal} use24h={use24h} events={events}
           groups={groups} filterGroupIds={filterGroupIds} setFilterGroupIds={setFilterGroupIds}
           onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}
-          slideDir={slideDir} isSliding={isSliding} />
+          slideDir={slideDir} isSliding={isSliding} myRsvps={myRsvps} myProfileId={profile?.id} />
       )}
 
       {calView === 'day' && (
@@ -2479,16 +2486,25 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast, use24h }) {
+function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+  const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId
+  const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator
+  const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
   return (
     <div onClick={() => { window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,
         borderLeft:`4px solid ${(ev.colors?.[0] ?? ev.color)}`, marginBottom:compact ? 0 : 8,
-        opacity: isPast ? 0.5 : 1 }}>
+        opacity: (isPast || isDeclined) ? 0.5 : 1 }}>
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text }}>{ev.title}</div>
+        <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text,
+          textDecoration: isDeclined ? 'line-through' : 'none' }}>
+          {showRsvpPill && myRsvpStatus === 'going' && <span style={{ color:'#5DBF8A', marginRight:6 }}>✓</span>}
+          {showRsvpPill && myRsvpStatus === 'declined' && <span style={{ color:'#D45F7A', marginRight:6 }}>✗</span>}
+          {showRsvpPill && (!myRsvpStatus || myRsvpStatus === 'pending') && <span style={{ color:th.muted, marginRight:6 }}>?</span>}
+          {ev.title}
+        </div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
           {ev.allDay
             ? (ev.endDate && ev.endDate !== ev.date
@@ -2626,7 +2642,7 @@ function RemindersEditor ({ th, reminders, setReminders }) {
   )
 }
 
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef }) {
+function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef, notifs, setMyRsvps }) {
   const [ev, setEv] = useState(modal.event)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
@@ -2675,6 +2691,42 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
       }
     }).catch(() => {})
   }, [modal.event?.id])
+
+  // ── RSVP state ──────────────────────────────────────────────────────────
+  const isEventCreator = !ev.creatorId || ev.creatorId === profile?.id
+  const [myRsvp, setMyRsvp] = useState(null)          // own response when non-creator
+  const [rsvpList, setRsvpList] = useState([])        // all responses when creator
+  const [rsvpExpanded, setRsvpExpanded] = useState(false)
+
+  useEffect(() => {
+    if (!db || modal.mode !== 'edit') return
+    const eid = modal.event?.id
+    if (!eid || !ev.rsvpEnabled) return
+    if (isEventCreator) {
+      db.listRsvps(eid).then(r => setRsvpList(r ?? [])).catch(() => {})
+    } else if (profile?.id) {
+      db.getRsvp(eid, profile.id).then(r => setMyRsvp(r?.status ?? 'pending')).catch(() => {})
+    }
+  }, [modal.event?.id, ev.rsvpEnabled, isEventCreator])
+
+  async function respondRsvp (status) {
+    const eid = modal.event?.id
+    if (!db || !eid || !profile?.id) return
+    const groupIds = modal.event?.groups ?? []
+    setMyRsvp(status)
+    setMyRsvps?.(prev => ({ ...prev, [eid]: status }))
+    try {
+      await db.putRsvp(eid, profile.id, status, groupIds)
+      // Reschedule/cancel notifications based on new status
+      if (status === 'declined') {
+        notifs?.cancelForEvent(eid).catch(() => {})
+      } else {
+        const reminders = await db.getReminders(eid).catch(() => [])
+        notifs?.cancelForEvent(eid).catch(() => {})
+        notifs?.scheduleForEvent(modal.event, reminders ?? []).catch(() => {})
+      }
+    } catch(e) { console.warn('[RSVP-ERR]', e?.message) }
+  }
 
   const [titleErr, setTitleErr] = useState('')
   // Map<title, mostRecentEvent> — used to prefill fields when a suggestion is picked
@@ -2847,6 +2899,58 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             />
           </div>
 
+          {ev.groups && ev.groups.length > 0 && isEventCreator && (
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+              <Label th={th}>Request RSVP</Label>
+              <button onClick={() => set('rsvpEnabled', !ev.rsvpEnabled)}
+                style={{ width:44, height:26, borderRadius:13, border:'none', cursor:'pointer',
+                  background: ev.rsvpEnabled ? th.accent : th.border, position:'relative',
+                  transition:'background 150ms var(--easing)' }}>
+                <div style={{ position:'absolute', top:3, left: ev.rsvpEnabled ? 21 : 3,
+                  width:20, height:20, borderRadius:10, background:'#fff',
+                  transition:'left 150ms var(--easing)' }} />
+              </button>
+            </div>
+          )}
+
+          {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (
+            <div>
+              <Label th={th}>Responses</Label>
+              {(() => {
+                const going    = rsvpList.filter(r => r.status === 'going')
+                const declined = rsvpList.filter(r => r.status === 'declined')
+                const respIds = new Set(rsvpList.map(r => r.memberId))
+                // Invited = all group members across event's groups, minus creator
+                const invited = []
+                const seen = new Set()
+                for (const gid of (ev.groups ?? [])) {
+                  const g = groups.find(x => x.id === gid)
+                  if (!g) continue
+                  for (const m of (g.members ?? [])) {
+                    if (m.id === ev.creatorId || m.id === profile?.id) continue
+                    if (!seen.has(m.id)) { seen.add(m.id); invited.push(m) }
+                  }
+                }
+                const pending = invited.filter(m => !respIds.has(m.id))
+                const nameFor = (id) => invited.find(m => m.id === id)?.name || id.slice(0,6)
+                return (
+                  <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
+                    padding:'10px 14px', border:`1px solid ${th.border}`, borderRadius:8,
+                    fontSize:13, fontWeight:300, color:th.text.color }}>
+                    <div>{going.length} going · {declined.length} declined · {pending.length} pending</div>
+                    {rsvpExpanded && (
+                      <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4, fontSize:12 }}>
+                        {going.length > 0 && <div><span style={{ color:'#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                        {declined.length > 0 && <div><span style={{ color:'#D45F7A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                        {pending.length > 0 && <div><span style={{ color:th.muted }}>?</span> {pending.map(m => m.name).join(', ')}</div>}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+          )}
+
           {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
             <div style={{ display:'flex', gap:8 }}>
               {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
@@ -3018,6 +3122,24 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           })()}
 
           </div>
+
+          {modal.mode === 'edit' && ev.rsvpEnabled && !isEventCreator && (
+            <div>
+              <Label th={th}>Your Response</Label>
+              <div style={{ display:'flex', gap:8 }}>
+                {[['going','Going'],['declined','Decline']].map(([val, label]) => (
+                  <button key={val} onClick={() => respondRsvp(val)}
+                    style={{ flex:1, padding:'10px 0', borderRadius:10, fontSize:14, fontWeight:300,
+                      cursor:'pointer',
+                      border:'1.5px solid ' + (myRsvp === val ? (val === 'going' ? '#5DBF8A' : '#D45F7A') : th.border),
+                      background: myRsvp === val ? (val === 'going' ? '#5DBF8A' : '#D45F7A') : 'transparent',
+                      color: myRsvp === val ? '#fff' : th.muted }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {(() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
