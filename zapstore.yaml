@@ -22,5 +22,12 @@ tags:
 license: MIT
 website: https://github.com/peerloomllc/pearcal-native
 
+images:
+  - ./metadata/android/screenshots/Pixel_9_Pro/light/scene-1.png
+  - ./metadata/android/screenshots/Pixel_9_Pro/dark/scene-2.png
+  - ./metadata/android/screenshots/Pixel_9_Pro/light/scene-3.png
+  - ./metadata/android/screenshots/Pixel_9_Pro/dark/scene-4.png
+  - ./metadata/android/screenshots/Pixel_9_Pro/light/scene-5.png
+
 metadata_sources:
   - github
