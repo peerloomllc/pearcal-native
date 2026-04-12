@@ -2734,6 +2734,10 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     } catch(e) { console.warn('[RSVP-ERR]', e?.message) }
   }
 
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [mlOpen, setMlOpen] = useState(!!modal.event?.meetingLink)
+  const [locOpen, setLocOpen] = useState(!!modal.event?.location)
+  const [notesOpen, setNotesOpen] = useState(!!modal.event?.desc)
   const [titleErr, setTitleErr] = useState('')
   // Map<title, mostRecentEvent> — used to prefill fields when a suggestion is picked
   const [pastEvents, setPastEvents] = useState(new Map())
@@ -2786,10 +2790,26 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
 
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
-      <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontWeight:300, fontSize:17, ...th.text }}>
+      <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
+        padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center',
+        gap:10, borderBottom:`1px solid ${th.border}` }}>
+          <span style={{ fontWeight:300, fontSize:17, ...th.text, flex:1, minWidth:0,
+            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {modal.mode === 'create' ? 'New Event' : 'Edit Event'}
           </span>
+          {(() => {
+            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const isHoliday = modal.mode === 'edit' && ev.creatorId === 'system'
+            const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+            if (isHoliday || isReadOnly) return null
+            return (
+              <button onClick={handleSave}
+                style={{ ...th.pillBtn, padding:'7px 16px', fontSize:13, fontWeight:300,
+                  display:'flex', alignItems:'center', gap:4 }}>
+                {modal.mode === 'create' ? 'Create' : 'Save'}
+              </button>
+            )
+          })()}
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
                 {(() => {
@@ -2804,6 +2824,51 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
             pointerEvents: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
               !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 'none' : 'auto' }}>
+
+          {/* ── Responses banner (edit + RSVP + creator) ── */}
+          {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (() => {
+            const going    = rsvpList.filter(r => r.status === 'going')
+            const declined = rsvpList.filter(r => r.status === 'declined')
+            const respIds = new Set(rsvpList.map(r => r.memberId))
+            const invited = []
+            const seen = new Set()
+            for (const gid of (ev.groups ?? [])) {
+              const g = groups.find(x => x.id === gid)
+              if (!g) continue
+              for (const m of (g.members ?? [])) {
+                if (m.id === ev.creatorId || m.id === profile?.id) continue
+                if (!seen.has(m.id)) { seen.add(m.id); invited.push(m) }
+              }
+            }
+            const pending = invited.filter(m => !respIds.has(m.id))
+            const nameFor = (id) => invited.find(m => m.id === id)?.name || id.slice(0,6)
+            return (
+              <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
+                padding:'10px 14px', border:`1px solid ${th.border}`, borderRadius:10,
+                fontSize:13, fontWeight:300, color:th.text.color,
+                display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <div style={{ display:'flex', gap:10 }}>
+                    <span><span style={{ color:'#5DBF8A' }}>✓</span> {going.length} going</span>
+                    <span><span style={{ color:'#D45F7A' }}>✗</span> {declined.length} declined</span>
+                    <span style={{ color:th.muted }}>? {pending.length} pending</span>
+                  </div>
+                  <CaretRight size={13} weight="thin" color="var(--color-muted)"
+                    style={{ transition:'transform 0.25s',
+                      transform: rsvpExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+                </div>
+                {rsvpExpanded && (
+                  <div style={{ display:'flex', flexDirection:'column', gap:4, fontSize:12, marginTop:2 }}>
+                    {going.length > 0 && <div><span style={{ color:'#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                    {declined.length > 0 && <div><span style={{ color:'#D45F7A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                    {pending.length > 0 && <div><span style={{ color:th.muted }}>?</span> {pending.map(m => m.name).join(', ')}</div>}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* ── Title (top, no section) ── */}
           <div style={{ position:'relative' }}>
             <input style={{ ...inp, borderColor: titleErr ? '#D45F7A' : inp.border }}
               placeholder="Event title" value={ev.title}
@@ -2862,242 +2927,301 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             {titleErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300, marginTop:4 }}>{titleErr}</div>}
           </div>
 
-          <div><Label th={th}>Date</Label>
-            <input type="date" style={inp} value={ev.date} onChange={e => set('date', e.target.value)} />
-          </div>
-
-          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-            <span style={{ fontSize:14, fontWeight:300, ...th.text }}>All Day</span>
-            <Toggle val={ev.allDay} onChange={v => { set('allDay', v); if (!v) set('endDate', '') }} accent={th.accent} />
-          </div>
-
-          {ev.allDay && !ev.recurrenceId && ev.recurrence === 'none' && (
-            <div><Label th={th}>End Date</Label>
-              <input type="date" style={inp} value={ev.endDate || ev.date} min={ev.date}
-                onChange={e => set('endDate', e.target.value === ev.date ? '' : e.target.value)} />
-            </div>
-          )}
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10,
-            opacity: ev.allDay ? 0.35 : 1, pointerEvents: ev.allDay ? 'none' : 'auto',
-            transition:'opacity 0.2s' }}>
-              <div><Label th={th}>Start</Label>
-                <input type="time" style={inp} value={ev.start} onChange={e => {
-                  const newStart = e.target.value
-                  set('start', newStart)
-                  // Auto-adjust end to 1 hour after new start
-                  const [h, mins] = newStart.split(':').map(Number)
-                  const endH = String((h + 1) % 24).padStart(2, '0')
-                  set('end', endH + ':' + String(mins).padStart(2, '0'))
-                }} />
+          {/* ── Section: When ── */}
+          <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
+            <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+              textTransform:'uppercase', marginBottom:12 }}>When</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div><Label th={th}>Date</Label>
+                <input type="date" style={inp} value={ev.date} onChange={e => set('date', e.target.value)} />
               </div>
-              <div><Label th={th}>End</Label>
-                <input type="time" style={inp} value={ev.end} onChange={e => set('end', e.target.value)} />
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <span style={{ fontSize:14, fontWeight:300, ...th.text }}>All Day</span>
+                <Toggle val={ev.allDay} onChange={v => { set('allDay', v); if (!v) set('endDate', '') }} accent={th.accent} />
               </div>
+              {ev.allDay && !ev.recurrenceId && ev.recurrence === 'none' && (
+                <div><Label th={th}>End Date</Label>
+                  <input type="date" style={inp} value={ev.endDate || ev.date} min={ev.date}
+                    onChange={e => set('endDate', e.target.value === ev.date ? '' : e.target.value)} />
+                </div>
+              )}
+              {!ev.allDay && (
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <div><Label th={th}>Start</Label>
+                    <input type="time" style={inp} value={ev.start} onChange={e => {
+                      const newStart = e.target.value
+                      set('start', newStart)
+                      const [h, mins] = newStart.split(':').map(Number)
+                      const endH = String((h + 1) % 24).padStart(2, '0')
+                      set('end', endH + ':' + String(mins).padStart(2, '0'))
+                    }} />
+                  </div>
+                  <div><Label th={th}>End</Label>
+                    <input type="time" style={inp} value={ev.end} onChange={e => set('end', e.target.value)} />
+                  </div>
+                </div>
+              )}
             </div>
-
-          <div>
-            <Label th={th}>Reminder(s)</Label>
-            <RemindersEditor
-              th={th}
-              reminders={reminders}
-              setReminders={setReminders}
-            />
           </div>
 
-          {ev.groups && ev.groups.length > 0 && isEventCreator && (
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
-              <Label th={th}>Request RSVP</Label>
-              <button onClick={() => set('rsvpEnabled', !ev.rsvpEnabled)}
-                style={{ width:44, height:26, borderRadius:13, border:'none', cursor:'pointer',
-                  background: ev.rsvpEnabled ? th.accent : th.border, position:'relative',
-                  transition:'background 150ms var(--easing)' }}>
-                <div style={{ position:'absolute', top:3, left: ev.rsvpEnabled ? 21 : 3,
-                  width:20, height:20, borderRadius:10, background:'#fff',
-                  transition:'left 150ms var(--easing)' }} />
-              </button>
-            </div>
-          )}
+          {/* ── Section: Reminders ── */}
+          <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
+            <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+              textTransform:'uppercase', marginBottom:12 }}>Reminders</div>
+            <RemindersEditor th={th} reminders={reminders} setReminders={setReminders} />
+          </div>
 
-          {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (
-            <div>
-              <Label th={th}>Responses</Label>
-              {(() => {
-                const going    = rsvpList.filter(r => r.status === 'going')
-                const declined = rsvpList.filter(r => r.status === 'declined')
-                const respIds = new Set(rsvpList.map(r => r.memberId))
-                // Invited = all group members across event's groups, minus creator
-                const invited = []
-                const seen = new Set()
-                for (const gid of (ev.groups ?? [])) {
-                  const g = groups.find(x => x.id === gid)
-                  if (!g) continue
-                  for (const m of (g.members ?? [])) {
-                    if (m.id === ev.creatorId || m.id === profile?.id) continue
-                    if (!seen.has(m.id)) { seen.add(m.id); invited.push(m) }
-                  }
-                }
-                const pending = invited.filter(m => !respIds.has(m.id))
-                const nameFor = (id) => invited.find(m => m.id === id)?.name || id.slice(0,6)
-                return (
-                  <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
-                    padding:'10px 14px', border:`1px solid ${th.border}`, borderRadius:8,
-                    fontSize:13, fontWeight:300, color:th.text.color }}>
-                    <div>{going.length} going · {declined.length} declined · {pending.length} pending</div>
-                    {rsvpExpanded && (
-                      <div style={{ marginTop:8, display:'flex', flexDirection:'column', gap:4, fontSize:12 }}>
-                        {going.length > 0 && <div><span style={{ color:'#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
-                        {declined.length > 0 && <div><span style={{ color:'#D45F7A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
-                        {pending.length > 0 && <div><span style={{ color:th.muted }}>?</span> {pending.map(m => m.name).join(', ')}</div>}
-                      </div>
+          {/* ── Section: Share ── */}
+          <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
+            <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+              textTransform:'uppercase', marginBottom:12 }}>Share</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div>
+                <Label th={th}>Peer Group(s)</Label>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
+                  {groups.map(g => {
+                    const sel = ev.groups.includes(g.id)
+                    return (
+                      <button key={g.id} onClick={() => toggleGroup(g.id)}
+                        style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
+                          background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
+                          fontSize:13, fontWeight:300, cursor:'pointer',
+                          display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
+                          display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          {g.icon
+                            ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                            : g.emoji}
+                        </span>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section: Details (expanders) ── */}
+          <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
+            <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+              textTransform:'uppercase', marginBottom:12 }}>Details</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {/* Meeting Link */}
+              {mlOpen ? (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                    <Label th={th}>Meeting Link</Label>
+                    {!ev.meetingLink && (
+                      <button onClick={() => setMlOpen(false)}
+                        style={{ background:'none', border:'none', cursor:'pointer',
+                          color:th.muted, fontSize:16, padding:'0 4px', lineHeight:1 }}>×</button>
                     )}
                   </div>
-                )
-              })()}
-            </div>
-          )}
-
-          {modal.mode === 'create' && <div><Label th={th}>Who can edit?</Label>
-            <div style={{ display:'flex', gap:8 }}>
-              {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
-                <button key={val} onClick={() => set('editPermission', val)}
-                  style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
-                    cursor:'pointer',
-                    border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
-                    background: ev.editPermission === val ? th.accent : 'transparent',
-                    color: ev.editPermission === val ? '#fff' : th.muted }}>
-                  {label}
+                  <input style={inp} placeholder="Zoom, Meet, Webex, or Keet link…"
+                    value={ev.meetingLink ?? ''} onChange={e => set('meetingLink', e.target.value)} />
+                  {ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && (
+                    <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
+                      style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
+                        marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                        border:`1px solid ${th.border}`, ...th.card }}>
+                      <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize:12, fontWeight:300, color:th.accent,
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {ev.meetingLink.trim()}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button onClick={() => setMlOpen(true)}
+                  style={{ display:'flex', alignItems:'center', gap:8,
+                    padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                    border:`1px dashed ${th.border}`, background:'transparent',
+                    color:th.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                  + Add Meeting Link
                 </button>
-              ))}
-            </div>
-          </div>}
+              )}
 
-          {(modal.mode === 'create' || !ev.recurrenceId) && (
-            <div><Label th={th}>Repeat</Label>
-              <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
-                onChange={e => {
-                  const val = e.target.value
-                  set('recurrence', val)
-                  if (val === 'monthly-nth' && ev.date) {
-                    const d = new Date(ev.date + 'T12:00:00')
-                    const weekday = d.getDay()
-                    let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
-                    while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
-                    set('recurrenceNth', nth)
-                    set('recurrenceWeekday', weekday)
-                  }
-                  if (val !== 'none' && !ev.recurrenceEnd) {
-                    const [y,m,d] = ev.date.split('-').map(Number)
-                    const end = new Date(y+1, m-1, d)
-                    const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
-                    set('recurrenceEnd', fmt(end))
-                  }
-                }}>
-                <option value="none">Does not repeat</option>
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="biweekly">Every 2 weeks</option>
-                <option value="monthly">Monthly (same date)</option>
-                <option value="monthly-nth">Monthly (same weekday)</option>
-                <option value="yearly">Yearly</option>
-              </select>
-            </div>
-          )}
+              {/* Location */}
+              {locOpen ? (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                    <Label th={th}>Location</Label>
+                    {!ev.location && (
+                      <button onClick={() => setLocOpen(false)}
+                        style={{ background:'none', border:'none', cursor:'pointer',
+                          color:th.muted, fontSize:16, padding:'0 4px', lineHeight:1 }}>×</button>
+                    )}
+                  </div>
+                  <input style={inp} placeholder="Address, place, or landmark…"
+                    value={ev.location ?? ''} onChange={e => set('location', e.target.value)} />
+                </div>
+              ) : (
+                <button onClick={() => setLocOpen(true)}
+                  style={{ display:'flex', alignItems:'center', gap:8,
+                    padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                    border:`1px dashed ${th.border}`, background:'transparent',
+                    color:th.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                  + Add Location
+                </button>
+              )}
 
-          {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && (
-            <div><Label th={th}>Repeat until</Label>
-              <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
-                onChange={e => set('recurrenceEnd', e.target.value)} />
-            </div>
-          )}
-
-          <div>
-            <Label th={th}>Share with Peer Group(s)</Label>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
-              {groups.map(g => {
-                const sel = ev.groups.includes(g.id)
-                return (
-                  <button key={g.id} onClick={() => toggleGroup(g.id)}
-                    style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
-                      background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
-                      fontSize:13, fontWeight:300, cursor:'pointer',
-                      display:'flex', alignItems:'center', gap:6 }}>
-                    <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
-                      display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                      {g.icon
-                        ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                        : g.emoji}
-                    </span>
-                    {g.name}
-                  </button>
-                )
-              })}
+              {/* Notes */}
+              {notesOpen ? (
+                <div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                    <Label th={th}>Notes</Label>
+                    {!ev.desc && (
+                      <button onClick={() => setNotesOpen(false)}
+                        style={{ background:'none', border:'none', cursor:'pointer',
+                          color:th.muted, fontSize:16, padding:'0 4px', lineHeight:1 }}>×</button>
+                    )}
+                  </div>
+                  <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
+                    value={ev.desc} onChange={e => set('desc', e.target.value)} />
+                  {extractURLs(ev.desc).map(url => (
+                    <div key={url}
+                      onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(url) }}
+                      style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
+                        marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+                        border:`1px solid ${th.border}`, ...th.card }}>
+                      <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize:12, fontWeight:300, color:th.accent,
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        {url}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <button onClick={() => setNotesOpen(true)}
+                  style={{ display:'flex', alignItems:'center', gap:8,
+                    padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                    border:`1px dashed ${th.border}`, background:'transparent',
+                    color:th.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                  + Add Notes
+                </button>
+              )}
             </div>
           </div>
 
-          {allMembers.length > 0 && (
-            <div>
-              <Label th={th}>Invite Members</Label>
-              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
-                {allMembers.map(m => {
-                  const sel = ev.invitees.includes(m.id)
-                  const g   = groups.find(x => x.members.some(mb => mb.id === m.id))
-                  const col = g ? g.color : '#888'
-                  return (
-                    <button key={m.id} onClick={() => toggleInvitee(m.id)}
-                      style={{ display:'flex', alignItems:'center', gap:6,
-                        padding:'5px 12px 5px 6px', borderRadius:20,
-                        border:`2px solid ${col}`, background:sel ? col : 'transparent',
-                        cursor:'pointer', fontFamily:FONT }}>
-                      <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
-                      <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.nickname || m.name}</span>
+          {/* ── More Options (collapsed by default) ── */}
+          <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:10, marginTop:2 }}>
+            <div onClick={() => setMoreOpen(o => !o)}
+              style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+                cursor:'pointer', padding:'4px 0' }}>
+              <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+                textTransform:'uppercase' }}>More Options</div>
+              <CaretRight size={14} weight="thin" color="var(--color-muted)"
+                style={{ transition:'transform 0.25s',
+                  transform: moreOpen ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+            </div>
+            <div style={{ maxHeight: moreOpen ? '1200px' : '0px', overflow:'hidden',
+              transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+              <div style={{ display:'flex', flexDirection:'column', gap:14, paddingTop:12 }}>
+                {/* Repeat */}
+                {(modal.mode === 'create' || !ev.recurrenceId) && (
+                  <div><Label th={th}>Repeat</Label>
+                    <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
+                      onChange={e => {
+                        const val = e.target.value
+                        set('recurrence', val)
+                        if (val === 'monthly-nth' && ev.date) {
+                          const d = new Date(ev.date + 'T12:00:00')
+                          const weekday = d.getDay()
+                          let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                          while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                          set('recurrenceNth', nth)
+                          set('recurrenceWeekday', weekday)
+                        }
+                        if (val !== 'none' && !ev.recurrenceEnd) {
+                          const [y,m,d] = ev.date.split('-').map(Number)
+                          const end = new Date(y+1, m-1, d)
+                          const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
+                          set('recurrenceEnd', fmt(end))
+                        }
+                      }}>
+                      <option value="none">Does not repeat</option>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Every 2 weeks</option>
+                      <option value="monthly">Monthly (same date)</option>
+                      <option value="monthly-nth">Monthly (same weekday)</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </div>
+                )}
+                {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && (
+                  <div><Label th={th}>Repeat until</Label>
+                    <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
+                      onChange={e => set('recurrenceEnd', e.target.value)} />
+                  </div>
+                )}
+
+                {/* Request RSVP */}
+                {ev.groups && ev.groups.length > 0 && isEventCreator && (
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
+                    <Label th={th}>Request RSVP</Label>
+                    <button onClick={() => set('rsvpEnabled', !ev.rsvpEnabled)}
+                      style={{ width:44, height:26, borderRadius:13, border:'none', cursor:'pointer',
+                        background: ev.rsvpEnabled ? th.accent : th.border, position:'relative',
+                        transition:'background 150ms var(--easing)' }}>
+                      <div style={{ position:'absolute', top:3, left: ev.rsvpEnabled ? 21 : 3,
+                        width:20, height:20, borderRadius:10, background:'#fff',
+                        transition:'left 150ms var(--easing)' }} />
                     </button>
-                  )
-                })}
+                  </div>
+                )}
+
+                {/* Invite Members */}
+                {allMembers.length > 0 && (
+                  <div>
+                    <Label th={th}>Invite Select Members</Label>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
+                      {allMembers.map(m => {
+                        const sel = ev.invitees.includes(m.id)
+                        const g   = groups.find(x => x.members.some(mb => mb.id === m.id))
+                        const col = g ? g.color : '#888'
+                        return (
+                          <button key={m.id} onClick={() => toggleInvitee(m.id)}
+                            style={{ display:'flex', alignItems:'center', gap:6,
+                              padding:'5px 12px 5px 6px', borderRadius:20,
+                              border:`2px solid ${col}`, background:sel ? col : 'transparent',
+                              cursor:'pointer', fontFamily:FONT }}>
+                            <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
+                            <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.nickname || m.name}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Who can edit? (consolidated — shown in create mode or edit-mode-if-creator) */}
+                {(modal.mode === 'create' ||
+                  (modal.mode === 'edit' && ev.creatorId !== 'system' &&
+                   ev.creatorId && profile?.id && ev.creatorId === profile.id)) && (
+                  <div><Label th={th}>Who can edit?</Label>
+                    <div style={{ display:'flex', gap:8 }}>
+                      {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
+                        <button key={val} onClick={() => set('editPermission', val)}
+                          style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                            cursor:'pointer',
+                            border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
+                            background: ev.editPermission === val ? th.accent : 'transparent',
+                            color: ev.editPermission === val ? '#fff' : th.muted }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
-          )}
-
-          <div><Label th={th}>Meeting Link</Label>
-            <input style={inp} placeholder="Zoom, Meet, Webex, or Keet link…"
-              value={ev.meetingLink ?? ''} onChange={e => set('meetingLink', e.target.value)} />
-            {ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && (
-              <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
-                style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
-                  marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
-                  border:`1px solid ${th.border}`, ...th.card }}>
-                <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize:12, fontWeight:300, color:th.accent,
-                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                  {ev.meetingLink.trim()}
-                </span>
-              </div>
-            )}
           </div>
 
-          <div><Label th={th}>Location</Label>
-            <input style={inp} placeholder="Address, place, or landmark…"
-              value={ev.location ?? ''} onChange={e => set('location', e.target.value)} />
-          </div>
-
-          <div><Label th={th}>Notes</Label>
-            <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
-              value={ev.desc} onChange={e => set('desc', e.target.value)} />
-            {extractURLs(ev.desc).map(url => (
-              <div key={url}
-                onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(url) }}
-                style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
-                  marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
-                  border:`1px solid ${th.border}`, ...th.card }}>
-                <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
-                <span style={{ fontSize:12, fontWeight:300, color:th.accent,
-                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                  {url}
-                </span>
-              </div>
-            ))}
-          </div>
-
+          {/* Recurring series hint */}
           {modal.mode === 'edit' && ev.recurrenceId && (
             <div style={{ fontSize:12, fontWeight:300, color:th.muted,
               display:'flex', alignItems:'center', gap:6 }}>
@@ -3105,27 +3229,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               {' '}Recurring series — editing this occurrence only
             </div>
           )}
-
-          {modal.mode === 'edit' && ev.creatorId !== 'system' && (() => {
-            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
-            if (isCreator) return (
-              <div><Label th={th}>Who can edit?</Label>
-                <div style={{ display:'flex', gap:8 }}>
-                  {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
-                    <button key={val} onClick={() => set('editPermission', val)}
-                      style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
-                        cursor:'pointer',
-                        border:'1.5px solid ' + (ev.editPermission === val ? th.accent : th.border),
-                        background: ev.editPermission === val ? th.accent : 'transparent',
-                        color: ev.editPermission === val ? '#fff' : th.muted }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )
-            return null
-          })()}
 
           </div>
 
@@ -3164,14 +3267,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 {' '}Read only — only the creator can edit this event
               </div>
             )
-            return (
-              <button onClick={handleSave}
-                style={{ ...th.pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
-                  marginTop:4,
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {modal.mode === 'create' ? 'Create Event' : 'Save Changes'}
-              </button>
-            )
+            return null
           })()}
 
           {modal.mode === 'edit' && (() => {

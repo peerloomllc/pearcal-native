@@ -19348,6 +19348,10 @@
         console.warn("[RSVP-ERR]", e55?.message);
       }
     }
+    const [moreOpen, setMoreOpen] = (0, import_react2.useState)(false);
+    const [mlOpen, setMlOpen] = (0, import_react2.useState)(!!modal.event?.meetingLink);
+    const [locOpen, setLocOpen] = (0, import_react2.useState)(!!modal.event?.location);
+    const [notesOpen, setNotesOpen] = (0, import_react2.useState)(!!modal.event?.desc);
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
     const [pastEvents, setPastEvents] = (0, import_react2.useState)(/* @__PURE__ */ new Map());
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
@@ -19413,8 +19417,50 @@
       transition: "border-color var(--duration-fast) var(--easing)"
     };
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(BottomSheet, { th, onClose: () => setModal(null), zIndex: 100, closeRef: bsCloseRef, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: modal.mode === "create" ? "New Event" : "Edit Event" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        background: "var(--color-bg)",
+        padding: "12px 20px",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 10,
+        borderBottom: `1px solid ${th.border}`
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+          fontWeight: 300,
+          fontSize: 17,
+          ...th.text,
+          flex: 1,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap"
+        }, children: modal.mode === "create" ? "New Event" : "Edit Event" }),
+        (() => {
+          const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
+          const isHoliday = modal.mode === "edit" && ev.creatorId === "system";
+          const isReadOnly = modal.mode === "edit" && ev.editPermission === "creator" && !isCreator;
+          if (isHoliday || isReadOnly) return null;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: handleSave,
+              style: {
+                ...th.pillBtn,
+                padding: "7px 16px",
+                fontSize: 13,
+                fontWeight: 300,
+                display: "flex",
+                alignItems: "center",
+                gap: 4
+              },
+              children: modal.mode === "create" ? "Create" : "Save"
+            }
+          );
+        })(),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
       (() => {
@@ -19435,6 +19481,89 @@
           opacity: modal.mode === "edit" && (ev.creatorId === "system" || ev.editPermission === "creator" && !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? 0.45 : 1,
           pointerEvents: modal.mode === "edit" && (ev.creatorId === "system" || ev.editPermission === "creator" && !(ev.creatorId && profile?.id && ev.creatorId === profile.id)) ? "none" : "auto"
         }, children: [
+          modal.mode === "edit" && ev.rsvpEnabled && isEventCreator && (() => {
+            const going = rsvpList.filter((r7) => r7.status === "going");
+            const declined = rsvpList.filter((r7) => r7.status === "declined");
+            const respIds = new Set(rsvpList.map((r7) => r7.memberId));
+            const invited = [];
+            const seen = /* @__PURE__ */ new Set();
+            for (const gid of ev.groups ?? []) {
+              const g = groups.find((x) => x.id === gid);
+              if (!g) continue;
+              for (const m3 of g.members ?? []) {
+                if (m3.id === ev.creatorId || m3.id === profile?.id) continue;
+                if (!seen.has(m3.id)) {
+                  seen.add(m3.id);
+                  invited.push(m3);
+                }
+              }
+            }
+            const pending = invited.filter((m3) => !respIds.has(m3.id));
+            const nameFor = (id) => invited.find((m3) => m3.id === id)?.name || id.slice(0, 6);
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { onClick: () => setRsvpExpanded((e55) => !e55), style: {
+              cursor: "pointer",
+              padding: "10px 14px",
+              border: `1px solid ${th.border}`,
+              borderRadius: 10,
+              fontSize: 13,
+              fontWeight: 300,
+              color: th.text.color,
+              display: "flex",
+              flexDirection: "column",
+              gap: 6
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A" }, children: "\u2713" }),
+                    " ",
+                    going.length,
+                    " going"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A" }, children: "\u2717" }),
+                    " ",
+                    declined.length,
+                    " declined"
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted }, children: [
+                    "? ",
+                    pending.length,
+                    " pending"
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  s3,
+                  {
+                    size: 13,
+                    weight: "thin",
+                    color: "var(--color-muted)",
+                    style: {
+                      transition: "transform 0.25s",
+                      transform: rsvpExpanded ? "rotate(90deg)" : "rotate(0deg)"
+                    }
+                  }
+                )
+              ] }),
+              rsvpExpanded && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4, fontSize: 12, marginTop: 2 }, children: [
+                going.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A" }, children: "\u2713" }),
+                  " ",
+                  going.map((r7) => nameFor(r7.memberId)).join(", ")
+                ] }),
+                declined.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A" }, children: "\u2717" }),
+                  " ",
+                  declined.map((r7) => nameFor(r7.memberId)).join(", ")
+                ] }),
+                pending.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: "?" }),
+                  " ",
+                  pending.map((m3) => m3.name).join(", ")
+                ] })
+              ] })
+            ] });
+          })(),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
               "input",
@@ -19513,397 +19642,525 @@
             }) }),
             titleErr && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300, marginTop: 4 }, children: titleErr })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Date" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "date", style: inp, value: ev.date, onChange: (e55) => set("date", e55.target.value) })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "All Day" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => {
-              set("allDay", v);
-              if (!v) set("endDate", "");
-            }, accent: th.accent })
-          ] }),
-          ev.allDay && !ev.recurrenceId && ev.recurrence === "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End Date" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                type: "date",
-                style: inp,
-                value: ev.endDate || ev.date,
-                min: ev.date,
-                onChange: (e55) => set("endDate", e55.target.value === ev.date ? "" : e55.target.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr",
-            gap: 10,
-            opacity: ev.allDay ? 0.35 : 1,
-            pointerEvents: ev.allDay ? "none" : "auto",
-            transition: "opacity 0.2s"
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Start" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.start, onChange: (e55) => {
-                const newStart = e55.target.value;
-                set("start", newStart);
-                const [h2, mins] = newStart.split(":").map(Number);
-                const endH = String((h2 + 1) % 24).padStart(2, "0");
-                set("end", endH + ":" + String(mins).padStart(2, "0"));
-              } })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.end, onChange: (e55) => set("end", e55.target.value) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 10,
+              fontWeight: 400,
+              color: th.muted,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12
+            }, children: "When" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Date" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "date", style: inp, value: ev.date, onChange: (e55) => set("date", e55.target.value) })
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "All Day" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: ev.allDay, onChange: (v) => {
+                  set("allDay", v);
+                  if (!v) set("endDate", "");
+                }, accent: th.accent })
+              ] }),
+              ev.allDay && !ev.recurrenceId && ev.recurrence === "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End Date" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "date",
+                    style: inp,
+                    value: ev.endDate || ev.date,
+                    min: ev.date,
+                    onChange: (e55) => set("endDate", e55.target.value === ev.date ? "" : e55.target.value)
+                  }
+                )
+              ] }),
+              !ev.allDay && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Start" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.start, onChange: (e55) => {
+                    const newStart = e55.target.value;
+                    set("start", newStart);
+                    const [h2, mins] = newStart.split(":").map(Number);
+                    const endH = String((h2 + 1) % 24).padStart(2, "0");
+                    set("end", endH + ":" + String(mins).padStart(2, "0"));
+                  } })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev.end, onChange: (e55) => set("end", e55.target.value) })
+                ] })
+              ] })
             ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Reminder(s)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              RemindersEditor,
-              {
-                th,
-                reminders,
-                setReminders
-              }
-            )
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 10,
+              fontWeight: 400,
+              color: th.muted,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12
+            }, children: "Reminders" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(RemindersEditor, { th, reminders, setReminders })
           ] }),
-          ev.groups && ev.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Request RSVP" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                onClick: () => set("rsvpEnabled", !ev.rsvpEnabled),
-                style: {
-                  width: 44,
-                  height: 26,
-                  borderRadius: 13,
-                  border: "none",
-                  cursor: "pointer",
-                  background: ev.rsvpEnabled ? th.accent : th.border,
-                  position: "relative",
-                  transition: "background 150ms var(--easing)"
-                },
-                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                  position: "absolute",
-                  top: 3,
-                  left: ev.rsvpEnabled ? 21 : 3,
-                  width: 20,
-                  height: 20,
-                  borderRadius: 10,
-                  background: "#fff",
-                  transition: "left 150ms var(--easing)"
-                } })
-              }
-            )
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 10,
+              fontWeight: 400,
+              color: th.muted,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12
+            }, children: "Share" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
+                const sel = ev.groups.includes(g.id);
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "button",
+                  {
+                    onClick: () => toggleGroup(g.id),
+                    style: {
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      border: `2px solid ${g.color}`,
+                      fontFamily: FONT,
+                      background: sel ? g.color : "transparent",
+                      color: sel ? "#fff" : g.color,
+                      fontSize: 13,
+                      fontWeight: 300,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                        width: 18,
+                        height: 18,
+                        borderRadius: 4,
+                        overflow: "hidden",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        flexShrink: 0
+                      }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                      g.name
+                    ]
+                  },
+                  g.id
+                );
+              }) })
+            ] }) })
           ] }),
-          modal.mode === "edit" && ev.rsvpEnabled && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Responses" }),
-            (() => {
-              const going = rsvpList.filter((r7) => r7.status === "going");
-              const declined = rsvpList.filter((r7) => r7.status === "declined");
-              const respIds = new Set(rsvpList.map((r7) => r7.memberId));
-              const invited = [];
-              const seen = /* @__PURE__ */ new Set();
-              for (const gid of ev.groups ?? []) {
-                const g = groups.find((x) => x.id === gid);
-                if (!g) continue;
-                for (const m3 of g.members ?? []) {
-                  if (m3.id === ev.creatorId || m3.id === profile?.id) continue;
-                  if (!seen.has(m3.id)) {
-                    seen.add(m3.id);
-                    invited.push(m3);
-                  }
-                }
-              }
-              const pending = invited.filter((m3) => !respIds.has(m3.id));
-              const nameFor = (id) => invited.find((m3) => m3.id === id)?.name || id.slice(0, 6);
-              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { onClick: () => setRsvpExpanded((e55) => !e55), style: {
-                cursor: "pointer",
-                padding: "10px 14px",
-                border: `1px solid ${th.border}`,
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 300,
-                color: th.text.color
-              }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  going.length,
-                  " going \xB7 ",
-                  declined.length,
-                  " declined \xB7 ",
-                  pending.length,
-                  " pending"
-                ] }),
-                rsvpExpanded && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }, children: [
-                  going.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A" }, children: "\u2713" }),
-                    " ",
-                    going.map((r7) => nameFor(r7.memberId)).join(", ")
-                  ] }),
-                  declined.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A" }, children: "\u2717" }),
-                    " ",
-                    declined.map((r7) => nameFor(r7.memberId)).join(", ")
-                  ] }),
-                  pending.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: "?" }),
-                    " ",
-                    pending.map((m3) => m3.name).join(", ")
-                  ] })
-                ] })
-              ] });
-            })()
-          ] }),
-          modal.mode === "create" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Who can edit?" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["everyone", "Everyone"], ["creator", "Only me"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                onClick: () => set("editPermission", val),
-                style: {
-                  flex: 1,
-                  padding: "8px 0",
-                  borderRadius: 10,
-                  fontSize: 13,
-                  fontWeight: 300,
-                  cursor: "pointer",
-                  border: "1.5px solid " + (ev.editPermission === val ? th.accent : th.border),
-                  background: ev.editPermission === val ? th.accent : "transparent",
-                  color: ev.editPermission === val ? "#fff" : th.muted
-                },
-                children: label
-              },
-              val
-            )) })
-          ] }),
-          (modal.mode === "create" || !ev.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-              "select",
-              {
-                style: { ...inp, appearance: "none" },
-                value: ev.recurrence ?? "none",
-                onChange: (e55) => {
-                  const val = e55.target.value;
-                  set("recurrence", val);
-                  if (val === "monthly-nth" && ev.date) {
-                    const d = /* @__PURE__ */ new Date(ev.date + "T12:00:00");
-                    const weekday = d.getDay();
-                    let nth = 0;
-                    const tmp = new Date(d.getFullYear(), d.getMonth(), 1);
-                    while (tmp <= d) {
-                      if (tmp.getDay() === weekday) nth++;
-                      tmp.setDate(tmp.getDate() + 1);
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 10,
+              fontWeight: 400,
+              color: th.muted,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 12
+            }, children: "Details" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10 }, children: [
+              mlOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Meeting Link" }),
+                  !ev.meetingLink && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => setMlOpen(false),
+                      style: {
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: th.muted,
+                        fontSize: 16,
+                        padding: "0 4px",
+                        lineHeight: 1
+                      },
+                      children: "\xD7"
                     }
-                    set("recurrenceNth", nth);
-                    set("recurrenceWeekday", weekday);
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    style: inp,
+                    placeholder: "Zoom, Meet, Webex, or Keet link\u2026",
+                    value: ev.meetingLink ?? "",
+                    onChange: (e55) => set("meetingLink", e55.target.value)
                   }
-                  if (val !== "none" && !ev.recurrenceEnd) {
-                    const [y, m3, d] = ev.date.split("-").map(Number);
-                    const end = new Date(y + 1, m3 - 1, d);
-                    const fmt = (dt) => String(dt.getFullYear()) + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
-                    set("recurrenceEnd", fmt(end));
+                ),
+                ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "div",
+                  {
+                    onClick: (e55) => {
+                      e55.stopPropagation();
+                      window.__pearSync?.openURL(ev.meetingLink.trim());
+                    },
+                    style: {
+                      pointerEvents: "auto",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      border: `1px solid ${th.border}`,
+                      ...th.card
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                        fontSize: 12,
+                        fontWeight: 300,
+                        color: th.accent,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }, children: ev.meetingLink.trim() })
+                    ]
                   }
-                },
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "none", children: "Does not repeat" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "daily", children: "Daily" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "weekly", children: "Weekly" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "biweekly", children: "Every 2 weeks" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly", children: "Monthly (same date)" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly-nth", children: "Monthly (same weekday)" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "yearly", children: "Yearly" })
-                ]
-              }
-            )
-          ] }),
-          (modal.mode === "create" || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                type: "date",
-                style: inp,
-                value: ev.recurrenceEnd ?? "",
-                onChange: (e55) => set("recurrenceEnd", e55.target.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Share with Peer Group(s)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
-              const sel = ev.groups.includes(g.id);
-              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                )
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "button",
                 {
-                  onClick: () => toggleGroup(g.id),
+                  onClick: () => setMlOpen(true),
                   style: {
-                    padding: "6px 14px",
-                    borderRadius: 20,
-                    border: `2px solid ${g.color}`,
-                    fontFamily: FONT,
-                    background: sel ? g.color : "transparent",
-                    color: sel ? "#fff" : g.color,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    border: `1px dashed ${th.border}`,
+                    background: "transparent",
+                    color: th.muted,
                     fontSize: 13,
                     fontWeight: 300,
-                    cursor: "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6
+                    fontFamily: FONT,
+                    width: "100%"
                   },
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                      width: 18,
-                      height: 18,
-                      borderRadius: 4,
-                      overflow: "hidden",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 14,
-                      flexShrink: 0
-                    }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
-                    g.name
-                  ]
-                },
-                g.id
-              );
-            }) })
-          ] }),
-          allMembers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Invite Members" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: allMembers.map((m3) => {
-              const sel = ev.invitees.includes(m3.id);
-              const g = groups.find((x) => x.members.some((mb) => mb.id === m3.id));
-              const col = g ? g.color : "#888";
-              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  children: "+ Add Meeting Link"
+                }
+              ),
+              locOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
+                  !ev.location && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => setLocOpen(false),
+                      style: {
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: th.muted,
+                        fontSize: 16,
+                        padding: "0 4px",
+                        lineHeight: 1
+                      },
+                      children: "\xD7"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    style: inp,
+                    placeholder: "Address, place, or landmark\u2026",
+                    value: ev.location ?? "",
+                    onChange: (e55) => set("location", e55.target.value)
+                  }
+                )
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "button",
                 {
-                  onClick: () => toggleInvitee(m3.id),
+                  onClick: () => setLocOpen(true),
                   style: {
                     display: "flex",
                     alignItems: "center",
-                    gap: 6,
-                    padding: "5px 12px 5px 6px",
-                    borderRadius: 20,
-                    border: `2px solid ${col}`,
-                    background: sel ? col : "transparent",
+                    gap: 8,
+                    padding: "10px 12px",
+                    borderRadius: 10,
                     cursor: "pointer",
-                    fontFamily: FONT
+                    border: `1px dashed ${th.border}`,
+                    background: "transparent",
+                    color: th.muted,
+                    fontSize: 13,
+                    fontWeight: 300,
+                    fontFamily: FONT,
+                    width: "100%"
                   },
-                  children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.nickname || m3.name, color: col, size: 24, fontSize: 11 }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m3.nickname || m3.name })
-                  ]
-                },
-                m3.id
-              );
-            }) })
+                  children: "+ Add Location"
+                }
+              ),
+              notesOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
+                  !ev.desc && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => setNotesOpen(false),
+                      style: {
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: th.muted,
+                        fontSize: 16,
+                        padding: "0 4px",
+                        lineHeight: 1
+                      },
+                      children: "\xD7"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "textarea",
+                  {
+                    style: { ...inp, resize: "none", minHeight: 60 },
+                    placeholder: "Optional notes\u2026",
+                    value: ev.desc,
+                    onChange: (e55) => set("desc", e55.target.value)
+                  }
+                ),
+                extractURLs(ev.desc).map((url) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "div",
+                  {
+                    onClick: (e55) => {
+                      e55.stopPropagation();
+                      window.__pearSync?.openURL(url);
+                    },
+                    style: {
+                      pointerEvents: "auto",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      marginTop: 6,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      border: `1px solid ${th.border}`,
+                      ...th.card
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                        fontSize: 12,
+                        fontWeight: 300,
+                        color: th.accent,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap"
+                      }, children: url })
+                    ]
+                  },
+                  url
+                ))
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: () => setNotesOpen(true),
+                  style: {
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    cursor: "pointer",
+                    border: `1px dashed ${th.border}`,
+                    background: "transparent",
+                    color: th.muted,
+                    fontSize: 13,
+                    fontWeight: 300,
+                    fontFamily: FONT,
+                    width: "100%"
+                  },
+                  children: "+ Add Notes"
+                }
+              )
+            ] })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Meeting Link" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                style: inp,
-                placeholder: "Zoom, Meet, Webex, or Keet link\u2026",
-                value: ev.meetingLink ?? "",
-                onChange: (e55) => set("meetingLink", e55.target.value)
-              }
-            ),
-            ev.meetingLink && /^https?:\/\//i.test(ev.meetingLink.trim()) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 10, marginTop: 2 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
               "div",
               {
-                onClick: (e55) => {
-                  e55.stopPropagation();
-                  window.__pearSync?.openURL(ev.meetingLink.trim());
-                },
+                onClick: () => setMoreOpen((o31) => !o31),
                 style: {
-                  pointerEvents: "auto",
                   display: "flex",
                   alignItems: "center",
-                  gap: 8,
-                  marginTop: 6,
-                  padding: "8px 10px",
-                  borderRadius: 8,
+                  justifyContent: "space-between",
                   cursor: "pointer",
-                  border: `1px solid ${th.border}`,
-                  ...th.card
+                  padding: "4px 0"
                 },
                 children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                    fontSize: 12,
-                    fontWeight: 300,
-                    color: th.accent,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap"
-                  }, children: ev.meetingLink.trim() })
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                    fontSize: 10,
+                    fontWeight: 400,
+                    color: th.muted,
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase"
+                  }, children: "More Options" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    s3,
+                    {
+                      size: 14,
+                      weight: "thin",
+                      color: "var(--color-muted)",
+                      style: {
+                        transition: "transform 0.25s",
+                        transform: moreOpen ? "rotate(90deg)" : "rotate(0deg)"
+                      }
+                    }
+                  )
                 ]
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Location" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "input",
-              {
-                style: inp,
-                placeholder: "Address, place, or landmark\u2026",
-                value: ev.location ?? "",
-                onChange: (e55) => set("location", e55.target.value)
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "textarea",
-              {
-                style: { ...inp, resize: "none", minHeight: 60 },
-                placeholder: "Optional notes\u2026",
-                value: ev.desc,
-                onChange: (e55) => set("desc", e55.target.value)
               }
             ),
-            extractURLs(ev.desc).map((url) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-              "div",
-              {
-                onClick: (e55) => {
-                  e55.stopPropagation();
-                  window.__pearSync?.openURL(url);
-                },
-                style: {
-                  pointerEvents: "auto",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 6,
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  border: `1px solid ${th.border}`,
-                  ...th.card
-                },
-                children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                    fontSize: 12,
-                    fontWeight: 300,
-                    color: th.accent,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap"
-                  }, children: url })
-                ]
-              },
-              url
-            ))
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              maxHeight: moreOpen ? "1200px" : "0px",
+              overflow: "hidden",
+              transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14, paddingTop: 12 }, children: [
+              (modal.mode === "create" || !ev.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "select",
+                  {
+                    style: { ...inp, appearance: "none" },
+                    value: ev.recurrence ?? "none",
+                    onChange: (e55) => {
+                      const val = e55.target.value;
+                      set("recurrence", val);
+                      if (val === "monthly-nth" && ev.date) {
+                        const d = /* @__PURE__ */ new Date(ev.date + "T12:00:00");
+                        const weekday = d.getDay();
+                        let nth = 0;
+                        const tmp = new Date(d.getFullYear(), d.getMonth(), 1);
+                        while (tmp <= d) {
+                          if (tmp.getDay() === weekday) nth++;
+                          tmp.setDate(tmp.getDate() + 1);
+                        }
+                        set("recurrenceNth", nth);
+                        set("recurrenceWeekday", weekday);
+                      }
+                      if (val !== "none" && !ev.recurrenceEnd) {
+                        const [y, m3, d] = ev.date.split("-").map(Number);
+                        const end = new Date(y + 1, m3 - 1, d);
+                        const fmt = (dt) => String(dt.getFullYear()) + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+                        set("recurrenceEnd", fmt(end));
+                      }
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "none", children: "Does not repeat" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "daily", children: "Daily" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "weekly", children: "Weekly" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "biweekly", children: "Every 2 weeks" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly", children: "Monthly (same date)" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly-nth", children: "Monthly (same weekday)" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "yearly", children: "Yearly" })
+                    ]
+                  }
+                )
+              ] }),
+              (modal.mode === "create" || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "date",
+                    style: inp,
+                    value: ev.recurrenceEnd ?? "",
+                    onChange: (e55) => set("recurrenceEnd", e55.target.value)
+                  }
+                )
+              ] }),
+              ev.groups && ev.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Request RSVP" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => set("rsvpEnabled", !ev.rsvpEnabled),
+                    style: {
+                      width: 44,
+                      height: 26,
+                      borderRadius: 13,
+                      border: "none",
+                      cursor: "pointer",
+                      background: ev.rsvpEnabled ? th.accent : th.border,
+                      position: "relative",
+                      transition: "background 150ms var(--easing)"
+                    },
+                    children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                      position: "absolute",
+                      top: 3,
+                      left: ev.rsvpEnabled ? 21 : 3,
+                      width: 20,
+                      height: 20,
+                      borderRadius: 10,
+                      background: "#fff",
+                      transition: "left 150ms var(--easing)"
+                    } })
+                  }
+                )
+              ] }),
+              allMembers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Invite Select Members" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: allMembers.map((m3) => {
+                  const sel = ev.invitees.includes(m3.id);
+                  const g = groups.find((x) => x.members.some((mb) => mb.id === m3.id));
+                  const col = g ? g.color : "#888";
+                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "button",
+                    {
+                      onClick: () => toggleInvitee(m3.id),
+                      style: {
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "5px 12px 5px 6px",
+                        borderRadius: 20,
+                        border: `2px solid ${col}`,
+                        background: sel ? col : "transparent",
+                        cursor: "pointer",
+                        fontFamily: FONT
+                      },
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.nickname || m3.name, color: col, size: 24, fontSize: 11 }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m3.nickname || m3.name })
+                      ]
+                    },
+                    m3.id
+                  );
+                }) })
+              ] }),
+              (modal.mode === "create" || modal.mode === "edit" && ev.creatorId !== "system" && ev.creatorId && profile?.id && ev.creatorId === profile.id) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Who can edit?" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["everyone", "Everyone"], ["creator", "Only me"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => set("editPermission", val),
+                    style: {
+                      flex: 1,
+                      padding: "8px 0",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 300,
+                      cursor: "pointer",
+                      border: "1.5px solid " + (ev.editPermission === val ? th.accent : th.border),
+                      background: ev.editPermission === val ? th.accent : "transparent",
+                      color: ev.editPermission === val ? "#fff" : th.muted
+                    },
+                    children: label
+                  },
+                  val
+                )) })
+              ] })
+            ] }) })
           ] }),
           modal.mode === "edit" && ev.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
             fontSize: 12,
@@ -19916,33 +20173,7 @@
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s7, { size: 13, weight: "thin", color: "var(--color-muted)" }),
             " ",
             "Recurring series \u2014 editing this occurrence only"
-          ] }),
-          modal.mode === "edit" && ev.creatorId !== "system" && (() => {
-            const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
-            if (isCreator) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Who can edit?" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["everyone", "Everyone"], ["creator", "Only me"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                "button",
-                {
-                  onClick: () => set("editPermission", val),
-                  style: {
-                    flex: 1,
-                    padding: "8px 0",
-                    borderRadius: 10,
-                    fontSize: 13,
-                    fontWeight: 300,
-                    cursor: "pointer",
-                    border: "1.5px solid " + (ev.editPermission === val ? th.accent : th.border),
-                    background: ev.editPermission === val ? th.accent : "transparent",
-                    color: ev.editPermission === val ? "#fff" : th.muted
-                  },
-                  children: label
-                },
-                val
-              )) })
-            ] });
-            return null;
-          })()
+          ] })
         ] }),
         modal.mode === "edit" && ev.rsvpEnabled && !isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Your Response" }),
@@ -19992,25 +20223,7 @@
             " ",
             "Read only \u2014 only the creator can edit this event"
           ] });
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: handleSave,
-              style: {
-                ...th.pillBtn,
-                width: "100%",
-                padding: "13px",
-                fontSize: 15,
-                fontWeight: 300,
-                marginTop: 4,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              },
-              children: modal.mode === "create" ? "Create Event" : "Save Changes"
-            }
-          );
+          return null;
         })(),
         modal.mode === "edit" && (() => {
           const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
