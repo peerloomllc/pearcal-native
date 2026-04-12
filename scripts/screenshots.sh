@@ -10,8 +10,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ -f "$REPO_ROOT/scripts/app.conf" ]; then
+  set -a; source "$REPO_ROOT/scripts/app.conf"; set +a
+fi
 MAC_MINI="${MAC_MINI_HOST:-Tims-Mac-mini.local}"
-MAC_REPO="peerloomllc/pearcal-native"  # relative to remote $HOME
+MAC_REPO="${MAC_MINI_REPO_PATH:-peerloomllc/$(basename "$REPO_ROOT")}"  # relative to remote $HOME
 OUT_DIR="$REPO_ROOT/metadata/ios/screenshots"
 
 echo "==> Bundling UI"

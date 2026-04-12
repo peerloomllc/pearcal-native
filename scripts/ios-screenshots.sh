@@ -13,8 +13,17 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Load app config (APP_NAME / BUNDLE_ID / XCODE_WORKSPACE / XCODE_SCHEME)
+if [ -f "$REPO_ROOT/scripts/app.conf" ]; then
+  set -a; source "$REPO_ROOT/scripts/app.conf"; set +a
+fi
+APP_NAME="${APP_NAME:-PearCal}"
+BUNDLE_ID="${BUNDLE_ID:-com.pearcal}"
+XCODE_WORKSPACE="${XCODE_WORKSPACE:-ios/${APP_NAME}.xcworkspace}"
+XCODE_SCHEME="${XCODE_SCHEME:-$APP_NAME}"
+
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/metadata/ios/screenshots}"
-BUNDLE_ID="com.pearcal"
 SCENES=(1 2 3 4 5)
 APPEARANCES=(light dark)
 
@@ -28,16 +37,16 @@ DEVICES=(
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
   echo "==> Building for iOS Simulator..."
   cd "$REPO_ROOT"
-  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal \
+  xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" \
     -configuration Release \
     -destination "generic/platform=iOS Simulator" \
     -sdk iphonesimulator \
     CODE_SIGNING_ALLOWED=NO 2>&1 | tail -3
 fi
 
-APP_PATH=$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphonesimulator/PearCal.app 2>/dev/null | head -1)
+APP_PATH=$(ls -d ~/Library/Developer/Xcode/DerivedData/${APP_NAME}-*/Build/Products/Release-iphonesimulator/${APP_NAME}.app 2>/dev/null | head -1)
 if [ -z "$APP_PATH" ]; then
-  echo "Error: PearCal.app not found in DerivedData" >&2
+  echo "Error: ${APP_NAME}.app not found in DerivedData" >&2
   exit 1
 fi
 echo "    App: $APP_PATH"
