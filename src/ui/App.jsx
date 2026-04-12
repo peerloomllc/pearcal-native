@@ -90,6 +90,9 @@ export function parseIcs (text) {
     else if (key === 'LOCATION')    { cur.location = _icsUnescape(value) }
     else if (key === 'URL')         { cur.meetingLink = _icsUnescape(value) }
     else if (key === 'UID')         { cur.uid = value }
+    else if (key === 'X-PEARCAL-GROUPS') {
+      cur.groups = value.split(',').map(s => s.trim()).filter(Boolean)
+    }
     else if (key === 'DTSTART') {
       const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
       if (allDay) {
@@ -161,6 +164,9 @@ export function generateIcs (events) {
     if (ev.desc)     lines.push('DESCRIPTION:' + _icsEscape(ev.desc))
     if (ev.location)    lines.push('LOCATION:' + _icsEscape(ev.location))
     if (ev.meetingLink) lines.push('URL:' + _icsEscape(ev.meetingLink))
+    if (Array.isArray(ev.groups) && ev.groups.length) {
+      lines.push('X-PEARCAL-GROUPS:' + ev.groups.join(','))
+    }
     lines.push('END:VEVENT')
   }
   lines.push('END:VCALENDAR')
@@ -4141,36 +4147,82 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   )
 }
 
-function ImportIcsSheet ({ th, events, filename, onImport, onClose }) {
+function ImportIcsSheet ({ th, events, filename, groups, existingEventIds, onImport, onClose }) {
   const bsClose = useRef(null)
+  const memberIds = new Set((groups ?? []).map(g => g.id))
+  // Compute routing per event
+  const routed = events.map(ev => {
+    const uid = ev.uid ? ev.uid.replace(/@pearcal$/, '') : null
+    const skipped = uid && existingEventIds?.has(uid)
+    const keptGroups = Array.isArray(ev.groups) ? ev.groups.filter(gid => memberIds.has(gid)) : []
+    return { ev, uid, skipped, keptGroups }
+  })
+  const toImport = routed.filter(r => !r.skipped)
+  const skippedCount = routed.length - toImport.length
+  // Summary: per-group counts + personal
+  const perGroupCount = new Map()
+  let personalCount = 0
+  for (const r of toImport) {
+    if (r.keptGroups.length === 0) personalCount++
+    else for (const gid of r.keptGroups) perGroupCount.set(gid, (perGroupCount.get(gid) ?? 0) + 1)
+  }
+  const summaryRows = []
+  if (personalCount > 0) summaryRows.push({ label: 'Personal', count: personalCount, color: null })
+  for (const [gid, count] of perGroupCount) {
+    const g = (groups ?? []).find(x => x.id === gid)
+    summaryRows.push({ label: g?.name ?? 'Unknown group', count, color: g?.color })
+  }
   return (
     <BottomSheet th={th} onClose={onClose} zIndex={250} closeRef={bsClose}>
       <div style={{ padding:'0 20px 16px' }}>
         <div style={{ fontSize:17, fontWeight:400, ...th.text, marginBottom:4 }}>
-          Import {events.length} Event{events.length !== 1 ? 's' : ''}
+          Import {toImport.length} Event{toImport.length !== 1 ? 's' : ''}
         </div>
         <div style={{ fontSize:13, color:th.muted, fontWeight:300, marginBottom:16,
           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {filename}
         </div>
-        <div style={{ maxHeight:280, overflowY:'auto', display:'flex', flexDirection:'column',
+        {summaryRows.length > 0 && (
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
+            {summaryRows.map((row, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8,
+                padding:'8px 12px', borderRadius:8, border:`1px solid ${th.border}` }}>
+                <div style={{ width:8, height:8, borderRadius:4,
+                  background: row.color ?? th.muted }} />
+                <div style={{ flex:1, fontSize:13, fontWeight:300, ...th.text }}>{row.label}</div>
+                <div style={{ fontSize:13, fontWeight:300, color:th.muted }}>{row.count}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {skippedCount > 0 && (
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:12 }}>
+            {skippedCount} event{skippedCount !== 1 ? 's' : ''} already exist — will be skipped
+          </div>
+        )}
+        <div style={{ maxHeight:220, overflowY:'auto', display:'flex', flexDirection:'column',
           gap:8, marginBottom:16 }}>
-          {events.map((ev, i) => (
+          {routed.map((r, i) => (
             <div key={i} style={{ padding:'10px 12px', borderRadius:10,
-              border:`1px solid ${th.border}`, display:'flex', flexDirection:'column', gap:3 }}>
-              <div style={{ fontSize:14, fontWeight:400, ...th.text }}>{ev.title}</div>
+              border:`1px solid ${th.border}`, display:'flex', flexDirection:'column', gap:3,
+              opacity: r.skipped ? 0.5 : 1 }}>
+              <div style={{ fontSize:14, fontWeight:400, ...th.text }}>
+                {r.ev.title}{r.skipped ? ' · (skipped)' : ''}
+              </div>
               <div style={{ fontSize:12, color:th.muted, fontWeight:300 }}>
-                {ev.date}
-                {ev.allDay
-                  ? (ev.endDate ? ` – ${ev.endDate} · All day` : ' · All day')
-                  : (ev.start ? ` · ${ev.start}${ev.end ? '–'+ev.end : ''}` : '')}
+                {r.ev.date}
+                {r.ev.allDay
+                  ? (r.ev.endDate ? ` – ${r.ev.endDate} · All day` : ' · All day')
+                  : (r.ev.start ? ` · ${r.ev.start}${r.ev.end ? '–'+r.ev.end : ''}` : '')}
               </div>
             </div>
           ))}
         </div>
-        <button onClick={onImport}
-          style={{ ...th.pillBtn, width:'100%', padding:13, fontSize:15, fontWeight:300 }}>
-          Import {events.length} Event{events.length !== 1 ? 's' : ''}
+        <button onClick={() => onImport(toImport)}
+          disabled={toImport.length === 0}
+          style={{ ...th.pillBtn, width:'100%', padding:13, fontSize:15, fontWeight:300,
+            opacity: toImport.length === 0 ? 0.4 : 1 }}>
+          Import {toImport.length} Event{toImport.length !== 1 ? 's' : ''}
         </button>
       </div>
     </BottomSheet>
@@ -4640,16 +4692,24 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
 
       {icsImport && (
         <ImportIcsSheet th={th} events={icsImport.events} filename={icsImport.filename}
-          onImport={() => {
-            if (!icsImport || !saveEvent) return
-            for (const ev of icsImport.events) {
-              const id = 'e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+          groups={groups}
+          existingEventIds={new Set((events ?? []).map(e => e.id))}
+          onImport={(toImport) => {
+            if (!saveEvent) return
+            for (const r of toImport) {
+              const { ev, uid, keptGroups } = r
+              const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
+              // Pick color from first matched group if available
+              const firstGroup = keptGroups.length
+                ? (groups ?? []).find(g => g.id === keptGroups[0])
+                : null
               saveEvent({
                 id, title: ev.title, date: ev.date,
                 allDay: ev.allDay ?? true, start: ev.start ?? '', end: ev.end ?? '',
                 endDate: ev.endDate ?? '', desc: ev.desc ?? '', location: ev.location ?? '',
                 meetingLink: ev.meetingLink ?? '',
-                groups: [], invitees: [], color: '#6C9BF5', colors: [], reminder: 0,
+                groups: keptGroups, invitees: [],
+                color: firstGroup?.color ?? '#6C9BF5', colors: [], reminder: 0,
                 recurrence: 'none', recurrenceId: '', recurrenceEnd: '',
                 recurrenceNth: 0, recurrenceWeekday: 0,
                 editPermission: 'everyone', creatorId: profile?.id ?? '',

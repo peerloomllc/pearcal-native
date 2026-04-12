@@ -15929,6 +15929,8 @@
         cur.meetingLink = _icsUnescape(value);
       } else if (key === "UID") {
         cur.uid = value;
+      } else if (key === "X-PEARCAL-GROUPS") {
+        cur.groups = value.split(",").map((s9) => s9.trim()).filter(Boolean);
       } else if (key === "DTSTART") {
         const allDay = params.includes("VALUE=DATE") || /^\d{8}$/.test(value);
         if (allDay) {
@@ -15991,6 +15993,9 @@
       if (ev.desc) lines.push("DESCRIPTION:" + _icsEscape(ev.desc));
       if (ev.location) lines.push("LOCATION:" + _icsEscape(ev.location));
       if (ev.meetingLink) lines.push("URL:" + _icsEscape(ev.meetingLink));
+      if (Array.isArray(ev.groups) && ev.groups.length) {
+        lines.push("X-PEARCAL-GROUPS:" + ev.groups.join(","));
+      }
       lines.push("END:VEVENT");
     }
     lines.push("END:VCALENDAR");
@@ -21473,14 +21478,35 @@ ${link}`;
       }
     );
   }
-  function ImportIcsSheet({ th, events, filename, onImport, onClose }) {
+  function ImportIcsSheet({ th, events, filename, groups, existingEventIds, onImport, onClose }) {
     const bsClose = (0, import_react2.useRef)(null);
+    const memberIds = new Set((groups ?? []).map((g) => g.id));
+    const routed = events.map((ev) => {
+      const uid = ev.uid ? ev.uid.replace(/@pearcal$/, "") : null;
+      const skipped = uid && existingEventIds?.has(uid);
+      const keptGroups = Array.isArray(ev.groups) ? ev.groups.filter((gid) => memberIds.has(gid)) : [];
+      return { ev, uid, skipped, keptGroups };
+    });
+    const toImport = routed.filter((r7) => !r7.skipped);
+    const skippedCount = routed.length - toImport.length;
+    const perGroupCount = /* @__PURE__ */ new Map();
+    let personalCount = 0;
+    for (const r7 of toImport) {
+      if (r7.keptGroups.length === 0) personalCount++;
+      else for (const gid of r7.keptGroups) perGroupCount.set(gid, (perGroupCount.get(gid) ?? 0) + 1);
+    }
+    const summaryRows = [];
+    if (personalCount > 0) summaryRows.push({ label: "Personal", count: personalCount, color: null });
+    for (const [gid, count] of perGroupCount) {
+      const g = (groups ?? []).find((x) => x.id === gid);
+      summaryRows.push({ label: g?.name ?? "Unknown group", count, color: g?.color });
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomSheet, { th, onClose, zIndex: 250, closeRef: bsClose, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 20px 16px" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 17, fontWeight: 400, ...th.text, marginBottom: 4 }, children: [
         "Import ",
-        events.length,
+        toImport.length,
         " Event",
-        events.length !== 1 ? "s" : ""
+        toImport.length !== 1 ? "s" : ""
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
         fontSize: 13,
@@ -21491,37 +21517,72 @@ ${link}`;
         textOverflow: "ellipsis",
         whiteSpace: "nowrap"
       }, children: filename }),
+      summaryRows.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }, children: summaryRows.map((row, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "8px 12px",
+        borderRadius: 8,
+        border: `1px solid ${th.border}`
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          background: row.color ?? th.muted
+        } }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, fontSize: 13, fontWeight: 300, ...th.text }, children: row.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted }, children: row.count })
+      ] }, i2)) }),
+      skippedCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 12 }, children: [
+        skippedCount,
+        " event",
+        skippedCount !== 1 ? "s" : "",
+        " already exist \u2014 will be skipped"
+      ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-        maxHeight: 280,
+        maxHeight: 220,
         overflowY: "auto",
         display: "flex",
         flexDirection: "column",
         gap: 8,
         marginBottom: 16
-      }, children: events.map((ev, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+      }, children: routed.map((r7, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         padding: "10px 12px",
         borderRadius: 10,
         border: `1px solid ${th.border}`,
         display: "flex",
         flexDirection: "column",
-        gap: 3
+        gap: 3,
+        opacity: r7.skipped ? 0.5 : 1
       }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 400, ...th.text }, children: ev.title }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 14, fontWeight: 400, ...th.text }, children: [
+          r7.ev.title,
+          r7.skipped ? " \xB7 (skipped)" : ""
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300 }, children: [
-          ev.date,
-          ev.allDay ? ev.endDate ? ` \u2013 ${ev.endDate} \xB7 All day` : " \xB7 All day" : ev.start ? ` \xB7 ${ev.start}${ev.end ? "\u2013" + ev.end : ""}` : ""
+          r7.ev.date,
+          r7.ev.allDay ? r7.ev.endDate ? ` \u2013 ${r7.ev.endDate} \xB7 All day` : " \xB7 All day" : r7.ev.start ? ` \xB7 ${r7.ev.start}${r7.ev.end ? "\u2013" + r7.ev.end : ""}` : ""
         ] })
       ] }, i2)) }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
         "button",
         {
-          onClick: onImport,
-          style: { ...th.pillBtn, width: "100%", padding: 13, fontSize: 15, fontWeight: 300 },
+          onClick: () => onImport(toImport),
+          disabled: toImport.length === 0,
+          style: {
+            ...th.pillBtn,
+            width: "100%",
+            padding: 13,
+            fontSize: 15,
+            fontWeight: 300,
+            opacity: toImport.length === 0 ? 0.4 : 1
+          },
           children: [
             "Import ",
-            events.length,
+            toImport.length,
             " Event",
-            events.length !== 1 ? "s" : ""
+            toImport.length !== 1 ? "s" : ""
           ]
         }
       )
@@ -22343,10 +22404,14 @@ ${link}`;
           th,
           events: icsImport.events,
           filename: icsImport.filename,
-          onImport: () => {
-            if (!icsImport || !saveEvent) return;
-            for (const ev of icsImport.events) {
-              const id = "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+          groups,
+          existingEventIds: new Set((events ?? []).map((e55) => e55.id)),
+          onImport: (toImport) => {
+            if (!saveEvent) return;
+            for (const r7 of toImport) {
+              const { ev, uid, keptGroups } = r7;
+              const id = uid || "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+              const firstGroup = keptGroups.length ? (groups ?? []).find((g) => g.id === keptGroups[0]) : null;
               saveEvent({
                 id,
                 title: ev.title,
@@ -22358,9 +22423,9 @@ ${link}`;
                 desc: ev.desc ?? "",
                 location: ev.location ?? "",
                 meetingLink: ev.meetingLink ?? "",
-                groups: [],
+                groups: keptGroups,
                 invitees: [],
-                color: "#6C9BF5",
+                color: firstGroup?.color ?? "#6C9BF5",
                 colors: [],
                 reminder: 0,
                 recurrence: "none",
