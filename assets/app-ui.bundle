@@ -16220,6 +16220,7 @@
     const [profile, setProfile] = (0, import_react2.useState)(null);
     const [groups, setGroups] = (0, import_react2.useState)([]);
     const [events, setEvents] = (0, import_react2.useState)([]);
+    const [myRsvps, setMyRsvps] = (0, import_react2.useState)({});
     const [selectedDate, setSelectedDate] = (0, import_react2.useState)(todayStr());
     const [viewDate, setViewDate] = (0, import_react2.useState)(() => {
       const t7 = /* @__PURE__ */ new Date();
@@ -16275,11 +16276,12 @@
       let cancelled = false;
       async function load() {
         try {
-          const [prof, grps, evts, bpk] = await Promise.all([
+          const [prof, grps, evts, bpk, rsvps] = await Promise.all([
             db2.getProfile(),
             db2.listGroups(),
             db2.listEvents(),
-            db2.getBlindPeerKey().catch(() => null)
+            db2.getBlindPeerKey().catch(() => null),
+            db2.listMyRsvps().catch(() => ({}))
           ]);
           if (cancelled) return;
           setProfile(prof);
@@ -16287,6 +16289,7 @@
           setGroups(grps);
           setReadyGroupKeys(new Set(grps.map((g) => g.id)));
           setEvents(evts);
+          setMyRsvps(rsvps ?? {});
           setBlindPeerKey(bpk);
           eventsReady.current = true;
           setReady(true);
@@ -16330,6 +16333,8 @@
         });
         const g = await db2.getGroup(groupId);
         if (g) setGroups((prev) => prev.map((x) => x.id === groupId ? g : x));
+        db2.listMyRsvps().then((r7) => setMyRsvps(r7 ?? {})).catch(() => {
+        });
       }
       emitter.on("sync", onSync);
       function onGroupDeleted(groupId) {
@@ -16530,8 +16535,10 @@
           });
           notifs2?.cancelForEvent(occ.id).catch(() => {
           });
-          notifs2?.scheduleForEvent(occ, reminders).catch(() => {
-          });
+          if (myRsvps[occ.id] !== "declined") {
+            notifs2?.scheduleForEvent(occ, reminders).catch(() => {
+            });
+          }
           const evToSync = _prevDate && occ.id === ev.id ? { ...occ, _prevDate } : occ;
           for (const gid of occ.groups ?? []) {
             sync2?.putEvent(gid, evToSync).catch((e55) => console.warn("[SYNC-ERR]", e55?.message));
@@ -16544,7 +16551,7 @@
           }
         }
       }
-    }, [db2, notifs2, sync2, profile, events]);
+    }, [db2, notifs2, sync2, profile, events, myRsvps]);
     const deleteEvent = (0, import_react2.useCallback)(async (id) => {
       const ev = events.find((e55) => e55.id === id);
       if (!ev) return;
@@ -16801,7 +16808,8 @@
         recurrenceNth: 0,
         recurrenceWeekday: 0,
         editPermission: "creator",
-        endDate: ""
+        endDate: "",
+        rsvpEnabled: false
       } });
     }
     if (error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -16891,7 +16899,9 @@
             eventsReady,
             saveEvent,
             profile,
-            sync: sync2
+            sync: sync2,
+            myRsvps,
+            myProfileId: profile?.id
           }
         ),
         blockedToast && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
@@ -17090,6 +17100,8 @@
           onDeleteSeries: deleteEventSeries,
           REMINDER_OPTIONS,
           closeRef: closeEventModalRef,
+          notifs: notifs2,
+          setMyRsvps,
           onRequestConfirm: (req) => {
             if (req.type === "editScope") {
               setModal(null);
@@ -17513,7 +17525,9 @@
     onTouchStart,
     onTouchEnd,
     slideDir,
-    isSliding
+    isSliding,
+    myRsvps = {},
+    myProfileId
   }) {
     const weekDays = (0, import_react2.useMemo)(() => {
       const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
@@ -17677,6 +17691,8 @@
                   ev,
                   th,
                   isPast: ds < todayStr2,
+                  myRsvpStatus: myRsvps[ev.id],
+                  myProfileId,
                   use24h,
                   onClick: () => setModal({ mode: "edit", event: { ...ev } })
                 }
@@ -17704,7 +17720,9 @@
     onTouchStart,
     onTouchEnd,
     slideDir,
-    isSliding
+    isSliding,
+    myRsvps = {},
+    myProfileId
   }) {
     const HOUR_H = 60;
     const hourGridRef = (0, import_react2.useRef)(null);
@@ -18054,7 +18072,9 @@
     eventsReady,
     saveEvent,
     profile,
-    sync: sync2
+    sync: sync2,
+    myRsvps = {},
+    myProfileId
   }) {
     const { y, m: m3 } = viewDate;
     const [showMonthPicker, setShowMonthPicker] = (0, import_react2.useState)(false);
@@ -18455,6 +18475,8 @@
                   ev,
                   th,
                   isPast: date < todayStr2,
+                  myRsvpStatus: myRsvps[ev.id],
+                  myProfileId,
                   use24h,
                   onClick: () => setModal({ mode: "edit", event: { ...ev } })
                 }
@@ -18511,7 +18533,9 @@
           onTouchStart,
           onTouchEnd,
           slideDir,
-          isSliding
+          isSliding,
+          myRsvps,
+          myProfileId: profile?.id
         }
       ),
       calView === "day" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -18996,7 +19020,10 @@
       }
     );
   }
-  function EventCard({ ev, th, onClick, compact, isPast, use24h }) {
+  function EventCard({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+    const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId;
+    const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator;
+    const isDeclined = showRsvpPill && myRsvpStatus === "declined";
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
@@ -19014,11 +19041,21 @@
           ...th.card,
           borderLeft: `4px solid ${ev.colors?.[0] ?? ev.color}`,
           marginBottom: compact ? 0 : 8,
-          opacity: isPast ? 0.5 : 1
+          opacity: isPast || isDeclined ? 0.5 : 1
         },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: compact ? 13 : 15, ...th.text }, children: ev.title }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+              fontWeight: 300,
+              fontSize: compact ? 13 : 15,
+              ...th.text,
+              textDecoration: isDeclined ? "line-through" : "none"
+            }, children: [
+              showRsvpPill && myRsvpStatus === "going" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A", marginRight: 6 }, children: "\u2713" }),
+              showRsvpPill && myRsvpStatus === "declined" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A", marginRight: 6 }, children: "\u2717" }),
+              showRsvpPill && (!myRsvpStatus || myRsvpStatus === "pending") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted, marginRight: 6 }, children: "?" }),
+              ev.title
+            ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
               ev.allDay ? ev.endDate && ev.endDate !== ev.date ? `${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev.start, use24h)} \u2013 ${formatTime(ev.end, use24h)}`,
               compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev.date + "T12:00:00")).toLocaleDateString(
@@ -19224,7 +19261,7 @@
       )
     ] });
   }
-  function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef }) {
+  function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
     const [ev, setEv] = (0, import_react2.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e55) => ({ ...e55, [k]: v }));
@@ -19268,6 +19305,44 @@
       }).catch(() => {
       });
     }, [modal.event?.id]);
+    const isEventCreator = !ev.creatorId || ev.creatorId === profile?.id;
+    const [myRsvp, setMyRsvp] = (0, import_react2.useState)(null);
+    const [rsvpList, setRsvpList] = (0, import_react2.useState)([]);
+    const [rsvpExpanded, setRsvpExpanded] = (0, import_react2.useState)(false);
+    (0, import_react2.useEffect)(() => {
+      if (!db2 || modal.mode !== "edit") return;
+      const eid = modal.event?.id;
+      if (!eid || !ev.rsvpEnabled) return;
+      if (isEventCreator) {
+        db2.listRsvps(eid).then((r7) => setRsvpList(r7 ?? [])).catch(() => {
+        });
+      } else if (profile?.id) {
+        db2.getRsvp(eid, profile.id).then((r7) => setMyRsvp(r7?.status ?? "pending")).catch(() => {
+        });
+      }
+    }, [modal.event?.id, ev.rsvpEnabled, isEventCreator]);
+    async function respondRsvp(status) {
+      const eid = modal.event?.id;
+      if (!db2 || !eid || !profile?.id) return;
+      const groupIds = modal.event?.groups ?? [];
+      setMyRsvp(status);
+      setMyRsvps?.((prev) => ({ ...prev, [eid]: status }));
+      try {
+        await db2.putRsvp(eid, profile.id, status, groupIds);
+        if (status === "declined") {
+          notifs2?.cancelForEvent(eid).catch(() => {
+          });
+        } else {
+          const reminders2 = await db2.getReminders(eid).catch(() => []);
+          notifs2?.cancelForEvent(eid).catch(() => {
+          });
+          notifs2?.scheduleForEvent(modal.event, reminders2 ?? []).catch(() => {
+          });
+        }
+      } catch (e55) {
+        console.warn("[RSVP-ERR]", e55?.message);
+      }
+    }
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
     const [pastEvents, setPastEvents] = (0, import_react2.useState)(/* @__PURE__ */ new Map());
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
@@ -19490,6 +19565,93 @@
                 setReminders
               }
             )
+          ] }),
+          ev.groups && ev.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Request RSVP" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => set("rsvpEnabled", !ev.rsvpEnabled),
+                style: {
+                  width: 44,
+                  height: 26,
+                  borderRadius: 13,
+                  border: "none",
+                  cursor: "pointer",
+                  background: ev.rsvpEnabled ? th.accent : th.border,
+                  position: "relative",
+                  transition: "background 150ms var(--easing)"
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  position: "absolute",
+                  top: 3,
+                  left: ev.rsvpEnabled ? 21 : 3,
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  background: "#fff",
+                  transition: "left 150ms var(--easing)"
+                } })
+              }
+            )
+          ] }),
+          modal.mode === "edit" && ev.rsvpEnabled && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Responses" }),
+            (() => {
+              const going = rsvpList.filter((r7) => r7.status === "going");
+              const declined = rsvpList.filter((r7) => r7.status === "declined");
+              const respIds = new Set(rsvpList.map((r7) => r7.memberId));
+              const invited = [];
+              const seen = /* @__PURE__ */ new Set();
+              for (const gid of ev.groups ?? []) {
+                const g = groups.find((x) => x.id === gid);
+                if (!g) continue;
+                for (const m3 of g.members ?? []) {
+                  if (m3.id === ev.creatorId || m3.id === profile?.id) continue;
+                  if (!seen.has(m3.id)) {
+                    seen.add(m3.id);
+                    invited.push(m3);
+                  }
+                }
+              }
+              const pending = invited.filter((m3) => !respIds.has(m3.id));
+              const nameFor = (id) => invited.find((m3) => m3.id === id)?.name || id.slice(0, 6);
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { onClick: () => setRsvpExpanded((e55) => !e55), style: {
+                cursor: "pointer",
+                padding: "10px 14px",
+                border: `1px solid ${th.border}`,
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 300,
+                color: th.text.color
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  going.length,
+                  " going \xB7 ",
+                  declined.length,
+                  " declined \xB7 ",
+                  pending.length,
+                  " pending"
+                ] }),
+                rsvpExpanded && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 8, display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }, children: [
+                  going.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A" }, children: "\u2713" }),
+                    " ",
+                    going.map((r7) => nameFor(r7.memberId)).join(", ")
+                  ] }),
+                  declined.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A" }, children: "\u2717" }),
+                    " ",
+                    declined.map((r7) => nameFor(r7.memberId)).join(", ")
+                  ] }),
+                  pending.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: "?" }),
+                    " ",
+                    pending.map((m3) => m3.name).join(", ")
+                  ] })
+                ] })
+              ] });
+            })()
           ] }),
           modal.mode === "create" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Who can edit?" }),
@@ -19776,6 +19938,28 @@
             ] });
             return null;
           })()
+        ] }),
+        modal.mode === "edit" && ev.rsvpEnabled && !isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Your Response" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 8 }, children: [["going", "Going"], ["declined", "Decline"]].map(([val, label]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => respondRsvp(val),
+              style: {
+                flex: 1,
+                padding: "10px 0",
+                borderRadius: 10,
+                fontSize: 14,
+                fontWeight: 300,
+                cursor: "pointer",
+                border: "1.5px solid " + (myRsvp === val ? val === "going" ? "#5DBF8A" : "#D45F7A" : th.border),
+                background: myRsvp === val ? val === "going" ? "#5DBF8A" : "#D45F7A" : "transparent",
+                color: myRsvp === val ? "#fff" : th.muted
+              },
+              children: label
+            },
+            val
+          )) })
         ] }),
         (() => {
           const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id;
@@ -22610,6 +22794,10 @@ ${link}`;
     setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick),
     getReminders: (id) => window.__pearDB.call("getReminders", id),
     putReminders: (id, r7) => window.__pearDB.call("putReminders", id, r7),
+    getRsvp: (eid, mid) => window.__pearDB.call("getRsvp", eid, mid),
+    listRsvps: (eid) => window.__pearDB.call("listRsvps", eid),
+    listMyRsvps: () => window.__pearDB.call("listMyRsvps"),
+    putRsvp: (eid, mid, s9, gids) => window.__pearDB.call("putRsvp", eid, mid, s9, gids),
     getBlindPeerKey: () => window.__pearDB.call("getBlindPeerKey"),
     setBlindPeerKey: (k) => window.__pearDB.call("setBlindPeerKey", k),
     removeBlindPeerKey: () => window.__pearDB.call("removeBlindPeerKey")

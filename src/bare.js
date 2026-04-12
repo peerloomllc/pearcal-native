@@ -95,6 +95,10 @@ async function handle (method, args) {
     case 'foregroundSync':     return foregroundSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
+    case 'getRsvp':          return getRsvp(args[0], args[1])
+    case 'listRsvps':        return listRsvps(args[0])
+    case 'listMyRsvps':      return listMyRsvps()
+    case 'putRsvp':          return putRsvp(args[0], args[1], args[2], args[3])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -115,6 +119,7 @@ const NS = {
   events:  'events:',
   groups:  'groups:',
   members: 'members:',
+  rsvp:    'rsvp:',
 }
 
 async function getProfile () {
@@ -191,6 +196,7 @@ async function putEvent (event) {
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
   await db.del('reminders:' + id).catch(() => {})
+  await _deleteAllRsvps(id).catch(() => {})
 }
 
 async function deleteEventSeries (recurrenceId) {
@@ -201,7 +207,59 @@ async function deleteEventSeries (recurrenceId) {
   for (const { key, id } of toDelete) {
     await db.del(key)
     await db.del('reminders:' + id).catch(() => {})
+    await _deleteAllRsvps(id).catch(() => {})
   }
+}
+
+// ── RSVP storage & sync ───────────────────────────────────────────────────────
+
+async function getRsvp (eventId, memberId) {
+  const node = await db.get(NS.rsvp + eventId + ':' + memberId).catch(() => null)
+  return node?.value ?? null
+}
+
+async function listRsvps (eventId) {
+  const out = []
+  for await (const { value } of db.createReadStream({
+    gt: NS.rsvp + eventId + ':',
+    lt: NS.rsvp + eventId + ':\xff',
+  })) out.push(value)
+  return out
+}
+
+async function listMyRsvps () {
+  // Return Map-like object of { eventId: status } for the current profile
+  const profile = await getProfile()
+  const myId = profile?.id
+  if (!myId) return {}
+  const out = {}
+  for await (const { value } of db.createReadStream({ gt: NS.rsvp, lt: NS.rsvp + '\xff' })) {
+    if (value.memberId === myId) out[value.eventId] = value.status
+  }
+  return out
+}
+
+async function putRsvp (eventId, memberId, status, groupIds = []) {
+  const record = { eventId, memberId, status, updatedAt: Date.now() }
+  await db.put(NS.rsvp + eventId + ':' + memberId, record)
+  // Broadcast to each group so all group members can see the response
+  for (const gid of groupIds) {
+    const base = bases.get(gid)
+    if (!base) continue
+    try {
+      await base.append({ op: 'put', type: 'rsvp', key: NS.rsvp + eventId + ':' + memberId, value: record })
+    } catch(e) { console.warn('[RSVP-SYNC-ERR]', e?.message) }
+  }
+  return record
+}
+
+async function _deleteAllRsvps (eventId) {
+  const keys = []
+  for await (const { key } of db.createReadStream({
+    gt: NS.rsvp + eventId + ':',
+    lt: NS.rsvp + eventId + ':\xff',
+  })) keys.push(key)
+  for (const k of keys) await db.del(k).catch(() => {})
 }
 
 async function getReminders (eventId) {
@@ -1166,6 +1224,15 @@ function deduplicateReinstalls (mergedMap, existingMembers, incomingMembers) {
 
 async function mirrorToLocal (type, key, value, groupId) {
   try {
+    if (type === 'rsvp') {
+      // LWW mirror — only overwrite local if incoming is newer
+      const existing = await db.get(key).catch(() => null)
+      if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        await db.put(key, value)
+        send({ type: 'event', event: 'sync', data: groupId })
+      }
+      return
+    }
     if (type === 'event') {
       // If user locally deleted this event, don't resurrect it from sync
       const tombstone = await db.get('deleted:' + value.id).catch(() => null)
