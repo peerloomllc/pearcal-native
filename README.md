@@ -44,7 +44,13 @@ Joining a group works via an invite link or QR code. The link encodes the crypto
 
 ## Screenshots
 
-*Coming soon.*
+<p align="center">
+  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-1.png" width="180" alt="Month view (light)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro/dark/scene-2.png" width="180" alt="Event details (dark)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-3.png" width="180" alt="Group sharing (light)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro/dark/scene-4.png" width="180" alt="Invite (dark)" />
+  <img src="metadata/android/screenshots/Pixel_9_Pro/light/scene-5.png" width="180" alt="Profile (light)" />
+</p>
 
 ---
 
