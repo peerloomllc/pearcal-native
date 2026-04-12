@@ -1,5 +1,6 @@
 # Copy to scripts/app.conf (gitignored) and edit per app.
-# Sourced by release.sh, ios-appstore.sh, ios-screenshots.sh, screenshots.sh.
+# Sourced by release.sh, ios-appstore.sh, ios-screenshots.sh,
+# android-screenshots.sh, screenshots.sh.
 
 APP_NAME="PearCal"
 BUNDLE_ID="com.pearcal"
@@ -9,3 +10,13 @@ XCODE_SCHEME="PearCal"
 # Mac Mini SSH host and the repo path relative to its $HOME.
 MAC_MINI_HOST="Tims-Mac-mini.local"
 MAC_MINI_REPO_PATH="peerloomllc/pearcal-native"
+
+# ── Screenshot automation ──
+# iOS: space-separated "DeviceName|UDID" pairs (see `xcrun simctl list devices`).
+IOS_SCREENSHOT_DEVICES="iPhone-17-Pro-Max|BB87E9B2-1A75-4118-B03E-9FBADD5A97F4"
+
+# Android: debug APKs get a .debug applicationId suffix; activity keeps namespace.
+ANDROID_APP_ID="com.pearcal.debug"
+ANDROID_MAIN_ACTIVITY="com.pearcal.debug/com.pearcal.MainActivity"
+# Space-separated AVD names (see `emulator -list-avds`).
+ANDROID_SCREENSHOT_AVDS="Pixel_9_Pro"

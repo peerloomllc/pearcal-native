@@ -31,6 +31,7 @@ class MainApplication : Application(), ReactApplication {
               add(HapticPackage())
               add(DeepLinkPackage())
               add(CameraPackage())
+              add(ScreenshotPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

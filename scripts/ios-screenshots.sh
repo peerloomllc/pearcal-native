@@ -27,11 +27,9 @@ OUT_DIR="${OUT_DIR:-$REPO_ROOT/metadata/ios/screenshots}"
 SCENES=(1 2 3 4 5)
 APPEARANCES=(light dark)
 
-# Space-separated list of "DeviceName|UDID" pairs — edit as needed.
-# iPhone 17 Pro Max = 6.9" App Store required size.
-DEVICES=(
-  "iPhone-17-Pro-Max|BB87E9B2-1A75-4118-B03E-9FBADD5A97F4"
-)
+# Devices from IOS_SCREENSHOT_DEVICES (space-separated "DeviceName|UDID"
+# pairs, set in scripts/app.conf). iPhone 17 Pro Max = 6.9" App Store size.
+read -ra DEVICES <<<"${IOS_SCREENSHOT_DEVICES:-iPhone-17-Pro-Max|BB87E9B2-1A75-4118-B03E-9FBADD5A97F4}"
 
 # ── Build ──
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
