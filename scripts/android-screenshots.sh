@@ -173,5 +173,9 @@ for avd in "${AVDS[@]}"; do
 done
 
 echo ""
+echo "==> Framing screenshots"
+"$REPO_ROOT/scripts/frame-android-screenshots.sh"
+
+echo ""
 echo "==> Done. PNGs in $OUT_DIR"
 find "$OUT_DIR" -name "*.png" | sort
