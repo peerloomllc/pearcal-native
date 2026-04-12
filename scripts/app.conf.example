@@ -1,0 +1,11 @@
+# Copy to scripts/app.conf (gitignored) and edit per app.
+# Sourced by release.sh, ios-appstore.sh, ios-screenshots.sh, screenshots.sh.
+
+APP_NAME="PearCal"
+BUNDLE_ID="com.pearcal"
+XCODE_WORKSPACE="ios/PearCal.xcworkspace"
+XCODE_SCHEME="PearCal"
+
+# Mac Mini SSH host and the repo path relative to its $HOME.
+MAC_MINI_HOST="Tims-Mac-mini.local"
+MAC_MINI_REPO_PATH="peerloomllc/pearcal-native"
