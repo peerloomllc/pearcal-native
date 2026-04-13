@@ -92,6 +92,10 @@ const sync = {
   openURL: (url) => window.__pearDB.call('openURL', url),
   canOpenLightning: () => window.__pearDB.call('canOpenLightning'),
   openLightning: (addr) => window.__pearDB.call('openLightning', addr),
+  reclaimStorage: () => window.__pearDB.call('reclaimStorage'),
+  storageBreakdown: () => window.__pearDB.call('storageBreakdown'),
+  analyzeStorage: (opts) => window.__pearDB.call('analyzeStorage', opts),
+  rebuildLocalDb: () => window.__pearDB.call('rebuildLocalDb'),
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
