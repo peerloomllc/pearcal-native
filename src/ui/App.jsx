@@ -2556,6 +2556,9 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
         {!compact && ev.desc ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
+        {!compact && ev.privateNote ? <div style={{ fontSize:12, color:th.muted, marginTop:4, fontWeight:300,
+          fontStyle:'italic', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
+          lineHeight:'1.35' }}>{ev.privateNote}</div> : null}
       </div>
       {!compact && ev.location ? (
         <>
@@ -2761,6 +2764,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   const [mlOpen, setMlOpen] = useState(!!modal.event?.meetingLink)
   const [locOpen, setLocOpen] = useState(!!modal.event?.location)
   const [notesOpen, setNotesOpen] = useState(!!modal.event?.desc)
+  const [privNotesOpen, setPrivNotesOpen] = useState(!!modal.event?.privateNote)
   const [titleErr, setTitleErr] = useState('')
   // Map<title, mostRecentEvent> — used to prefill fields when a suggestion is picked
   const [pastEvents, setPastEvents] = useState(new Map())
@@ -3090,18 +3094,19 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                 </button>
               )}
 
-              {/* Notes */}
+              {/* Notes (shared via sync for group events) */}
               {notesOpen ? (
                 <div>
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-                    <Label th={th}>Notes</Label>
+                    <Label th={th}>{ev.groups?.length ? 'Shared Notes' : 'Notes'}</Label>
                     {!ev.desc && (
                       <button onClick={() => setNotesOpen(false)}
                         style={{ background:'none', border:'none', cursor:'pointer',
                           color:th.muted, fontSize:16, padding:'0 4px', lineHeight:1 }}>×</button>
                     )}
                   </div>
-                  <textarea style={{ ...inp, resize:'none', minHeight:60 }} placeholder="Optional notes…"
+                  <textarea style={{ ...inp, resize:'none', minHeight:60 }}
+                    placeholder={ev.groups?.length ? 'Visible to group members…' : 'Optional notes…'}
                     value={ev.desc} onChange={e => set('desc', e.target.value)} />
                   {extractURLs(ev.desc).map(url => (
                     <div key={url}
@@ -3123,9 +3128,10 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                     padding:'10px 12px', borderRadius:10, cursor:'pointer',
                     border:`1px dashed ${th.border}`, background:'transparent',
                     color:th.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
-                  + Add Notes
+                  + Add {ev.groups?.length ? 'Shared ' : ''}Notes
                 </button>
               )}
+
             </div>
           </div>
 
@@ -3293,10 +3299,46 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             return null
           })()}
 
+        </div>
+
+          {/* Private Notes — always editable, even when event is read-only */}
+          <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:6 }}>
+            {privNotesOpen ? (
+              <div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
+                  <Label th={th}>Private Notes</Label>
+                  {!ev.privateNote && (
+                    <button onClick={() => setPrivNotesOpen(false)}
+                      style={{ background:'none', border:'none', cursor:'pointer',
+                        color:th.muted, fontSize:16, padding:'0 4px', lineHeight:1 }}>×</button>
+                  )}
+                </div>
+                <textarea style={{ ...inp, resize:'none', minHeight:60 }}
+                  placeholder="Only visible to you — never synced…"
+                  value={ev.privateNote ?? ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    set('privateNote', v)
+                    if (modal.mode === 'edit' && ev.id) {
+                      db?.putPrivateNote(ev.id, v).catch(() => {})
+                    }
+                  }} />
+              </div>
+            ) : (
+              <button onClick={() => setPrivNotesOpen(true)}
+                style={{ display:'flex', alignItems:'center', gap:8,
+                  padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                  border:`1px dashed ${th.border}`, background:'transparent',
+                  color:th.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                + Add Private Notes
+              </button>
+            )}
+          </div>
+
           {modal.mode === 'edit' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             return (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:8 }}>
                 <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteEvent', ev })) : onDelete(ev.id)}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
@@ -3314,8 +3356,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
               </div>
             )
           })()}
-        </div>
-
 
     </BottomSheet>
   )
