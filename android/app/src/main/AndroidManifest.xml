@@ -50,6 +50,14 @@
       </intent-filter>
     </activity>
       <receiver android:name=".NotificationReceiver" android:exported="false"/>
+    <receiver android:name=".widget.DailyWidgetReceiver" android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/widget_daily_info"/>
+    </receiver>
     <receiver android:name=".BootReceiver" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED"/>

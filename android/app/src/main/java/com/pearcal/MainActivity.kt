@@ -9,6 +9,7 @@ import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
+import com.pearcal.widget.DailyWidgetWorker
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
@@ -34,6 +35,7 @@ class MainActivity : ReactActivity() {
       LinkModule.pendingTab = tab
     }
     super.onCreate(null)
+    DailyWidgetWorker.schedule(this)
     // Start foreground service to keep Bare worklet alive
     val serviceIntent = Intent(this, BareService::class.java)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

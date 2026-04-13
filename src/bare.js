@@ -7,6 +7,7 @@ const BlindPeering  = require('blind-peering')
 const Wakeup        = require('protomux-wakeup')
 const sodium        = require('sodium-native')
 const b4a           = require('b4a')
+const { computeTodayCache } = require('./widget-cache.js')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
@@ -101,6 +102,7 @@ async function handle (method, args) {
     case 'putRsvp':          return putRsvp(args[0], args[1], args[2], args[3])
     case 'getPrivateNote':   return getPrivateNote(args[0])
     case 'putPrivateNote':   return putPrivateNote(args[0], args[1])
+    case 'refreshWidgetCache': return refreshWidgetCache()
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -210,6 +212,7 @@ async function putEvent (event) {
   const { privateNote, ...rest } = event
   await db.put(NS.events + event.date + ':' + event.id, { ...rest, updatedAt: Date.now() })
   if (privateNote !== undefined) await putPrivateNote(event.id, privateNote)
+  scheduleWidgetCacheRefresh()
   return event
 }
 
@@ -218,6 +221,7 @@ async function deleteEvent (date, id) {
   await db.del('reminders:' + id).catch(() => {})
   await db.del(NS.privateNotes + id).catch(() => {})
   await _deleteAllRsvps(id).catch(() => {})
+  scheduleWidgetCacheRefresh()
 }
 
 async function deleteEventSeries (recurrenceId) {
@@ -231,6 +235,30 @@ async function deleteEventSeries (recurrenceId) {
     await db.del(NS.privateNotes + id).catch(() => {})
     await _deleteAllRsvps(id).catch(() => {})
   }
+  scheduleWidgetCacheRefresh()
+}
+
+// ── Widget cache refresh ─────────────────────────────────────────────────────
+// Debounced; coalesces bursts from sync mirror loops. RN receives the payload
+// via IPC event and writes it to the native widget cache location.
+let _widgetRefreshTimer = null
+function scheduleWidgetCacheRefresh () {
+  if (_widgetRefreshTimer) return
+  _widgetRefreshTimer = setTimeout(() => {
+    _widgetRefreshTimer = null
+    refreshWidgetCache().catch(e => console.error('widget cache refresh:', e.message))
+  }, 500)
+}
+
+async function refreshWidgetCache () {
+  if (!db) return null
+  const profile = await getProfile().catch(() => null)
+  const payload = await computeTodayCache(db, {
+    profileId: profile?.id,
+    isInvitedToEvent,
+  })
+  send({ type: 'event', event: 'widgetCache', data: payload })
+  return payload
 }
 
 // ── RSVP storage & sync ───────────────────────────────────────────────────────
@@ -1321,6 +1349,7 @@ async function mirrorToLocal (type, key, value, groupId) {
     }
     // Notify UI to refresh
     send({ type: 'event', event: 'sync', data: groupId })
+    if (type === 'event') scheduleWidgetCacheRefresh()
   } catch(e) {
     console.error('mirrorToLocal error:', e.message)
   }
@@ -1329,6 +1358,7 @@ async function mirrorToLocal (type, key, value, groupId) {
 async function deleteFromLocal (type, key) {
   try {
     await db.del(key)
+    if (type === 'event') scheduleWidgetCacheRefresh()
   } catch(e) {}
 }
 
