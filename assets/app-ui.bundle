@@ -18119,6 +18119,10 @@
       didInitialScroll.current = true;
       requestAnimationFrame(() => scrollToDate(todayStr2, false));
     }, [events]);
+    (0, import_react2.useEffect)(() => {
+      if (calView !== "month" || !eventsReady.current) return;
+      requestAnimationFrame(() => scrollToDate(todayStr2, false));
+    }, [calView]);
     function navigate(dir) {
       if (isSliding) return;
       setSlideDir(dir);
@@ -18438,6 +18442,11 @@
               }
               seen.get(e53.date).push(e53);
             });
+            if (!seen.has(todayStr2)) {
+              seen.set(todayStr2, []);
+              days.push(todayStr2);
+              days.sort((a34, b) => a34.localeCompare(b));
+            }
             return days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
                 fontSize: 12,
@@ -22045,6 +22054,12 @@ ${link}`;
     const [weekStartOpen, setWeekStartOpen] = (0, import_react2.useState)(false);
     const [defaultRemOpen, setDefaultRemOpen] = (0, import_react2.useState)(false);
     const [importExportOpen, setImportExportOpen] = (0, import_react2.useState)(false);
+    const [reclaimBusy, setReclaimBusy] = (0, import_react2.useState)(false);
+    const [reclaimResult, setReclaimResult] = (0, import_react2.useState)(null);
+    const [rebuildConfirm, setRebuildConfirm] = (0, import_react2.useState)(false);
+    const [storageOpen, setStorageOpen] = (0, import_react2.useState)(false);
+    const [reportOpen, setReportOpen] = (0, import_react2.useState)(null);
+    const formatBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " KB" : b + " B";
     const [icsImport, setIcsImport] = (0, import_react2.useState)(null);
     const icsFileRef = (0, import_react2.useRef)(null);
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
@@ -22529,6 +22544,374 @@ ${link}`;
           )
         ] }) })
       ] }),
+      reportOpen && reclaimResult && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "div",
+        {
+          onClick: () => setReportOpen(null),
+          style: {
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1e3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px"
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
+            {
+              onClick: (e53) => e53.stopPropagation(),
+              style: {
+                ...th.card,
+                borderRadius: 14,
+                padding: "20px",
+                maxWidth: 460,
+                width: "100%",
+                maxHeight: "80vh",
+                overflowY: "auto",
+                border: `1px solid ${th.border}`
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 14, textAlign: "center", ...th.text }, children: reportOpen === "breakdown" ? "Storage Breakdown" : "Reclaimable Storage" }),
+                reportOpen === "breakdown" && reclaimResult.breakdown && (() => {
+                  const b = reclaimResult.breakdown;
+                  const typeLabel = {
+                    blob: "Event media",
+                    log_old: "Old log files",
+                    sst: "Index data",
+                    log: "Current logs",
+                    wal: "Write-ahead log",
+                    manifest: "Manifests",
+                    other: "Other"
+                  };
+                  const cats = Object.entries(b.cats).filter(([, v]) => v.count > 0).sort((a34, c8) => c8[1].size - a34[1].size);
+                  const dirs = Object.entries(b.perDir).sort((a34, c8) => c8[1] - a34[1]).slice(0, 6);
+                  const Bar = ({ size, total }) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * size / Math.max(total, 1) + "%", background: th.accent } }) });
+                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(b.total) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: "Total on disk" })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", marginBottom: 8 }, children: "BY TYPE" }),
+                    cats.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: typeLabel[k] || k }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v.size) })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v.size, total: b.total })
+                    ] }, k)),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "16px 0 8px" }, children: "BY LOCATION" }),
+                    dirs.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontFamily: "monospace" }, children: k || "." }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v) })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v, total: b.total })
+                    ] }, k))
+                  ] });
+                })(),
+                reportOpen === "analyze" && reclaimResult.analyze && (() => {
+                  const a34 = reclaimResult.analyze;
+                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(a34.reclaimableBytes) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
+                        "reclaimable (",
+                        a34.pct,
+                        "% of ",
+                        formatBytes(a34.totalBytes),
+                        ")"
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8, borderRadius: 4, background: th.border, overflow: "hidden", marginBottom: 18 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: a34.pct + "%", background: th.accent } }) }),
+                    (() => {
+                      const sections = [
+                        { heading: "LOCAL DATABASE", match: (g) => g.id === "__local__" },
+                        { heading: "GROUPS", match: (g) => g.id !== "__local__" && g.id !== "__orphans__" },
+                        { heading: "ORPHANED CORES", match: (g) => g.id === "__orphans__" }
+                      ];
+                      const Row = (g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: g.name }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted }, children: [
+                            formatBytes(g.bytes),
+                            g.reclaim > 0 ? " \xB7 " + formatBytes(g.reclaim) + " reclaimable" : ""
+                          ] })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4, position: "relative" }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * g.bytes / Math.max(a34.totalBytes, 1) + "%", background: th.muted, opacity: 0.35 } }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "absolute", top: 0, left: 0, height: "100%", width: 100 * g.reclaim / Math.max(a34.totalBytes, 1) + "%", background: th.accent } })
+                        ] })
+                      ] }, g.id);
+                      return sections.map((s9) => {
+                        const items = a34.groups.filter(s9.match).sort((x, y) => y.bytes - x.bytes);
+                        if (!items.length) return null;
+                        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "0 0 8px" }, children: s9.heading }),
+                          items.map(Row),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8 } })
+                        ] }, s9.heading);
+                      });
+                    })()
+                  ] });
+                })(),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => setReportOpen(null),
+                    style: {
+                      marginTop: 18,
+                      width: "100%",
+                      padding: "10px 16px",
+                      borderRadius: 8,
+                      border: `1px solid ${th.border}`,
+                      background: "transparent",
+                      color: th.text.color,
+                      fontFamily: FONT,
+                      fontSize: 13,
+                      fontWeight: 300,
+                      cursor: "pointer"
+                    },
+                    children: "Close"
+                  }
+                )
+              ]
+            }
+          )
+        }
+      ),
+      rebuildConfirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "div",
+        {
+          onClick: () => !reclaimBusy && setRebuildConfirm(false),
+          style: {
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            zIndex: 1e3,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "24px"
+          },
+          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "div",
+            {
+              onClick: (e53) => e53.stopPropagation(),
+              style: { ...th.card, borderRadius: 14, padding: "20px", maxWidth: 420, width: "100%", border: `1px solid ${th.border}` },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", ...th.text }, children: "Reclaim Storage?" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "center" }, children: "This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically." }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: () => setRebuildConfirm(false),
+                      disabled: reclaimBusy,
+                      style: {
+                        flex: 1,
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        border: `1px solid ${th.border}`,
+                        background: "transparent",
+                        color: th.text.color,
+                        fontFamily: FONT,
+                        fontSize: 13,
+                        fontWeight: 300,
+                        cursor: reclaimBusy ? "wait" : "pointer",
+                        opacity: reclaimBusy ? 0.5 : 1
+                      },
+                      children: "Cancel"
+                    }
+                  ),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    "button",
+                    {
+                      onClick: async () => {
+                        window.__pearSync?.haptic("medium");
+                        setReclaimBusy(true);
+                        setReclaimResult(null);
+                        try {
+                          const r7 = await sync2.rebuildLocalDb();
+                          setReclaimResult(r7);
+                        } catch (e53) {
+                          setReclaimResult({ error: e53.message });
+                        } finally {
+                          setReclaimBusy(false);
+                          setRebuildConfirm(false);
+                        }
+                      },
+                      disabled: reclaimBusy,
+                      style: {
+                        flex: 1,
+                        padding: "10px 16px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: th.accent,
+                        color: "#fff",
+                        fontFamily: FONT,
+                        fontSize: 13,
+                        fontWeight: 400,
+                        cursor: reclaimBusy ? "wait" : "pointer",
+                        opacity: reclaimBusy ? 0.7 : 1
+                      },
+                      children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim"
+                    }
+                  )
+                ] })
+              ]
+            }
+          )
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            onClick: () => {
+              window.__pearSync?.haptic("light");
+              setStorageOpen((o31) => !o31);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 16px",
+              cursor: "pointer"
+            },
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "STORAGE" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                s3,
+                {
+                  size: 16,
+                  weight: "thin",
+                  color: "var(--color-muted)",
+                  style: { transition: "transform 0.3s", transform: storageOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          maxHeight: storageOpen ? "800px" : "0px",
+          overflow: "hidden",
+          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: async () => {
+                window.__pearSync?.haptic("light");
+                try {
+                  const b = await sync2.storageBreakdown();
+                  setReclaimResult({ breakdown: b });
+                  setReportOpen("breakdown");
+                } catch (e53) {
+                  setReclaimResult({ error: e53.message });
+                }
+              },
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Storage Breakdown" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Show where disk space is used" })
+              ] })
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: async () => {
+                window.__pearSync?.haptic("light");
+                try {
+                  const a34 = await sync2.analyzeStorage({ keepTail: 100 });
+                  setReclaimResult({ analyze: a34 });
+                  setReportOpen("analyze");
+                } catch (e53) {
+                  setReclaimResult({ error: e53.message });
+                }
+              },
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Analyze Reclaimable" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Estimate reclaimable per group (keep last 100 blocks)" })
+              ] })
+            }
+          ),
+          (() => {
+            const pct = reclaimResult?.analyze?.pct ?? -1;
+            const enabled = !reclaimBusy && pct >= 21;
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => {
+                  if (!enabled) return;
+                  window.__pearSync?.haptic("light");
+                  setRebuildConfirm(true);
+                },
+                disabled: !enabled,
+                style: {
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: 10,
+                  cursor: enabled ? "pointer" : "not-allowed",
+                  border: `1px solid ${th.border}`,
+                  background: "transparent",
+                  fontFamily: FONT,
+                  opacity: enabled ? 1 : 0.4
+                },
+                children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim Storage" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: pct < 0 ? "Run Analyze first to check reclaimable space" : pct < 21 ? "Not enough reclaimable space (need \u2265 21%; currently " + pct + "%)" : "Rebuild local database to free ~" + pct + "% of storage" })
+                ] })
+              }
+            );
+          })(),
+          reclaimResult?.analyze && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, textAlign: "center", padding: "4px 0" }, children: [
+            reclaimResult.analyze.pct,
+            "% reclaimable \u2014 tap Reclaim below to continue"
+          ] }),
+          reclaimResult?.error && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: "#d04", textAlign: "center", padding: "4px 0" }, children: [
+            "Error: ",
+            reclaimResult.error
+          ] }),
+          reclaimResult?.freed !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, textAlign: "center", padding: "4px 0" }, children: [
+            "Freed ",
+            formatBytes(reclaimResult.freed),
+            " (",
+            formatBytes(reclaimResult.before),
+            " \u2192 ",
+            formatBytes(reclaimResult.after),
+            ")"
+          ] })
+        ] }) })
+      ] }),
       icsImport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         ImportIcsSheet,
         {
@@ -22738,7 +23121,7 @@ ${link}`;
             },
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "SEED PEER" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "BLIND PEER" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
                   fontSize: 10,
                   fontWeight: 500,
@@ -22786,12 +23169,12 @@ ${link}`;
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { margin: "0 0 8px" }, children: [
               "A ",
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "seed peer" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "blind peer" }),
               " is a server that keeps your calendar data available for syncing, even when your phone is offline."
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", { style: { margin: "0 0 8px" }, children: "You only need this if you share calendars with other people and want always-on sync availability." }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", { style: { margin: 0 }, children: [
-              "You can run your own seed peer server using",
+              "You can run your own blind peer server using",
               " ",
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "a",
@@ -23254,7 +23637,11 @@ ${link}`;
     haptic: (style) => window.__pearDB.call("haptic", style),
     openURL: (url) => window.__pearDB.call("openURL", url),
     canOpenLightning: () => window.__pearDB.call("canOpenLightning"),
-    openLightning: (addr) => window.__pearDB.call("openLightning", addr)
+    openLightning: (addr) => window.__pearDB.call("openLightning", addr),
+    reclaimStorage: () => window.__pearDB.call("reclaimStorage"),
+    storageBreakdown: () => window.__pearDB.call("storageBreakdown"),
+    analyzeStorage: (opts) => window.__pearDB.call("analyzeStorage", opts),
+    rebuildLocalDb: () => window.__pearDB.call("rebuildLocalDb")
   };
   window.__pearBuildReinviteLink = function(group, publicKey) {
     return buildReinviteLink(group, publicKey);

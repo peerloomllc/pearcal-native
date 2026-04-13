@@ -4528,6 +4528,15 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [weekStartOpen,     setWeekStartOpen]     = useState(false)
   const [defaultRemOpen,    setDefaultRemOpen]    = useState(false)
   const [importExportOpen,  setImportExportOpen]  = useState(false)
+  const [reclaimBusy,       setReclaimBusy]       = useState(false)
+  const [reclaimResult,     setReclaimResult]     = useState(null)
+  const [rebuildConfirm,    setRebuildConfirm]    = useState(false)
+  const [storageOpen,       setStorageOpen]       = useState(false)
+  const [reportOpen,        setReportOpen]        = useState(null) // 'breakdown' | 'analyze' | null
+
+  const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
+                         : b > 1e6 ? (b/1e6).toFixed(1)+' MB'
+                         : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B'
   const [icsImport, setIcsImport] = useState(null)
   const icsFileRef = useRef(null)
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -4799,6 +4808,248 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         </div>
       </div>
 
+      {/* Storage */}
+      {reportOpen && reclaimResult && (
+        <div onClick={() => setReportOpen(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ ...th.card, borderRadius:14, padding:'20px', maxWidth:460, width:'100%',
+              maxHeight:'80vh', overflowY:'auto', border:`1px solid ${th.border}` }}>
+            <div style={{ fontSize:16, fontWeight:400, marginBottom:14, textAlign:'center', ...th.text }}>
+              {reportOpen === 'breakdown' ? 'Storage Breakdown' : 'Reclaimable Storage'}
+            </div>
+            {reportOpen === 'breakdown' && reclaimResult.breakdown && (() => {
+              const b = reclaimResult.breakdown
+              const typeLabel = { blob:'Event media', log_old:'Old log files', sst:'Index data',
+                log:'Current logs', wal:'Write-ahead log', manifest:'Manifests', other:'Other' }
+              const cats = Object.entries(b.cats).filter(([,v]) => v.count > 0).sort((a,c) => c[1].size - a[1].size)
+              const dirs = Object.entries(b.perDir).sort((a,c) => c[1] - a[1]).slice(0, 6)
+              const Bar = ({ size, total }) => (
+                <div style={{ height:6, borderRadius:3, background:th.border, overflow:'hidden', marginTop:4 }}>
+                  <div style={{ height:'100%', width:(100 * size / Math.max(total, 1)) + '%', background:th.accent }} />
+                </div>
+              )
+              return (
+                <>
+                  <div style={{ textAlign:'center', marginBottom:18 }}>
+                    <div style={{ fontSize:28, fontWeight:300, ...th.text }}>{formatBytes(b.total)}</div>
+                    <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>Total on disk</div>
+                  </div>
+                  <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.06em', marginBottom:8 }}>BY TYPE</div>
+                  {cats.map(([k,v]) => (
+                    <div key={k} style={{ marginBottom:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, ...th.text }}>
+                        <span>{typeLabel[k] || k}</span>
+                        <span style={{ color:th.muted }}>{formatBytes(v.size)}</span>
+                      </div>
+                      <Bar size={v.size} total={b.total} />
+                    </div>
+                  ))}
+                  <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.06em', margin:'16px 0 8px' }}>BY LOCATION</div>
+                  {dirs.map(([k,v]) => (
+                    <div key={k} style={{ marginBottom:10 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, ...th.text }}>
+                        <span style={{ fontFamily:'monospace' }}>{k || '.'}</span>
+                        <span style={{ color:th.muted }}>{formatBytes(v)}</span>
+                      </div>
+                      <Bar size={v} total={b.total} />
+                    </div>
+                  ))}
+                </>
+              )
+            })()}
+            {reportOpen === 'analyze' && reclaimResult.analyze && (() => {
+              const a = reclaimResult.analyze
+              return (
+                <>
+                  <div style={{ textAlign:'center', marginBottom:18 }}>
+                    <div style={{ fontSize:28, fontWeight:300, ...th.text }}>{formatBytes(a.reclaimableBytes)}</div>
+                    <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>
+                      reclaimable ({a.pct}% of {formatBytes(a.totalBytes)})
+                    </div>
+                  </div>
+                  <div style={{ height:8, borderRadius:4, background:th.border, overflow:'hidden', marginBottom:18 }}>
+                    <div style={{ height:'100%', width:a.pct + '%', background:th.accent }} />
+                  </div>
+                  {(() => {
+                    const sections = [
+                      { heading: 'LOCAL DATABASE', match: g => g.id === '__local__' },
+                      { heading: 'GROUPS',         match: g => g.id !== '__local__' && g.id !== '__orphans__' },
+                      { heading: 'ORPHANED CORES', match: g => g.id === '__orphans__' },
+                    ]
+                    const Row = g => (
+                      <div key={g.id} style={{ marginBottom:10 }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, ...th.text }}>
+                          <span>{g.name}</span>
+                          <span style={{ color:th.muted }}>
+                            {formatBytes(g.bytes)}{g.reclaim > 0 ? ' · ' + formatBytes(g.reclaim) + ' reclaimable' : ''}
+                          </span>
+                        </div>
+                        <div style={{ height:6, borderRadius:3, background:th.border, overflow:'hidden', marginTop:4, position:'relative' }}>
+                          <div style={{ height:'100%', width:(100 * g.bytes / Math.max(a.totalBytes, 1)) + '%', background:th.muted, opacity:0.35 }} />
+                          <div style={{ position:'absolute', top:0, left:0, height:'100%', width:(100 * g.reclaim / Math.max(a.totalBytes, 1)) + '%', background:th.accent }} />
+                        </div>
+                      </div>
+                    )
+                    return sections.map(s => {
+                      const items = a.groups.filter(s.match).sort((x,y) => y.bytes - x.bytes)
+                      if (!items.length) return null
+                      return (
+                        <div key={s.heading}>
+                          <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.06em', margin:'0 0 8px' }}>{s.heading}</div>
+                          {items.map(Row)}
+                          <div style={{ height:8 }} />
+                        </div>
+                      )
+                    })
+                  })()}
+                </>
+              )
+            })()}
+            <button onClick={() => setReportOpen(null)}
+              style={{ marginTop:18, width:'100%', padding:'10px 16px', borderRadius:8,
+                border:`1px solid ${th.border}`, background:'transparent', color:th.text.color,
+                fontFamily:FONT, fontSize:13, fontWeight:300, cursor:'pointer' }}>
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+      {rebuildConfirm && (
+        <div onClick={() => !reclaimBusy && setRebuildConfirm(false)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ ...th.card, borderRadius:14, padding:'20px', maxWidth:420, width:'100%', border:`1px solid ${th.border}` }}>
+            <div style={{ fontSize:16, fontWeight:400, marginBottom:10, textAlign:'center', ...th.text }}>
+              Reclaim Storage?
+            </div>
+            <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:1.5, marginBottom:16, textAlign:'center' }}>
+              This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically.
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button onClick={() => setRebuildConfirm(false)} disabled={reclaimBusy}
+                style={{ flex:1, padding:'10px 16px', borderRadius:8, border:`1px solid ${th.border}`,
+                  background:'transparent', color:th.text.color, fontFamily:FONT, fontSize:13, fontWeight:300,
+                  cursor: reclaimBusy ? 'wait' : 'pointer', opacity: reclaimBusy ? 0.5 : 1 }}>
+                Cancel
+              </button>
+              <button onClick={async () => {
+                window.__pearSync?.haptic('medium')
+                setReclaimBusy(true)
+                setReclaimResult(null)
+                try {
+                  const r = await sync.rebuildLocalDb()
+                  setReclaimResult(r)
+                } catch (e) {
+                  setReclaimResult({ error: e.message })
+                } finally {
+                  setReclaimBusy(false)
+                  setRebuildConfirm(false)
+                }
+              }} disabled={reclaimBusy}
+                style={{ flex:1, padding:'10px 16px', borderRadius:8, border:'none',
+                  background: th.accent, color:'#fff', fontFamily:FONT, fontSize:13, fontWeight:400,
+                  cursor: reclaimBusy ? 'wait' : 'pointer', opacity: reclaimBusy ? 0.7 : 1 }}>
+                {reclaimBusy ? 'Reclaiming…' : 'Reclaim'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
+        <div onClick={() => { window.__pearSync?.haptic('light'); setStorageOpen(o => !o) }}
+          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
+            padding:'14px 16px', cursor:'pointer' }}>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
+            STORAGE
+          </div>
+          <CaretRight size={16} weight="thin" color="var(--color-muted)"
+            style={{ transition: 'transform 0.3s', transform: storageOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
+        </div>
+        <div style={{ maxHeight: storageOpen ? '800px' : '0px', overflow:'hidden',
+          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+        <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+        <button onClick={async () => {
+          window.__pearSync?.haptic('light')
+          try {
+            const b = await sync.storageBreakdown()
+            setReclaimResult({ breakdown: b })
+            setReportOpen('breakdown')
+          } catch (e) { setReclaimResult({ error: e.message }) }
+        }}
+          style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+            padding:'12px 14px', borderRadius:10, cursor:'pointer',
+            border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT }}>
+          <div style={{ flex:1, textAlign:'left' }}>
+            <div style={{ fontSize:14, fontWeight:300, ...th.text }}>Storage Breakdown</div>
+            <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>Show where disk space is used</div>
+          </div>
+        </button>
+        <button onClick={async () => {
+          window.__pearSync?.haptic('light')
+          try {
+            const a = await sync.analyzeStorage({ keepTail: 100 })
+            setReclaimResult({ analyze: a })
+            setReportOpen('analyze')
+          } catch (e) { setReclaimResult({ error: e.message }) }
+        }}
+          style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+            padding:'12px 14px', borderRadius:10, cursor:'pointer',
+            border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT }}>
+          <div style={{ flex:1, textAlign:'left' }}>
+            <div style={{ fontSize:14, fontWeight:300, ...th.text }}>Analyze Reclaimable</div>
+            <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>Estimate reclaimable per group (keep last 100 blocks)</div>
+          </div>
+        </button>
+        {(() => {
+          const pct = reclaimResult?.analyze?.pct ?? -1
+          const enabled = !reclaimBusy && pct >= 21
+          return (
+            <button onClick={() => {
+              if (!enabled) return
+              window.__pearSync?.haptic('light')
+              setRebuildConfirm(true)
+            }} disabled={!enabled}
+              style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+                padding:'12px 14px', borderRadius:10, cursor: enabled ? 'pointer' : 'not-allowed',
+                border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+                opacity: enabled ? 1 : 0.4 }}>
+              <div style={{ flex:1, textAlign:'left' }}>
+                <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+                  {reclaimBusy ? 'Reclaiming…' : 'Reclaim Storage'}
+                </div>
+                <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+                  {pct < 0
+                    ? 'Run Analyze first to check reclaimable space'
+                    : pct < 21
+                      ? 'Not enough reclaimable space (need ≥ 21%; currently ' + pct + '%)'
+                      : 'Rebuild local database to free ~' + pct + '% of storage'}
+                </div>
+              </div>
+            </button>
+          )
+        })()}
+        {reclaimResult?.analyze && (
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', padding:'4px 0' }}>
+            {reclaimResult.analyze.pct}% reclaimable — tap Reclaim below to continue
+          </div>
+        )}
+        {reclaimResult?.error && (
+          <div style={{ fontSize:12, fontWeight:300, color:'#d04', textAlign:'center', padding:'4px 0' }}>
+            Error: {reclaimResult.error}
+          </div>
+        )}
+        {reclaimResult?.freed !== undefined && (
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', padding:'4px 0' }}>
+            Freed {formatBytes(reclaimResult.freed)} ({formatBytes(reclaimResult.before)} → {formatBytes(reclaimResult.after)})
+          </div>
+        )}
+        </div>
+        </div>
+      </div>
+
       {icsImport && (
         <ImportIcsSheet th={th} events={icsImport.events} filename={icsImport.filename}
           groups={groups}
@@ -4950,7 +5201,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             padding:'14px 16px', cursor:'pointer' }}>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-              SEED PEER
+              BLIND PEER
             </div>
             <div style={{ fontSize:10, fontWeight:500, padding:'1px 6px', borderRadius:4,
               background: blindPeerKey ? '#2E7D3220' : 'transparent',
@@ -4975,7 +5226,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 marginBottom:14, padding:'10px 12px', borderRadius:8, background:th.inputBg,
                 border:`1px solid ${th.border}` }}>
                 <p style={{ margin:'0 0 8px' }}>
-                  A <b>seed peer</b> is a server that keeps your calendar data available for syncing,
+                  A <b>blind peer</b> is a server that keeps your calendar data available for syncing,
                   even when your phone is offline.
                 </p>
                 <p style={{ margin:'0 0 8px' }}>
@@ -4983,7 +5234,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                   always-on sync availability.
                 </p>
                 <p style={{ margin:0 }}>
-                  You can run your own seed peer server using{' '}
+                  You can run your own blind peer server using{' '}
                   <a href="https://github.com/holepunchto/blind-peer-cli" target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily:'monospace', fontSize:11, color:th.accent }}
                     onClick={e => { e.preventDefault(); window.__pearSync?.openURL('https://github.com/holepunchto/blind-peer-cli') }}>blind-peer-cli</a>{' '}

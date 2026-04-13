@@ -107,6 +107,10 @@ async function handle (method, args) {
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
+    case 'reclaimStorage': return reclaimStorage()
+    case 'storageBreakdown': return storageBreakdown()
+    case 'analyzeStorage': return analyzeStorage(args[0])
+    case 'rebuildLocalDb': return rebuildLocalDb()
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -1332,6 +1336,289 @@ async function setMemberNickname (groupId, nickname) {
       .catch(e => console.error('[NICKNAME] sync error:', e.message))
   }
   send({ type: 'event', event: 'sync', data: groupId })
+}
+
+// ── Storage diagnostics ──────────────────────────────────────────────────────
+
+async function storageBreakdown () {
+  const fs = require('bare-fs')
+  const path = require('bare-path')
+
+  // Categorize files by name pattern, tracking size + count per category.
+  const cats = {
+    sst:      { size: 0, count: 0 }, // *.sst — SST table files (live data)
+    blob:     { size: 0, count: 0 }, // *.blob — BlobDB large-value files
+    log_old:  { size: 0, count: 0 }, // LOG.old.* — rotated info logs (bloat suspect)
+    log:      { size: 0, count: 0 }, // LOG, LOG.(num) — current info log + wal rotations
+    wal:      { size: 0, count: 0 }, // *.log — WAL
+    manifest: { size: 0, count: 0 }, // MANIFEST-* / CURRENT / OPTIONS-*
+    other:    { size: 0, count: 0 },
+  }
+  const perDir = {}
+  let total = 0
+
+  async function walk (dir, rel) {
+    let entries
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+    catch { return }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) { await walk(p, rel ? rel + '/' + e.name : e.name); continue }
+      let size = 0
+      try { size = (await fs.promises.stat(p)).size } catch { continue }
+      total += size
+      perDir[rel || '.'] = (perDir[rel || '.'] || 0) + size
+
+      const n = e.name
+      let cat = 'other'
+      if (n.endsWith('.sst')) cat = 'sst'
+      else if (n.endsWith('.blob')) cat = 'blob'
+      else if (n.startsWith('LOG.old.')) cat = 'log_old'
+      else if (n === 'LOG' || /^LOG\.\d+$/.test(n)) cat = 'log'
+      else if (n.endsWith('.log')) cat = 'wal'
+      else if (n.startsWith('MANIFEST-') || n === 'CURRENT' || n.startsWith('OPTIONS-') || n === 'IDENTITY') cat = 'manifest'
+      cats[cat].size += size
+      cats[cat].count += 1
+    }
+  }
+
+  await walk(dataDir, '')
+  return { total, cats, perDir }
+}
+
+// ── Storage analyzer ─────────────────────────────────────────────────────────
+// Estimates how much of each group's writer-core bytes could be reclaimed if
+// blocks before a "keep tail" were cleared + compacted.
+// `keepTail` = how many most-recent blocks to preserve per writer (default 100).
+
+async function analyzeStorage ({ keepTail = 100 } = {}) {
+  const groups = []
+  let totalBytes = 0
+  let reclaimableBytes = 0
+
+  // Local DB (pearcal/core) — single Hypercore under Hyperbee.
+  if (db?.core) {
+    const core = db.core
+    const length = core.length
+    const byteLength = core.byteLength
+    const clearableBlocks = Math.max(0, length - keepTail)
+    const estReclaim = length > 0 ? Math.floor(byteLength * clearableBlocks / length) : 0
+    groups.push({
+      id: '__local__', name: '(local DB)', bytes: byteLength, reclaim: 0,
+      writers: [{ role: 'local', key: '-', length, byteLength, clearableBlocks: 0, estReclaim: 0 }],
+    })
+    totalBytes += byteLength
+  }
+
+  // Walk every core known to the corestore (incl. orphaned / deleted-group cores)
+  try {
+    const seen = new Set()
+    for (const base of bases.values()) {
+      for (const w of base.activeWriters) if (w.core?.key) seen.add(w.core.key.toString('hex'))
+      const vc = base.view?.core || base.view?.feed
+      if (vc?.key) seen.add(vc.key.toString('hex'))
+    }
+    const orphans = []
+    let orphanBytes = 0
+    if (store?.cores) {
+      for (const core of store.cores.values()) {
+        if (!core?.key) continue
+        const hex = core.key.toString('hex')
+        if (seen.has(hex)) continue
+        orphans.push({ role: 'orphan', key: hex.slice(0, 12), length: core.length, byteLength: core.byteLength, clearableBlocks: core.length, estReclaim: core.byteLength })
+        orphanBytes += core.byteLength
+      }
+    }
+    if (orphans.length) {
+      groups.push({ id: '__orphans__', name: '(orphaned cores)', bytes: orphanBytes, reclaim: orphanBytes, writers: orphans })
+      totalBytes += orphanBytes
+      reclaimableBytes += orphanBytes
+    }
+  } catch (e) { console.warn('[analyze] orphan scan failed:', e.message) }
+
+  for (const [groupId, base] of bases.entries()) {
+    const writers = []
+    let groupBytes = 0
+    let groupReclaim = 0
+
+    // Collect candidate cores to analyze: all activeWriters + the view core.
+    const candidates = []
+    for (const w of base.activeWriters) {
+      if (w.core) candidates.push({ role: 'writer', core: w.core })
+    }
+    // Autobase view: if it's a Hyperbee, its backing Hypercore is view.core (or view.feed).
+    const view = base.view
+    if (view) {
+      const viewCore = view.core || view.feed
+      if (viewCore) candidates.push({ role: 'view', core: viewCore })
+    }
+
+    for (const { role, core } of candidates) {
+      const length = core.length
+      const byteLength = core.byteLength
+      const clearableBlocks = role === 'view' ? 0 : Math.max(0, length - keepTail)
+      const estReclaim = length > 0 ? Math.floor(byteLength * clearableBlocks / length) : 0
+      writers.push({
+        role,
+        key: core.key ? core.key.toString('hex').slice(0, 12) : '?',
+        length,
+        byteLength,
+        clearableBlocks,
+        estReclaim,
+      })
+      groupBytes += byteLength
+      groupReclaim += estReclaim
+    }
+
+    // Look up group name from local DB
+    let name = groupId
+    try {
+      const n = await db.get('groups:' + groupId)
+      if (n?.value?.name) name = n.value.name
+    } catch {}
+
+    groups.push({ id: groupId, name, bytes: groupBytes, reclaim: groupReclaim, writers })
+    totalBytes += groupBytes
+    reclaimableBytes += groupReclaim
+  }
+
+  const pct = totalBytes > 0 ? Math.round(100 * reclaimableBytes / totalBytes) : 0
+  return { keepTail, totalBytes, reclaimableBytes, pct, groups }
+}
+
+// ── Local DB rebuild ─────────────────────────────────────────────────────────
+// Rewrites `pearcal/core` to drop historical Hyperbee tree nodes + stale event
+// payloads. Events and member rosters get re-mirrored from each group's
+// Autobase view, so group membership is unaffected.
+
+let rebuildBusy = false
+
+async function rebuildLocalDb () {
+  if (rebuildBusy) throw new Error('rebuild already running')
+  rebuildBusy = true
+  const fs = require('bare-fs')
+  const path = require('bare-path')
+
+  async function dirSize (dir) {
+    let total = 0
+    let entries
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+    catch { return 0 }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) total += await dirSize(p)
+      else { try { total += (await fs.promises.stat(p)).size } catch {} }
+    }
+    return total
+  }
+
+  const coreDir = dataDir + '/core'
+  const newDir  = dataDir + '/core.new'
+  const bakDir  = dataDir + '/core.old'
+
+  try {
+    const before = await dirSize(coreDir)
+
+    // Ensure no stale temp dirs from a prior aborted run.
+    try { await fs.promises.rm(newDir, { recursive: true, force: true }) } catch {}
+    try { await fs.promises.rm(bakDir, { recursive: true, force: true }) } catch {}
+
+    const newCore = new Hypercore(newDir, { valueEncoding: 'json' })
+    await newCore.ready()
+    const newDb = new Hyperbee(newCore, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+    await newDb.ready()
+
+    // Copy everything except events:* and members:* (those re-mirror from Autobase).
+    let kept = 0
+    for await (const entry of db.createReadStream()) {
+      const k = entry.key
+      if (k.startsWith('events:') || k.startsWith('members:')) continue
+      await newDb.put(k, entry.value)
+      kept++
+    }
+
+    // Re-mirror events and members from each group's Autobase view.
+    let mirrored = 0
+    for (const base of bases.values()) {
+      if (!base.view) continue
+      for await (const entry of base.view.createReadStream()) {
+        const k = entry.key
+        if (k.startsWith('events:') || k.startsWith('members:')) {
+          await newDb.put(k, entry.value)
+          mirrored++
+        }
+      }
+    }
+
+    await newDb.close()
+    await newCore.close()
+    await db.close()
+
+    await fs.promises.rename(coreDir, bakDir)
+    await fs.promises.rename(newDir, coreDir)
+
+    const core = new Hypercore(coreDir, { valueEncoding: 'json' })
+    await core.ready()
+    db = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+    await db.ready()
+
+    try { await fs.promises.rm(bakDir, { recursive: true, force: true }) } catch {}
+
+    // Opportunistic compaction for corestore side too.
+    try {
+      if (store?.storage?.db) {
+        await store.storage.db.compactRange(null, null, {
+          exclusive: true, blobGarbageCollectionPolicy: 1, bottommostLevelCompaction: 2,
+        })
+      }
+    } catch (e) { console.warn('[rebuild] store compact failed:', e.message) }
+
+    const after = await dirSize(coreDir)
+    return { before, after, freed: before - after, kept, mirrored }
+  } finally {
+    rebuildBusy = false
+  }
+}
+
+// ── Storage reclamation ──────────────────────────────────────────────────────
+
+async function reclaimStorage () {
+  const fs = require('bare-fs')
+  const path = require('bare-path')
+
+  async function dirSize (dir) {
+    let total = 0
+    let entries
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+    catch { return 0 }
+    for (const e of entries) {
+      const p = path.join(dir, e.name)
+      if (e.isDirectory()) total += await dirSize(p)
+      else {
+        try { total += (await fs.promises.stat(p)).size } catch {}
+      }
+    }
+    return total
+  }
+
+  const before = await dirSize(dataDir)
+  const opts = { exclusive: true, blobGarbageCollectionPolicy: 1, bottommostLevelCompaction: 2 }
+  const errors = []
+
+  try {
+    if (db?.core?.state?.storage?.db) {
+      await db.core.state.storage.db.compactRange(null, null, opts)
+    }
+  } catch (e) { errors.push('core: ' + e.message); console.warn('[reclaim] core compact failed:', e.message) }
+
+  try {
+    if (store?.storage?.db) {
+      await store.storage.db.compactRange(null, null, opts)
+    }
+  } catch (e) { errors.push('store: ' + e.message); console.warn('[reclaim] store compact failed:', e.message) }
+
+  const after = await dirSize(dataDir)
+  return { before, after, freed: before - after, errors }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
