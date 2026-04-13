@@ -99,6 +99,8 @@ async function handle (method, args) {
     case 'listRsvps':        return listRsvps(args[0])
     case 'listMyRsvps':      return listMyRsvps()
     case 'putRsvp':          return putRsvp(args[0], args[1], args[2], args[3])
+    case 'getPrivateNote':   return getPrivateNote(args[0])
+    case 'putPrivateNote':   return putPrivateNote(args[0], args[1])
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -124,6 +126,17 @@ const NS = {
   groups:  'groups:',
   members: 'members:',
   rsvp:    'rsvp:',
+  privateNotes: 'privateNotes:',
+}
+
+async function getPrivateNote (eventId) {
+  const node = await db.get(NS.privateNotes + eventId).catch(() => null)
+  return node?.value?.text ?? ''
+}
+
+async function putPrivateNote (eventId, text) {
+  if (!text) await db.del(NS.privateNotes + eventId).catch(() => {})
+  else await db.put(NS.privateNotes + eventId, { text, updatedAt: Date.now() })
 }
 
 async function getProfile () {
@@ -187,19 +200,23 @@ async function listEvents (opts) {
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (groupId && !value.groups?.includes(groupId)) continue
     if (!isInvitedToEvent(value, profile?.id)) continue
-    events.push(value)
+    const privateNote = await getPrivateNote(value.id)
+    events.push(privateNote ? { ...value, privateNote } : value)
   }
   return events
 }
 
 async function putEvent (event) {
-  await db.put(NS.events + event.date + ':' + event.id, { ...event, updatedAt: Date.now() })
+  const { privateNote, ...rest } = event
+  await db.put(NS.events + event.date + ':' + event.id, { ...rest, updatedAt: Date.now() })
+  if (privateNote !== undefined) await putPrivateNote(event.id, privateNote)
   return event
 }
 
 async function deleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
   await db.del('reminders:' + id).catch(() => {})
+  await db.del(NS.privateNotes + id).catch(() => {})
   await _deleteAllRsvps(id).catch(() => {})
 }
 
@@ -211,6 +228,7 @@ async function deleteEventSeries (recurrenceId) {
   for (const { key, id } of toDelete) {
     await db.del(key)
     await db.del('reminders:' + id).catch(() => {})
+    await db.del(NS.privateNotes + id).catch(() => {})
     await _deleteAllRsvps(id).catch(() => {})
   }
 }
@@ -537,7 +555,8 @@ async function syncPutEvent (groupId, event) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   // Carry _prevDate in the value so receiving devices can clean up the old key
-  const value = { ...event, updatedAt: event.updatedAt || Date.now() }
+  const { privateNote, ...shared } = event
+  const value = { ...shared, updatedAt: event.updatedAt || Date.now() }
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
