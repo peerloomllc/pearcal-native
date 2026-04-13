@@ -22049,6 +22049,8 @@ ${link}`;
     const [photoSaving, setPhotoSaving] = (0, import_react2.useState)(false);
     const [holidayWorking, setHolidayWorking] = (0, import_react2.useState)(false);
     const [holidaysOpen, setHolidaysOpen] = (0, import_react2.useState)((profile?.holidayCountries ?? []).length > 0);
+    const [personalOpen, setPersonalOpen] = (0, import_react2.useState)(false);
+    const [advancedOpen, setAdvancedOpen] = (0, import_react2.useState)(false);
     const [appearanceOpen, setAppearanceOpen] = (0, import_react2.useState)(false);
     const [timeFormatOpen, setTimeFormatOpen] = (0, import_react2.useState)(false);
     const [weekStartOpen, setWeekStartOpen] = (0, import_react2.useState)(false);
@@ -22231,83 +22233,51 @@ ${link}`;
         marginTop: 4,
         textAlign: "center"
       }, children: "SETTINGS" }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setAppearanceOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "APPEARANCE" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: appearanceOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
-                }
-              )
-            ]
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: appearanceOpen ? "200px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-          padding: "0 16px 14px",
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          onClick: () => {
+            window.__pearSync?.haptic("light");
+            setPersonalOpen((o31) => !o31);
+          },
+          style: {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 16px",
+            cursor: "pointer"
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "PERSONAL" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              s3,
+              {
+                size: 16,
+                weight: "thin",
+                color: "var(--color-muted)",
+                style: { transition: "transform 0.3s", transform: personalOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
+              }
+            )
+          ]
+        }
+      ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        maxHeight: personalOpen ? "2000px" : "0px",
+        overflow: "hidden",
+        transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "APPEARANCE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          padding: "14px 16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between"
         }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "Dark mode" }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: dark, onChange: onToggleDark, accent: th.accent })
-        ] }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setWeekStartOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "FIRST DAY OF WEEK" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: weekStartOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
-                }
-              )
-            ]
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: weekStartOpen ? "200px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px", display: "flex", gap: 8 }, children: [["Sunday", 0], ["Monday", 1]].map(([label, val]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "FIRST DAY OF WEEK" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "14px 16px", display: "flex", gap: 8 }, children: [["Sunday", 0], ["Monday", 1]].map(([label, val]) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
             onClick: () => {
@@ -22329,42 +22299,9 @@ ${link}`;
             children: label
           },
           val
-        )) }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setDefaultRemOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "DEFAULT REMINDER" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: defaultRemOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
-                }
-              )
-            ]
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: defaultRemOpen ? "200px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        )) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEFAULT REMINDER" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "14px 16px" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "select",
           {
             value: profile?.defaultReminder ?? 15,
@@ -22389,41 +22326,10 @@ ${link}`;
               REMINDER_OPTIONS.map((r7) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: r7.value, children: r7.label }, r7.value))
             ]
           }
-        ) }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setTimeFormatOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "TIME FORMAT" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                fontSize: 16,
-                color: th.muted,
-                transition: "transform 0.3s",
-                transform: timeFormatOpen ? "rotate(90deg)" : "rotate(0deg)",
-                display: "inline-block"
-              }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s3, { size: 16, weight: "thin", color: "var(--color-muted)" }) })
-            ]
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: timeFormatOpen ? "200px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-          padding: "0 16px 14px",
+        ) }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "TIME FORMAT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          padding: "14px 16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between"
@@ -22433,42 +22339,159 @@ ${link}`;
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: use24h ? "e.g. 14:30" : "e.g. 2:30pm" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Toggle, { val: use24h, onChange: (v) => onUpdateProfile({ use24h: v }), accent: th.accent })
-        ] }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setImportExportOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "IMPORT & EXPORT" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: importExportOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
+        ] }) }),
+        (() => {
+          const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
+          const slug = (t7) => t7.replace(/\s+/g, "-").toLowerCase();
+          const makeId = (h2) => "holiday-" + h2.date + "-" + slug(h2.title);
+          const allCountries = [
+            { code: "us", flag: "\u{1F1FA}\u{1F1F8}", label: "United States", fn: getUSFederalHolidays },
+            { code: "ca", flag: "\u{1F1E8}\u{1F1E6}", label: "Canada", fn: getCanadaHolidays },
+            { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays }
+          ];
+          const activeCountries = new Set(profile?.holidayCountries ?? []);
+          async function toggleCountry(code, fn, on) {
+            setHolidayWorking(true);
+            const newActive = new Set(activeCountries);
+            if (on) {
+              newActive.add(code);
+              const existingIds = new Set((events ?? []).map((e53) => e53.id));
+              const existingKeys = new Set((events ?? []).map((e53) => e53.date + "|" + e53.title));
+              for (const yr of [thisYear, thisYear + 1]) {
+                for (const h2 of fn(yr)) {
+                  const id = makeId(h2);
+                  const key = h2.date + "|" + h2.title;
+                  if (existingIds.has(id) || existingKeys.has(key)) continue;
+                  const ev2 = {
+                    id,
+                    title: h2.title,
+                    date: h2.date,
+                    allDay: true,
+                    start: "00:00",
+                    end: "00:00",
+                    reminder: -1,
+                    groups: [],
+                    invitees: [],
+                    color: "#CF3535",
+                    desc: "Public Holiday",
+                    location: "",
+                    creatorId: "system",
+                    recurrence: "none",
+                    recurrenceId: "",
+                    recurrenceEnd: "",
+                    recurrenceNth: 0,
+                    recurrenceWeekday: 0,
+                    editPermission: "everyone",
+                    updatedAt: Date.now()
+                  };
+                  await db2?.putEvent(ev2).catch(() => {
+                  });
+                  setEvents((prev) => prev.find((e53) => e53.id === ev2.id) ? prev : [...prev, ev2]);
+                  existingIds.add(id);
+                  existingKeys.add(key);
                 }
-              )
-            ]
+              }
+            } else {
+              newActive.delete(code);
+              const keepIds = /* @__PURE__ */ new Set();
+              for (const { code: otherCode, fn: otherFn } of allCountries) {
+                if (otherCode === code || !newActive.has(otherCode)) continue;
+                for (const yr of [thisYear, thisYear + 1]) {
+                  for (const h2 of otherFn(yr)) keepIds.add(makeId(h2));
+                }
+              }
+              for (const yr of [thisYear, thisYear + 1]) {
+                for (const h2 of fn(yr)) {
+                  const id = makeId(h2);
+                  if (keepIds.has(id)) continue;
+                  const ev2 = (events ?? []).find((e53) => e53.id === id);
+                  if (ev2) {
+                    await db2?.localDeleteEvent(ev2.date, ev2.id).catch(() => {
+                    });
+                    setEvents((prev) => prev.filter((e53) => e53.id !== id));
+                  }
+                }
+              }
+            }
+            await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {
+            });
+            setHolidayWorking(false);
           }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: importExportOpen ? "300px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 10 }, children: [
+          const anyEnabled = activeCountries.size > 0;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "HOLIDAYS" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              marginBottom: 12,
+              opacity: holidayWorking ? 0.6 : 1,
+              transition: "opacity 0.2s"
+            }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px" }, children: [
+              allCountries.map(({ code, flag, label, fn }, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "10px 0",
+                borderBottom: i2 < allCountries.length - 1 ? `1px solid ${th.border}` : "none"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20 }, children: flag }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: label }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: [
+                    fn(thisYear).length,
+                    " holidays \xB7 ",
+                    thisYear,
+                    "\u2013",
+                    thisYear + 1
+                  ] })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  Toggle,
+                  {
+                    val: activeCountries.has(code),
+                    onChange: (v) => !holidayWorking && toggleCountry(code, fn, v),
+                    accent: th.accent
+                  }
+                )
+              ] }, code)),
+              anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
+            ] }) })
+          ] });
+        })()
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        "div",
+        {
+          onClick: () => {
+            window.__pearSync?.haptic("light");
+            setAdvancedOpen((o31) => !o31);
+          },
+          style: {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 16px",
+            cursor: "pointer"
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "ADVANCED" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              s3,
+              {
+                size: 16,
+                weight: "thin",
+                color: "var(--color-muted)",
+                style: { transition: "transform 0.3s", transform: advancedOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
+              }
+            )
+          ]
+        }
+      ) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+        maxHeight: advancedOpen ? "3000px" : "0px",
+        overflow: "hidden",
+        transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
+      }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "input",
             {
@@ -22542,175 +22565,126 @@ ${link}`;
               ]
             }
           )
-        ] }) })
-      ] }),
-      reportOpen && reclaimResult && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "div",
-        {
-          onClick: () => setReportOpen(null),
-          style: {
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 1e3,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px"
-          },
-          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              onClick: (e53) => e53.stopPropagation(),
-              style: {
-                ...th.card,
-                borderRadius: 14,
-                padding: "20px",
-                maxWidth: 460,
-                width: "100%",
-                maxHeight: "80vh",
-                overflowY: "auto",
-                border: `1px solid ${th.border}`
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 14, textAlign: "center", ...th.text }, children: reportOpen === "breakdown" ? "Storage Breakdown" : "Reclaimable Storage" }),
-                reportOpen === "breakdown" && reclaimResult.breakdown && (() => {
-                  const b = reclaimResult.breakdown;
-                  const typeLabel = {
-                    blob: "Event media",
-                    log_old: "Old log files",
-                    sst: "Index data",
-                    log: "Current logs",
-                    wal: "Write-ahead log",
-                    manifest: "Manifests",
-                    other: "Other"
-                  };
-                  const cats = Object.entries(b.cats).filter(([, v]) => v.count > 0).sort((a34, c8) => c8[1].size - a34[1].size);
-                  const dirs = Object.entries(b.perDir).sort((a34, c8) => c8[1] - a34[1]).slice(0, 6);
-                  const Bar = ({ size, total }) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * size / Math.max(total, 1) + "%", background: th.accent } }) });
-                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(b.total) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: "Total on disk" })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", marginBottom: 8 }, children: "BY TYPE" }),
-                    cats.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: typeLabel[k] || k }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v.size) })
+        ] }) }),
+        reportOpen && reclaimResult && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "div",
+          {
+            onClick: () => setReportOpen(null),
+            style: {
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 1e3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "24px"
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e53) => e53.stopPropagation(),
+                style: {
+                  ...th.card,
+                  borderRadius: 14,
+                  padding: "20px",
+                  maxWidth: 460,
+                  width: "100%",
+                  maxHeight: "80vh",
+                  overflowY: "auto",
+                  border: `1px solid ${th.border}`
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 14, textAlign: "center", ...th.text }, children: reportOpen === "breakdown" ? "Storage Breakdown" : "Reclaimable Storage" }),
+                  reportOpen === "breakdown" && reclaimResult.breakdown && (() => {
+                    const b = reclaimResult.breakdown;
+                    const typeLabel = {
+                      blob: "Event media",
+                      log_old: "Old log files",
+                      sst: "Index data",
+                      log: "Current logs",
+                      wal: "Write-ahead log",
+                      manifest: "Manifests",
+                      other: "Other"
+                    };
+                    const cats = Object.entries(b.cats).filter(([, v]) => v.count > 0).sort((a34, c8) => c8[1].size - a34[1].size);
+                    const dirs = Object.entries(b.perDir).sort((a34, c8) => c8[1] - a34[1]).slice(0, 6);
+                    const Bar = ({ size, total }) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * size / Math.max(total, 1) + "%", background: th.accent } }) });
+                    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(b.total) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: "Total on disk" })
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v.size, total: b.total })
-                    ] }, k)),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "16px 0 8px" }, children: "BY LOCATION" }),
-                    dirs.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontFamily: "monospace" }, children: k || "." }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v) })
-                      ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v, total: b.total })
-                    ] }, k))
-                  ] });
-                })(),
-                reportOpen === "analyze" && reclaimResult.analyze && (() => {
-                  const a34 = reclaimResult.analyze;
-                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(a34.reclaimableBytes) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
-                        "reclaimable (",
-                        a34.pct,
-                        "% of ",
-                        formatBytes(a34.totalBytes),
-                        ")"
-                      ] })
-                    ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8, borderRadius: 4, background: th.border, overflow: "hidden", marginBottom: 18 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: a34.pct + "%", background: th.accent } }) }),
-                    (() => {
-                      const sections = [
-                        { heading: "LOCAL DATABASE", match: (g) => g.id === "__local__" },
-                        { heading: "GROUPS", match: (g) => g.id !== "__local__" && g.id !== "__orphans__" },
-                        { heading: "ORPHANED CORES", match: (g) => g.id === "__orphans__" }
-                      ];
-                      const Row = (g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", marginBottom: 8 }, children: "BY TYPE" }),
+                      cats.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
                         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: g.name }),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted }, children: [
-                            formatBytes(g.bytes),
-                            g.reclaim > 0 ? " \xB7 " + formatBytes(g.reclaim) + " reclaimable" : ""
-                          ] })
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: typeLabel[k] || k }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v.size) })
                         ] }),
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4, position: "relative" }, children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * g.bytes / Math.max(a34.totalBytes, 1) + "%", background: th.muted, opacity: 0.35 } }),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "absolute", top: 0, left: 0, height: "100%", width: 100 * g.reclaim / Math.max(a34.totalBytes, 1) + "%", background: th.accent } })
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v.size, total: b.total })
+                      ] }, k)),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "16px 0 8px" }, children: "BY LOCATION" }),
+                      dirs.map(([k, v]) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontFamily: "monospace" }, children: k || "." }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted }, children: formatBytes(v) })
+                        ] }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Bar, { size: v, total: b.total })
+                      ] }, k))
+                    ] });
+                  })(),
+                  reportOpen === "analyze" && reclaimResult.analyze && (() => {
+                    const a34 = reclaimResult.analyze;
+                    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(a34.reclaimableBytes) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
+                          "reclaimable (",
+                          a34.pct,
+                          "% of ",
+                          formatBytes(a34.totalBytes),
+                          ")"
                         ] })
-                      ] }, g.id);
-                      return sections.map((s9) => {
-                        const items = a34.groups.filter(s9.match).sort((x, y) => y.bytes - x.bytes);
-                        if (!items.length) return null;
-                        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "0 0 8px" }, children: s9.heading }),
-                          items.map(Row),
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8 } })
-                        ] }, s9.heading);
-                      });
-                    })()
-                  ] });
-                })(),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  "button",
-                  {
-                    onClick: () => setReportOpen(null),
-                    style: {
-                      marginTop: 18,
-                      width: "100%",
-                      padding: "10px 16px",
-                      borderRadius: 8,
-                      border: `1px solid ${th.border}`,
-                      background: "transparent",
-                      color: th.text.color,
-                      fontFamily: FONT,
-                      fontSize: 13,
-                      fontWeight: 300,
-                      cursor: "pointer"
-                    },
-                    children: "Close"
-                  }
-                )
-              ]
-            }
-          )
-        }
-      ),
-      rebuildConfirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        "div",
-        {
-          onClick: () => !reclaimBusy && setRebuildConfirm(false),
-          style: {
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            zIndex: 1e3,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "24px"
-          },
-          children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              onClick: (e53) => e53.stopPropagation(),
-              style: { ...th.card, borderRadius: 14, padding: "20px", maxWidth: 420, width: "100%", border: `1px solid ${th.border}` },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", ...th.text }, children: "Reclaim Storage?" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "center" }, children: "This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically." }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8, borderRadius: 4, background: th.border, overflow: "hidden", marginBottom: 18 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: a34.pct + "%", background: th.accent } }) }),
+                      (() => {
+                        const sections = [
+                          { heading: "LOCAL DATABASE", match: (g) => g.id === "__local__" },
+                          { heading: "GROUPS", match: (g) => g.id !== "__local__" && g.id !== "__orphans__" },
+                          { heading: "ORPHANED CORES", match: (g) => g.id === "__orphans__" }
+                        ];
+                        const Row = (g) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 10 }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: g.name }),
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted }, children: [
+                              formatBytes(g.bytes),
+                              g.reclaim > 0 ? " \xB7 " + formatBytes(g.reclaim) + " reclaimable" : ""
+                            ] })
+                          ] }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { height: 6, borderRadius: 3, background: th.border, overflow: "hidden", marginTop: 4, position: "relative" }, children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: "100%", width: 100 * g.bytes / Math.max(a34.totalBytes, 1) + "%", background: th.muted, opacity: 0.35 } }),
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { position: "absolute", top: 0, left: 0, height: "100%", width: 100 * g.reclaim / Math.max(a34.totalBytes, 1) + "%", background: th.accent } })
+                          ] })
+                        ] }, g.id);
+                        return sections.map((s9) => {
+                          const items = a34.groups.filter(s9.match).sort((x, y) => y.bytes - x.bytes);
+                          if (!items.length) return null;
+                          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: th.muted, letterSpacing: "0.06em", margin: "0 0 8px" }, children: s9.heading }),
+                            items.map(Row),
+                            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { height: 8 } })
+                          ] }, s9.heading);
+                        });
+                      })()
+                    ] });
+                  })(),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
-                      onClick: () => setRebuildConfirm(false),
-                      disabled: reclaimBusy,
+                      onClick: () => setReportOpen(null),
                       style: {
-                        flex: 1,
+                        marginTop: 18,
+                        width: "100%",
                         padding: "10px 16px",
                         borderRadius: 8,
                         border: `1px solid ${th.border}`,
@@ -22719,86 +22693,102 @@ ${link}`;
                         fontFamily: FONT,
                         fontSize: 13,
                         fontWeight: 300,
-                        cursor: reclaimBusy ? "wait" : "pointer",
-                        opacity: reclaimBusy ? 0.5 : 1
+                        cursor: "pointer"
                       },
-                      children: "Cancel"
-                    }
-                  ),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                    "button",
-                    {
-                      onClick: async () => {
-                        window.__pearSync?.haptic("medium");
-                        setReclaimBusy(true);
-                        setReclaimResult(null);
-                        try {
-                          const r7 = await sync2.rebuildLocalDb();
-                          setReclaimResult(r7);
-                        } catch (e53) {
-                          setReclaimResult({ error: e53.message });
-                        } finally {
-                          setReclaimBusy(false);
-                          setRebuildConfirm(false);
-                        }
-                      },
-                      disabled: reclaimBusy,
-                      style: {
-                        flex: 1,
-                        padding: "10px 16px",
-                        borderRadius: 8,
-                        border: "none",
-                        background: th.accent,
-                        color: "#fff",
-                        fontFamily: FONT,
-                        fontSize: 13,
-                        fontWeight: 400,
-                        cursor: reclaimBusy ? "wait" : "pointer",
-                        opacity: reclaimBusy ? 0.7 : 1
-                      },
-                      children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim"
+                      children: "Close"
                     }
                   )
-                ] })
-              ]
-            }
-          )
-        }
-      ),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setStorageOpen((o31) => !o31);
-            },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "STORAGE" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: storageOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
-                }
-              )
-            ]
+                ]
+              }
+            )
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: storageOpen ? "800px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px", display: "flex", flexDirection: "column", gap: 8 }, children: [
+        rebuildConfirm && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "div",
+          {
+            onClick: () => !reclaimBusy && setRebuildConfirm(false),
+            style: {
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 1e3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "24px"
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e53) => e53.stopPropagation(),
+                style: { ...th.card, borderRadius: 14, padding: "20px", maxWidth: 420, width: "100%", border: `1px solid ${th.border}` },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", ...th.text }, children: "Reclaim Storage?" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "center" }, children: "This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically." }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: () => setRebuildConfirm(false),
+                        disabled: reclaimBusy,
+                        style: {
+                          flex: 1,
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: `1px solid ${th.border}`,
+                          background: "transparent",
+                          color: th.text.color,
+                          fontFamily: FONT,
+                          fontSize: 13,
+                          fontWeight: 300,
+                          cursor: reclaimBusy ? "wait" : "pointer",
+                          opacity: reclaimBusy ? 0.5 : 1
+                        },
+                        children: "Cancel"
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: async () => {
+                          window.__pearSync?.haptic("medium");
+                          setReclaimBusy(true);
+                          setReclaimResult(null);
+                          try {
+                            const r7 = await sync2.rebuildLocalDb();
+                            setReclaimResult(r7);
+                          } catch (e53) {
+                            setReclaimResult({ error: e53.message });
+                          } finally {
+                            setReclaimBusy(false);
+                            setRebuildConfirm(false);
+                          }
+                        },
+                        disabled: reclaimBusy,
+                        style: {
+                          flex: 1,
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: "none",
+                          background: th.accent,
+                          color: "#fff",
+                          fontFamily: FONT,
+                          fontSize: 13,
+                          fontWeight: 400,
+                          cursor: reclaimBusy ? "wait" : "pointer",
+                          opacity: reclaimBusy ? 0.7 : 1
+                        },
+                        children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim"
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "STORAGE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
             {
@@ -22910,249 +22900,75 @@ ${link}`;
             formatBytes(reclaimResult.after),
             ")"
           ] })
-        ] }) })
-      ] }),
-      icsImport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-        ImportIcsSheet,
-        {
-          th,
-          events: icsImport.events,
-          filename: icsImport.filename,
-          groups,
-          existingEventIds: new Set((events ?? []).map((e53) => e53.id)),
-          onImport: (toImport) => {
-            if (!saveEvent) return;
-            for (const r7 of toImport) {
-              const { ev: ev2, uid, keptGroups } = r7;
-              const id = uid || "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-              const firstGroup = keptGroups.length ? (groups ?? []).find((g) => g.id === keptGroups[0]) : null;
-              saveEvent({
-                id,
-                title: ev2.title,
-                date: ev2.date,
-                allDay: ev2.allDay ?? true,
-                start: ev2.start ?? "",
-                end: ev2.end ?? "",
-                endDate: ev2.endDate ?? "",
-                desc: ev2.desc ?? "",
-                location: ev2.location ?? "",
-                meetingLink: ev2.meetingLink ?? "",
-                groups: keptGroups,
-                invitees: [],
-                color: firstGroup?.color ?? "#6C9BF5",
-                colors: [],
-                reminder: 0,
-                recurrence: "none",
-                recurrenceId: "",
-                recurrenceEnd: "",
-                recurrenceNth: 0,
-                recurrenceWeekday: 0,
-                editPermission: "everyone",
-                creatorId: profile?.id ?? ""
-              }, "one", {}, []);
-            }
-            setIcsImport(null);
-          },
-          onClose: () => setIcsImport(null)
-        }
-      ),
-      (() => {
-        const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
-        const slug = (t7) => t7.replace(/\s+/g, "-").toLowerCase();
-        const makeId = (h2) => "holiday-" + h2.date + "-" + slug(h2.title);
-        const allCountries = [
-          { code: "us", flag: "\u{1F1FA}\u{1F1F8}", label: "United States", fn: getUSFederalHolidays },
-          { code: "ca", flag: "\u{1F1E8}\u{1F1E6}", label: "Canada", fn: getCanadaHolidays },
-          { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays }
-        ];
-        const activeCountries = new Set(profile?.holidayCountries ?? []);
-        async function toggleCountry(code, fn, on) {
-          setHolidayWorking(true);
-          const newActive = new Set(activeCountries);
-          if (on) {
-            newActive.add(code);
-            const existingIds = new Set((events ?? []).map((e53) => e53.id));
-            const existingKeys = new Set((events ?? []).map((e53) => e53.date + "|" + e53.title));
-            for (const yr of [thisYear, thisYear + 1]) {
-              for (const h2 of fn(yr)) {
-                const id = makeId(h2);
-                const key = h2.date + "|" + h2.title;
-                if (existingIds.has(id) || existingKeys.has(key)) continue;
-                const ev2 = {
+        ] }) }),
+        icsImport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          ImportIcsSheet,
+          {
+            th,
+            events: icsImport.events,
+            filename: icsImport.filename,
+            groups,
+            existingEventIds: new Set((events ?? []).map((e53) => e53.id)),
+            onImport: (toImport) => {
+              if (!saveEvent) return;
+              for (const r7 of toImport) {
+                const { ev: ev2, uid, keptGroups } = r7;
+                const id = uid || "e" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+                const firstGroup = keptGroups.length ? (groups ?? []).find((g) => g.id === keptGroups[0]) : null;
+                saveEvent({
                   id,
-                  title: h2.title,
-                  date: h2.date,
-                  allDay: true,
-                  start: "00:00",
-                  end: "00:00",
-                  reminder: -1,
-                  groups: [],
+                  title: ev2.title,
+                  date: ev2.date,
+                  allDay: ev2.allDay ?? true,
+                  start: ev2.start ?? "",
+                  end: ev2.end ?? "",
+                  endDate: ev2.endDate ?? "",
+                  desc: ev2.desc ?? "",
+                  location: ev2.location ?? "",
+                  meetingLink: ev2.meetingLink ?? "",
+                  groups: keptGroups,
                   invitees: [],
-                  color: "#CF3535",
-                  desc: "Public Holiday",
-                  location: "",
-                  creatorId: "system",
+                  color: firstGroup?.color ?? "#6C9BF5",
+                  colors: [],
+                  reminder: 0,
                   recurrence: "none",
                   recurrenceId: "",
                   recurrenceEnd: "",
                   recurrenceNth: 0,
                   recurrenceWeekday: 0,
                   editPermission: "everyone",
-                  updatedAt: Date.now()
-                };
-                await db2?.putEvent(ev2).catch(() => {
-                });
-                setEvents((prev) => prev.find((e53) => e53.id === ev2.id) ? prev : [...prev, ev2]);
-                existingIds.add(id);
-                existingKeys.add(key);
+                  creatorId: profile?.id ?? ""
+                }, "one", {}, []);
               }
-            }
-          } else {
-            newActive.delete(code);
-            const keepIds = /* @__PURE__ */ new Set();
-            for (const { code: otherCode, fn: otherFn } of allCountries) {
-              if (otherCode === code || !newActive.has(otherCode)) continue;
-              for (const yr of [thisYear, thisYear + 1]) {
-                for (const h2 of otherFn(yr)) keepIds.add(makeId(h2));
-              }
-            }
-            for (const yr of [thisYear, thisYear + 1]) {
-              for (const h2 of fn(yr)) {
-                const id = makeId(h2);
-                if (keepIds.has(id)) continue;
-                const ev2 = (events ?? []).find((e53) => e53.id === id);
-                if (ev2) {
-                  await db2?.localDeleteEvent(ev2.date, ev2.id).catch(() => {
-                  });
-                  setEvents((prev) => prev.filter((e53) => e53.id !== id));
-                }
-              }
-            }
-          }
-          await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {
-          });
-          setHolidayWorking(false);
-        }
-        const anyEnabled = activeCountries.size > 0;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-          ...th.card,
-          borderRadius: 12,
-          marginBottom: 16,
-          overflow: "hidden",
-          opacity: holidayWorking ? 0.6 : 1,
-          transition: "opacity 0.2s"
-        }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-            "div",
-            {
-              onClick: () => {
-                window.__pearSync?.haptic("light");
-                setHolidaysOpen((o31) => !o31);
-              },
-              style: {
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "14px 16px",
-                cursor: "pointer"
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "HOLIDAYS" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                  fontSize: 16,
-                  color: th.muted,
-                  transition: "transform 0.3s",
-                  transform: holidaysOpen ? "rotate(90deg)" : "rotate(0deg)",
-                  display: "inline-block"
-                }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s3, { size: 16, weight: "thin", color: "var(--color-muted)" }) })
-              ]
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-            maxHeight: holidaysOpen ? "600px" : "0px",
-            overflow: "hidden",
-            transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-          }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
-            allCountries.map(({ code, flag, label, fn }, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "10px 0",
-              borderBottom: i2 < allCountries.length - 1 ? `1px solid ${th.border}` : "none"
-            }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 20 }, children: flag }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: label }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: [
-                  fn(thisYear).length,
-                  " holidays \xB7 ",
-                  thisYear,
-                  "\u2013",
-                  thisYear + 1
-                ] })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                Toggle,
-                {
-                  val: activeCountries.has(code),
-                  onChange: (v) => !holidayWorking && toggleCountry(code, fn, v),
-                  accent: th.accent
-                }
-              )
-            ] }, code)),
-            anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
-          ] }) })
-        ] });
-      })(),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { ...th.card, borderRadius: 12, marginBottom: 16, overflow: "hidden" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-          "div",
-          {
-            onClick: () => {
-              window.__pearSync?.haptic("light");
-              setSeedPeerOpen((o31) => !o31);
+              setIcsImport(null);
             },
-            style: {
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              padding: "14px 16px",
-              cursor: "pointer"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 8 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, letterSpacing: "0.06em" }, children: "BLIND PEER" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                  fontSize: 10,
-                  fontWeight: 500,
-                  padding: "1px 6px",
-                  borderRadius: 4,
-                  background: blindPeerKey ? "#2E7D3220" : "transparent",
-                  color: blindPeerKey ? "#2E7D32" : th.muted
-                }, children: blindPeerKey ? "Active" : "Not configured" })
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                s3,
-                {
-                  size: 16,
-                  weight: "thin",
-                  color: "var(--color-muted)",
-                  style: { transition: "transform 0.3s", transform: seedPeerOpen ? "rotate(90deg)" : "rotate(0deg)", display: "inline-block" }
-                }
-              )
-            ]
+            onClose: () => setIcsImport(null)
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-          maxHeight: seedPeerOpen ? "500px" : "0px",
-          overflow: "hidden",
-          transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
-        }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+          marginTop: 16,
+          marginBottom: 8
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", margin: 0 }, children: "BLIND PEER" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            fontSize: 10,
+            fontWeight: 500,
+            padding: "1px 6px",
+            borderRadius: 4,
+            background: blindPeerKey ? "#2E7D3220" : "transparent",
+            color: blindPeerKey ? "#2E7D32" : th.muted
+          }, children: blindPeerKey ? "Active" : "Not configured" })
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "div",
             {
               onClick: () => setSeedPeerInfoOpen((o31) => !o31),
-              style: { fontSize: 12, fontWeight: 400, color: th.accent, cursor: "pointer", marginBottom: 10 },
+              style: { fontSize: 12, fontWeight: 400, color: th.accent, cursor: "pointer", marginBottom: 10, textAlign: "center" },
               children: seedPeerInfoOpen ? "Hide info" : "What is this?"
             }
           ),
@@ -23284,34 +23100,42 @@ ${link}`;
               }
             )
           ] })
+        ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          fontSize: 11,
+          fontWeight: 300,
+          color: th.muted,
+          letterSpacing: "0.08em",
+          textAlign: "center",
+          marginTop: 16,
+          marginBottom: 8
+        }, children: "PUBLIC KEY" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", textAlign: "center" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              onClick: () => {
+                navigator.clipboard?.writeText(publicKey);
+                window.__pearSync?.haptic("light");
+              },
+              style: {
+                fontSize: 10,
+                color: th.muted,
+                fontWeight: 300,
+                wordBreak: "break-all",
+                fontFamily: "monospace",
+                lineHeight: 1.5,
+                cursor: "pointer",
+                padding: "8px 12px",
+                background: th.inputBg,
+                borderRadius: 8,
+                border: `1px solid ${th.border}`
+              },
+              children: publicKey
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Tap to copy" })
         ] }) })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 24, textAlign: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginBottom: 6 }, children: "PUBLIC KEY" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "div",
-          {
-            onClick: () => {
-              navigator.clipboard?.writeText(publicKey);
-              window.__pearSync?.haptic("light");
-            },
-            style: {
-              fontSize: 10,
-              color: th.muted,
-              fontWeight: 300,
-              wordBreak: "break-all",
-              fontFamily: "monospace",
-              lineHeight: 1.5,
-              cursor: "pointer",
-              padding: "8px 12px",
-              background: th.inputBg,
-              borderRadius: 8,
-              border: `1px solid ${th.border}`
-            },
-            children: publicKey
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 4 }, children: "Tap to copy" })
       ] })
     ] });
   }

@@ -4523,6 +4523,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [photoSaving, setPhotoSaving] = useState(false)
   const [holidayWorking,    setHolidayWorking]    = useState(false)
   const [holidaysOpen,      setHolidaysOpen]      = useState((profile?.holidayCountries ?? []).length > 0)
+  const [personalOpen,      setPersonalOpen]      = useState(false)
+  const [advancedOpen,      setAdvancedOpen]      = useState(false)
   const [appearanceOpen,    setAppearanceOpen]    = useState(false)
   const [timeFormatOpen,    setTimeFormatOpen]    = useState(false)
   const [weekStartOpen,     setWeekStartOpen]     = useState(false)
@@ -4649,124 +4651,214 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         SETTINGS
       </div>
 
-      {/* Appearance */}
+      {/* Personal */}
       <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setAppearanceOpen(o => !o) }}
+        <div onClick={() => { window.__pearSync?.haptic('light'); setPersonalOpen(o => !o) }}
           style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'14px 16px', cursor:'pointer' }}>
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            APPEARANCE
+            PERSONAL
           </div>
           <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: appearanceOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
+            style={{ transition: 'transform 0.3s', transform: personalOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
-        <div style={{ maxHeight: appearanceOpen ? '200px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
-            justifyContent:'space-between' }}>
-            <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Dark mode</div>
-            <Toggle val={dark} onChange={onToggleDark} accent={th.accent} />
-          </div>
+      </div>
+
+      <div style={{ maxHeight: personalOpen ? '2000px' : '0px', overflow:'hidden',
+        transition:'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+
+      {/* Appearance */}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        APPEARANCE
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
+          justifyContent:'space-between' }}>
+          <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Dark mode</div>
+          <Toggle val={dark} onChange={onToggleDark} accent={th.accent} />
         </div>
       </div>
 
       {/* First Day of Week */}
-      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setWeekStartOpen(o => !o) }}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            FIRST DAY OF WEEK
-          </div>
-          <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: weekStartOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
-        </div>
-        <div style={{ maxHeight: weekStartOpen ? '200px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px', display:'flex', gap:8 }}>
-            {[['Sunday', 0], ['Monday', 1]].map(([label, val]) => (
-              <button key={val} onClick={() => { window.__pearSync?.haptic('light'); onUpdateProfile({ weekStart: val }) }}
-                style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
-                  cursor:'pointer', fontFamily:FONT,
-                  border:'1.5px solid ' + (weekStart === val ? th.accent : th.border),
-                  background: weekStart === val ? th.accent : 'transparent',
-                  color: weekStart === val ? '#fff' : th.muted }}>
-                {label}
-              </button>
-            ))}
-          </div>
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        FIRST DAY OF WEEK
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', gap:8 }}>
+          {[['Sunday', 0], ['Monday', 1]].map(([label, val]) => (
+            <button key={val} onClick={() => { window.__pearSync?.haptic('light'); onUpdateProfile({ weekStart: val }) }}
+              style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                cursor:'pointer', fontFamily:FONT,
+                border:'1.5px solid ' + (weekStart === val ? th.accent : th.border),
+                background: weekStart === val ? th.accent : 'transparent',
+                color: weekStart === val ? '#fff' : th.muted }}>
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
       {/* Default Reminder */}
-      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setDefaultRemOpen(o => !o) }}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            DEFAULT REMINDER
-          </div>
-          <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: defaultRemOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
-        </div>
-        <div style={{ maxHeight: defaultRemOpen ? '200px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px' }}>
-            <select value={profile?.defaultReminder ?? 15}
-              onChange={e => { window.__pearSync?.haptic('light'); onUpdateProfile({ defaultReminder: Number(e.target.value) }) }}
-              style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
-                border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
-                fontFamily:FONT, appearance:'none' }}>
-              <option value={0}>None</option>
-              {REMINDER_OPTIONS.map(r => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
-          </div>
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        DEFAULT REMINDER
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px' }}>
+          <select value={profile?.defaultReminder ?? 15}
+            onChange={e => { window.__pearSync?.haptic('light'); onUpdateProfile({ defaultReminder: Number(e.target.value) }) }}
+            style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
+              border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
+              fontFamily:FONT, appearance:'none' }}>
+            <option value={0}>None</option>
+            {REMINDER_OPTIONS.map(r => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
       {/* Time Format */}
-      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setTimeFormatOpen(o => !o) }}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            TIME FORMAT
-          </div>
-          <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-            transform: timeFormatOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-            display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
-        </div>
-        <div style={{ maxHeight: timeFormatOpen ? '200px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
-            justifyContent:'space-between' }}>
-            <div>
-              <div style={{ fontSize:13, fontWeight:300, ...th.text }}>24-hour time</div>
-              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
-                {use24h ? 'e.g. 14:30' : 'e.g. 2:30pm'}
-              </div>
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        TIME FORMAT
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
+          justifyContent:'space-between' }}>
+          <div>
+            <div style={{ fontSize:13, fontWeight:300, ...th.text }}>24-hour time</div>
+            <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+              {use24h ? 'e.g. 14:30' : 'e.g. 2:30pm'}
             </div>
-            <Toggle val={use24h} onChange={v => onUpdateProfile({ use24h: v })} accent={th.accent} />
           </div>
+          <Toggle val={use24h} onChange={v => onUpdateProfile({ use24h: v })} accent={th.accent} />
         </div>
       </div>
 
-      {/* Import & Export */}
+      {/* Holidays */}
+      {(() => {
+        const thisYear = new Date().getFullYear()
+        const slug = t => t.replace(/\s+/g, '-').toLowerCase()
+        const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
+        const allCountries = [
+          { code:'us', flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
+          { code:'ca', flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
+          { code:'uk', flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
+        ]
+        // Toggle state tracked explicitly in profile to avoid shared-ID false positives
+        const activeCountries = new Set(profile?.holidayCountries ?? [])
+
+        async function toggleCountry (code, fn, on) {
+          setHolidayWorking(true)
+          const newActive = new Set(activeCountries)
+          if (on) {
+            newActive.add(code)
+            // Import holidays; skip any already in calendar by shared ID or same date+title
+            const existingIds = new Set((events ?? []).map(e => e.id))
+            const existingKeys = new Set((events ?? []).map(e => e.date + '|' + e.title))
+            for (const yr of [thisYear, thisYear + 1]) {
+              for (const h of fn(yr)) {
+                const id = makeId(h)
+                const key = h.date + '|' + h.title
+                if (existingIds.has(id) || existingKeys.has(key)) continue
+                const ev = {
+                  id, title: h.title, date: h.date, allDay: true,
+                  start: '00:00', end: '00:00', reminder: -1,
+                  groups: [], invitees: [], color: '#CF3535',
+                  desc: 'Public Holiday', location: '',
+                  creatorId: 'system', recurrence: 'none',
+                  recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,
+                  editPermission: 'everyone', updatedAt: Date.now(),
+                }
+                await db?.putEvent(ev).catch(() => {})
+                setEvents(prev => prev.find(e => e.id === ev.id) ? prev : [...prev, ev])
+                existingIds.add(id)
+                existingKeys.add(key)
+              }
+            }
+          } else {
+            newActive.delete(code)
+            // Keep IDs still needed by other still-active countries
+            const keepIds = new Set()
+            for (const { code: otherCode, fn: otherFn } of allCountries) {
+              if (otherCode === code || !newActive.has(otherCode)) continue
+              for (const yr of [thisYear, thisYear + 1]) {
+                for (const h of otherFn(yr)) keepIds.add(makeId(h))
+              }
+            }
+            for (const yr of [thisYear, thisYear + 1]) {
+              for (const h of fn(yr)) {
+                const id = makeId(h)
+                if (keepIds.has(id)) continue
+                const ev = (events ?? []).find(e => e.id === id)
+                if (ev) {
+                  await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
+                  setEvents(prev => prev.filter(e => e.id !== id))
+                }
+              }
+            }
+          }
+          await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {})
+          setHolidayWorking(false)
+        }
+
+        const anyEnabled = activeCountries.size > 0
+        return (
+          <>
+            <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+              HOLIDAYS
+            </div>
+            <div style={{ marginBottom:12,
+              opacity: holidayWorking ? 0.6 : 1, transition:'opacity 0.2s' }}>
+              <div style={{ padding:'14px 16px' }}>
+                {allCountries.map(({ code, flag, label, fn }, i) => (
+                  <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
+                    padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
+                    <span style={{ fontSize:20 }}>{flag}</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
+                      <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
+                        {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
+                      </div>
+                    </div>
+                    <Toggle val={activeCountries.has(code)}
+                      onChange={v => !holidayWorking && toggleCountry(code, fn, v)} accent={th.accent} />
+                  </div>
+                ))}
+                {anyEnabled && (
+                  <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:10 }}>
+                    Added to your personal calendar. Toggle off to remove.
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )
+      })()}
+
+      </div>
+
+      {/* Advanced */}
       <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setImportExportOpen(o => !o) }}
+        <div onClick={() => { window.__pearSync?.haptic('light'); setAdvancedOpen(o => !o) }}
           style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'14px 16px', cursor:'pointer' }}>
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            IMPORT & EXPORT
+            ADVANCED
           </div>
           <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: importExportOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
+            style={{ transition: 'transform 0.3s', transform: advancedOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
         </div>
-        <div style={{ maxHeight: importExportOpen ? '300px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+      </div>
+
+      <div style={{ maxHeight: advancedOpen ? '3000px' : '0px', overflow:'hidden',
+        transition:'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+
+      {/* Import & Export */}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        IMPORT & EXPORT
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:10 }}>
             <input ref={icsFileRef} type="file" accept=".ics,.ical,text/calendar"
               style={{ display:'none' }} onChange={e => {
                 const file = e.target.files?.[0]
@@ -4804,7 +4896,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>Export all events as .ics</div>
               </div>
             </button>
-          </div>
         </div>
       </div>
 
@@ -4958,19 +5049,11 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         </div>
       )}
-      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setStorageOpen(o => !o) }}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-            STORAGE
-          </div>
-          <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: storageOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
-        </div>
-        <div style={{ maxHeight: storageOpen ? '800px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-        <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        STORAGE
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8 }}>
         <button onClick={async () => {
           window.__pearSync?.haptic('light')
           try {
@@ -5047,7 +5130,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         )}
         </div>
-        </div>
       </div>
 
       {icsImport && (
@@ -5080,145 +5162,24 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           onClose={() => setIcsImport(null)} />
       )}
 
-      {/* Holidays */}
-      {(() => {
-        const thisYear = new Date().getFullYear()
-        const slug = t => t.replace(/\s+/g, '-').toLowerCase()
-        const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
-        const allCountries = [
-          { code:'us', flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
-          { code:'ca', flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
-          { code:'uk', flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
-        ]
-        // Toggle state tracked explicitly in profile to avoid shared-ID false positives
-        const activeCountries = new Set(profile?.holidayCountries ?? [])
-
-        async function toggleCountry (code, fn, on) {
-          setHolidayWorking(true)
-          const newActive = new Set(activeCountries)
-          if (on) {
-            newActive.add(code)
-            // Import holidays; skip any already in calendar by shared ID or same date+title
-            const existingIds = new Set((events ?? []).map(e => e.id))
-            const existingKeys = new Set((events ?? []).map(e => e.date + '|' + e.title))
-            for (const yr of [thisYear, thisYear + 1]) {
-              for (const h of fn(yr)) {
-                const id = makeId(h)
-                const key = h.date + '|' + h.title
-                if (existingIds.has(id) || existingKeys.has(key)) continue
-                const ev = {
-                  id, title: h.title, date: h.date, allDay: true,
-                  start: '00:00', end: '00:00', reminder: -1,
-                  groups: [], invitees: [], color: '#CF3535',
-                  desc: 'Public Holiday', location: '',
-                  creatorId: 'system', recurrence: 'none',
-                  recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,
-                  editPermission: 'everyone', updatedAt: Date.now(),
-                }
-                await db?.putEvent(ev).catch(() => {})
-                setEvents(prev => prev.find(e => e.id === ev.id) ? prev : [...prev, ev])
-                existingIds.add(id)
-                existingKeys.add(key)
-              }
-            }
-          } else {
-            newActive.delete(code)
-            // Keep IDs still needed by other still-active countries
-            const keepIds = new Set()
-            for (const { code: otherCode, fn: otherFn } of allCountries) {
-              if (otherCode === code || !newActive.has(otherCode)) continue
-              for (const yr of [thisYear, thisYear + 1]) {
-                for (const h of otherFn(yr)) keepIds.add(makeId(h))
-              }
-            }
-            for (const yr of [thisYear, thisYear + 1]) {
-              for (const h of fn(yr)) {
-                const id = makeId(h)
-                if (keepIds.has(id)) continue
-                const ev = (events ?? []).find(e => e.id === id)
-                if (ev) {
-                  await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
-                  setEvents(prev => prev.filter(e => e.id !== id))
-                }
-              }
-            }
-          }
-          await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {})
-          setHolidayWorking(false)
-        }
-
-        const anyEnabled = activeCountries.size > 0
-        return (
-          <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden',
-            opacity: holidayWorking ? 0.6 : 1, transition:'opacity 0.2s' }}>
-
-            {/* Collapsible header */}
-            <div onClick={() => { window.__pearSync?.haptic('light'); setHolidaysOpen(o => !o) }}
-              style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                padding:'14px 16px', cursor:'pointer' }}>
-              <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-                HOLIDAYS
-              </div>
-              <span style={{ fontSize:16, color:th.muted, transition:'transform 0.3s',
-                transform: holidaysOpen ? 'rotate(90deg)' : 'rotate(0deg)',
-                display:'inline-block' }}><CaretRight size={16} weight="thin" color="var(--color-muted)" /></span>
-            </div>
-
-            {/* Collapsible body */}
-            <div style={{ maxHeight: holidaysOpen ? '600px' : '0px', overflow:'hidden',
-              transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-              <div style={{ padding:'0 16px 14px' }}>
-                {allCountries.map(({ code, flag, label, fn }, i) => (
-                  <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
-                    padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
-                    <span style={{ fontSize:20 }}>{flag}</span>
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
-                      <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
-                        {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
-                      </div>
-                    </div>
-                    <Toggle val={activeCountries.has(code)}
-                      onChange={v => !holidayWorking && toggleCountry(code, fn, v)} accent={th.accent} />
-                  </div>
-                ))}
-                {anyEnabled && (
-                  <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:10 }}>
-                    Added to your personal calendar. Toggle off to remove.
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-        )
-      })()}
-
-      {/* Seed Peer */}
-      <div style={{ ...th.card, borderRadius:12, marginBottom:16, overflow:'hidden' }}>
-        <div onClick={() => { window.__pearSync?.haptic('light'); setSeedPeerOpen(o => !o) }}
-          style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-            padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            <div style={{ fontSize:12, fontWeight:300, color:th.muted, letterSpacing:'0.06em' }}>
-              BLIND PEER
-            </div>
-            <div style={{ fontSize:10, fontWeight:500, padding:'1px 6px', borderRadius:4,
-              background: blindPeerKey ? '#2E7D3220' : 'transparent',
-              color: blindPeerKey ? '#2E7D32' : th.muted }}>
-              {blindPeerKey ? 'Active' : 'Not configured'}
-            </div>
-          </div>
-          <CaretRight size={16} weight="thin" color="var(--color-muted)"
-            style={{ transition: 'transform 0.3s', transform: seedPeerOpen ? 'rotate(90deg)' : 'rotate(0deg)', display: 'inline-block' }} />
+      {/* Blind Peer */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8,
+        marginTop:16, marginBottom:8 }}>
+        <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', margin:0 }}>
+          BLIND PEER
         </div>
-        <div style={{ maxHeight: seedPeerOpen ? '500px' : '0px', overflow:'hidden',
-          transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
-          <div style={{ padding:'0 16px 14px' }}>
+        <div style={{ fontSize:10, fontWeight:500, padding:'1px 6px', borderRadius:4,
+          background: blindPeerKey ? '#2E7D3220' : 'transparent',
+          color: blindPeerKey ? '#2E7D32' : th.muted }}>
+          {blindPeerKey ? 'Active' : 'Not configured'}
+        </div>
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px' }}>
 
             {/* What is this? */}
             <div onClick={() => setSeedPeerInfoOpen(o => !o)}
-              style={{ fontSize:12, fontWeight:400, color:th.accent, cursor:'pointer', marginBottom:10 }}>
+              style={{ fontSize:12, fontWeight:400, color:th.accent, cursor:'pointer', marginBottom:10, textAlign:'center' }}>
               {seedPeerInfoOpen ? 'Hide info' : 'What is this?'}
             </div>
             {seedPeerInfoOpen && (
@@ -5306,18 +5267,24 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             </div>
           </div>
         </div>
-      </div>
 
       {/* Public Key */}
-      <div style={{ marginTop:24, textAlign:'center' }}>
-        <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginBottom:6 }}>PUBLIC KEY</div>
-        <div onClick={() => { navigator.clipboard?.writeText(publicKey); window.__pearSync?.haptic('light') }}
-          style={{ fontSize:10, color:th.muted, fontWeight:300, wordBreak:'break-all',
-            fontFamily:'monospace', lineHeight:1.5, cursor:'pointer', padding:'8px 12px',
-            background:th.inputBg, borderRadius:8, border:`1px solid ${th.border}` }}>
-          {publicKey}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em',
+        textAlign:'center', marginTop:16, marginBottom:8 }}>
+        PUBLIC KEY
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', textAlign:'center' }}>
+          <div onClick={() => { navigator.clipboard?.writeText(publicKey); window.__pearSync?.haptic('light') }}
+            style={{ fontSize:10, color:th.muted, fontWeight:300, wordBreak:'break-all',
+              fontFamily:'monospace', lineHeight:1.5, cursor:'pointer', padding:'8px 12px',
+              background:th.inputBg, borderRadius:8, border:`1px solid ${th.border}` }}>
+            {publicKey}
+          </div>
+          <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:6 }}>Tap to copy</div>
         </div>
-        <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:4 }}>Tap to copy</div>
+      </div>
+
       </div>
     </div>
   )
