@@ -92,12 +92,19 @@ class CameraModule(reactContext: ReactApplicationContext) :
             )
             Log.d(TAG, "Photo URI: $photoUri")
 
-            val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            val cameraIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                 putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            activity.startActivityForResult(intent, CAMERA_REQUEST)
+            val galleryIntent = Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+            val chooser = Intent.createChooser(galleryIntent, "Select photo").apply {
+                putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(cameraIntent))
+            }
+            activity.startActivityForResult(chooser, CAMERA_REQUEST)
         } catch (e: Exception) {
             Log.e(TAG, "Camera launch failed: ${e.message}", e)
             cameraPromise = null
@@ -112,7 +119,7 @@ class CameraModule(reactContext: ReactApplicationContext) :
         Log.d(TAG, "onActivityResult resultCode=$resultCode")
         if (resultCode == Activity.RESULT_OK) {
             try {
-                val uri = photoUri ?: throw Exception("No photo URI")
+                val uri = data?.data ?: photoUri ?: throw Exception("No photo URI")
                 val stream = reactApplicationContext.contentResolver.openInputStream(uri)
                 var bitmap = BitmapFactory.decodeStream(stream)
                 stream?.close()

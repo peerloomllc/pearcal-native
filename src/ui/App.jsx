@@ -23,7 +23,7 @@ import {
   Check, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
-  Camera, Image, ArrowsClockwise, CurrencyDollar,
+  Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
   FunnelSimple,
 } from '@phosphor-icons/react'
@@ -2378,16 +2378,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       <div style={{ display:'flex', gap:10 }}>
         <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
           style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
-          <Camera size={18} weight="thin" /> Camera
+          <Image size={18} weight="thin" /> Photo
         </button>
-        {!IS_IOS && (
-          <button onClick={() => {
-              if (fileRef.current) { fileRef.current.removeAttribute('capture'); fileRef.current.click() }
-            }} disabled={photoSaving}
-            style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
-            <Image size={18} weight="thin" /> Gallery
-          </button>
-        )}
       </div>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
@@ -3761,7 +3753,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
               <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, flexShrink:0 }}>
                 <GroupIcon group={g} size={72} radius={18} />
                 <div style={{ display:'flex', gap:6 }}>
-                  <button onClick={() => fileRef.current?.click()}
+                  <button onClick={() => { activeCameraConsumer.current = b64 => { if (b64) set('icon', b64) }; window.__pearSync?.takePhoto?.() }}
                     style={{ fontSize:11, padding:'4px 8px', borderRadius:6, border:`1px solid ${th.border}`,
                       background:'transparent', color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
                       display:'flex', alignItems:'center', gap:4 }}>
@@ -4023,16 +4015,8 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
                 style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
                   background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
                   display:'flex', alignItems:'center', gap:5 }}>
-                <Camera size={14} weight="thin" /> Camera
+                <Image size={14} weight="thin" /> Photo
               </button>
-              {!IS_IOS && (
-                <button onClick={() => fileRef.current?.click()}
-                  style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
-                    background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
-                    display:'flex', alignItems:'center', gap:5 }}>
-                  <Image size={14} weight="thin" /> Gallery
-                </button>
-              )}
             </div>
           </div>
         </div>
@@ -4610,18 +4594,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
               display:'flex', alignItems:'center', gap:5,
               opacity: photoSaving ? 0.5 : 1 }}>
-            <Camera size={14} weight="thin" /> Camera
+            <Image size={14} weight="thin" /> Photo
           </button>
-          {!IS_IOS && (
-            <button onClick={() => fileRef.current?.click()} disabled={photoSaving}
-              style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
-                border:`1px solid ${th.border}`, background:'transparent',
-                color:th.text.color, cursor:'pointer', fontWeight:300, fontFamily:FONT,
-                display:'flex', alignItems:'center', gap:5,
-                opacity: photoSaving ? 0.5 : 1 }}>
-              <Image size={14} weight="thin" /> Gallery
-            </button>
-          )}
           {hasPhoto && (
             <button onClick={removePhoto} disabled={photoSaving}
               style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
