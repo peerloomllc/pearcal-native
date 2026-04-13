@@ -353,6 +353,10 @@ export default function Root () {
       })
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
+      onEvent('widgetCache', (payload: any) => {
+        const mod = (NativeModules as any).WidgetCache
+        if (mod?.writeCache) mod.writeCache(JSON.stringify(payload)).catch?.(() => {})
+      })
       onEvent('ready', () => {
         setDbReady(true)
         dbReadyRef.current = true
@@ -480,6 +484,7 @@ webViewRef.current?.injectJavaScript(
     const sub = AppState.addEventListener('change', (state: string) => {
       if (state === 'active' && dbReadyRef.current) {
         sendToWorklet({ method: 'foregroundSync', id: -98, args: [] })
+        sendToWorklet({ method: 'refreshWidgetCache', id: -97, args: [] })
       }
     })
     return () => sub.remove()

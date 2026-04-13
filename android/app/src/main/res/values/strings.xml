@@ -1,4 +1,5 @@
 <resources>
   <string name="app_name">PearCal</string>
   <string name="expo_system_ui_user_interface_style" translatable="false">dark</string>
+  <string name="widget_daily_description">PearCal — Today\'s events</string>
 </resources>
