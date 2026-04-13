@@ -1943,6 +1943,12 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     requestAnimationFrame(() => scrollToDate(todayStr, false))
   }, [events])
 
+  // When (re)entering month view, scroll list back to today — list re-mounts so scrollRef resets
+  useEffect(() => {
+    if (calView !== 'month' || !eventsReady.current) return
+    requestAnimationFrame(() => scrollToDate(todayStr, false))
+  }, [calView])
+
   function navigate (dir) {
     if (isSliding) return
     setSlideDir(dir)
@@ -2190,6 +2196,11 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
             seen.get(e.date).push(e)
           })
+        if (!seen.has(todayStr)) {
+          seen.set(todayStr, [])
+          days.push(todayStr)
+          days.sort((a,b) => a.localeCompare(b))
+        }
         return days.map(date => (
           <div key={date} data-date={date} style={{ marginBottom:20 }}>
             <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
