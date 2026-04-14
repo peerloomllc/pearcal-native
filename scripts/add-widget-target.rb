@@ -14,13 +14,26 @@ raise 'PearCal target not found' unless app_target
 # --- 1. Register WidgetCacheModule.{swift,m} into the main target -------------
 
 main_group = project.main_group.find_subpath('PearCal', true)
-%w[WidgetCacheModule.swift WidgetCacheModule.m].each do |basename|
-  if main_group.files.any? { |f| f.path == basename }
-    puts "skip  #{basename} (already registered in PearCal)"
-    next
+
+WIDGET_SOURCES = %w[WidgetCacheModule.swift WidgetCacheModule.m].freeze
+
+# Purge every trace of these sources so we can re-add cleanly. Prior revisions
+# of this script leaked duplicate file references, group entries, and build
+# files on repeat runs; this pass normalizes the project even when re-run
+# against a dirty pbxproj.
+WIDGET_SOURCES.each do |basename|
+  app_target.source_build_phase.files.dup.each do |bf|
+    next unless bf.file_ref && (bf.file_ref.path == basename || bf.file_ref.path&.end_with?("/#{basename}"))
+    app_target.source_build_phase.remove_build_file(bf)
   end
-  abs = File.join(ROOT, 'ios', 'PearCal', basename)
-  ref = main_group.new_file(abs)
+  project.files.dup.each do |fr|
+    next unless fr.path == basename || fr.path == "PearCal/#{basename}"
+    fr.remove_from_project
+  end
+end
+
+WIDGET_SOURCES.each do |basename|
+  ref = main_group.new_file(File.join(ROOT, 'ios', 'PearCal', basename))
   app_target.source_build_phase.add_file_reference(ref)
   puts "add   #{basename} -> PearCal target"
 end
