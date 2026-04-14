@@ -18435,12 +18435,30 @@
             const seen = /* @__PURE__ */ new Map();
             const days = [];
             const filteredEvents = filterGroupIds.size > 0 ? events.filter((e53) => (e53.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events;
-            filteredEvents.filter((e53) => e53.date >= cutoffStr).sort((a34, b) => a34.date.localeCompare(b.date)).forEach((e53) => {
-              if (!seen.has(e53.date)) {
-                seen.set(e53.date, []);
-                days.push(e53.date);
+            filteredEvents.filter((e53) => (e53.endDate || e53.date) >= cutoffStr).sort((a34, b) => a34.date.localeCompare(b.date)).forEach((e53) => {
+              const endDate = e53.endDate && e53.endDate > e53.date ? e53.endDate : e53.date;
+              if (endDate === e53.date) {
+                if (!seen.has(e53.date)) {
+                  seen.set(e53.date, []);
+                  days.push(e53.date);
+                }
+                seen.get(e53.date).push(e53);
+                return;
               }
-              seen.get(e53.date).push(e53);
+              const start = /* @__PURE__ */ new Date(e53.date + "T12:00:00");
+              const end = /* @__PURE__ */ new Date(endDate + "T12:00:00");
+              const total = Math.round((end - start) / 864e5) + 1;
+              for (let i2 = 0; i2 < total; i2++) {
+                const d = new Date(start);
+                d.setDate(start.getDate() + i2);
+                const ds = d.toISOString().slice(0, 10);
+                if (ds < cutoffStr) continue;
+                if (!seen.has(ds)) {
+                  seen.set(ds, []);
+                  days.push(ds);
+                }
+                seen.get(ds).push({ ...e53, _dayIndex: i2 + 1, _dayTotal: total });
+              }
             });
             if (!seen.has(todayStr2)) {
               seen.set(todayStr2, []);
@@ -18469,6 +18487,8 @@
                   myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
                   use24h,
+                  dayIndex: ev2._dayIndex,
+                  dayTotal: ev2._dayTotal,
                   onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
                 }
               ) }, ev2.id))
@@ -18992,7 +19012,7 @@
       }
     );
   }
-  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal }) {
     const viewerIsCreator = ev2.creatorId && myProfileId && ev2.creatorId === myProfileId;
     const showRsvpPill = ev2.rsvpEnabled && !viewerIsCreator;
     const isDeclined = showRsvpPill && myRsvpStatus === "declined";
@@ -19030,6 +19050,7 @@
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
               ev2.allDay ? ev2.endDate && ev2.endDate !== ev2.date ? `${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev2.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev2.start, use24h)} \u2013 ${formatTime(ev2.end, use24h)}`,
+              dayIndex && dayTotal ? ` \xB7 day ${dayIndex} of ${dayTotal}` : "",
               compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString(
                 "en-US",
                 { month: "short", day: "numeric" }

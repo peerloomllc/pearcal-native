@@ -2190,11 +2190,25 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
           : events
         filteredEvents
-          .filter(e => e.date >= cutoffStr)
+          .filter(e => (e.endDate || e.date) >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
           .forEach(e => {
-            if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
-            seen.get(e.date).push(e)
+            const endDate = e.endDate && e.endDate > e.date ? e.endDate : e.date
+            if (endDate === e.date) {
+              if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
+              seen.get(e.date).push(e)
+              return
+            }
+            const start = new Date(e.date + 'T12:00:00')
+            const end = new Date(endDate + 'T12:00:00')
+            const total = Math.round((end - start) / 86400000) + 1
+            for (let i = 0; i < total; i++) {
+              const d = new Date(start); d.setDate(start.getDate() + i)
+              const ds = d.toISOString().slice(0,10)
+              if (ds < cutoffStr) continue
+              if (!seen.has(ds)) { seen.set(ds, []); days.push(ds) }
+              seen.get(ds).push({ ...e, _dayIndex: i + 1, _dayTotal: total })
+            }
           })
         if (!seen.has(todayStr)) {
           seen.set(todayStr, [])
@@ -2211,7 +2225,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             {seen.get(date).map((ev, i) => (
               <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
                 <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
-                  use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                  use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal}
+                  onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
               </div>
             ))}
           </div>
@@ -2515,7 +2530,7 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal }) {
   const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId
   const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator
   const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
@@ -2540,6 +2555,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
                 ? `${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })} – ${new Date(ev.endDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}`
                 : 'All day')
             : `${formatTime(ev.start, use24h)} – ${formatTime(ev.end, use24h)}`}
+          {dayIndex && dayTotal ? ` · day ${dayIndex} of ${dayTotal}` : ''}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
