@@ -151,7 +151,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         val allDay = o.optBoolean("allDay", false)
                         val start = o.optString("start", "")
                         val end = o.optString("end", "")
-                        val location = o.optString("location", "").ifEmpty { null }
+                        val location = if (o.isNull("location")) null else o.optString("location", "").ifEmpty { null }
                         val timeLabel = when {
                             allDay || start.isEmpty() -> "all-day"
                             end.isNotEmpty() -> "$start–$end"
