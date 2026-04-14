@@ -448,6 +448,8 @@ const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broa
 const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
 const notifiedMemberJoins = new Map() // groupId → Set<memberId>; prevents duplicate member-join notifications across apply() replays
 const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
+const notifiedRsvps = new Set()        // 'eventId:memberId:updatedAt' — prevents duplicate RSVP notifications across apply() replays
+const rsvpCoalesce = new Map()         // eventId → { timeout, entries: [{ name, status }] } — debounces RSVP bursts
 
 async function joinGroup (group) {
   if (bases.has(group.id)) return
@@ -813,6 +815,11 @@ function makeApply (groupId) {
               localPrev = await db.get('events:' + val.value._prevDate + ':' + val.value.id).then(n => n?.value ?? null).catch(() => null)
             }
           }
+          // Capture previous RSVP state so we only notify on status change
+          let localPrevRsvp = null
+          if (isRemote && val.type === 'rsvp') {
+            localPrevRsvp = await db.get(val.key).then(n => n?.value ?? null).catch(() => null)
+          }
           // For groups: preserve metadata AND merge members from existing view record
           // so that broadcastSelf (which only carries the joiner's member data) can't wipe
           // group metadata or other members via LWW
@@ -860,6 +867,11 @@ function makeApply (groupId) {
           if (isRemote && val.type === 'event') {
             const profile = await getProfile()
             if (!isInvitedToEvent(val.value, profile?.id)) continue
+          }
+          // RSVP response — notify the event creator only
+          if (isRemote && val.type === 'rsvp') {
+            try { await maybeNotifyRsvp(val.value, localPrevRsvp, groupId) }
+            catch (e) { console.warn('[RSVP-NOTIFY]', e?.message) }
           }
           // Notify when a new member joins — detected by diffing member lists on group update
           // Guard: if existing is null, this is first-time sync — skip to avoid spurious notifications
@@ -1123,6 +1135,67 @@ function makeApply (groupId) {
       }
     }
   }
+}
+
+async function maybeNotifyRsvp (rsvp, prevRsvp, groupId) {
+  if (!rsvp || !rsvp.eventId || !rsvp.memberId) return
+  if (rsvp.status !== 'going' && rsvp.status !== 'declined') return
+  if (prevRsvp && prevRsvp.status === rsvp.status) return
+  const dedup = rsvp.eventId + ':' + rsvp.memberId + ':' + (rsvp.updatedAt ?? 0)
+  if (notifiedRsvps.has(dedup)) return
+  notifiedRsvps.add(dedup)
+  // Find the event (RSVP record doesn't carry the date)
+  let event = null
+  for await (const { key, value } of db.createReadStream({ gt: 'events:', lt: 'events:\xff' })) {
+    if (key.endsWith(':' + rsvp.eventId)) { event = value; break }
+  }
+  if (!event) return
+  // Only the creator gets notified
+  const profile = await getProfile().catch(() => null)
+  if (!profile?.id || event.creatorId !== profile.id) return
+  // Skip replays that predate our join (initial sync flood on rejoin)
+  const joinedAtEntry = groupId ? await db.get('joinedAt:' + groupId).catch(() => null) : null
+  const joinedAt = joinedAtEntry?.value?.ts ?? 0
+  if (rsvp.updatedAt && joinedAt && rsvp.updatedAt < joinedAt) return
+  // Resolve member name via group.members[] (nickname-aware, same as notifySyncChange)
+  let name = 'Someone'
+  if (groupId) {
+    const gNode = await db.get(NS.groups + groupId).catch(() => null)
+    const m = (gNode?.value?.members ?? []).find(x => x.id === rsvp.memberId)
+    if (m && m.name !== 'Inviter') name = m.nickname || m.name || name
+  }
+  // Coalesce into a per-event burst. One entry per memberId — if the same
+  // member flips status inside the window, overwrite so only the final state
+  // counts (a single user can't appear as "2 responses").
+  const entry = rsvpCoalesce.get(rsvp.eventId) ?? { timeout: null, entries: new Map(), title: event.title || 'your event' }
+  entry.entries.set(rsvp.memberId, { name, status: rsvp.status })
+  entry.title = event.title || entry.title
+  if (entry.timeout) clearTimeout(entry.timeout)
+  entry.timeout = setTimeout(() => flushRsvpCoalesce(rsvp.eventId), 5000)
+  rsvpCoalesce.set(rsvp.eventId, entry)
+}
+
+function flushRsvpCoalesce (eventId) {
+  const entry = rsvpCoalesce.get(eventId)
+  rsvpCoalesce.delete(eventId)
+  if (!entry || entry.entries.size === 0) return
+  const responders = [...entry.entries.values()]
+  let title, body
+  const quoted = '“' + entry.title + '”'
+  if (responders.length === 1) {
+    const { name, status } = responders[0]
+    title = status === 'going' ? name + ' is going to ' + quoted : name + ' declined ' + quoted
+    body = ''
+  } else {
+    const going = responders.filter(e => e.status === 'going').length
+    const declined = responders.filter(e => e.status === 'declined').length
+    title = responders.length + ' responses to ' + quoted
+    const parts = []
+    if (going) parts.push(going + ' going')
+    if (declined) parts.push(declined + ' declined')
+    body = parts.join(' · ')
+  }
+  send({ type: 'event', event: 'syncNotify', data: { title, body, tab: 'calendar' } })
 }
 
 async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId, isSeries = false }) {

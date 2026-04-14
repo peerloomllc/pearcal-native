@@ -25,7 +25,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple,
+  FunnelSimple, GridFour,
 } from '@phosphor-icons/react'
 
 // ─── Simple event emitter for P2P → UI updates ───────────────────────────────
@@ -431,6 +431,7 @@ export default function App ({ db, notifs, sync }) {
   const closeScopeSheetRef = useRef(null)
   const closeEventModalRef = useRef(null)
   const closeGroupSettingsRef = useRef(null)
+  const closeFullGridRef = useRef(null)
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
   const [blindPeerKey,   setBlindPeerKey]   = useState(null)
@@ -603,6 +604,7 @@ export default function App ({ db, notifs, sync }) {
       if (closeConfirmSheetRef.current?.()) return
       if (closeScopeSheetRef.current?.()) return
       if (closeEventModalRef.current?.()) return
+      if (closeFullGridRef.current?.()) return
       if (closeNewGroupSheetRef.current?.()) return
       if (settingsGroup) {
         if (closeGroupSettingsRef.current) { closeGroupSettingsRef.current(); return }
@@ -1007,7 +1009,8 @@ export default function App ({ db, notifs, sync }) {
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
               setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
-              saveEvent={saveEvent} profile={profile} sync={sync} myRsvps={myRsvps} myProfileId={profile?.id} />
+              saveEvent={saveEvent} profile={profile} sync={sync} myRsvps={myRsvps} myProfileId={profile?.id}
+              closeFullGridRef={closeFullGridRef} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
@@ -1876,9 +1879,238 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
   )
 }
 
+function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap }) {
+  useEffect(() => {
+    if (!closeFullGridRef) return
+    closeFullGridRef.current = () => { onExit(); return true }
+    return () => { closeFullGridRef.current = null }
+  }, [closeFullGridRef, onExit])
+  const MAX_LANES = 3
+  const filtered = (filterGroupIds && filterGroupIds.size > 0)
+    ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+    : events
+  const toDate = s => new Date(s + 'T12:00:00')
+  const fromDate = d => d.toISOString().slice(0, 10)
+  const addDays = (d, n) => { const r = new Date(d); r.setDate(d.getDate() + n); return r }
+  const diffDays = (a, b) => Math.round((toDate(b) - toDate(a)) / 86400000)
+
+  // Starting week: the week containing today, aligned to weekStart
+  const today = toDate(todayStr)
+  const dow = today.getDay()
+  const startOffset = (dow - weekStart + 7) % 7
+  const initialWeekStart = addDays(today, -startOffset)
+
+  const [range, setRange] = useState({ before: 40, after: 40 })
+  const [todayVisible, setTodayVisible] = useState(true)
+  const scrollRef = useRef(null)
+  const didInitialScroll = useRef(false)
+
+  const totalWeeks = range.before + range.after + 1
+  const firstWeek = addDays(initialWeekStart, -range.before * 7)
+
+  const weeks = useMemo(() => {
+    const out = []
+    for (let i = 0; i < totalWeeks; i++) {
+      const ws = addDays(firstWeek, i * 7)
+      const we = addDays(ws, 6)
+      out.push({ start: fromDate(ws), end: fromDate(we), startDate: ws })
+    }
+    return out
+  }, [totalWeeks, firstWeek.getTime()])
+
+  const layoutWeek = (ws, we) => {
+    const candidates = filtered.filter(e => {
+      const s = e.date
+      const en = e.endDate || e.date
+      return en >= ws && s <= we
+    }).sort((a, b) => {
+      const aDur = diffDays(a.date, a.endDate || a.date)
+      const bDur = diffDays(b.date, b.endDate || b.date)
+      if (bDur !== aDur) return bDur - aDur
+      return a.date.localeCompare(b.date)
+    })
+    const lanes = []
+    const placed = []
+    for (const e of candidates) {
+      const s = e.date < ws ? ws : e.date
+      const en = (e.endDate || e.date) > we ? we : (e.endDate || e.date)
+      const startCol = diffDays(ws, s)
+      const endCol = diffDays(ws, en)
+      let laneIdx = 0
+      while (lanes[laneIdx] && lanes[laneIdx].some(x => !(endCol < x.startCol || startCol > x.endCol))) {
+        laneIdx++
+      }
+      if (!lanes[laneIdx]) lanes[laneIdx] = []
+      lanes[laneIdx].push({ startCol, endCol, event: e })
+      placed.push({ lane: laneIdx, startCol, endCol, event: e, continuesLeft: e.date < ws, continuesRight: (e.endDate || e.date) > we })
+    }
+    const overflow = new Array(7).fill(0)
+    for (const p of placed) {
+      if (p.lane >= MAX_LANES) {
+        for (let c = p.startCol; c <= p.endCol; c++) overflow[c] += 1
+      }
+    }
+    return { placed: placed.filter(p => p.lane < MAX_LANES), overflow }
+  }
+
+  useEffect(() => {
+    if (didInitialScroll.current || !scrollRef.current) return
+    const container = scrollRef.current
+    const el = container.querySelector(`[data-weekindex="${range.before}"]`)
+    if (el) {
+      const containerTop = container.getBoundingClientRect().top
+      const elTop = el.getBoundingClientRect().top
+      container.scrollTop += (elTop - containerTop) - 8
+      didInitialScroll.current = true
+    }
+  }, [])
+
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    if (el.scrollTop < 400) setRange(r => ({ ...r, before: r.before + 20 }))
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 400) setRange(r => ({ ...r, after: r.after + 20 }))
+    const cw = el.querySelector(`[data-weekindex="${range.before}"]`)
+    if (cw) {
+      const cTop = el.getBoundingClientRect().top
+      const cBot = el.getBoundingClientRect().bottom
+      const rTop = cw.getBoundingClientRect().top
+      const rBot = cw.getBoundingClientRect().bottom
+      const vis = rBot > cTop && rTop < cBot
+      if (vis !== todayVisible) setTodayVisible(vis)
+    }
+  }
+
+  const dayHeaders = [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)]
+
+  let lastMonthKey = null
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', position:'relative', ...th.bg }}>
+      <div style={{ padding:'12px 16px 8px', display:'flex', alignItems:'center', gap:8,
+        borderBottom:`1px solid ${th.border}`, flexShrink:0 }}>
+        <button onClick={onExit} style={th.iconBtn}><ArrowLeft size={18} weight="thin" /></button>
+        <span style={{ fontWeight:300, fontSize:15, ...th.text }}>Full-Month Grid</span>
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'6px 8px',
+        borderBottom:`1px solid ${th.border}`, flexShrink:0 }}>
+        {dayHeaders.map(d => (
+          <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:300, color:th.muted }}>{d}</div>
+        ))}
+      </div>
+      <div ref={scrollRef} onScroll={onScroll}
+        style={{ flex:1, overflowY:'auto', WebkitOverflowScrolling:'touch',
+          paddingBottom:'calc(72px + var(--safe-area-bottom))' }}>
+        {weeks.map((wk, idx) => {
+          const { placed, overflow } = layoutWeek(wk.start, wk.end)
+          const firstDay = wk.startDate
+          const monthKey = `${firstDay.getFullYear()}-${firstDay.getMonth()}`
+          const monthLabel = (() => {
+            if (monthKey === lastMonthKey) return null
+            lastMonthKey = monthKey
+            return firstDay.toLocaleDateString('en-US', { month:'long', year:'numeric' }).toUpperCase()
+          })()
+          return (
+            <div key={idx} data-weekindex={idx}>
+              {monthLabel && (
+                <div style={{ padding:'12px 16px 8px', fontSize:13, fontWeight:500, letterSpacing:'0.12em',
+                  color:th.text.color, background:th.bg.background, textAlign:'center',
+                  borderTop:`1px solid ${th.border}` }}>{monthLabel}</div>
+              )}
+              <div style={{ position:'relative', display:'grid', gridTemplateColumns:'repeat(7,1fr)',
+                minHeight:92, borderBottom:`1px solid ${th.border}`,
+                borderLeft: idx === range.before ? `3px solid ${th.accent}` : '3px solid transparent' }}>
+                {Array.from({ length:7 }).map((_, col) => {
+                  const cellDate = fromDate(addDays(firstDay, col))
+                  const isToday = cellDate === todayStr
+                  const isPast = cellDate < todayStr
+                  return (
+                    <button key={col} onClick={() => { window.__pearSync?.haptic('light'); onDayTap(cellDate) }}
+                      style={{ border:'none', borderLeft: col === 0 ? 'none' : `1px solid ${th.border}`,
+                        background:'transparent', padding:'4px 2px 2px', cursor:'pointer',
+                        display:'flex', flexDirection:'column', alignItems:'stretch',
+                        opacity: isPast ? 0.55 : 1, minWidth:0 }}>
+                      <span style={{ fontSize:11, fontWeight: isToday ? 500 : 300,
+                        color: isToday ? '#fff' : th.text.color,
+                        background: isToday ? th.accent : 'transparent',
+                        borderRadius: 10, padding: isToday ? '1px 6px' : '1px 0',
+                        alignSelf:'flex-start', marginLeft:4 }}>
+                        {addDays(firstDay, col).getDate()}
+                      </span>
+                    </button>
+                  )
+                })}
+                {/* Event bars layer */}
+                <div style={{ position:'absolute', top:22, left:0, right:0, bottom:0,
+                  pointerEvents:'none' }}>
+                  {placed.map((p, i) => {
+                    const color = p.event.colors?.[0] ?? p.event.color ?? th.accent
+                    return (
+                      <div key={p.event.id + '_' + i}
+                        onClick={e => { e.stopPropagation(); window.__pearSync?.haptic('light'); onEventTap(p.event) }}
+                        style={{ position:'absolute',
+                          left: `calc(${(p.startCol / 7) * 100}% + 2px)`,
+                          width: `calc(${((p.endCol - p.startCol + 1) / 7) * 100}% - 4px)`,
+                          top: p.lane * 18,
+                          height: 16, borderRadius: 4,
+                          background: color, color:'#fff',
+                          fontSize: 10, fontWeight: 400, lineHeight:'16px',
+                          padding:'0 5px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis',
+                          pointerEvents:'auto', cursor:'pointer',
+                          borderTopLeftRadius: p.continuesLeft ? 0 : 4,
+                          borderBottomLeftRadius: p.continuesLeft ? 0 : 4,
+                          borderTopRightRadius: p.continuesRight ? 0 : 4,
+                          borderBottomRightRadius: p.continuesRight ? 0 : 4,
+                        }}>
+                        {p.continuesLeft ? '‹ ' : ''}{p.event.title}
+                      </div>
+                    )
+                  })}
+                  {overflow.map((n, col) => n > 0 ? (
+                    <div key={'ov_' + col} style={{ position:'absolute',
+                      left: `${(col / 7) * 100}%`, width: `${100 / 7}%`,
+                      top: MAX_LANES * 18, height: 14,
+                      fontSize: 9, fontWeight: 400, color: th.muted, textAlign:'center',
+                      pointerEvents:'none' }}>
+                      +{n}
+                    </div>
+                  ) : null)}
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ position:'absolute', bottom:'calc(30px + var(--safe-area-bottom) + 12px)',
+        left:'50%',
+        transform: `translateX(-50%) translateY(${todayVisible ? 120 : 0}px)`,
+        opacity: todayVisible ? 0 : 1,
+        transition: 'transform 260ms var(--easing), opacity 200ms var(--easing)',
+        pointerEvents: todayVisible ? 'none' : 'auto',
+        display:'flex', justifyContent:'center' }}>
+        <button onClick={() => {
+          window.__pearSync?.haptic('light')
+          const el = scrollRef.current?.querySelector(`[data-weekindex="${range.before}"]`)
+          if (el && scrollRef.current) {
+            const containerTop = scrollRef.current.getBoundingClientRect().top
+            const elTop = el.getBoundingClientRect().top
+            scrollRef.current.scrollTo({ top: scrollRef.current.scrollTop + (elTop - containerTop) - 8, behavior:'smooth' })
+          }
+        }} style={{ height:44, padding:'0 24px', borderRadius:22,
+          background: th.accent, border:'none',
+          boxShadow:'0 4px 16px rgba(0,0,0,0.28)',
+          display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+          <CalendarDot size={18} weight="bold" color="#fff" />
+          <span style={{ fontSize:14, fontWeight:500, color:'#fff', fontFamily:FONT }}>Today</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
   eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady,
-  saveEvent, profile, sync, myRsvps = {}, myProfileId }) {
+  saveEvent, profile, sync, myRsvps = {}, myProfileId, closeFullGridRef }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -1895,6 +2127,12 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     const s = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
     return s?.calendarView || 'month'
   }) // 'month' | 'week' | 'day'
+  const [fullGrid, setFullGrid] = useState(() => {
+    try { return typeof localStorage !== 'undefined' && localStorage.getItem('pearcal:fullGrid') === '1' } catch { return false }
+  })
+  useEffect(() => {
+    try { localStorage.setItem('pearcal:fullGrid', fullGrid ? '1' : '0') } catch {}
+  }, [fullGrid])
 
 
   const handleScroll = () => {
@@ -1995,6 +2233,14 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
     background:active ? th.accent : 'transparent',
     color:active ? '#fff' : th.text.color,
   })
+
+  if (fullGrid) {
+    return <FullGridView th={th} weekStart={weekStart} events={events} todayStr={todayStr}
+      filterGroupIds={filterGroupIds} closeFullGridRef={closeFullGridRef}
+      onExit={() => setFullGrid(false)}
+      onDayTap={ds => { setSelectedDate(ds); setCalView('day'); setFullGrid(false) }}
+      onEventTap={ev => setModal({ mode:'edit', event:{ ...ev } })} />
+  }
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', position:'relative' }}>
@@ -2132,6 +2378,15 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
         <div style={{ display:'flex', gap:8 }}>
+          <button onClick={() => { window.__pearSync?.haptic('light'); setFullGrid(true) }} style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <GridFour size={18} weight="thin" color="var(--color-text)" />
+          </button>
           <button onClick={() => openCreate(selectedDate)} style={{
             width: 36, height: 36, borderRadius: 10,
             background: 'var(--color-surface)',
@@ -2190,11 +2445,25 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
           : events
         filteredEvents
-          .filter(e => e.date >= cutoffStr)
+          .filter(e => (e.endDate || e.date) >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
           .forEach(e => {
-            if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
-            seen.get(e.date).push(e)
+            const endDate = e.endDate && e.endDate > e.date ? e.endDate : e.date
+            if (endDate === e.date) {
+              if (!seen.has(e.date)) { seen.set(e.date, []); days.push(e.date) }
+              seen.get(e.date).push(e)
+              return
+            }
+            const start = new Date(e.date + 'T12:00:00')
+            const end = new Date(endDate + 'T12:00:00')
+            const total = Math.round((end - start) / 86400000) + 1
+            for (let i = 0; i < total; i++) {
+              const d = new Date(start); d.setDate(start.getDate() + i)
+              const ds = d.toISOString().slice(0,10)
+              if (ds < cutoffStr) continue
+              if (!seen.has(ds)) { seen.set(ds, []); days.push(ds) }
+              seen.get(ds).push({ ...e, _dayIndex: i + 1, _dayTotal: total })
+            }
           })
         if (!seen.has(todayStr)) {
           seen.set(todayStr, [])
@@ -2211,7 +2480,8 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             {seen.get(date).map((ev, i) => (
               <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
                 <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
-                  use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                  use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal}
+                  onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
               </div>
             ))}
           </div>
@@ -2219,21 +2489,30 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
       })()}
       </div>
 
-      {/* Floating Today button — anchored above bottom nav */}
-      <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 12px)',
-        left:'50%', transform:'translateX(-50%)',
-        display:'flex', justifyContent:'center', pointerEvents:'none' }}>
-        <button onClick={() => {
-          setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
-          setSelectedDate(todayStr); scrollToDate(todayStr)
-        }} style={{ height:44, padding:'0 24px', borderRadius:22,
-          background:'var(--color-surface)', border:'1px solid var(--color-border)',
-          boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
-          display:'flex', alignItems:'center', gap:8, cursor:'pointer', pointerEvents:'auto' }}>
-          <CalendarDot size={18} weight="thin" color="var(--color-text)" />
-          <span style={{ fontSize:14, fontWeight:300, color:'var(--color-text)', fontFamily:FONT }}>Today</span>
-        </button>
-      </div>
+      {/* Floating Today button — anchored above bottom nav, hidden when already on today */}
+      {(() => {
+        const onToday = y === parseInt(todayStr.slice(0,4)) && m === parseInt(todayStr.slice(5,7)) - 1 && selectedDate === todayStr
+        return (
+          <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 12px)',
+            left:'50%',
+            transform: `translateX(-50%) translateY(${onToday ? 120 : 0}px)`,
+            opacity: onToday ? 0 : 1,
+            transition: 'transform 260ms var(--easing), opacity 200ms var(--easing)',
+            pointerEvents: onToday ? 'none' : 'auto',
+            display:'flex', justifyContent:'center' }}>
+            <button onClick={() => {
+              setViewDate({ y:parseInt(todayStr.slice(0,4)), m:parseInt(todayStr.slice(5,7)) - 1 })
+              setSelectedDate(todayStr); scrollToDate(todayStr)
+            }} style={{ height:44, padding:'0 24px', borderRadius:22,
+              background: th.accent, border:'none',
+              boxShadow:'0 4px 16px rgba(0,0,0,0.28)',
+              display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}>
+              <CalendarDot size={18} weight="bold" color="#fff" />
+              <span style={{ fontSize:14, fontWeight:500, color:'#fff', fontFamily:FONT }}>Today</span>
+            </button>
+          </div>
+        )
+      })()}
       </>)}
 
       {calView === 'week' && (
@@ -2515,7 +2794,7 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal }) {
   const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId
   const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator
   const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
@@ -2540,6 +2819,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
                 ? `${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })} – ${new Date(ev.endDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}`
                 : 'All day')
             : `${formatTime(ev.start, use24h)} – ${formatTime(ev.end, use24h)}`}
+          {dayIndex && dayTotal ? ` · day ${dayIndex} of ${dayTotal}` : ''}
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
