@@ -17669,6 +17669,7 @@
                 {
                   ev: ev2,
                   th,
+                  groups,
                   isPast: ds < todayStr2,
                   myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
@@ -17877,8 +17878,8 @@
                   borderRadius: 8,
                   marginBottom: 4,
                   cursor: "pointer",
-                  background: (ev2.colors?.[0] ?? ev2.color) + "22",
-                  borderLeft: `3px solid ${ev2.colors?.[0] ?? ev2.color}`
+                  background: deriveEventColors(ev2, groups)[0] + "22",
+                  borderLeft: `3px solid ${deriveEventColors(ev2, groups)[0]}`
                 },
                 children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: ev2.title })
               },
@@ -17940,8 +17941,8 @@
                     borderRadius: 8,
                     cursor: "pointer",
                     overflow: "hidden",
-                    background: (ev2.colors?.[0] ?? ev2.color) + "22",
-                    borderLeft: `3px solid ${ev2.colors?.[0] ?? ev2.color}`,
+                    background: deriveEventColors(ev2, groups)[0] + "22",
+                    borderLeft: `3px solid ${deriveEventColors(ev2, groups)[0]}`,
                     zIndex: 10,
                     display: "flex",
                     gap: 0
@@ -18337,7 +18338,7 @@
                         fontWeight: isToday || isSel ? 400 : isCur ? 300 : 200,
                         color: isSel ? "#fff" : isToday ? th.accent : th.text.color
                       }, children: cell.d }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, minHeight: 6 }, children: evs.slice(0, 3).map((e53) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 6, height: 6, borderRadius: "50%", background: e53.colors?.[0] ?? e53.color } }, e53.id)) })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, minHeight: 6 }, children: evs.slice(0, 3).map((e53) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 6, height: 6, borderRadius: "50%", background: deriveEventColors(e53, groups)[0] } }, e53.id)) })
                     ]
                   },
                   ds + i2
@@ -18465,6 +18466,7 @@
                 {
                   ev: ev2,
                   th,
+                  groups,
                   isPast: date < todayStr2,
                   myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
@@ -18992,7 +18994,14 @@
       }
     );
   }
-  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+  function deriveEventColors(ev2, groups) {
+    const cols = (ev2.groups ?? []).map((gid) => groups?.find((g) => g.id === gid)?.color).filter(Boolean);
+    if (cols.length > 0) return cols;
+    return [ev2.color || "#888"];
+  }
+  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, groups }) {
+    const evColors = deriveEventColors(ev2, groups);
+    const primaryColor = evColors[0];
     const viewerIsCreator = ev2.creatorId && myProfileId && ev2.creatorId === myProfileId;
     const showRsvpPill = ev2.rsvpEnabled && !viewerIsCreator;
     const isDeclined = showRsvpPill && myRsvpStatus === "declined";
@@ -19011,7 +19020,7 @@
           borderRadius: 12,
           cursor: "pointer",
           ...th.card,
-          borderLeft: `4px solid ${ev2.colors?.[0] ?? ev2.color}`,
+          borderLeft: `4px solid ${primaryColor}`,
           marginBottom: compact ? 0 : 8,
           opacity: isPast || isDeclined ? 0.5 : 1
         },
@@ -19067,7 +19076,19 @@
               WebkitLineClamp: 2,
               WebkitBoxOrient: "vertical",
               lineHeight: "1.35"
-            }, children: ev2.desc }) : null
+            }, children: ev2.desc }) : null,
+            !compact && ev2.privateNote ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 12,
+              color: th.muted,
+              marginTop: 4,
+              fontWeight: 300,
+              fontStyle: "italic",
+              overflow: "hidden",
+              display: "-webkit-box",
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: "vertical",
+              lineHeight: "1.35"
+            }, children: ev2.privateNote }) : null
           ] }),
           !compact && ev2.location ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 1, background: th.border, alignSelf: "stretch", marginTop: 2, marginBottom: 2, flexShrink: 0 } }),
@@ -19106,7 +19127,7 @@
               }
             )
           ] }) : null,
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 3, alignItems: "center", marginTop: 2, flexShrink: 0 }, children: (ev2.colors?.length > 0 ? ev2.colors : [ev2.color]).map((c8, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 8, height: 8, borderRadius: "50%", background: c8 } }, i2)) })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 3, alignItems: "center", marginTop: 2, flexShrink: 0 }, children: evColors.map((c8, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 8, height: 8, borderRadius: "50%", background: c8 } }, i2)) })
         ]
       }
     );
@@ -19256,11 +19277,6 @@
     function toggleInvitee(uid) {
       setEv((e53) => ({ ...e53, invitees: e53.invitees.includes(uid) ? e53.invitees.filter((x) => x !== uid) : [...e53.invitees, uid] }));
     }
-    (0, import_react2.useEffect)(() => {
-      const cols = ev2.groups.map((gid) => groups.find((x) => x.id === gid)?.color).filter(Boolean);
-      if (cols.length > 0) setEv((e53) => ({ ...e53, color: cols[0], colors: cols }));
-      else setEv((e53) => ({ ...e53, colors: [] }));
-    }, [ev2.groups, groups]);
     const [reminders, setReminders] = (0, import_react2.useState)([]);
     (0, import_react2.useEffect)(() => {
       if (!db2) return;
@@ -19319,6 +19335,7 @@
     const [mlOpen, setMlOpen] = (0, import_react2.useState)(!!modal.event?.meetingLink);
     const [locOpen, setLocOpen] = (0, import_react2.useState)(!!modal.event?.location);
     const [notesOpen, setNotesOpen] = (0, import_react2.useState)(!!modal.event?.desc);
+    const [privNotesOpen, setPrivNotesOpen] = (0, import_react2.useState)(!!modal.event?.privateNote);
     const [titleErr, setTitleErr] = (0, import_react2.useState)("");
     const [pastEvents, setPastEvents] = (0, import_react2.useState)(/* @__PURE__ */ new Map());
     const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
@@ -19869,7 +19886,7 @@
               ),
               notesOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Notes" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: ev2.groups?.length ? "Shared Notes" : "Notes" }),
                   !ev2.desc && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                     "button",
                     {
@@ -19891,7 +19908,7 @@
                   "textarea",
                   {
                     style: { ...inp, resize: "none", minHeight: 60 },
-                    placeholder: "Optional notes\u2026",
+                    placeholder: ev2.groups?.length ? "Visible to group members\u2026" : "Optional notes\u2026",
                     value: ev2.desc,
                     onChange: (e53) => set("desc", e53.target.value)
                   }
@@ -19929,7 +19946,7 @@
                   },
                   url
                 ))
-              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "button",
                 {
                   onClick: () => setNotesOpen(true),
@@ -19948,7 +19965,11 @@
                     fontFamily: FONT,
                     width: "100%"
                   },
-                  children: "+ Add Notes"
+                  children: [
+                    "+ Add ",
+                    ev2.groups?.length ? "Shared " : "",
+                    "Notes"
+                  ]
                 }
               )
             ] })
@@ -20191,51 +20212,109 @@
             "Read only \u2014 only the creator can edit this event"
           ] });
           return null;
-        })(),
-        modal.mode === "edit" && (() => {
-          const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
-          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteEvent", ev: ev2 })) : onDelete(ev2.id),
-                style: {
-                  background: "transparent",
-                  border: `1px solid #D45F7A`,
-                  borderRadius: 12,
-                  padding: "11px",
-                  color: "#D45F7A",
-                  fontSize: 14,
-                  fontWeight: 300,
-                  fontFamily: FONT,
-                  cursor: "pointer",
-                  width: "100%"
-                },
-                children: isCreator ? "Delete" : "Remove for Me"
-              }
-            ),
-            ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "button",
-              {
-                onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteSeries", ev: ev2 })) : onDeleteSeries?.(ev2.recurrenceId),
-                style: {
-                  background: "transparent",
-                  border: `1px solid #D45F7A`,
-                  borderRadius: 12,
-                  padding: "11px",
-                  color: "#D45F7A",
-                  fontSize: 14,
-                  fontWeight: 300,
-                  fontFamily: FONT,
-                  cursor: "pointer",
-                  width: "100%"
-                },
-                children: isCreator ? "Delete All in Series" : "Remove All in Series"
-              }
-            )
-          ] });
         })()
-      ] })
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 20px 8px", display: "flex", flexDirection: "column", gap: 6 }, children: privNotesOpen ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Private Notes" }),
+          !ev2.privateNote && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => setPrivNotesOpen(false),
+              style: {
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: th.muted,
+                fontSize: 16,
+                padding: "0 4px",
+                lineHeight: 1
+              },
+              children: "\xD7"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "textarea",
+          {
+            style: { ...inp, resize: "none", minHeight: 60 },
+            placeholder: "Only visible to you \u2014 never synced\u2026",
+            value: ev2.privateNote ?? "",
+            onChange: (e53) => {
+              const v = e53.target.value;
+              set("privateNote", v);
+              if (modal.mode === "edit" && ev2.id) {
+                db2?.putPrivateNote(ev2.id, v).catch(() => {
+                });
+              }
+            }
+          }
+        )
+      ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          onClick: () => setPrivNotesOpen(true),
+          style: {
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "10px 12px",
+            borderRadius: 10,
+            cursor: "pointer",
+            border: `1px dashed ${th.border}`,
+            background: "transparent",
+            color: th.muted,
+            fontSize: 13,
+            fontWeight: 300,
+            fontFamily: FONT,
+            width: "100%"
+          },
+          children: "+ Add Private Notes"
+        }
+      ) }),
+      modal.mode === "edit" && (() => {
+        const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteEvent", ev: ev2 })) : onDelete(ev2.id),
+              style: {
+                background: "transparent",
+                border: `1px solid #D45F7A`,
+                borderRadius: 12,
+                padding: "11px",
+                color: "#D45F7A",
+                fontSize: 14,
+                fontWeight: 300,
+                fontFamily: FONT,
+                cursor: "pointer",
+                width: "100%"
+              },
+              children: isCreator ? "Delete" : "Remove for Me"
+            }
+          ),
+          ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteSeries", ev: ev2 })) : onDeleteSeries?.(ev2.recurrenceId),
+              style: {
+                background: "transparent",
+                border: `1px solid #D45F7A`,
+                borderRadius: 12,
+                padding: "11px",
+                color: "#D45F7A",
+                fontSize: 14,
+                fontWeight: 300,
+                fontFamily: FONT,
+                cursor: "pointer",
+                width: "100%"
+              },
+              children: isCreator ? "Delete All in Series" : "Remove All in Series"
+            }
+          )
+        ] });
+      })()
     ] });
   }
   function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined, onPendingJoin }) {
@@ -22929,7 +23008,6 @@ ${link}`;
                   groups: keptGroups,
                   invitees: [],
                   color: firstGroup?.color ?? "#6C9BF5",
-                  colors: [],
                   reminder: 0,
                   recurrence: "none",
                   recurrenceId: "",
@@ -23435,6 +23513,8 @@ ${link}`;
     listRsvps: (eid) => window.__pearDB.call("listRsvps", eid),
     listMyRsvps: () => window.__pearDB.call("listMyRsvps"),
     putRsvp: (eid, mid, s9, gids) => window.__pearDB.call("putRsvp", eid, mid, s9, gids),
+    getPrivateNote: (id) => window.__pearDB.call("getPrivateNote", id),
+    putPrivateNote: (id, text) => window.__pearDB.call("putPrivateNote", id, text),
     getBlindPeerKey: () => window.__pearDB.call("getBlindPeerKey"),
     setBlindPeerKey: (k) => window.__pearDB.call("setBlindPeerKey", k),
     removeBlindPeerKey: () => window.__pearDB.call("removeBlindPeerKey")

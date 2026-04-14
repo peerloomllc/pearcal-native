@@ -1639,7 +1639,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
                 </div>
               ) : dayEvents.map((ev, i) => (
                 <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
-                  <EventCard ev={ev} th={th} isPast={ds < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
+                  <EventCard ev={ev} th={th} groups={groups} isPast={ds < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
                     use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
                 </div>
               ))}
@@ -1787,8 +1787,8 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
           {allDayEvents.slice(0, 3).map(ev => (
             <div key={ev.id} onClick={() => { window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
               style={{ padding:'4px 10px', borderRadius:8, marginBottom:4, cursor:'pointer',
-                background: (ev.colors?.[0] ?? ev.color) + '22',
-                borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}` }}>
+                background: deriveEventColors(ev, groups)[0] + '22',
+                borderLeft: `3px solid ${deriveEventColors(ev, groups)[0]}` }}>
               <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}</span>
             </div>
           ))}
@@ -1824,8 +1824,8 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
                 style={{ position:'absolute', top, height: Math.max(height, 30),
                   left: colLeft, width: `calc(${colWidth} - 4px)`,
                   borderRadius:8, cursor:'pointer', overflow:'hidden',
-                  background: (ev.colors?.[0] ?? ev.color) + '22',
-                  borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`,
+                  background: deriveEventColors(ev, groups)[0] + '22',
+                  borderLeft: `3px solid ${deriveEventColors(ev, groups)[0]}`,
                   zIndex:10, display:'flex', gap:0 }}>
                 <div style={{ flex:1, minWidth:0, padding:'4px 8px' }}>
                   <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}</div>
@@ -2107,7 +2107,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{cell.d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
-                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:e.colors?.[0] ?? e.color }} />
+                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:deriveEventColors(e, groups)[0] }} />
                 ))}
               </div>
             </button>
@@ -2210,7 +2210,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             </div>
             {seen.get(date).map((ev, i) => (
               <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
-                <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
+                <EventCard ev={ev} th={th} groups={groups} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
                   use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
               </div>
             ))}
@@ -2515,7 +2515,19 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId }) {
+// Derive event colors from current groups state — never trust ev.color/colors
+// snapshots, which may reflect stale per-device group.color from before sync.
+function deriveEventColors (ev, groups) {
+  const cols = (ev.groups ?? [])
+    .map(gid => groups?.find(g => g.id === gid)?.color)
+    .filter(Boolean)
+  if (cols.length > 0) return cols
+  return [ev.color || '#888']
+}
+
+function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, groups }) {
+  const evColors = deriveEventColors(ev, groups)
+  const primaryColor = evColors[0]
   const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId
   const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator
   const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
@@ -2524,7 +2536,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px' : '12px 14px',
         borderRadius:12, cursor:'pointer', ...th.card,
-        borderLeft:`4px solid ${(ev.colors?.[0] ?? ev.color)}`, marginBottom:compact ? 0 : 8,
+        borderLeft:`4px solid ${primaryColor}`, marginBottom:compact ? 0 : 8,
         opacity: (isPast || isDeclined) ? 0.5 : 1 }}>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text,
@@ -2576,7 +2588,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
         </>
       ) : null}
       <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
-        {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
+        {evColors.map((c, i) => (
           <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:c }} />
         ))}
       </div>
@@ -2699,12 +2711,6 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     setEv(e => ({ ...e, invitees: e.invitees.includes(uid)
       ? e.invitees.filter(x => x !== uid) : [...e.invitees, uid] }))
   }
-
-  useEffect(() => {
-    const cols = ev.groups.map(gid => groups.find(x => x.id === gid)?.color).filter(Boolean)
-    if (cols.length > 0) setEv(e => ({ ...e, color: cols[0], colors: cols }))
-    else setEv(e => ({ ...e, colors: [] }))
-  }, [ev.groups, groups])
 
   const [reminders, setReminders] = useState([])
 
@@ -5191,7 +5197,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 endDate: ev.endDate ?? '', desc: ev.desc ?? '', location: ev.location ?? '',
                 meetingLink: ev.meetingLink ?? '',
                 groups: keptGroups, invitees: [],
-                color: firstGroup?.color ?? '#6C9BF5', colors: [], reminder: 0,
+                color: firstGroup?.color ?? '#6C9BF5', reminder: 0,
                 recurrence: 'none', recurrenceId: '', recurrenceEnd: '',
                 recurrenceNth: 0, recurrenceWeekday: 0,
                 editPermission: 'everyone', creatorId: profile?.id ?? '',
