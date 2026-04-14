@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		066E6FCB3F7385FFD861778E /* CameraModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278CCBB93EB9E31D691C8817 /* CameraModule.swift */; };
 		07A4B17B976D5E0D3673B3EF /* HapticModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D3E67A47AAF9D133026769D3 /* HapticModule.m */; };
+		0968BBA0C345696721332075 /* WidgetCacheModule.m in Sources */ = {isa = PBXBuildFile; fileRef = A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */; };
 		11FDE0150D82225E81D929EB /* RCTThirdPartyComponentsFix.m in Sources */ = {isa = PBXBuildFile; fileRef = 6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */; };
@@ -17,23 +18,53 @@
 		28708F085289B2D9F4818BFD /* BareBackgroundSync.m in Sources */ = {isa = PBXBuildFile; fileRef = 2C29454412519534F243D013 /* BareBackgroundSync.m */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6466122AC83FA96405613F46 /* ShareModule.m */; };
+		4DC64D430E1D1273DA23CBDE /* PearCalWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC66A7C724EAC8FD02942C39 /* PearCalWidget.swift */; };
+		53A9B241163BF9ADCCA36F7B /* WidgetCacheModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A543DE635C598C36D28F84A /* WidgetCacheModule.m */; };
 		68A7206C8C2D7AB3BBC59921 /* BareBackgroundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */; };
 		81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */; };
 		8790520B36DCA7944A6D8F8E /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EEB61CDBF78F983BB07207 /* HapticModule.swift */; };
 		8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */; };
 		92B051FA843A24860CCC167F /* NotificationsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB86438FC337C227BD692415 /* NotificationsModule.swift */; };
 		92E985E6CB0416747F8A9DC4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */; };
+		97CD1BE1D3A471E81AD8DE93 /* WidgetCacheModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */; };
+		A3CC457AC15EB0D6C0941ED1 /* WidgetCacheModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 30846C24E6F5560A4622850B /* ScreenshotModule.m */; };
 		C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */; };
+		D281BE0BBE65065D21A3E8E1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3ECA4F085A06A65C368166CE /* Foundation.framework */; };
 		DAF5708BAC84EEC6349AA1EF /* DeepLinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 17086FDCA2812725DD101353 /* DeepLinkModule.m */; };
 		E0DA430E00A88A151E604B9D /* ShareModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A19A60265BF82560F78ECA2 /* ShareModule.swift */; };
+		E44D8C6F81DEEB6F63A5B934 /* PearCalWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E8B53D8043C690B658D2DDC2 /* LinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98DC41E56E5833C624E0BBE6 /* LinkModule.swift */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
 		F3E8E86DD263668B0AE11972 /* QRScannerModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */; };
 		F4236CF8643B8098716600C7 /* ScreenshotModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */; };
 		FC2CE1543547C11B3FD49A2D /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 16EC608C7E658AFD8A363A0B /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		ED624A859F151496605ACFF7 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 4BE0C2A948DC8FADE0057DFF;
+			remoteInfo = PearCalWidget;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A47AE3BFF3AFE0FBBACFDD3B /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E44D8C6F81DEEB6F63A5B934 /* PearCalWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* PearCal.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PearCal.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -47,6 +78,8 @@
 		30846C24E6F5560A4622850B /* ScreenshotModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ScreenshotModule.m; path = PearCal/ScreenshotModule.m; sourceTree = "<group>"; };
 		3A19A60265BF82560F78ECA2 /* ShareModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ShareModule.swift; path = PearCal/ShareModule.swift; sourceTree = "<group>"; };
 		3D8DB875303C7D5BBE17A5A3 /* Pods-PearCal.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.release.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.release.xcconfig"; sourceTree = "<group>"; };
+		3ECA4F085A06A65C368166CE /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PearCalWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
 		43B39E45E490E815F6A2E8DC /* NotificationsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = NotificationsModule.m; path = PearCal/NotificationsModule.m; sourceTree = "<group>"; };
 		54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BareBackgroundSync.swift; path = PearCal/BareBackgroundSync.swift; sourceTree = "<group>"; };
@@ -56,14 +89,19 @@
 		672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = QRScannerModule.m; path = PearCal/QRScannerModule.m; sourceTree = "<group>"; };
 		6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = RCTThirdPartyComponentsFix.m; path = PearCal/RCTThirdPartyComponentsFix.m; sourceTree = "<group>"; };
 		718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRScannerModule.swift; path = PearCal/QRScannerModule.swift; sourceTree = "<group>"; };
+		7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
+		7A543DE635C598C36D28F84A /* WidgetCacheModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = WidgetCacheModule.m; path = PearCal/WidgetCacheModule.m; sourceTree = "<group>"; };
 		8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PearCal.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		98DC41E56E5833C624E0BBE6 /* LinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LinkModule.swift; path = PearCal/LinkModule.swift; sourceTree = "<group>"; };
+		A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = WidgetCacheModule.m; path = PearCal/WidgetCacheModule.m; sourceTree = "<group>"; };
 		A58EAE82C681BCCDFCF5ED48 /* Pods-PearCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.debug.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.debug.xcconfig"; sourceTree = "<group>"; };
+		A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = PearCal/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ScreenshotModule.swift; path = PearCal/ScreenshotModule.swift; sourceTree = "<group>"; };
 		D3E67A47AAF9D133026769D3 /* HapticModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = HapticModule.m; path = PearCal/HapticModule.m; sourceTree = "<group>"; };
 		EB86438FC337C227BD692415 /* NotificationsModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationsModule.swift; path = PearCal/NotificationsModule.swift; sourceTree = "<group>"; };
+		EC66A7C724EAC8FD02942C39 /* PearCalWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PearCalWidget.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = PearCal/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* PearCal-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "PearCal-Bridging-Header.h"; path = "PearCal/PearCal-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -76,6 +114,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		36129F1858769B25639C80AE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D281BE0BBE65065D21A3E8E1 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -105,6 +151,10 @@
 				6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */,
 				CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */,
 				30846C24E6F5560A4622850B /* ScreenshotModule.m */,
+				7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */,
+				A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */,
+				A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */,
+				7A543DE635C598C36D28F84A /* WidgetCacheModule.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -122,6 +172,7 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */,
+				85E3C1D952A6E777172E47D3 /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -148,6 +199,7 @@
 				6466122AC83FA96405613F46 /* ShareModule.m */,
 				FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */,
 				17086FDCA2812725DD101353 /* DeepLinkModule.m */,
+				AFBC435B295162359D5A4B5C /* PearCalWidget */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -158,8 +210,17 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* PearCal.app */,
+				42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		85E3C1D952A6E777172E47D3 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				3ECA4F085A06A65C368166CE /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		98BB3C77AF44353A1F58E720 /* ExpoModulesProviders */ = {
@@ -168,6 +229,15 @@
 				2A899793D43E8F5A0F14934D /* PearCal */,
 			);
 			name = ExpoModulesProviders;
+			sourceTree = "<group>";
+		};
+		AFBC435B295162359D5A4B5C /* PearCalWidget */ = {
+			isa = PBXGroup;
+			children = (
+				EC66A7C724EAC8FD02942C39 /* PearCalWidget.swift */,
+			);
+			name = PearCalWidget;
+			path = PearCalWidget;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -204,15 +274,34 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
 				9E439DF2C9E97799E487E507 /* [CP] Embed Pods Frameworks */,
+				A47AE3BFF3AFE0FBBACFDD3B /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				DFAF210765AEF0D544134BF3 /* PBXTargetDependency */,
 			);
 			name = PearCal;
 			productName = PearCal;
 			productReference = 13B07F961A680F5B00A75B9A /* PearCal.app */;
 			productType = "com.apple.product-type.application";
+		};
+		4BE0C2A948DC8FADE0057DFF /* PearCalWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DDA1DB06E076E00A1D00F8C0 /* Build configuration list for PBXNativeTarget "PearCalWidget" */;
+			buildPhases = (
+				D75639B0AE3FC34BC7C05BFE /* Sources */,
+				36129F1858769B25639C80AE /* Frameworks */,
+				F7D2B726B0300828F6B8A115 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PearCalWidget;
+			productName = PearCalWidget;
+			productReference = 42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -242,6 +331,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* PearCal */,
+				4BE0C2A948DC8FADE0057DFF /* PearCalWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -255,6 +345,13 @@
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 				FC2CE1543547C11B3FD49A2D /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F7D2B726B0300828F6B8A115 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -428,10 +525,31 @@
 				11FDE0150D82225E81D929EB /* RCTThirdPartyComponentsFix.m in Sources */,
 				F4236CF8643B8098716600C7 /* ScreenshotModule.swift in Sources */,
 				C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */,
+				97CD1BE1D3A471E81AD8DE93 /* WidgetCacheModule.swift in Sources */,
+				0968BBA0C345696721332075 /* WidgetCacheModule.m in Sources */,
+				A3CC457AC15EB0D6C0941ED1 /* WidgetCacheModule.swift in Sources */,
+				53A9B241163BF9ADCCA36F7B /* WidgetCacheModule.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D75639B0AE3FC34BC7C05BFE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4DC64D430E1D1273DA23CBDE /* PearCalWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		DFAF210765AEF0D544134BF3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = PearCalWidget;
+			target = 4BE0C2A948DC8FADE0057DFF /* PearCalWidget */;
+			targetProxy = ED624A859F151496605ACFF7 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -443,7 +561,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCal/PearCal.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -456,7 +574,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.14;
+				MARKETING_VERSION = 1.0.17;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -483,7 +601,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCal/PearCal.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 7;
+				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				INFOPLIST_FILE = PearCal/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -491,7 +609,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.14;
+				MARKETING_VERSION = 1.0.17;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -507,6 +625,35 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		3D91C4329E585A734279D904 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PearCalWidget/PearCalWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 12;
+				DEVELOPMENT_TEAM = G79ALD29NA;
+				INFOPLIST_FILE = PearCalWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.17;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pearcal.widget;
+				PRODUCT_NAME = PearCalWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "PearCal Widget Development";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -626,6 +773,36 @@
 			};
 			name = Release;
 		};
+		E2A2E7890A0F42EAD7AE3F45 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = PearCalWidget/PearCalWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 12;
+				DEVELOPMENT_TEAM = G79ALD29NA;
+				INFOPLIST_FILE = PearCalWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.17;
+				PRODUCT_BUNDLE_IDENTIFIER = com.pearcal.widget;
+				PRODUCT_NAME = PearCalWidget;
+				PROVISIONING_PROFILE_SPECIFIER = "PearCal Widget Development";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -643,6 +820,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DDA1DB06E076E00A1D00F8C0 /* Build configuration list for PBXNativeTarget "PearCalWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E2A2E7890A0F42EAD7AE3F45 /* Release */,
+				3D91C4329E585A734279D904 /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
