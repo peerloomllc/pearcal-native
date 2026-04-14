@@ -9,9 +9,9 @@
 /* Begin PBXBuildFile section */
 		066E6FCB3F7385FFD861778E /* CameraModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 278CCBB93EB9E31D691C8817 /* CameraModule.swift */; };
 		07A4B17B976D5E0D3673B3EF /* HapticModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D3E67A47AAF9D133026769D3 /* HapticModule.m */; };
-		0968BBA0C345696721332075 /* WidgetCacheModule.m in Sources */ = {isa = PBXBuildFile; fileRef = A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */; };
 		11FDE0150D82225E81D929EB /* RCTThirdPartyComponentsFix.m in Sources */ = {isa = PBXBuildFile; fileRef = 6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		1C2BFA5FAD5DD49B66A755C0 /* WidgetCacheModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6F845813E9C870F0FB256198 /* WidgetCacheModule.m */; };
 		2187F444D9ACC113FB507190 /* QRScannerModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */; };
 		22E9BAD6AFD12841DE68093F /* LinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 432CF75ADD4963D7351063E9 /* LinkModule.m */; };
 		24DA35638478C3E3161E1909 /* NotificationsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 43B39E45E490E815F6A2E8DC /* NotificationsModule.m */; };
@@ -19,15 +19,13 @@
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		4BDBACEE47FD784047C7F2CD /* ShareModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6466122AC83FA96405613F46 /* ShareModule.m */; };
 		4DC64D430E1D1273DA23CBDE /* PearCalWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC66A7C724EAC8FD02942C39 /* PearCalWidget.swift */; };
-		53A9B241163BF9ADCCA36F7B /* WidgetCacheModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 7A543DE635C598C36D28F84A /* WidgetCacheModule.m */; };
 		68A7206C8C2D7AB3BBC59921 /* BareBackgroundSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */; };
+		78C4617EE425098AC019F5CD /* WidgetCacheModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2EC4DB5DC6197D20E4E6C67 /* WidgetCacheModule.swift */; };
 		81F506750243B7EC5C072D57 /* DeepLinkModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */; };
 		8790520B36DCA7944A6D8F8E /* HapticModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15EEB61CDBF78F983BB07207 /* HapticModule.swift */; };
 		8ED6AC35D5469DFBEA73C1D3 /* CameraModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */; };
 		92B051FA843A24860CCC167F /* NotificationsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB86438FC337C227BD692415 /* NotificationsModule.swift */; };
 		92E985E6CB0416747F8A9DC4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */; };
-		97CD1BE1D3A471E81AD8DE93 /* WidgetCacheModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */; };
-		A3CC457AC15EB0D6C0941ED1 /* WidgetCacheModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 30846C24E6F5560A4622850B /* ScreenshotModule.m */; };
 		C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */; };
@@ -88,14 +86,11 @@
 		6466122AC83FA96405613F46 /* ShareModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ShareModule.m; path = PearCal/ShareModule.m; sourceTree = "<group>"; };
 		672C3FF5E2599DF030EFBE9A /* QRScannerModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = QRScannerModule.m; path = PearCal/QRScannerModule.m; sourceTree = "<group>"; };
 		6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = RCTThirdPartyComponentsFix.m; path = PearCal/RCTThirdPartyComponentsFix.m; sourceTree = "<group>"; };
+		6F845813E9C870F0FB256198 /* WidgetCacheModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = WidgetCacheModule.m; path = PearCal/WidgetCacheModule.m; sourceTree = "<group>"; };
 		718C406BCFA26FE4F1E9325A /* QRScannerModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = QRScannerModule.swift; path = PearCal/QRScannerModule.swift; sourceTree = "<group>"; };
-		7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
-		7A543DE635C598C36D28F84A /* WidgetCacheModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = WidgetCacheModule.m; path = PearCal/WidgetCacheModule.m; sourceTree = "<group>"; };
 		8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-PearCal.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		98DC41E56E5833C624E0BBE6 /* LinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = LinkModule.swift; path = PearCal/LinkModule.swift; sourceTree = "<group>"; };
-		A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = WidgetCacheModule.m; path = PearCal/WidgetCacheModule.m; sourceTree = "<group>"; };
 		A58EAE82C681BCCDFCF5ED48 /* Pods-PearCal.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PearCal.debug.xcconfig"; path = "Target Support Files/Pods-PearCal/Pods-PearCal.debug.xcconfig"; sourceTree = "<group>"; };
-		A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = PearCal/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ScreenshotModule.swift; path = PearCal/ScreenshotModule.swift; sourceTree = "<group>"; };
@@ -105,6 +100,7 @@
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = PearCal/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* PearCal-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "PearCal-Bridging-Header.h"; path = "PearCal/PearCal-Bridging-Header.h"; sourceTree = "<group>"; };
+		F2EC4DB5DC6197D20E4E6C67 /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
 		FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeepLinkModule.swift; path = PearCal/DeepLinkModule.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -151,10 +147,8 @@
 				6E42D7602B91BD68EEEE59B6 /* RCTThirdPartyComponentsFix.m */,
 				CDF1F67F6B431AE29AAA6C73 /* ScreenshotModule.swift */,
 				30846C24E6F5560A4622850B /* ScreenshotModule.m */,
-				7742871E61ED7E0B4A505895 /* WidgetCacheModule.swift */,
-				A4E44F812A3540B07697ADBB /* WidgetCacheModule.m */,
-				A837B1D6B4501E65C05BF99A /* WidgetCacheModule.swift */,
-				7A543DE635C598C36D28F84A /* WidgetCacheModule.m */,
+				F2EC4DB5DC6197D20E4E6C67 /* WidgetCacheModule.swift */,
+				6F845813E9C870F0FB256198 /* WidgetCacheModule.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -525,10 +519,8 @@
 				11FDE0150D82225E81D929EB /* RCTThirdPartyComponentsFix.m in Sources */,
 				F4236CF8643B8098716600C7 /* ScreenshotModule.swift in Sources */,
 				C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */,
-				97CD1BE1D3A471E81AD8DE93 /* WidgetCacheModule.swift in Sources */,
-				0968BBA0C345696721332075 /* WidgetCacheModule.m in Sources */,
-				A3CC457AC15EB0D6C0941ED1 /* WidgetCacheModule.swift in Sources */,
-				53A9B241163BF9ADCCA36F7B /* WidgetCacheModule.m in Sources */,
+				78C4617EE425098AC019F5CD /* WidgetCacheModule.swift in Sources */,
+				1C2BFA5FAD5DD49B66A755C0 /* WidgetCacheModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -599,7 +591,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = PearCal/PearCal.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
 				CURRENT_PROJECT_VERSION = 12;
 				DEVELOPMENT_TEAM = G79ALD29NA;
