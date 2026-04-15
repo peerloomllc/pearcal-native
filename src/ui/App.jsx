@@ -806,6 +806,7 @@ export default function App ({ db, notifs, sync }) {
         const removedBusy = origBusy.filter(g => !busyTargets.includes(g))
         for (const gid of removedBusy) {
           const shadowId = 'shadow:' + occ.id + ':' + gid
+          db.deleteEvent(occ.date, shadowId).catch(() => {})
           sync?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       }
@@ -826,6 +827,7 @@ export default function App ({ db, notifs, sync }) {
         }
         for (const gid of ev.sharedAsBusyTo ?? []) {
           const shadowId = 'shadow:' + id + ':' + gid
+          await db.deleteEvent(ev.date, shadowId).catch(() => {})
           await sync?.deleteEvent(gid, shadowId, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       } else {

@@ -1059,6 +1059,8 @@ function makeApply (groupId) {
             } catch(e) { console.error('[ADMIN_NOTIF] error:', e.message) }
           }
           if (isRemote && val.type === 'event') {
+            // Shadow (busy-time) events carry no invitation/commitment — silent
+            if (val.value.isShadow) continue
             // Skip notification if user locally deleted this event
             const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
             if (notifTombstone) continue
@@ -1184,8 +1186,10 @@ function makeApply (groupId) {
             const eventId = val.key.split(':').pop()
             // Cancel any scheduled notification for this deleted event
             send({ type: 'event', event: 'cancelNotification', data: eventId })
+            // Shadow (busy-time) deletes are silent — mirror the put side
+            const isShadowKey = val.key.includes(':shadow:')
             const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
-            if (!delTombstone) {
+            if (!delTombstone && !isShadowKey) {
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
                 const dedupKey = groupId + ':' + delRid + ':del'

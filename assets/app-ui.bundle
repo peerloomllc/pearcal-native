@@ -16687,6 +16687,8 @@
           const removedBusy = origBusy.filter((g) => !busyTargets.includes(g));
           for (const gid of removedBusy) {
             const shadowId = "shadow:" + occ.id + ":" + gid;
+            db2.deleteEvent(occ.date, shadowId).catch(() => {
+            });
             sync2?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
@@ -16707,6 +16709,8 @@
           }
           for (const gid of ev2.sharedAsBusyTo ?? []) {
             const shadowId = "shadow:" + id + ":" + gid;
+            await db2.deleteEvent(ev2.date, shadowId).catch(() => {
+            });
             await sync2?.deleteEvent(gid, shadowId, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
