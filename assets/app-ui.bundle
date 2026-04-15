@@ -16416,6 +16416,11 @@
       window.addEventListener("pear:setTab", onDomSetTab);
       const onDomPendingJoin = (e55) => openPendingJoin(e55.detail);
       window.addEventListener("pear:pendingJoin", onDomPendingJoin);
+      try {
+        const buffered = window.__pearDrainInvites?.() ?? [];
+        if (buffered.length) openPendingJoin(buffered[buffered.length - 1]);
+      } catch {
+      }
       function onGroupKeyUpdated(group) {
         setGroups((prev) => prev.map((g) => g.id === group.id ? group : g));
         setReadyGroupKeys((prev) => {
@@ -24076,9 +24081,14 @@ ${link}`;
   window.__pearSetTab = function(tab) {
     window.dispatchEvent(new CustomEvent("pear:setTab", { detail: tab }));
   };
+  var __pearInviteBuffer = [];
   window.__pearHandleInvite = function(url) {
     if (!url) return;
+    __pearInviteBuffer.push(url);
     window.dispatchEvent(new CustomEvent("pear:pendingJoin", { detail: url }));
+  };
+  window.__pearDrainInvites = function() {
+    return __pearInviteBuffer.splice(0);
   };
   var root = (0, import_client.createRoot)(document.getElementById("root"));
   var _screenshotScene = window.__PEARCAL_SCREENSHOT_SCENE;

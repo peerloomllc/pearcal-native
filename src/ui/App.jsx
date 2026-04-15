@@ -555,6 +555,12 @@ export default function App ({ db, notifs, sync }) {
     window.addEventListener('pear:setTab', onDomSetTab)
     const onDomPendingJoin = (e) => openPendingJoin(e.detail)
     window.addEventListener('pear:pendingJoin', onDomPendingJoin)
+    // Drain any invites buffered before this listener was registered
+    // (cold-open race: URL delivered before <App> mounted).
+    try {
+      const buffered = window.__pearDrainInvites?.() ?? []
+      if (buffered.length) openPendingJoin(buffered[buffered.length - 1])
+    } catch {}
 
     function onGroupKeyUpdated(group) {
       setGroups(prev => prev.map(g => g.id === group.id ? group : g))
