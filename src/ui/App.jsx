@@ -355,6 +355,21 @@ function SkeletonBar ({ width = '100%', height = 12, style = {} }) {
   )
 }
 
+function isShadowHidden (e, allEvents, myId) {
+  if (!e.isShadow) return false
+  if (e.creatorId && myId && e.creatorId === myId) return true
+  return allEvents.some(x => !x.isShadow && x.id === e.sourceEventId)
+}
+
+function shadowCreatorName (e, groups) {
+  if (!e.isShadow) return null
+  for (const g of groups ?? []) {
+    const m = (g.members ?? []).find(x => x.id === e.creatorId)
+    if (m?.name) return m.name
+  }
+  return e.updatedByName || 'Someone'
+}
+
 function SkeletonEventCard () {
   return (
     <div style={{
@@ -526,7 +541,7 @@ export default function App ({ db, notifs, sync }) {
         // Apply user's default reminder to newly synced events that have no local reminders
         const prevIds = new Set(prev.map(e => e.id))
         const newEvents = fresh.filter(e =>
-          !prevIds.has(e.id) && (e.groups ?? []).includes(groupId)
+          !prevIds.has(e.id) && (e.groups ?? []).includes(groupId) && !e.isShadow
         )
         if (newEvents.length > 0) {
           db.getProfile().then(prof => {
@@ -758,6 +773,41 @@ export default function App ({ db, notifs, sync }) {
         for (const gid of removedGroups) {
           sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
+        // Shadow (busy-time) fan-out
+        const busyTargets = (occ.sharedAsBusyTo ?? []).filter(g => !(occ.groups ?? []).includes(g))
+        const origBusy = (original?.sharedAsBusyTo ?? []).filter(g => !(original?.groups ?? []).includes(g))
+        for (const gid of busyTargets) {
+          const shadow = {
+            id: 'shadow:' + occ.id + ':' + gid,
+            isShadow: true,
+            sourceEventId: occ.id,
+            sourceGroupId: (occ.groups ?? [])[0] ?? '',
+            title: occ.title,
+            date: occ.date,
+            endDate: occ.endDate ?? '',
+            allDay: !!occ.allDay,
+            start: occ.start, end: occ.end,
+            recurrence: occ.recurrence ?? 'none',
+            recurrenceId: occ.recurrenceId ?? '',
+            recurrenceEnd: occ.recurrenceEnd ?? '',
+            recurrenceNth: occ.recurrenceNth ?? 0,
+            recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+            groups: [gid],
+            invitees: [],
+            creatorId: occ.creatorId,
+            editPermission: 'creator',
+            rsvpEnabled: false,
+            color: occ.color,
+            updatedByName: profile?.name ?? 'Someone',
+            updatedById: profile?.id ?? '',
+          }
+          sync?.putEvent(gid, shadow).catch(e => console.warn('[SHADOW-ERR]', e?.message))
+        }
+        const removedBusy = origBusy.filter(g => !busyTargets.includes(g))
+        for (const gid of removedBusy) {
+          const shadowId = 'shadow:' + occ.id + ':' + gid
+          sync?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        }
       }
     }
   }, [db, notifs, sync, profile, events, myRsvps])
@@ -773,6 +823,10 @@ export default function App ({ db, notifs, sync }) {
         await notifs?.cancelForEvent(id)
         for (const gid of ev.groups ?? []) {
           await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        }
+        for (const gid of ev.sharedAsBusyTo ?? []) {
+          const shadowId = 'shadow:' + id + ':' + gid
+          await sync?.deleteEvent(gid, shadowId, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
       } else {
         // Non-creator: local-only delete + tombstone so resync never resurrects it
@@ -989,7 +1043,17 @@ export default function App ({ db, notifs, sync }) {
     return cells
   }, [viewDate, weekStart])
 
-  const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d)
+  const hiddenShadowIds = useMemo(() => {
+    const haveSource = new Set(events.filter(e => !e.isShadow).map(e => e.id))
+    const hidden = new Set()
+    for (const e of events) {
+      if (!e.isShadow) continue
+      if (e.creatorId && profile?.id && e.creatorId === profile.id) { hidden.add(e.id); continue }
+      if (e.sourceEventId && haveSource.has(e.sourceEventId)) hidden.add(e.id)
+    }
+    return hidden
+  }, [events, profile?.id])
+  const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d && !hiddenShadowIds.has(e.id))
 
   function openCreate (date, startTime) {
     let defaultStart, defaultEnd
@@ -1008,7 +1072,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false,
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false, sharedAsBusyTo:[],
     }})
   }
 
@@ -1714,7 +1778,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
               ) : dayEvents.map((ev, i) => (
                 <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
                   <EventCard ev={ev} th={th} isPast={ds < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
-                    use24h={use24h} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                    use24h={use24h} groups={groups} onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
                 </div>
               ))}
             </div>
@@ -1858,14 +1922,21 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
       {/* All-day events */}
       {allDayEvents.length > 0 && (
         <div style={{ padding:'0 16px 8px', maxHeight:80, overflowY:'auto' }}>
-          {allDayEvents.slice(0, 3).map(ev => (
-            <div key={ev.id} onClick={() => { window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
-              style={{ padding:'4px 10px 4px 14px', borderRadius:8, marginBottom:4, cursor:'pointer',
+          {allDayEvents.slice(0, 3).map(ev => {
+            const isShadow = !!ev.isShadow
+            const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
+            return (
+            <div key={ev.id} onClick={() => { if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+              style={{ padding:'4px 10px 4px 14px', borderRadius:8, marginBottom:4,
+                cursor: isShadow ? 'default' : 'pointer',
+                opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
                 backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
                 ...leftStripeStyle(eventColors(ev), 3) }}>
-              <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}</span>
+              <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}
+                {isShadow && creatorName ? <span style={{ color:th.muted }}> — {creatorName}</span> : null}
+              </span>
             </div>
-          ))}
+          )})}
           {allDayEvents.length > 3 && (
             <span style={{ fontSize:12, fontWeight:300, color:th.muted }}>+{allDayEvents.length - 3} more</span>
           )}
@@ -1892,17 +1963,22 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
             const gutterPx = 56
             const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`
             const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`
+            const isShadow = !!ev.isShadow
+            const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
             return (
               <div key={ev.id}
-                onClick={(e) => { e.stopPropagation(); window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+                onClick={(e) => { e.stopPropagation(); if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
                 style={{ position:'absolute', top, height: Math.max(height, 30),
                   left: colLeft, width: `calc(${colWidth} - 4px)`,
-                  borderRadius:8, cursor:'pointer', overflow:'hidden',
+                  borderRadius:8, cursor: isShadow ? 'default' : 'pointer', overflow:'hidden',
+                  opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
                   backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
                   ...leftStripeStyle(eventColors(ev), 3),
                   zIndex:10, display:'flex', gap:0 }}>
                 <div style={{ flex:1, minWidth:0, padding:'4px 8px 4px 12px' }}>
-                  <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}</div>
+                  <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}
+                    {isShadow && creatorName ? <span style={{ color:th.muted, fontWeight:300 }}> — {creatorName}</span> : null}
+                  </div>
                   <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
                     {formatTime(ev.start, use24h)}{ev.end ? ` – ${formatTime(ev.end, use24h)}` : ''}
                   </div>
@@ -1950,16 +2026,16 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
   )
 }
 
-function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap }) {
+function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId }) {
   useEffect(() => {
     if (!closeFullGridRef) return
     closeFullGridRef.current = () => { onExit(); return true }
     return () => { closeFullGridRef.current = null }
   }, [closeFullGridRef, onExit])
   const MAX_LANES = 3
-  const filtered = (filterGroupIds && filterGroupIds.size > 0)
+  const filtered = ((filterGroupIds && filterGroupIds.size > 0)
     ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
-    : events
+    : events).filter(e => !isShadowHidden(e, events, myProfileId))
   const toDate = s => new Date(s + 'T12:00:00')
   const fromDate = d => d.toISOString().slice(0, 10)
   const addDays = (d, n) => { const r = new Date(d); r.setDate(d.getDate() + n); return r }
@@ -2309,7 +2385,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 
   if (fullGrid) {
     return <FullGridView th={th} weekStart={weekStart} events={events} todayStr={todayStr}
-      filterGroupIds={filterGroupIds} closeFullGridRef={closeFullGridRef}
+      filterGroupIds={filterGroupIds} closeFullGridRef={closeFullGridRef} myProfileId={myProfileId}
       onExit={() => setFullGrid(false)}
       onDayTap={ds => { setSelectedDate(ds); setCalView('day'); setFullGrid(false) }}
       onEventTap={ev => setModal({ mode:'edit', event:{ ...ev } })} />
@@ -2514,9 +2590,9 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         const cutoffStr = cutoff.toISOString().slice(0,10)
         const seen = new Map()
         const days = []
-        const filteredEvents = filterGroupIds.size > 0
+        const filteredEvents = (filterGroupIds.size > 0
           ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
-          : events
+          : events).filter(e => !isShadowHidden(e, events, myProfileId))
         filteredEvents
           .filter(e => (e.endDate || e.date) >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
@@ -2553,7 +2629,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             {seen.get(date).map((ev, i) => (
               <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
                 <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
-                  use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal}
+                  use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal} groups={groups}
                   onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
               </div>
             ))}
@@ -2867,17 +2943,20 @@ function QRModal ({ th, link, onClose }) {
   )
 }
 
-function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal }) {
+function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal, groups }) {
   const viewerIsCreator = ev.creatorId && myProfileId && ev.creatorId === myProfileId
-  const showRsvpPill = ev.rsvpEnabled && !viewerIsCreator
+  const showRsvpPill = !ev.isShadow && ev.rsvpEnabled && !viewerIsCreator
   const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
+  const isShadow = !!ev.isShadow
+  const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
   return (
-    <div onClick={() => { window.__pearSync?.haptic('light'); onClick?.() }}
+    <div onClick={() => { if (isShadow) return; window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px 10px 18px' : '12px 14px 12px 20px',
-        borderRadius:12, cursor:'pointer', ...th.card,
+        borderRadius:12, cursor: isShadow ? 'default' : 'pointer', ...th.card,
         ...leftStripeStyle(eventColors(ev), 4), marginBottom:compact ? 0 : 8,
-        opacity: (isPast || isDeclined) ? 0.5 : 1 }}>
+        opacity: (isPast || isDeclined) ? 0.5 : (isShadow ? 0.6 : 1),
+        fontStyle: isShadow ? 'italic' : 'normal' }}>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text,
           textDecoration: isDeclined ? 'line-through' : 'none' }}>
@@ -2885,6 +2964,9 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
           {showRsvpPill && myRsvpStatus === 'declined' && <span style={{ color:'#D45F7A', marginRight:6 }}>✗</span>}
           {showRsvpPill && (!myRsvpStatus || myRsvpStatus === 'pending') && <span style={{ color:th.muted, marginRight:6 }}>?</span>}
           {ev.title}
+          {isShadow && creatorName ? (
+            <span style={{ color:th.muted, fontWeight:300 }}> — {creatorName}</span>
+          ) : null}
         </div>
         <div style={{ fontSize:12, color:th.muted, marginTop:2, fontWeight:300 }}>
           {ev.allDay
@@ -3374,6 +3456,46 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                   })}
                 </div>
               </div>
+              {(() => {
+                const isCreator = !ev.creatorId || ev.creatorId === profile?.id
+                if (!isCreator) return null
+                const others = groups.filter(g => !ev.groups.includes(g.id))
+                if (others.length === 0) return null
+                const busy = ev.sharedAsBusyTo ?? []
+                const toggle = (gid) => setEv(e => {
+                  const cur = e.sharedAsBusyTo ?? []
+                  return { ...e, sharedAsBusyTo: cur.includes(gid)
+                    ? cur.filter(x => x !== gid) : [...cur, gid] }
+                })
+                return (
+                  <div>
+                    <Label th={th}>Share Busy Time With</Label>
+                    <div style={{ fontSize:11, color:th.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
+                      Members of these groups will see your title and time — nothing else.
+                    </div>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
+                      {others.map(g => {
+                        const sel = busy.includes(g.id)
+                        return (
+                          <button key={g.id} onClick={() => toggle(g.id)}
+                            style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
+                              background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
+                              fontSize:13, fontWeight:300, cursor:'pointer',
+                              display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
+                              display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                              {g.icon
+                                ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                                : g.emoji}
+                            </span>
+                            {g.name}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })()}
             </div>
           </div>
 
