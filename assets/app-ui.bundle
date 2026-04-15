@@ -17374,8 +17374,36 @@
       flexShrink: 0
     }, children: group.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: group.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : group.emoji });
   }
-  function MemberAvatar({ avatar, name = "?", color = "#6C9BF5", size = 34, fontSize = 13 }) {
+  function MemberAvatar({ avatar, avatarHash, name = "?", color = "#6C9BF5", size = 34, fontSize = 13 }) {
     const isPhoto = typeof avatar === "string" && avatar.startsWith("data:");
+    if (isPhoto || !avatarHash) {
+      return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: color,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        flexShrink: 0
+      }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: avatar, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: avatar || "?" }) });
+    }
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatarByHash, { avatarHash, fallback: avatar, name, color, size, fontSize });
+  }
+  function MemberAvatarByHash({ avatarHash, fallback, name, color, size, fontSize }) {
+    const [resolved, setResolved] = (0, import_react2.useState)(null);
+    (0, import_react2.useEffect)(() => {
+      if (!window.__pearResolveAvatar) return;
+      let cancelled = false;
+      window.__pearResolveAvatar(avatarHash).then((d) => {
+        if (!cancelled) setResolved(d);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [avatarHash]);
+    const isPhoto = typeof resolved === "string" && resolved.startsWith("data:");
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
       width: size,
       height: size,
@@ -17386,7 +17414,7 @@
       justifyContent: "center",
       overflow: "hidden",
       flexShrink: 0
-    }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: avatar, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: avatar || "?" }) });
+    }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: resolved, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: fallback || "?" }) });
   }
   function compressAvatar(file) {
     if (file.type === "image/gif" || file.type === "image/webp") {
@@ -20570,7 +20598,7 @@
                         fontFamily: FONT
                       },
                       children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.nickname || m3.name, color: col, size: 24, fontSize: 11 }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: col, size: 24, fontSize: 11 }),
                         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m3.nickname || m3.name })
                       ]
                     },
@@ -21049,7 +21077,7 @@
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: (g.members ?? []).map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.nickname || m3.name, color: g.color, size: 34, fontSize: 13 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: g.color, size: 34, fontSize: 13 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m3.nickname || m3.name })
           ] }, m3.id)) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -21315,7 +21343,7 @@ ${link}`;
             borderRadius: 12,
             padding: "10px 14px"
           }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: m3.name }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: "Invite sent" })
@@ -21358,7 +21386,7 @@ ${link}`;
             borderRadius: 12,
             padding: "10px 14px"
           }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: m3.name }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: "Removed" })
@@ -21587,7 +21615,7 @@ ${link}`;
               borderRadius: 12,
               padding: "10px 14px"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: [
                   m3.nickname || m3.name,
@@ -23999,6 +24027,34 @@ ${link}`;
     storageBreakdown: () => window.__pearDB.call("storageBreakdown"),
     analyzeStorage: (opts) => window.__pearDB.call("analyzeStorage", opts),
     rebuildLocalDb: () => window.__pearDB.call("rebuildLocalDb")
+  };
+  var AVATAR_CACHE_MAX = 64;
+  var _avatarCache = /* @__PURE__ */ new Map();
+  var _avatarInflight = /* @__PURE__ */ new Map();
+  window.__pearResolveAvatar = function(hash) {
+    if (!hash) return Promise.resolve(null);
+    if (_avatarCache.has(hash)) {
+      const v = _avatarCache.get(hash);
+      _avatarCache.delete(hash);
+      _avatarCache.set(hash, v);
+      return Promise.resolve(v);
+    }
+    if (_avatarInflight.has(hash)) return _avatarInflight.get(hash);
+    const p3 = window.__pearDB.call("getAvatar", hash).then((data) => {
+      _avatarInflight.delete(hash);
+      if (data == null) return null;
+      _avatarCache.set(hash, data);
+      if (_avatarCache.size > AVATAR_CACHE_MAX) {
+        const firstKey = _avatarCache.keys().next().value;
+        _avatarCache.delete(firstKey);
+      }
+      return data;
+    }).catch(() => {
+      _avatarInflight.delete(hash);
+      return null;
+    });
+    _avatarInflight.set(hash, p3);
+    return p3;
   };
   window.__pearBuildReinviteLink = function(group, publicKey) {
     return buildReinviteLink(group, publicKey);

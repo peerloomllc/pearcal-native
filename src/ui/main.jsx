@@ -100,6 +100,34 @@ const sync = {
   rebuildLocalDb: () => window.__pearDB.call('rebuildLocalDb'),
 }
 
+// Avatar hash resolver with in-memory LRU cache (shared across the app).
+// Records will carry `avatarHash` in place of inline base64 once dedup writes land;
+// this read-both shim resolves either form.
+const AVATAR_CACHE_MAX = 64
+const _avatarCache = new Map()
+const _avatarInflight = new Map()
+window.__pearResolveAvatar = function (hash) {
+  if (!hash) return Promise.resolve(null)
+  if (_avatarCache.has(hash)) {
+    const v = _avatarCache.get(hash)
+    _avatarCache.delete(hash); _avatarCache.set(hash, v)
+    return Promise.resolve(v)
+  }
+  if (_avatarInflight.has(hash)) return _avatarInflight.get(hash)
+  const p = window.__pearDB.call('getAvatar', hash).then(data => {
+    _avatarInflight.delete(hash)
+    if (data == null) return null
+    _avatarCache.set(hash, data)
+    if (_avatarCache.size > AVATAR_CACHE_MAX) {
+      const firstKey = _avatarCache.keys().next().value
+      _avatarCache.delete(firstKey)
+    }
+    return data
+  }).catch(() => { _avatarInflight.delete(hash); return null })
+  _avatarInflight.set(hash, p)
+  return p
+}
+
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
 
 // Global haptic on all button taps

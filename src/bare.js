@@ -113,6 +113,8 @@ async function handle (method, args) {
     case 'removeBlindPeerKey': return removeBlindPeerKey()
     case 'reclaimStorage': return reclaimStorage()
     case 'storageBreakdown': return storageBreakdown()
+    case 'getAvatar':        return getAvatar(args[0])
+    case 'listAvatarHashes': return listAvatarHashes()
     case 'analyzeStorage': return analyzeStorage(args[0])
     case 'rebuildLocalDb': return rebuildLocalDb()
     case 'shutdown':       return shutdown()
@@ -129,6 +131,21 @@ const NS = {
   members: 'members:',
   rsvp:    'rsvp:',
   privateNotes: 'privateNotes:',
+  avatars: 'avatars:',
+}
+
+async function getAvatar (hash) {
+  if (!hash) return null
+  const node = await db.get(NS.avatars + hash).catch(() => null)
+  return node?.value?.data ?? null
+}
+
+async function listAvatarHashes () {
+  const hashes = []
+  for await (const { key } of db.createReadStream({ gt: NS.avatars, lt: NS.avatars + '\xff' })) {
+    hashes.push(key.slice(NS.avatars.length))
+  }
+  return hashes
 }
 
 async function getPrivateNote (eventId) {
@@ -1348,6 +1365,11 @@ function deduplicateReinstalls (mergedMap, existingMembers, incomingMembers) {
 
 async function mirrorToLocal (type, key, value, groupId) {
   try {
+    if (type === 'avatar') {
+      const existing = await db.get(key).catch(() => null)
+      if (!existing) await db.put(key, value)
+      return
+    }
     if (type === 'rsvp') {
       // LWW mirror — only overwrite local if incoming is newer
       const existing = await db.get(key).catch(() => null)
