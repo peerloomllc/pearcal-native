@@ -276,6 +276,47 @@ function extractURLs (text) {
   return [...new Set(text.match(re) ?? [])]
 }
 
+// Multi-group color helpers.
+// Events can belong to N groups; `ev.colors` is the per-group color array
+// derived at read time. We cap visible segments at 3 to avoid visual noise.
+const MAX_COLOR_SEGMENTS = 3
+function eventColors (ev) {
+  const cs = Array.isArray(ev?.colors) && ev.colors.length ? ev.colors : (ev?.color ? [ev.color] : [])
+  return cs.slice(0, MAX_COLOR_SEGMENTS)
+}
+// Segmented vertical stripe as a CSS linear-gradient — used in place of a
+// solid borderLeft so 2–3 group colors are visible side-by-side.
+function stripeBackground (colors) {
+  if (!colors || colors.length === 0) return null
+  if (colors.length === 1) return colors[0]
+  const n = colors.length
+  const stops = colors.flatMap((c, i) => [`${c} ${(i / n) * 100}%`, `${c} ${((i + 1) / n) * 100}%`]).join(', ')
+  return `linear-gradient(to bottom, ${stops})`
+}
+// Style fragment that paints a left-edge stripe via backgroundImage, so we
+// can layer it on top of an existing backgroundColor (e.g. translucent tint).
+// Replaces `borderLeft: Npx solid X` while preserving card layout.
+function leftStripeStyle (colors, widthPx = 4) {
+  const bg = stripeBackground(colors)
+  if (!bg) return {}
+  return {
+    backgroundImage: bg.startsWith('linear-gradient') ? bg : `linear-gradient(${bg}, ${bg})`,
+    backgroundSize: `${widthPx}px 100%`,
+    backgroundRepeat: 'no-repeat',
+    backgroundPosition: 'left top',
+  }
+}
+// Dot background for day-grid indicators — single color when one group,
+// diagonal split for 2–3 groups so the multi-group case is legible at 6–8px.
+function dotBackground (colors) {
+  const cs = colors && colors.length ? colors.slice(0, MAX_COLOR_SEGMENTS) : null
+  if (!cs) return null
+  if (cs.length === 1) return cs[0]
+  const n = cs.length
+  const stops = cs.flatMap((c, i) => [`${c} ${(i / n) * 100}%`, `${c} ${((i + 1) / n) * 100}%`]).join(', ')
+  return `linear-gradient(135deg, ${stops})`
+}
+
 // Module-level camera consumer — whichever component most recently called takePhoto owns the next result
 const activeCameraConsumer = { current: null }
 
@@ -1813,9 +1854,9 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
         <div style={{ padding:'0 16px 8px', maxHeight:80, overflowY:'auto' }}>
           {allDayEvents.slice(0, 3).map(ev => (
             <div key={ev.id} onClick={() => { window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
-              style={{ padding:'4px 10px', borderRadius:8, marginBottom:4, cursor:'pointer',
-                background: (ev.colors?.[0] ?? ev.color) + '22',
-                borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}` }}>
+              style={{ padding:'4px 10px 4px 14px', borderRadius:8, marginBottom:4, cursor:'pointer',
+                backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
+                ...leftStripeStyle(eventColors(ev), 3) }}>
               <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}</span>
             </div>
           ))}
@@ -1851,10 +1892,10 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
                 style={{ position:'absolute', top, height: Math.max(height, 30),
                   left: colLeft, width: `calc(${colWidth} - 4px)`,
                   borderRadius:8, cursor:'pointer', overflow:'hidden',
-                  background: (ev.colors?.[0] ?? ev.color) + '22',
-                  borderLeft: `3px solid ${ev.colors?.[0] ?? ev.color}`,
+                  backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
+                  ...leftStripeStyle(eventColors(ev), 3),
                   zIndex:10, display:'flex', gap:0 }}>
-                <div style={{ flex:1, minWidth:0, padding:'4px 8px' }}>
+                <div style={{ flex:1, minWidth:0, padding:'4px 8px 4px 12px' }}>
                   <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}</div>
                   <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
                     {formatTime(ev.start, use24h)}{ev.end ? ` – ${formatTime(ev.end, use24h)}` : ''}
@@ -2068,7 +2109,9 @@ function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeF
                 <div style={{ position:'absolute', top:22, left:0, right:0, bottom:0,
                   pointerEvents:'none' }}>
                   {placed.map((p, i) => {
-                    const color = p.event.colors?.[0] ?? p.event.color ?? th.accent
+                    const cs = eventColors(p.event)
+                    const color = cs[0] ?? th.accent
+                    const bg = dotBackground(cs) ?? color
                     return (
                       <div key={p.event.id + '_' + i}
                         onClick={e => { e.stopPropagation(); window.__pearSync?.haptic('light'); onEventTap(p.event) }}
@@ -2077,7 +2120,7 @@ function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeF
                           width: `calc(${((p.endCol - p.startCol + 1) / 7) * 100}% - 4px)`,
                           top: p.lane * 18,
                           height: 16, borderRadius: 4,
-                          background: color, color:'#fff',
+                          background: bg, color:'#fff',
                           fontSize: 10, fontWeight: 400, lineHeight:'16px',
                           padding:'0 5px', overflow:'hidden', whiteSpace:'nowrap', textOverflow:'ellipsis',
                           pointerEvents:'auto', cursor:'pointer',
@@ -2377,7 +2420,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{cell.d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
-                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background:e.colors?.[0] ?? e.color }} />
+                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background: dotBackground(eventColors(e)) ?? e.color }} />
                 ))}
               </div>
             </button>
@@ -2825,9 +2868,9 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
   return (
     <div onClick={() => { window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
-        padding:compact ? '10px 12px' : '12px 14px',
+        padding:compact ? '10px 12px 10px 18px' : '12px 14px 12px 20px',
         borderRadius:12, cursor:'pointer', ...th.card,
-        borderLeft:`4px solid ${(ev.colors?.[0] ?? ev.color)}`, marginBottom:compact ? 0 : 8,
+        ...leftStripeStyle(eventColors(ev), 4), marginBottom:compact ? 0 : 8,
         opacity: (isPast || isDeclined) ? 0.5 : 1 }}>
       <div style={{ flex:1, minWidth:0 }}>
         <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, ...th.text,
@@ -2879,11 +2922,6 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
           </div>
         </>
       ) : null}
-      <div style={{ display:'flex', flexDirection:'column', gap:3, alignItems:'center', marginTop:2, flexShrink:0 }}>
-        {(ev.colors?.length > 0 ? ev.colors : [ev.color]).map((c, i) => (
-          <div key={i} style={{ width:8, height:8, borderRadius:'50%', background:c }} />
-        ))}
-      </div>
     </div>
   )
 }
