@@ -1323,15 +1323,39 @@ function GroupIcon ({ group, size = 42, radius = 12 }) {
  * If avatar is a base64/data URL, renders as an <img>.
  * Otherwise renders initials text.
  */
-function MemberAvatar ({ avatar, name = '?', color = '#6C9BF5', size = 34, fontSize = 13 }) {
+function MemberAvatar ({ avatar, avatarHash, name = '?', color = '#6C9BF5', size = 34, fontSize = 13 }) {
   const isPhoto = typeof avatar === 'string' && avatar.startsWith('data:')
+  if (isPhoto || !avatarHash) {
+    return (
+      <div style={{ width:size, height:size, borderRadius:'50%', background:color,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        overflow:'hidden', flexShrink:0 }}>
+        {isPhoto
+          ? <img src={avatar} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+          : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{avatar || '?'}</span>
+        }
+      </div>
+    )
+  }
+  return <MemberAvatarByHash avatarHash={avatarHash} fallback={avatar} name={name} color={color} size={size} fontSize={fontSize} />
+}
+
+function MemberAvatarByHash ({ avatarHash, fallback, name, color, size, fontSize }) {
+  const [resolved, setResolved] = useState(null)
+  useEffect(() => {
+    if (!window.__pearResolveAvatar) return
+    let cancelled = false
+    window.__pearResolveAvatar(avatarHash).then(d => { if (!cancelled) setResolved(d) })
+    return () => { cancelled = true }
+  }, [avatarHash])
+  const isPhoto = typeof resolved === 'string' && resolved.startsWith('data:')
   return (
     <div style={{ width:size, height:size, borderRadius:'50%', background:color,
       display:'flex', alignItems:'center', justifyContent:'center',
       overflow:'hidden', flexShrink:0 }}>
       {isPhoto
-        ? <img src={avatar} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-        : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{avatar || '?'}</span>
+        ? <img src={resolved} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+        : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{fallback || '?'}</span>
       }
     </div>
   )
@@ -3498,7 +3522,7 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                               padding:'5px 12px 5px 6px', borderRadius:20,
                               border:`2px solid ${col}`, background:sel ? col : 'transparent',
                               cursor:'pointer', fontFamily:FONT }}>
-                            <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
+                            <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
                             <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.nickname || m.name}</span>
                           </button>
                         )
@@ -3822,7 +3846,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
               {(g.members ?? []).map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <MemberAvatar avatar={m.avatar} name={m.nickname || m.name} color={g.color} size={34} fontSize={13} />
+                  <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={g.color} size={34} fontSize={13} />
                   <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.nickname || m.name}</span>
                 </div>
               ))}
@@ -4017,7 +4041,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 {(g.pendingInvites ?? []).map(m => (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Invite sent</div>
@@ -4045,7 +4069,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 {(g.removedMembers ?? []).map(m => (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Removed</div>
@@ -4170,7 +4194,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                 return (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>
                         {m.nickname || m.name}
