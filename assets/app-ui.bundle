@@ -16201,6 +16201,19 @@
       ...style
     } });
   }
+  function isShadowHidden(e55, allEvents, myId) {
+    if (!e55.isShadow) return false;
+    if (e55.creatorId && myId && e55.creatorId === myId) return true;
+    return allEvents.some((x) => !x.isShadow && x.id === e55.sourceEventId);
+  }
+  function shadowCreatorName(e55, groups) {
+    if (!e55.isShadow) return null;
+    for (const g of groups ?? []) {
+      const m3 = (g.members ?? []).find((x) => x.id === e55.creatorId);
+      if (m3?.name) return m3.name;
+    }
+    return e55.updatedByName || "Someone";
+  }
   function SkeletonEventCard() {
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
       background: "var(--color-surface)",
@@ -16380,7 +16393,7 @@
         setEvents((prev) => {
           const prevIds = new Set(prev.map((e55) => e55.id));
           const newEvents = fresh.filter(
-            (e55) => !prevIds.has(e55.id) && (e55.groups ?? []).includes(groupId)
+            (e55) => !prevIds.has(e55.id) && (e55.groups ?? []).includes(groupId) && !e55.isShadow
           );
           if (newEvents.length > 0) {
             db2.getProfile().then((prof) => {
@@ -16641,6 +16654,44 @@
             sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
+          const busyTargets = (occ.sharedAsBusyTo ?? []).filter((g) => !(occ.groups ?? []).includes(g));
+          const origBusy = (original?.sharedAsBusyTo ?? []).filter((g) => !(original?.groups ?? []).includes(g));
+          for (const gid of busyTargets) {
+            const shadow = {
+              id: "shadow:" + occ.id + ":" + gid,
+              isShadow: true,
+              sourceEventId: occ.id,
+              sourceGroupId: (occ.groups ?? [])[0] ?? "",
+              title: occ.title,
+              date: occ.date,
+              endDate: occ.endDate ?? "",
+              allDay: !!occ.allDay,
+              start: occ.start,
+              end: occ.end,
+              recurrence: occ.recurrence ?? "none",
+              recurrenceId: occ.recurrenceId ?? "",
+              recurrenceEnd: occ.recurrenceEnd ?? "",
+              recurrenceNth: occ.recurrenceNth ?? 0,
+              recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+              groups: [gid],
+              invitees: [],
+              creatorId: occ.creatorId,
+              editPermission: "creator",
+              rsvpEnabled: false,
+              color: occ.color,
+              updatedByName: profile?.name ?? "Someone",
+              updatedById: profile?.id ?? ""
+            };
+            sync2?.putEvent(gid, shadow).catch((e55) => console.warn("[SHADOW-ERR]", e55?.message));
+          }
+          const removedBusy = origBusy.filter((g) => !busyTargets.includes(g));
+          for (const gid of removedBusy) {
+            const shadowId = "shadow:" + occ.id + ":" + gid;
+            db2.deleteEvent(occ.date, shadowId).catch(() => {
+            });
+            sync2?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            });
+          }
         }
       }
     }, [db2, notifs2, sync2, profile, events, myRsvps]);
@@ -16654,6 +16705,13 @@
           await notifs2?.cancelForEvent(id);
           for (const gid of ev2.groups ?? []) {
             await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            });
+          }
+          for (const gid of ev2.sharedAsBusyTo ?? []) {
+            const shadowId = "shadow:" + id + ":" + gid;
+            await db2.deleteEvent(ev2.date, shadowId).catch(() => {
+            });
+            await sync2?.deleteEvent(gid, shadowId, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
         } else {
@@ -16864,7 +16922,20 @@
         cells.push({ d: nextD++, y: nextY, m: nextM, type: "next" });
       return cells;
     }, [viewDate, weekStart]);
-    const eventsOnDate = (d) => events.filter((e55) => e55.date <= d && (e55.endDate || e55.date) >= d);
+    const hiddenShadowIds = (0, import_react2.useMemo)(() => {
+      const haveSource = new Set(events.filter((e55) => !e55.isShadow).map((e55) => e55.id));
+      const hidden = /* @__PURE__ */ new Set();
+      for (const e55 of events) {
+        if (!e55.isShadow) continue;
+        if (e55.creatorId && profile?.id && e55.creatorId === profile.id) {
+          hidden.add(e55.id);
+          continue;
+        }
+        if (e55.sourceEventId && haveSource.has(e55.sourceEventId)) hidden.add(e55.id);
+      }
+      return hidden;
+    }, [events, profile?.id]);
+    const eventsOnDate = (d) => events.filter((e55) => e55.date <= d && (e55.endDate || e55.date) >= d && !hiddenShadowIds.has(e55.id));
     function openCreate(date, startTime) {
       let defaultStart, defaultEnd;
       if (startTime) {
@@ -16901,7 +16972,8 @@
         recurrenceWeekday: 0,
         editPermission: "creator",
         endDate: "",
-        rsvpEnabled: false
+        rsvpEnabled: false,
+        sharedAsBusyTo: []
       } });
     }
     if (error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -17815,6 +17887,7 @@
                   myRsvpStatus: myRsvps[ev2.id],
                   myProfileId,
                   use24h,
+                  groups,
                   onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
                 }
               ) }, ev2.id))
@@ -18007,25 +18080,38 @@
             }, children: g.name }, g.id))
           ] }),
           allDayEvents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px", maxHeight: 80, overflowY: "auto" }, children: [
-            allDayEvents.slice(0, 3).map((ev2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-              "div",
-              {
-                onClick: () => {
-                  window.__pearSync?.haptic("light");
-                  setModal({ mode: "edit", event: { ...ev2 } });
+            allDayEvents.slice(0, 3).map((ev2) => {
+              const isShadow = !!ev2.isShadow;
+              const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "div",
+                {
+                  onClick: () => {
+                    if (isShadow) return;
+                    window.__pearSync?.haptic("light");
+                    setModal({ mode: "edit", event: { ...ev2 } });
+                  },
+                  style: {
+                    padding: "4px 10px 4px 14px",
+                    borderRadius: 8,
+                    marginBottom: 4,
+                    cursor: isShadow ? "default" : "pointer",
+                    opacity: isShadow ? 0.6 : 1,
+                    fontStyle: isShadow ? "italic" : "normal",
+                    backgroundColor: (ev2.colors?.[0] ?? ev2.color) + "22",
+                    ...leftStripeStyle(eventColors(ev2), 3)
+                  },
+                  children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: [
+                    ev2.title,
+                    isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted }, children: [
+                      " \u2014 ",
+                      creatorName
+                    ] }) : null
+                  ] })
                 },
-                style: {
-                  padding: "4px 10px 4px 14px",
-                  borderRadius: 8,
-                  marginBottom: 4,
-                  cursor: "pointer",
-                  backgroundColor: (ev2.colors?.[0] ?? ev2.color) + "22",
-                  ...leftStripeStyle(eventColors(ev2), 3)
-                },
-                children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: ev2.title })
-              },
-              ev2.id
-            )),
+                ev2.id
+              );
+            }),
             allDayEvents.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
               "+",
               allDayEvents.length - 3,
@@ -18065,11 +18151,14 @@
               const gutterPx = 56;
               const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`;
               const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`;
+              const isShadow = !!ev2.isShadow;
+              const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "div",
                 {
                   onClick: (e55) => {
                     e55.stopPropagation();
+                    if (isShadow) return;
                     window.__pearSync?.haptic("light");
                     setModal({ mode: "edit", event: { ...ev2 } });
                   },
@@ -18080,8 +18169,10 @@
                     left: colLeft,
                     width: `calc(${colWidth} - 4px)`,
                     borderRadius: 8,
-                    cursor: "pointer",
+                    cursor: isShadow ? "default" : "pointer",
                     overflow: "hidden",
+                    opacity: isShadow ? 0.6 : 1,
+                    fontStyle: isShadow ? "italic" : "normal",
                     backgroundColor: (ev2.colors?.[0] ?? ev2.color) + "22",
                     ...leftStripeStyle(eventColors(ev2), 3),
                     zIndex: 10,
@@ -18090,7 +18181,13 @@
                   },
                   children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0, padding: "4px 8px 4px 12px" }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 400, ...th.text, lineHeight: "1.3" }, children: ev2.title }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 400, ...th.text, lineHeight: "1.3" }, children: [
+                        ev2.title,
+                        isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted, fontWeight: 300 }, children: [
+                          " \u2014 ",
+                          creatorName
+                        ] }) : null
+                      ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: [
                         formatTime(ev2.start, use24h),
                         ev2.end ? ` \u2013 ${formatTime(ev2.end, use24h)}` : ""
@@ -18173,7 +18270,7 @@
       }
     );
   }
-  function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap }) {
+  function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId }) {
     (0, import_react2.useEffect)(() => {
       if (!closeFullGridRef) return;
       closeFullGridRef.current = () => {
@@ -18185,7 +18282,7 @@
       };
     }, [closeFullGridRef, onExit]);
     const MAX_LANES = 3;
-    const filtered = filterGroupIds && filterGroupIds.size > 0 ? events.filter((e55) => (e55.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events;
+    const filtered = (filterGroupIds && filterGroupIds.size > 0 ? events.filter((e55) => (e55.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events).filter((e55) => !isShadowHidden(e55, events, myProfileId));
     const toDate = (s10) => /* @__PURE__ */ new Date(s10 + "T12:00:00");
     const fromDate = (d) => d.toISOString().slice(0, 10);
     const addDays = (d, n17) => {
@@ -18655,6 +18752,7 @@
           todayStr: todayStr2,
           filterGroupIds,
           closeFullGridRef,
+          myProfileId,
           onExit: () => setFullGrid(false),
           onDayTap: (ds) => {
             setSelectedDate(ds);
@@ -18930,7 +19028,7 @@
             const cutoffStr = cutoff.toISOString().slice(0, 10);
             const seen = /* @__PURE__ */ new Map();
             const days = [];
-            const filteredEvents = filterGroupIds.size > 0 ? events.filter((e55) => (e55.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events;
+            const filteredEvents = (filterGroupIds.size > 0 ? events.filter((e55) => (e55.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events).filter((e55) => !isShadowHidden(e55, events, myProfileId));
             filteredEvents.filter((e55) => (e55.endDate || e55.date) >= cutoffStr).sort((a36, b) => a36.date.localeCompare(b.date)).forEach((e55) => {
               const endDate = e55.endDate && e55.endDate > e55.date ? e55.endDate : e55.date;
               if (endDate === e55.date) {
@@ -18985,6 +19083,7 @@
                   use24h,
                   dayIndex: ev2._dayIndex,
                   dayTotal: ev2._dayTotal,
+                  groups,
                   onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
                 }
               ) }, ev2.id))
@@ -19512,14 +19611,17 @@
       }
     );
   }
-  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal }) {
+  function EventCard({ ev: ev2, th, onClick, compact, isPast, use24h, myRsvpStatus, myProfileId, dayIndex, dayTotal, groups }) {
     const viewerIsCreator = ev2.creatorId && myProfileId && ev2.creatorId === myProfileId;
-    const showRsvpPill = ev2.rsvpEnabled && !viewerIsCreator;
+    const showRsvpPill = !ev2.isShadow && ev2.rsvpEnabled && !viewerIsCreator;
     const isDeclined = showRsvpPill && myRsvpStatus === "declined";
+    const isShadow = !!ev2.isShadow;
+    const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
         onClick: () => {
+          if (isShadow) return;
           window.__pearSync?.haptic("light");
           onClick?.();
         },
@@ -19529,11 +19631,12 @@
           alignItems: "flex-start",
           padding: compact ? "10px 12px 10px 18px" : "12px 14px 12px 20px",
           borderRadius: 12,
-          cursor: "pointer",
+          cursor: isShadow ? "default" : "pointer",
           ...th.card,
           ...leftStripeStyle(eventColors(ev2), 4),
           marginBottom: compact ? 0 : 8,
-          opacity: isPast || isDeclined ? 0.5 : 1
+          opacity: isPast || isDeclined ? 0.5 : isShadow ? 0.6 : 1,
+          fontStyle: isShadow ? "italic" : "normal"
         },
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
@@ -19546,7 +19649,11 @@
               showRsvpPill && myRsvpStatus === "going" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#5DBF8A", marginRight: 6 }, children: "\u2713" }),
               showRsvpPill && myRsvpStatus === "declined" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#D45F7A", marginRight: 6 }, children: "\u2717" }),
               showRsvpPill && (!myRsvpStatus || myRsvpStatus === "pending") && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: th.muted, marginRight: 6 }, children: "?" }),
-              ev2.title
+              ev2.title,
+              isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: th.muted, fontWeight: 300 }, children: [
+                " \u2014 ",
+                creatorName
+              ] }) : null
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, marginTop: 2, fontWeight: 300 }, children: [
               ev2.allDay ? ev2.endDate && ev2.endDate !== ev2.date ? `${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev2.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev2.start, use24h)} \u2013 ${formatTime(ev2.end, use24h)}`,
@@ -20214,47 +20321,102 @@
               textTransform: "uppercase",
               marginBottom: 12
             }, children: "Share" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
-                const sel = ev2.groups.includes(g.id);
-                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                  "button",
-                  {
-                    onClick: () => toggleGroup(g.id),
-                    style: {
-                      padding: "6px 14px",
-                      borderRadius: 20,
-                      border: `2px solid ${g.color}`,
-                      fontFamily: FONT,
-                      background: sel ? g.color : "transparent",
-                      color: sel ? "#fff" : g.color,
-                      fontSize: 13,
-                      fontWeight: 300,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 6
-                    },
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                        width: 18,
-                        height: 18,
-                        borderRadius: 4,
-                        overflow: "hidden",
-                        display: "inline-flex",
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
+                  const sel = ev2.groups.includes(g.id);
+                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                    "button",
+                    {
+                      onClick: () => toggleGroup(g.id),
+                      style: {
+                        padding: "6px 14px",
+                        borderRadius: 20,
+                        border: `2px solid ${g.color}`,
+                        fontFamily: FONT,
+                        background: sel ? g.color : "transparent",
+                        color: sel ? "#fff" : g.color,
+                        fontSize: 13,
+                        fontWeight: 300,
+                        cursor: "pointer",
+                        display: "flex",
                         alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 14,
-                        flexShrink: 0
-                      }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
-                      g.name
-                    ]
-                  },
-                  g.id
-                );
-              }) })
-            ] }) })
+                        gap: 6
+                      },
+                      children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                          width: 18,
+                          height: 18,
+                          borderRadius: 4,
+                          overflow: "hidden",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: 14,
+                          flexShrink: 0
+                        }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                        g.name
+                      ]
+                    },
+                    g.id
+                  );
+                }) })
+              ] }),
+              (() => {
+                const isCreator = !ev2.creatorId || ev2.creatorId === profile?.id;
+                if (!isCreator) return null;
+                const others = groups.filter((g) => !ev2.groups.includes(g.id));
+                if (others.length === 0) return null;
+                const busy = ev2.sharedAsBusyTo ?? [];
+                const toggle = (gid) => setEv((e55) => {
+                  const cur = e55.sharedAsBusyTo ?? [];
+                  return { ...e55, sharedAsBusyTo: cur.includes(gid) ? cur.filter((x) => x !== gid) : [...cur, gid] };
+                });
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Share Busy Time With" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2, marginBottom: 6, fontWeight: 300 }, children: "Members of these groups will see your title and time \u2014 nothing else." }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: others.map((g) => {
+                    const sel = busy.includes(g.id);
+                    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                      "button",
+                      {
+                        onClick: () => toggle(g.id),
+                        style: {
+                          padding: "6px 14px",
+                          borderRadius: 20,
+                          border: `2px solid ${g.color}`,
+                          fontFamily: FONT,
+                          background: sel ? g.color : "transparent",
+                          color: sel ? "#fff" : g.color,
+                          fontSize: 13,
+                          fontWeight: 300,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6
+                        },
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                            width: 18,
+                            height: 18,
+                            borderRadius: 4,
+                            overflow: "hidden",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 14,
+                            flexShrink: 0
+                          }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                          g.name
+                        ]
+                      },
+                      g.id
+                    );
+                  }) })
+                ] });
+              })()
+            ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {

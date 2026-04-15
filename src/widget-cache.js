@@ -30,12 +30,17 @@ function normalize (value) {
   }
 }
 
-async function readDayEvents (db, date, { profileId, isInvitedToEvent }) {
+async function readDayEvents (db, date, { profileId, isInvitedToEvent, nowHHMM }) {
   const gt = 'events:' + date + ':'
   const lt = 'events:' + date + ':\xff'
   const out = []
   for await (const { value } of db.createReadStream({ gt, lt })) {
+    if (value.isShadow) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId)) continue
+    if (nowHHMM && !value.allDay) {
+      const cutoff = value.end || value.start
+      if (cutoff && cutoff < nowHHMM) continue
+    }
     out.push(normalize(value))
   }
   out.sort((a, b) => {
@@ -48,7 +53,9 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent }) {
 
 async function computeTodayCache (db, { profileId, isInvitedToEvent } = {}) {
   const date = todayDateString()
-  const events = await readDayEvents(db, date, { profileId, isInvitedToEvent })
+  const now = new Date()
+  const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  const events = await readDayEvents(db, date, { profileId, isInvitedToEvent, nowHHMM })
   let tomorrowFirst = null
   if (events.length === 0) {
     const tomorrow = await readDayEvents(db, tomorrowDateString(), { profileId, isInvitedToEvent })
