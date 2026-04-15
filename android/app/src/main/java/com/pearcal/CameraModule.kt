@@ -120,6 +120,16 @@ class CameraModule(reactContext: ReactApplicationContext) :
         if (resultCode == Activity.RESULT_OK) {
             try {
                 val uri = data?.data ?: photoUri ?: throw Exception("No photo URI")
+                // Pass animated formats through unmodified so frames aren't lost.
+                val mime = if (data?.data != null) reactApplicationContext.contentResolver.getType(uri) else null
+                if (mime == "image/gif" || mime == "image/webp") {
+                    val raw = reactApplicationContext.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                        ?: throw Exception("Failed to read image bytes")
+                    val base64 = Base64.encodeToString(raw, Base64.NO_WRAP)
+                    Log.d(TAG, "Passthrough $mime length=${base64.length}")
+                    p.resolve("data:$mime;base64,$base64")
+                    return
+                }
                 val stream = reactApplicationContext.contentResolver.openInputStream(uri)
                 var bitmap = BitmapFactory.decodeStream(stream)
                 stream?.close()
