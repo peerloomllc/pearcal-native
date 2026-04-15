@@ -5256,7 +5256,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             </div>
             {reportOpen === 'breakdown' && reclaimResult.breakdown && (() => {
               const b = reclaimResult.breakdown
-              const typeLabel = { blob:'Event media', log_old:'Old log files', sst:'Index data',
+              const typeLabel = { blob:'Large values', log_old:'Old log files', sst:'Index data',
                 log:'Current logs', wal:'Write-ahead log', manifest:'Manifests', other:'Other' }
               const cats = Object.entries(b.cats).filter(([,v]) => v.count > 0).sort((a,c) => c[1].size - a[1].size)
               const dirs = Object.entries(b.perDir).sort((a,c) => c[1] - a[1]).slice(0, 6)
