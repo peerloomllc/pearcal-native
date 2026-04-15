@@ -148,6 +148,96 @@ async function listAvatarHashes () {
   return hashes
 }
 
+// Hash an avatar data URI deterministically. Returns null for anything that
+// isn't a data: URI (initials fallback, empty, etc.). Uses blake2b-128 (16
+// bytes, 32-char hex) — collision probability is negligible at this scale.
+function hashAvatar (data) {
+  if (typeof data !== 'string' || !data.startsWith('data:')) return null
+  const out = b4a.alloc(16)
+  sodium.crypto_generichash(out, b4a.from(data))
+  return b4a.toString(out, 'hex')
+}
+
+// Store an avatar data URI in the local avatars: keyspace (put-if-absent)
+// and return its hash, or null if `data` is not a data: URI.
+async function storeAvatarLocal (data) {
+  const hash = hashAvatar(data)
+  if (!hash) return null
+  const existing = await db.get(NS.avatars + hash).catch(() => null)
+  if (!existing) {
+    const mimeMatch = /^data:([^;]+);/.exec(data)
+    await db.put(NS.avatars + hash, {
+      data,
+      mime: mimeMatch ? mimeMatch[1] : 'image/jpeg',
+      bytes: data.length,
+      updatedAt: Date.now(),
+    })
+  }
+  return hash
+}
+
+// Rewrite a list of members so inline avatars become avatarHash refs. Returns
+// { members, newHashes } — newHashes contains hashes NOT yet in the given
+// dedup set (caller can use to decide what avatar ops to append to Autobase).
+async function splitMembersInline (members, seenHashes) {
+  if (!Array.isArray(members) || members.length === 0) return { members, newHashes: [] }
+  const out = []
+  const newHashes = []
+  for (const m of members) {
+    if (!m) continue
+    const inline = m.avatar
+    if (typeof inline === 'string' && inline.startsWith('data:')) {
+      const hash = await storeAvatarLocal(inline)
+      if (hash) {
+        if (seenHashes && !seenHashes.has(hash)) {
+          seenHashes.add(hash)
+          newHashes.push({ hash, data: inline })
+        }
+        // Keep avatar field omitted (hash-only on the wire)
+        const { avatar, ...rest } = m
+        out.push({ ...rest, avatarHash: hash })
+        continue
+      }
+    }
+    out.push(m)
+  }
+  return { members: out, newHashes }
+}
+
+// Append a group op to the Autobase, splitting any inline avatars in
+// members[] into separate avatar ops first so each unique avatar is written
+// at most once across the group's history. `baseView` lets us check whether
+// a hash is already present in the Autobase view to avoid re-appending.
+async function appendGroupWithAvatarSplit (base, groupValue) {
+  const seen = new Set()
+  // Pre-seed with hashes already in this Autobase view so we don't re-append.
+  try {
+    const view = base.view
+    for await (const { key } of view.createReadStream({
+      gt: NS.avatars, lt: NS.avatars + '\xff',
+    })) {
+      seen.add(key.slice(NS.avatars.length))
+    }
+  } catch (e) { /* view may not be ready on first append */ }
+  const { members, newHashes } = await splitMembersInline(groupValue.members, seen)
+  for (const { hash, data } of newHashes) {
+    const mimeMatch = /^data:([^;]+);/.exec(data)
+    await base.append({
+      op: 'put',
+      type: 'avatar',
+      key: NS.avatars + hash,
+      value: {
+        data,
+        mime: mimeMatch ? mimeMatch[1] : 'image/jpeg',
+        bytes: data.length,
+        updatedAt: Date.now(),
+      },
+    })
+  }
+  const value = { ...groupValue, members, updatedAt: groupValue.updatedAt || Date.now() }
+  await base.append({ op: 'put', type: 'group', key: NS.groups + groupValue.id, value })
+}
+
 async function getPrivateNote (eventId) {
   const node = await db.get(NS.privateNotes + eventId).catch(() => null)
   return node?.value?.text ?? ''
@@ -512,7 +602,7 @@ async function joinGroup (group) {
       await base.append({ addWriter: writerKey })
       // Seed the group record into the Autobase view so apply()'s existing check
       // is non-null when a joiner's broadcastSelf arrives (enables join notifications)
-      await base.append({ op: 'put', type: 'group', key: NS.groups + group.id, value: { ...group, updatedAt: Date.now() } })
+      await appendGroupWithAvatarSplit(base, { ...group, updatedAt: Date.now() })
     } catch(e) {
     }
 
@@ -551,7 +641,7 @@ async function joinGroup (group) {
         const initials = (p.name || '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
         const myMember = { id: p.id, name: p.name, avatar: p.avatar ?? initials, publicKey: p.publicKey }
         const updatedGroup = { id: g.id, groupKey: g.groupKey, ownerId: g.ownerId, members: [myMember], updatedAt: Date.now() }
-        await base.append({ op: 'put', type: 'group', key: 'groups:' + g.id, value: updatedGroup })
+        await appendGroupWithAvatarSplit(base, updatedGroup)
         await db.put('selfBroadcasted:' + groupId, { ts: Date.now() })
         console.log('[BROADCAST_SELF] auto-broadcast succeeded for group:', groupId)
       } catch (e) {
@@ -619,7 +709,7 @@ async function syncPutGroup (group) {
   const base = bases.get(group.id)
   console.log('[SYNC_PUT_GROUP] groupId:', group.id, 'members:', JSON.stringify((group.members??[]).map(m=>m.name)), 'updatedAt:', group.updatedAt)
   if (!base) throw new Error('Not in group: ' + group.id)
-  await base.append({ op: 'put', type: 'group', key: 'groups:' + group.id, value: group })
+  await appendGroupWithAvatarSplit(base, group)
 }
 
 async function syncDeleteGroup (groupId) {
@@ -767,6 +857,7 @@ async function resyncGroup (groupId) {
         // Preserve group metadata (color/name/emoji/icon) from local DB when
         // the Autobase view record has none (e.g. joiner's broadcastSelf on rejoin)
         const ev = existing?.value
+        const { members: splitMembers } = await splitMembersInline([...mergedMap.values()])
         await db.put(key, {
           ...value,
           color:   value.color   || ev?.color,
@@ -775,7 +866,7 @@ async function resyncGroup (groupId) {
           icon:    value.icon    ?? ev?.icon,
           joinedAt: ev?.joinedAt || value.joinedAt,
           removedMembers: [...removedMap.values()],
-          members: [...mergedMap.values()]
+          members: splitMembers,
         })
       }
     }
@@ -1060,6 +1151,7 @@ function makeApply (groupId) {
             // rejoin). Fall back to local DB then the losing record which may carry
             // the owner's full group metadata.
             const lv = localGroup?.value
+            const { members: splitMembers } = await splitMembersInline([...mergedMap.values()])
             const merged = {
               ...winningValue,
               color:   winningValue.color   || lv?.color   || val.value.color,
@@ -1067,7 +1159,7 @@ function makeApply (groupId) {
               emoji:   winningValue.emoji   || lv?.emoji   || val.value.emoji,
               icon:    winningValue.icon    ?? lv?.icon    ?? val.value.icon,
               removedMembers: [...removedMap.values()],
-              members: [...mergedMap.values()]
+              members: splitMembers,
             }
             await db.put(val.key, merged)
             send({ type: 'event', event: 'sync', data: groupId })
@@ -1429,6 +1521,10 @@ async function mirrorToLocal (type, key, value, groupId) {
       }
       // Filter out any member who appears in removedMembers
       for (const id of removedMap.keys()) mergedMap.delete(id)
+      // Strip inline avatars into the avatars: keyspace so local DB stays
+      // dedup-shaped even when incoming records arrive inline from pre-Phase2
+      // peers. Does not rewrite the Autobase view — only the local mirror.
+      const { members: splitMembers } = await splitMembersInline([...mergedMap.values()])
       const merged = {
         ...value,
         color:   value.color   || existing?.value?.color,
@@ -1437,7 +1533,7 @@ async function mirrorToLocal (type, key, value, groupId) {
         icon:    value.icon    ?? existing?.value?.icon,
         joinedAt: existing?.value?.joinedAt || value.joinedAt,
         removedMembers: [...removedMap.values()],
-        members: [...mergedMap.values()],
+        members: splitMembers,
         updatedAt: value.updatedAt || Date.now()
       }
       await db.put(key, merged)
@@ -1476,7 +1572,7 @@ async function setMemberNickname (groupId, nickname) {
   }
   const base = bases.get(groupId)
   if (base) {
-    await base.append({ op: 'put', type: 'group', key: NS.groups + groupId, value: updatedGroup })
+    await appendGroupWithAvatarSplit(base, updatedGroup)
       .catch(e => console.error('[NICKNAME] sync error:', e.message))
   }
   send({ type: 'event', event: 'sync', data: groupId })
@@ -1950,7 +2046,7 @@ async function _doInit (dir, attempt = 0) {
                   }})
                   // Rebroadcast so other members see the updated list
                   const base = bases.get(groupId)
-                  if (base) await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: updated })
+                  if (base) await appendGroupWithAvatarSplit(base, updated)
                   send({ type: 'event', event: 'sync', data: groupId })
                 }
               } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
@@ -2032,7 +2128,7 @@ async function _doInit (dir, attempt = 0) {
                         try {
                           const g = await getGroup(groupId)
                           if (g) {
-                            await base.append({ op: 'put', type: 'group', key: 'groups:' + groupId, value: { ...g, updatedAt: Date.now() } })
+                            await appendGroupWithAvatarSplit(base, { ...g, updatedAt: Date.now() })
                           }
                         } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
                       })
@@ -2077,6 +2173,48 @@ async function _doInit (dir, attempt = 0) {
       const n = profileNode.value.name
       const initials = n.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
       await db.put(NS.profile, { ...profileNode.value, avatar: initials })
+    }
+
+    // One-time migration: split any inline avatars in existing local records
+    // into the avatars: keyspace. Rewrites group member lists in place so the
+    // next re-mirror (or Rebuild Core) no longer carries inline bytes. Runs
+    // once, guarded by migration:avatarDedupV1.
+    try {
+      const alreadyMigrated = await db.get('migration:avatarDedupV1').catch(() => null)
+      if (!alreadyMigrated) {
+        let splits = 0
+        // Groups: rewrite members[] inline → hash
+        const groupKeys = []
+        for await (const { key, value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+          if (Array.isArray(value?.members) && value.members.some(m => typeof m?.avatar === 'string' && m.avatar.startsWith('data:'))) {
+            groupKeys.push({ key, value })
+          }
+        }
+        for (const { key, value } of groupKeys) {
+          const { members } = await splitMembersInline(value.members)
+          await db.put(key, { ...value, members })
+          splits += value.members.length
+        }
+        // members:{groupId}:{memberId} per-member records
+        const memberKeys = []
+        for await (const { key, value } of db.createReadStream({ gt: NS.members, lt: NS.members + '\xff' })) {
+          if (typeof value?.avatar === 'string' && value.avatar.startsWith('data:')) {
+            memberKeys.push({ key, value })
+          }
+        }
+        for (const { key, value } of memberKeys) {
+          const hash = await storeAvatarLocal(value.avatar)
+          if (hash) {
+            const { avatar, ...rest } = value
+            await db.put(key, { ...rest, avatarHash: hash })
+            splits++
+          }
+        }
+        await db.put('migration:avatarDedupV1', { ts: Date.now(), splits })
+        console.log('[MIGRATION avatarDedupV1] split', splits, 'inline avatars across groups and members')
+      }
+    } catch (e) {
+      console.error('[MIGRATION avatarDedupV1] error:', e.message)
     }
     // Re-join all existing groups
     const groups = []

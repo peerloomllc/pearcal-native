@@ -23158,7 +23158,7 @@ ${link}`;
                   reportOpen === "breakdown" && reclaimResult.breakdown && (() => {
                     const b = reclaimResult.breakdown;
                     const typeLabel = {
-                      blob: "Event media",
+                      blob: "Large values",
                       log_old: "Old log files",
                       sst: "Index data",
                       log: "Current logs",
