@@ -151,9 +151,18 @@ window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
 }
 
+// Buffer invites that arrive before the App component has mounted its
+// `pear:pendingJoin` listener. On iOS cold-open the native side can deliver
+// the URL, RN can inject __pearHandleInvite, and the CustomEvent can fire
+// before React has rendered <App> — without a buffer the event is lost.
+const __pearInviteBuffer = []
 window.__pearHandleInvite = function(url) {
   if (!url) return
+  __pearInviteBuffer.push(url)
   window.dispatchEvent(new CustomEvent('pear:pendingJoin', { detail: url }))
+}
+window.__pearDrainInvites = function() {
+  return __pearInviteBuffer.splice(0)
 }
 
 const root = createRoot(document.getElementById('root'))
