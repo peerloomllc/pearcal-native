@@ -841,6 +841,13 @@ async function commitRekey (oldGroupId) {
   // Hyperswarm topic for the new groupKey, and registers with the blind peer.
   await joinGroup(newGroupRec)
 
+  // Autobase won't re-fire apply() for nodes already linearised in the
+  // Phase-1 replay base, so the newly-opened production base doesn't mirror
+  // events to local DB a second time — leaving local event records with
+  // groups[oldGroupId]. Without this rewrite the owner's own delete/edit
+  // UI would target the old base (whose ops are gated into no-ops).
+  await rewriteLocalEventGroupIds(oldGroupId, descriptor.newGroupId)
+
   send({ type: 'event', event: 'sync', data: oldGroupId })
   send({ type: 'event', event: 'sync', data: descriptor.newGroupId })
   send({ type: 'event', event: 'groupMigrated', data: {
@@ -911,6 +918,11 @@ async function adoptGroupMigration (oldGroupId, marker) {
     })
   }
 
+  // Belt-and-suspenders with the new base's own apply→mirror: ensure any
+  // event record still carrying oldGroupId in groups[] is rewritten locally
+  // so subsequent put/delete ops from this device target the new base.
+  await rewriteLocalEventGroupIds(oldGroupId, newGroupId)
+
   send({ type: 'event', event: 'sync', data: oldGroupId })
   send({ type: 'event', event: 'sync', data: newGroupId })
   send({ type: 'event', event: 'groupMigrated', data: {
@@ -918,6 +930,20 @@ async function adoptGroupMigration (oldGroupId, marker) {
     newGroupId,
     newGroupKey,
   }})
+}
+
+// Rewrite stale groups[] references on local event records after a
+// group-rekey migration. Pure local cleanup — no base.append, no updatedAt
+// bump — so LWW against the new base's mirror stays a no-op.
+async function rewriteLocalEventGroupIds (oldGroupId, newGroupId) {
+  let count = 0
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!Array.isArray(value?.groups) || !value.groups.includes(oldGroupId)) continue
+    const rewritten = value.groups.map(gid => gid === oldGroupId ? newGroupId : gid)
+    await db.put(key, { ...value, groups: rewritten })
+    count++
+  }
+  if (count > 0) console.log('[REKEY] rewrote', count, 'local event groupId refs:', oldGroupId, '→', newGroupId)
 }
 
 async function syncPutEvent (groupId, event) {
@@ -2504,6 +2530,16 @@ async function _doInit (dir, attempt = 0) {
     for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
       groups.push(value)
     }
+
+    // Fixup for devices that migrated before the event-groupId rewrite shipped:
+    // any tombstoned old group still pointed to by local event records gets a
+    // one-shot rewrite so the UI can target the new base. Idempotent — the
+    // rewrite helper no-ops once no stale refs remain.
+    try {
+      for (const g of groups) {
+        if (g?.migratedTo && g.id) await rewriteLocalEventGroupIds(g.id, g.migratedTo)
+      }
+    } catch (e) { console.warn('[REKEY] startup rewrite error:', e.message) }
 
     // Startup dedup: clean up same-name duplicate members left over from
     // reinstall/wipe rejoins that occurred before the dedup logic was deployed.

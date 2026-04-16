@@ -16416,7 +16416,19 @@
           return fresh;
         });
         const g = await db2.getGroup(groupId);
-        if (g) setGroups((prev) => prev.map((x) => x.id === groupId ? g : x));
+        if (g) {
+          if (g.migratedTo) {
+            setGroups((prev) => prev.filter((x) => x.id !== groupId));
+          } else {
+            setGroups((prev) => {
+              const idx = prev.findIndex((x) => x.id === groupId);
+              if (idx === -1) return [...prev, g];
+              const next = prev.slice();
+              next[idx] = g;
+              return next;
+            });
+          }
+        }
         db2.listMyRsvps().then((r9) => setMyRsvps(r9 ?? {})).catch(() => {
         });
       }
@@ -17497,6 +17509,28 @@
                 onConfirm: async () => {
                   const updated = { ...req.g, admins: [...req.g.admins ?? [], req.memberId], updatedAt: Date.now() };
                   await updateGroup(updated);
+                }
+              });
+            } else if (req.type === "rekeyGroup") {
+              setSettingsGroup(null);
+              setConfirmSheet({
+                title: "Rekey Group?",
+                message: `Rotate "${req.g.name}" onto a fresh group key. Owner-only. Other members stay on the old key until Phase 2b ships \u2014 they won't see events added to the rekeyed group. Use only on throwaway groups while we're testing.`,
+                icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n7, { size: 36, weight: "thin", color: "var(--color-muted)" }),
+                confirmLabel: "Rekey",
+                dangerous: true,
+                onConfirm: async () => {
+                  try {
+                    await sync2.rekeyGroup(req.g.id);
+                    const res = await sync2.commitRekey(req.g.id);
+                    const fresh = await db2.listGroups();
+                    setGroups(fresh);
+                    const evts = await db2.listEvents();
+                    setEvents(evts);
+                    window.alert("Rekeyed. New group id: " + res.newGroupId);
+                  } catch (e55) {
+                    window.alert("Rekey failed: " + (e55?.message ?? e55));
+                  }
                 }
               });
             } else if (req.type === "removeAdmin") {
@@ -22046,6 +22080,38 @@ ${link}`;
           }) })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            section("MIGRATION (DEV)"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { border: `1px solid ${th.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "button",
+              {
+                onClick: () => {
+                  bsCloseRef.current?.();
+                  onRequestConfirm({ type: "rekeyGroup", g });
+                },
+                style: {
+                  width: "100%",
+                  padding: "14px 16px",
+                  background: "transparent",
+                  border: "none",
+                  fontFamily: FONT,
+                  color: th.text.color,
+                  fontSize: 14,
+                  fontWeight: 300,
+                  cursor: "pointer",
+                  textAlign: "left",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { children: "Rekey Group" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 11, color: th.muted, fontWeight: 300, textAlign: "right" }, children: "Rotate group key to reclaim Autobase history (experimental)" })
+                ]
+              }
+            ) })
+          ] }),
           section("DANGER ZONE"),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: `1px solid #D45F7A44`, borderRadius: 12, overflow: "hidden" }, children: [
             !isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -24357,7 +24423,9 @@ ${link}`;
     reclaimStorage: () => window.__pearDB.call("reclaimStorage"),
     storageBreakdown: () => window.__pearDB.call("storageBreakdown"),
     analyzeStorage: (opts) => window.__pearDB.call("analyzeStorage", opts),
-    rebuildLocalDb: () => window.__pearDB.call("rebuildLocalDb")
+    rebuildLocalDb: () => window.__pearDB.call("rebuildLocalDb"),
+    rekeyGroup: (id) => window.__pearDB.call("rekeyGroup", id),
+    commitRekey: (id) => window.__pearDB.call("commitRekey", id)
   };
   var AVATAR_CACHE_MAX = 64;
   var _avatarCache = /* @__PURE__ */ new Map();
