@@ -9,6 +9,7 @@ const sodium        = require('sodium-native')
 const b4a           = require('b4a')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
+const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
@@ -688,6 +689,38 @@ async function leaveGroup (groupId) {
   for await (const { key } of db.createReadStream({ gt: 'knownWriter:' + groupId + ':', lt: 'knownWriter:' + groupId + ':ÿ' })) {
     await db.del(key).catch(() => {})
   }
+}
+
+// Phase 1 wrapper around src/lib/rekey.js. Owner-only. Builds a fresh
+// Autobase in a new namespace mirroring the old group's canonical state.
+// Persists the descriptor under pendingMigration: so Phase 2 can pick it up
+// to write the signed groupMigration marker into the old base. Does NOT
+// join the swarm, register with the blind peer, or mirror the new group
+// to local DB — the old group stays live for the UI until Phase 2 flips.
+async function rekeyGroup (oldGroupId) {
+  const profile = await getProfile()
+  if (!profile?.id) throw new Error('rekeyGroup: no profile')
+
+  const oldGroup = await getGroup(oldGroupId)
+  if (!oldGroup) throw new Error('rekeyGroup: unknown group ' + oldGroupId)
+  if (oldGroup.ownerId !== profile.id) throw new Error('rekeyGroup: not owner of ' + oldGroupId)
+
+  const oldBase = bases.get(oldGroupId)
+  if (!oldBase) throw new Error('rekeyGroup: base not open for ' + oldGroupId)
+
+  const existing = await db.get('pendingMigration:' + oldGroupId).catch(() => null)
+  if (existing?.value) return existing.value
+
+  const newGroupId = 'g' + Math.random().toString(36).slice(2, 8)
+
+  const { newBase, descriptor } = await _rekeyGroupLib({
+    oldBase, oldGroupId, newGroupId, store,
+  })
+
+  bases.set(newGroupId, newBase)
+  await db.put('pendingMigration:' + oldGroupId, descriptor)
+
+  return descriptor
 }
 
 async function syncPutEvent (groupId, event) {
