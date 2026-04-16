@@ -85,7 +85,7 @@ async function handle (method, args) {
     case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
@@ -553,6 +553,7 @@ const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex
 const activeChannels = new Set() // active writer-announce message objects
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
 const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
+const recentDeleteNotifs = new Map()  // eventId → timeout handle; deduplicates cross-group delete notifications
 const notifiedMemberJoins = new Map() // groupId → Set<memberId>; prevents duplicate member-join notifications across apply() replays
 const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
 const notifiedRsvps = new Set()        // 'eventId:memberId:updatedAt' — prevents duplicate RSVP notifications across apply() replays
@@ -697,11 +698,12 @@ async function syncPutEvent (groupId, event) {
   await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId) {
+async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
   if (recurrenceId) payload.recurrenceId = recurrenceId
+  if (eventTitle) payload.eventTitle = eventTitle
   await base.append(payload)
 }
 
@@ -1064,9 +1066,11 @@ function makeApply (groupId) {
             // Skip notification if user locally deleted this event
             const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
             if (notifTombstone) continue
-            // Skip notification for past events (prevents overnight flood from background sync replay)
+            // Skip notification for past events (prevents overnight flood from background sync replay).
+            // Compare against LOCAL date, not UTC, since event.date is a local YYYY-MM-DD string.
             const eventDate = val.value.date
-            if (eventDate && eventDate < new Date().toISOString().slice(0, 10)) continue
+            const localToday = (() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') })()
+            if (eventDate && eventDate < localToday) continue
             // Skip notifications for events that predate our join (initial sync flood)
             const joinNode = await db.get('joinedAt:' + groupId).catch(() => null)
             const joinedAt = joinNode?.value?.ts ?? 0
@@ -1189,17 +1193,22 @@ function makeApply (groupId) {
             // Shadow (busy-time) deletes are silent — mirror the put side
             const isShadowKey = val.key.includes(':shadow:')
             const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
-            if (!delTombstone && !isShadowKey) {
+            if (!delTombstone && !isShadowKey && !recentDeleteNotifs.has(eventId)) {
+              recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
                 const dedupKey = groupId + ':' + delRid + ':del'
                 if (!recentSeriesNotifs.has(dedupKey)) {
                   recentSeriesNotifs.set(dedupKey, setTimeout(() => recentSeriesNotifs.delete(dedupKey), 5000))
-                  notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, isSeries: true })
+                  notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, isSeries: true, eventTitle: val.eventTitle })
                 }
               } else {
-                notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId })
+                notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, eventTitle: val.eventTitle })
               }
+            }
+            // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire
+            if (!isShadowKey) {
+              await db.put('deleted:' + eventId, { ts: Date.now() }).catch(() => {})
             }
           }
         }
@@ -1311,7 +1320,7 @@ function flushRsvpCoalesce (eventId) {
   send({ type: 'event', event: 'syncNotify', data: { title, body, tab: 'calendar' } })
 }
 
-async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId, isSeries = false }) {
+async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedById, groupId, isSeries = false, eventTitle = '' }) {
   try {
     let title = 'Calendar updated'
     let body  = ''
@@ -1331,7 +1340,7 @@ async function notifySyncChange ({ op, value, key, prev, updatedByName, updatedB
     if (op === 'del') {
       const parts = (key ?? '').split(':')
       const date  = parts[1] ?? ''
-      title = who + ' removed an event'
+      title = who + ' removed ' + (eventTitle || 'an event')
       body  = date ? 'On ' + formatDate(date) : ''
 
     } else if (op === 'put' && value) {

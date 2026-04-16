@@ -823,7 +823,7 @@ export default function App ({ db, notifs, sync }) {
         await db.deleteEvent(ev.date, id)
         await notifs?.cancelForEvent(id)
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', '', ev.title ?? '').catch(() => {})
         }
         for (const gid of ev.sharedAsBusyTo ?? []) {
           const shadowId = 'shadow:' + id + ':' + gid
@@ -849,7 +849,7 @@ export default function App ({ db, notifs, sync }) {
       const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
       if (isCreator) {
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', ev.recurrenceId ?? '').catch(() => {})
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', ev.recurrenceId ?? '', ev.title ?? '').catch(() => {})
         }
       }
     }
