@@ -3411,6 +3411,11 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
     transition: 'border-color var(--duration-fast) var(--easing)',
   }
 
+  const formLocked = modal.mode === 'edit' && (
+    ev.creatorId === 'system' ||
+    (ev.editPermission === 'creator' && !(ev.creatorId && profile?.id && ev.creatorId === profile.id))
+  )
+
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
       <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
@@ -3437,18 +3442,11 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
           })()}
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
-                {(() => {
-          const _ro = modal.mode === 'edit' && ev.editPermission === 'creator' &&
-            !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
-          return null
-        })()}
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14,
           animation: 'pearFadeUp 150ms var(--easing) both' }}>
           <div style={{ display:'flex', flexDirection:'column', gap:14,
-            opacity: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
-            pointerEvents: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 'none' : 'auto' }}>
+            opacity: formLocked ? 0.45 : 1,
+            pointerEvents: formLocked ? 'none' : 'auto' }}>
 
           {/* ── Responses banner (edit + RSVP + creator) ── */}
           {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (() => {
@@ -3596,10 +3594,10 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
             <RemindersEditor th={th} reminders={reminders} setReminders={setReminders} />
           </div>
 
-          {/* ── Section: Share ── */}
+          {/* ── Section: Invite ── */}
           <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
             <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
-              textTransform:'uppercase', marginBottom:12 }}>Share</div>
+              textTransform:'uppercase', marginBottom:12 }}>Invite</div>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <div>
                 <Label th={th}>Peer Group(s)</Label>
@@ -3626,6 +3624,47 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
               </div>
             </div>
           </div>
+
+          </div>
+          {/* Share Busy Time — per-viewer forwarding, always editable (stays interactive for non-creators). */}
+          {(() => {
+            if (ev.creatorId === 'system') return null
+            const others = groups.filter(g => !(ev.groups ?? []).includes(g.id))
+            if (others.length === 0) return null
+            return (
+              <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2,
+                display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+                  textTransform:'uppercase', marginBottom:6 }}>Share Busy Time</div>
+                <div style={{ fontSize:11, color:th.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
+                  Members of these groups will see the title and time — nothing else.
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {others.map(g => {
+                    const sel = myForwards.includes(g.id)
+                    return (
+                      <button key={g.id} onClick={() => toggleForward(g.id)}
+                        style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
+                          background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
+                          fontSize:13, fontWeight:300, cursor:'pointer',
+                          display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
+                          display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          {g.icon
+                            ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                            : g.emoji}
+                        </span>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+          <div style={{ display:'flex', flexDirection:'column', gap:14,
+            opacity: formLocked ? 0.45 : 1,
+            pointerEvents: formLocked ? 'none' : 'auto' }}>
 
           {/* ── Section: Details (expanders) ── */}
           <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
@@ -3898,40 +3937,6 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
           })()}
 
         </div>
-
-          {/* Share Busy Time — per-viewer forwarding, always editable (not tied to source event). */}
-          {(() => {
-            const others = groups.filter(g => !(ev.groups ?? []).includes(g.id))
-            if (others.length === 0) return null
-            return (
-              <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:6 }}>
-                <Label th={th}>Share Busy Time With</Label>
-                <div style={{ fontSize:11, color:th.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
-                  Members of these groups will see the title and time — nothing else.
-                </div>
-                <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-                  {others.map(g => {
-                    const sel = myForwards.includes(g.id)
-                    return (
-                      <button key={g.id} onClick={() => toggleForward(g.id)}
-                        style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
-                          background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
-                          fontSize:13, fontWeight:300, cursor:'pointer',
-                          display:'flex', alignItems:'center', gap:6 }}>
-                        <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
-                          display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                          {g.icon
-                            ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                            : g.emoji}
-                        </span>
-                        {g.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })()}
 
           {/* Private Notes — always editable, even when event is read-only */}
           <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:6 }}>
