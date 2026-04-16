@@ -16704,7 +16704,7 @@
           await db2.deleteEvent(ev2.date, id);
           await notifs2?.cancelForEvent(id);
           for (const gid of ev2.groups ?? []) {
-            await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", "", ev2.title ?? "").catch(() => {
             });
           }
           for (const gid of ev2.sharedAsBusyTo ?? []) {
@@ -16732,7 +16732,7 @@
         const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
         if (isCreator) {
           for (const gid of ev2.groups ?? []) {
-            await sync2?.deleteEvent(gid, ev2.id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", ev2.recurrenceId ?? "").catch(() => {
+            await sync2?.deleteEvent(gid, ev2.id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", ev2.recurrenceId ?? "", ev2.title ?? "").catch(() => {
             });
           }
         }
@@ -24208,7 +24208,7 @@ ${link}`;
     leaveGroup: (id) => window.__pearDB.call("leaveGroup", id),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup:sync", id),
     putEvent: (gid, ev2) => window.__pearDB.call("putEvent:sync", gid, ev2),
-    deleteEvent: (gid, id, d, who, whoId, rid) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId, rid),
+    deleteEvent: (gid, id, d, who, whoId, rid, evTitle) => window.__pearDB.call("deleteEvent:sync", gid, id, d, who, whoId, rid, evTitle),
     putGroup: (g) => window.__pearDB.call("putGroup:sync", g),
     memberLeft: (groupId, memberId) => window.__pearDB.call("memberLeft:sync", groupId, memberId),
     purgeMember: (groupId, memberId) => window.__pearDB.call("purgeMember:sync", groupId, memberId),
