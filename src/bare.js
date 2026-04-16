@@ -10,6 +10,12 @@ const b4a           = require('b4a')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
+const {
+  markerKey: migrationMarkerKey,
+  buildMarker: buildMigrationMarker,
+  verifyMarker: verifyMigrationMarker,
+  readMarker: readMigrationMarker,
+} = require('./lib/migration.js')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
@@ -19,6 +25,11 @@ let swarm   = null   // Hyperswarm
 let dataDir = null
 
 const bases = new Map()   // groupId → Autobase
+// Groups whose Autobase view contains a verified groupMigration: marker.
+// Apply-level gate: once a group is migrated, further put/del/addWriter nodes
+// against its OLD base become local no-ops so late writers can't create ghost
+// state. Populated on joinGroup (from view) and on marker apply (live).
+const migratedGroups = new Set()
 let buf = ''
 let _dbReady = false
 let _dbReadyResolve = null
@@ -113,6 +124,8 @@ async function handle (method, args) {
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
+    case 'rekeyGroup':       return rekeyGroup(args[0])
+    case 'commitRekey':      return commitRekey(args[0])
     case 'reclaimStorage': return reclaimStorage()
     case 'storageBreakdown': return storageBreakdown()
     case 'getAvatar':        return getAvatar(args[0])
@@ -589,6 +602,22 @@ async function joinGroup (group) {
   })
   await base.ready()
 
+  // Detect a pre-existing migration marker so we can immediately gate further
+  // writes to this (old) base. The marker may have been written in a prior
+  // session; apply() won't re-fire for nodes already linearised.
+  try {
+    const marker = await readMigrationMarker(base.view, group.id)
+    if (marker && verifyMigrationMarker(marker, {
+      expectedOwnerId:   group.ownerId,
+      expectedOldGroupId: group.id,
+    })) {
+      migratedGroups.add(group.id)
+      console.log('[REKEY] old base opened in migrated state:', group.id, '→', marker.newGroupId)
+    }
+  } catch (e) {
+    console.warn('[REKEY] marker preload error:', e.message)
+  }
+
   const realKey = b4a.toString(base.key, 'hex')
 
   // Owner: persist the real Autobase key and notify UI
@@ -721,6 +750,104 @@ async function rekeyGroup (oldGroupId) {
   await db.put('pendingMigration:' + oldGroupId, descriptor)
 
   return descriptor
+}
+
+// Phase 2a: owner go-live. Consumes the pendingMigration descriptor left by
+// rekeyGroup (Phase 1), signs a migration marker with the profile secret key,
+// appends it into the OLD Autobase, then promotes the new base to live:
+// closes the Phase-1 replay base (built with a minimal apply), persists a
+// new local group record (carrying migratedFrom), marks the old group
+// migratedTo locally, and re-opens the new base via joinGroup so the regular
+// swarm + blind peer + full apply/mirror pipeline wires up.
+//
+// Idempotent: re-running after a crash with the marker already present skips
+// the append and re-runs only the go-live steps.
+//
+// Scope: owner-side only. Member auto-pickup and old-group teardown are
+// deferred to Phase 2b.
+async function commitRekey (oldGroupId) {
+  const profile = await getProfile()
+  if (!profile?.id) throw new Error('commitRekey: no profile')
+  if (!profile.secretKey || !profile.publicKey) {
+    throw new Error('commitRekey: profile missing keypair')
+  }
+
+  const oldGroup = await getGroup(oldGroupId)
+  if (!oldGroup) throw new Error('commitRekey: unknown group ' + oldGroupId)
+  if (oldGroup.ownerId !== profile.id) {
+    throw new Error('commitRekey: not owner of ' + oldGroupId)
+  }
+
+  const descNode = await db.get('pendingMigration:' + oldGroupId).catch(() => null)
+  const descriptor = descNode?.value
+  if (!descriptor) {
+    throw new Error('commitRekey: no pendingMigration for ' + oldGroupId + ' — run rekeyGroup first')
+  }
+
+  const oldBase = bases.get(oldGroupId)
+  if (!oldBase) throw new Error('commitRekey: old base not open for ' + oldGroupId)
+
+  const mKey = migrationMarkerKey(oldGroupId)
+  let markerWritten = false
+  const existing = await oldBase.view.get(mKey).catch(() => null)
+  if (!existing) {
+    const marker = buildMigrationMarker(descriptor, profile)
+    await oldBase.append({ op: 'put', type: 'migration', key: mKey, value: marker })
+    await oldBase.update()
+    markerWritten = true
+  }
+  // Apply should have added groupId to migratedGroups by now; belt-and-suspenders:
+  migratedGroups.add(oldGroupId)
+
+  // Close the Phase-1 replay base so we can re-open with the production apply.
+  const preBuilt = bases.get(descriptor.newGroupId)
+  if (preBuilt) {
+    try { await preBuilt.close() } catch (e) { console.warn('[REKEY] preBuilt close:', e.message) }
+    bases.delete(descriptor.newGroupId)
+  }
+
+  // New local group record inherits old metadata (name/emoji/color/members/
+  // admins/etc.) with the new id + key and a migratedFrom tag.
+  const newGroupRec = {
+    ...oldGroup,
+    id:           descriptor.newGroupId,
+    groupKey:     descriptor.newGroupKey,
+    migratedFrom: oldGroupId,
+    joinedAt:     Date.now(),
+    updatedAt:    Date.now(),
+  }
+  delete newGroupRec.migratedTo
+  await putGroup(newGroupRec)
+
+  // Mark old local group record as migrated (UI can hide / de-emphasize).
+  const oldNode = await db.get(NS.groups + oldGroupId).catch(() => null)
+  if (oldNode?.value) {
+    await db.put(NS.groups + oldGroupId, {
+      ...oldNode.value,
+      migratedTo: descriptor.newGroupId,
+      updatedAt:  Date.now(),
+    })
+  }
+
+  // joinGroup runs full apply (mirrors events/rsvps to local DB), joins the
+  // Hyperswarm topic for the new groupKey, and registers with the blind peer.
+  await joinGroup(newGroupRec)
+
+  send({ type: 'event', event: 'sync', data: oldGroupId })
+  send({ type: 'event', event: 'sync', data: descriptor.newGroupId })
+  send({ type: 'event', event: 'groupMigrated', data: {
+    oldGroupId,
+    newGroupId:  descriptor.newGroupId,
+    newGroupKey: descriptor.newGroupKey,
+  }})
+
+  return {
+    ok:          true,
+    markerWritten,
+    oldGroupId,
+    newGroupId:  descriptor.newGroupId,
+    newGroupKey: descriptor.newGroupKey,
+  }
 }
 
 async function syncPutEvent (groupId, event) {
@@ -926,6 +1053,8 @@ function makeApply (groupId) {
 
       // Writer announcement — add them as a writer
       if (val.addWriter) {
+        // Swallow addWriter on a migrated old base — new writers belong on the new base.
+        if (migratedGroups.has(groupId)) continue
         // Check if this writer was blocked by the owner — if so skip granting access
         const writerBlocked = await db.get('blockedWriter:' + groupId + ':' + val.addWriter).catch(() => null)
         if (!writerBlocked) {
@@ -933,6 +1062,39 @@ function makeApply (groupId) {
         }
         continue
       }
+
+      // Group-migration marker — verify signature and gate further writes.
+      // The marker itself is the one write we allow past a migrated gate;
+      // everything after it (put/del/addWriter) becomes a local no-op for
+      // this old base.
+      if (val.op === 'put' && val.type === 'migration' && val.key === migrationMarkerKey(groupId)) {
+        const existing = await view.get(val.key).catch(() => null)
+        if (!existing) {
+          const groupNode = await view.get(NS.groups + groupId).catch(() => null)
+          const expectedOwnerId = groupNode?.value?.ownerId
+          const ok = verifyMigrationMarker(val.value, {
+            expectedOwnerId,
+            expectedOldGroupId: groupId,
+          })
+          if (ok) {
+            await view.put(val.key, val.value)
+            migratedGroups.add(groupId)
+            console.log('[REKEY] marker applied for', groupId, '→', val.value.newGroupId)
+            send({ type: 'event', event: 'groupMigrationMarkerSeen', data: {
+              oldGroupId:  groupId,
+              newGroupId:  val.value.newGroupId,
+              newGroupKey: val.value.newGroupKey,
+              ownerId:     val.value.ownerId,
+            }})
+          } else {
+            console.warn('[REKEY] rejected invalid migration marker for', groupId)
+          }
+        }
+        continue
+      }
+
+      // Migration gate: old base is dead, swallow any further ops locally.
+      if (migratedGroups.has(groupId)) continue
 
       // Detect remote writes via node.from.key
       const nodeWriterKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
