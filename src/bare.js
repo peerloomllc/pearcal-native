@@ -8,6 +8,7 @@ const Wakeup        = require('protomux-wakeup')
 const sodium        = require('sodium-native')
 const b4a           = require('b4a')
 const { computeTodayCache } = require('./widget-cache.js')
+const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
