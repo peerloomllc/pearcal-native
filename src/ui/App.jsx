@@ -714,8 +714,12 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Mutation helpers ───────────────────────────────────────────────────────
 
+  // Forward call is installed into this ref after forwardBusyTime is declared,
+  // so saveEvent can reach it despite being declared first.
+  const forwardBusyTimeRef = useRef(null)
+
   const saveEvent = useCallback((ev, scope = 'one', options = {}, reminders = []) => {
-    const { _prevDate, ...evClean } = ev
+    const { _prevDate, _myForwards, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
     const occurrences = (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId)
@@ -773,45 +777,72 @@ export default function App ({ db, notifs, sync }) {
         for (const gid of removedGroups) {
           sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
         }
-        // Shadow (busy-time) fan-out
-        const busyTargets = (occ.sharedAsBusyTo ?? []).filter(g => !(occ.groups ?? []).includes(g))
-        const origBusy = (original?.sharedAsBusyTo ?? []).filter(g => !(original?.groups ?? []).includes(g))
-        for (const gid of busyTargets) {
-          const shadow = {
-            id: 'shadow:' + occ.id + ':' + gid,
-            isShadow: true,
-            sourceEventId: occ.id,
-            sourceGroupId: (occ.groups ?? [])[0] ?? '',
-            title: occ.title,
-            date: occ.date,
-            endDate: occ.endDate ?? '',
-            allDay: !!occ.allDay,
-            start: occ.start, end: occ.end,
-            recurrence: occ.recurrence ?? 'none',
-            recurrenceId: occ.recurrenceId ?? '',
-            recurrenceEnd: occ.recurrenceEnd ?? '',
-            recurrenceNth: occ.recurrenceNth ?? 0,
-            recurrenceWeekday: occ.recurrenceWeekday ?? 0,
-            groups: [gid],
-            invitees: [],
-            creatorId: occ.creatorId,
-            editPermission: 'creator',
-            rsvpEnabled: false,
-            color: occ.color,
-            updatedByName: profile?.name ?? 'Someone',
-            updatedById: profile?.id ?? '',
-          }
-          sync?.putEvent(gid, shadow).catch(e => console.warn('[SHADOW-ERR]', e?.message))
-        }
-        const removedBusy = origBusy.filter(g => !busyTargets.includes(g))
-        for (const gid of removedBusy) {
-          const shadowId = 'shadow:' + occ.id + ':' + gid
-          db.deleteEvent(occ.date, shadowId).catch(() => {})
-          sync?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
-        }
+      }
+      // Fan out busy-time shadows for any forwards the modal passed in. Done
+      // here (rather than in handleSave) so expanded occurrences from a new
+      // recurring series each get shadows.
+      if (_myForwards && _myForwards.length > 0 && forwardBusyTimeRef.current) {
+        forwardBusyTimeRef.current(withAuthor, _myForwards)
       }
     }
   }, [db, notifs, sync, profile, events, myRsvps])
+
+  // Forward an event as busy-time into other groups the forwarder belongs to.
+  // Shadow id: shadow:{sourceId}:{forwarderId}:{targetGroupId}. Works for creator
+  // and non-creator alike; shadow.creatorId is the forwarder. Accepts either a
+  // single source event (scans events for recurrence siblings) or an explicit
+  // array of occurrences (used by saveEvent to cover not-yet-in-state series).
+  const forwardBusyTime = useCallback((sourceOrOccs, newTargetGroupIds) => {
+    if (!db || !sync || !profile?.id) return
+    const myId = profile.id
+    const myName = profile?.name ?? 'Someone'
+    const occurrences = Array.isArray(sourceOrOccs)
+      ? sourceOrOccs
+      : (sourceOrOccs.recurrenceId
+          ? events.filter(e => !e.isShadow && e.recurrenceId === sourceOrOccs.recurrenceId)
+          : [sourceOrOccs])
+    for (const occ of occurrences) {
+      const targets = (newTargetGroupIds ?? []).filter(g => !(occ.groups ?? []).includes(g))
+      const existingShadows = events.filter(e =>
+        e.isShadow && e.sourceEventId === occ.id && e.creatorId === myId)
+      const existingTargets = existingShadows.map(e => (e.groups ?? [])[0]).filter(Boolean)
+      for (const gid of targets) {
+        if (existingTargets.includes(gid)) continue
+        const shadow = {
+          id: 'shadow:' + occ.id + ':' + myId + ':' + gid,
+          isShadow: true,
+          sourceEventId: occ.id,
+          sourceGroupId: (occ.groups ?? [])[0] ?? '',
+          title: occ.title,
+          date: occ.date,
+          endDate: occ.endDate ?? '',
+          allDay: !!occ.allDay,
+          start: occ.start, end: occ.end,
+          recurrence: occ.recurrence ?? 'none',
+          recurrenceId: occ.recurrenceId ?? '',
+          recurrenceEnd: occ.recurrenceEnd ?? '',
+          recurrenceNth: occ.recurrenceNth ?? 0,
+          recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+          groups: [gid],
+          invitees: [],
+          creatorId: myId,
+          editPermission: 'creator',
+          rsvpEnabled: false,
+          color: occ.color,
+          updatedByName: myName,
+          updatedById: myId,
+        }
+        sync.putEvent(gid, shadow).catch(e => console.warn('[SHADOW-ERR]', e?.message))
+      }
+      const removed = existingTargets.filter(g => !targets.includes(g))
+      for (const gid of removed) {
+        const shadowId = 'shadow:' + occ.id + ':' + myId + ':' + gid
+        db.deleteEvent(occ.date, shadowId).catch(() => {})
+        sync.deleteEvent(gid, shadowId, occ.date, myName, myId).catch(() => {})
+      }
+    }
+  }, [db, sync, events, profile])
+  forwardBusyTimeRef.current = forwardBusyTime
 
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
@@ -825,12 +856,21 @@ export default function App ({ db, notifs, sync }) {
         for (const gid of ev.groups ?? []) {
           await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', '', ev.title ?? '').catch(() => {})
         }
-        for (const gid of ev.sharedAsBusyTo ?? []) {
-          const shadowId = 'shadow:' + id + ':' + gid
-          await db.deleteEvent(ev.date, shadowId).catch(() => {})
-          await sync?.deleteEvent(gid, shadowId, ev.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+      }
+      // Always clear my own forwards. Other forwarders will cascade on their
+      // own clients via the orphaned-shadow effect.
+      const myId = profile?.id
+      if (myId) {
+        const myShadows = events.filter(e =>
+          e.isShadow && e.sourceEventId === id && e.creatorId === myId)
+        for (const sh of myShadows) {
+          const gid = (sh.groups ?? [])[0]
+          if (!gid) continue
+          await db.deleteEvent(sh.date, sh.id).catch(() => {})
+          await sync?.deleteEvent(gid, sh.id, sh.date, profile?.name ?? 'Someone', myId).catch(() => {})
         }
-      } else {
+      }
+      if (!isCreator) {
         // Non-creator: local-only delete + tombstone so resync never resurrects it
         await db.localDeleteEvent(ev.date, id)
         await notifs?.cancelForEvent(id)
@@ -856,6 +896,84 @@ export default function App ({ db, notifs, sync }) {
     setEvents(prev => prev.filter(e => e.recurrenceId !== recurrenceId))
     setModal(null)
   }, [db, notifs, sync, events, profile])
+
+  // Keep my busy-time shadows in lockstep with their source events. Runs on
+  // every events change: (1) deletes my shadows whose source has disappeared
+  // locally (cascade on source-delete); (2) rewrites shadows whose snapshot
+  // fields no longer match the current source (cascade on source-edit). This
+  // is the only cleanup path for *other* users' forwards of an event I created
+  // — the deleter can't touch their records, so each forwarder's client fixes
+  // its own shadows here.
+  useEffect(() => {
+    if (!db || !sync || !profile?.id || events.length === 0) return
+    const myId = profile.id
+    const myName = profile?.name ?? 'Someone'
+    const sourceById = new Map()
+    for (const e of events) if (!e.isShadow) sourceById.set(e.id, e)
+    const myShadows = events.filter(e => e.isShadow && e.creatorId === myId)
+    for (const sh of myShadows) {
+      const gid = (sh.groups ?? [])[0]
+      if (!gid) continue
+      const src = sourceById.get(sh.sourceEventId)
+      // Migrate legacy 2-segment keys (shadow:src:gid) to 3-segment
+      // (shadow:src:forwarderId:gid). Only creators could forward in the old
+      // model, so any legacy shadow I "own" (creatorId === myId) is mine.
+      const idParts = sh.id.split(':')
+      if (idParts.length === 3) {
+        const newId = 'shadow:' + sh.sourceEventId + ':' + myId + ':' + gid
+        const migrated = {
+          ...sh,
+          id: newId,
+          creatorId: myId,
+          title: src?.title ?? sh.title,
+          date: src?.date ?? sh.date,
+          endDate: (src?.endDate ?? sh.endDate ?? ''),
+          allDay: !!(src?.allDay ?? sh.allDay),
+          start: src?.start ?? sh.start,
+          end: src?.end ?? sh.end,
+          color: src?.color ?? sh.color,
+          updatedByName: myName,
+          updatedById: myId,
+        }
+        sync.putEvent(gid, migrated).catch(() => {})
+        db.deleteEvent(sh.date, sh.id).catch(() => {})
+        sync.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {})
+        continue
+      }
+      if (!src) {
+        db.deleteEvent(sh.date, sh.id).catch(() => {})
+        sync.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {})
+        continue
+      }
+      const stale = sh.title !== src.title
+        || sh.date !== src.date
+        || sh.start !== src.start
+        || sh.end !== src.end
+        || (sh.endDate ?? '') !== (src.endDate ?? '')
+        || !!sh.allDay !== !!src.allDay
+      if (!stale) continue
+      const updated = {
+        ...sh,
+        title: src.title,
+        date: src.date,
+        endDate: src.endDate ?? '',
+        allDay: !!src.allDay,
+        start: src.start,
+        end: src.end,
+        recurrence: src.recurrence ?? 'none',
+        recurrenceEnd: src.recurrenceEnd ?? '',
+        recurrenceNth: src.recurrenceNth ?? 0,
+        recurrenceWeekday: src.recurrenceWeekday ?? 0,
+        color: src.color,
+        updatedByName: myName,
+        updatedById: myId,
+      }
+      if (sh.date !== src.date) {
+        db.deleteEvent(sh.date, sh.id).catch(() => {})
+      }
+      sync.putEvent(gid, updated).catch(e => console.warn('[SHADOW-RESYNC-ERR]', e?.message))
+    }
+  }, [events, db, sync, profile])
 
   function parseGroupIdFromUrl(url) {
     try {
@@ -1074,7 +1192,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false, sharedAsBusyTo:[],
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false,
     }})
   }
 
@@ -1246,6 +1364,7 @@ export default function App ({ db, notifs, sync }) {
         {qrGroup && <QRModal th={th} link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
           <EventModal th={th} modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
+            events={events} onForward={forwardBusyTime}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
             closeRef={closeEventModalRef} notifs={notifs} setMyRsvps={setMyRsvps}
             onRequestConfirm={req => {
@@ -3106,10 +3225,39 @@ function RemindersEditor ({ th, reminders, setReminders }) {
   )
 }
 
-function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef, notifs, setMyRsvps }) {
+function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef, notifs, setMyRsvps }) {
   const [ev, setEv] = useState(modal.event)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
+
+  // Per-user busy-time forwards for this event, derived ONCE on modal open
+  // from existing shadows I authored. Frozen in initialForwardsRef so the
+  // dirty comparison doesn't shift if events update in the background.
+  const [myForwards, setMyForwards] = useState(() => {
+    if (!profile?.id) return []
+    const myId = profile.id
+    const srcIds = modal.event.recurrenceId
+      ? new Set(events.filter(e => !e.isShadow && e.recurrenceId === modal.event.recurrenceId).map(e => e.id))
+      : new Set([modal.event.id])
+    const targets = new Set()
+    for (const e of events) {
+      if (!e.isShadow) continue
+      if (e.creatorId !== myId) continue
+      if (!srcIds.has(e.sourceEventId)) continue
+      const gid = (e.groups ?? [])[0]
+      if (gid) targets.add(gid)
+    }
+    return Array.from(targets)
+  })
+  const initialForwardsRef = useRef(null)
+  if (initialForwardsRef.current === null) initialForwardsRef.current = myForwards
+  const toggleForward = (gid) => setMyForwards(cur =>
+    cur.includes(gid) ? cur.filter(x => x !== gid) : [...cur, gid])
+  const forwardsDirty = useMemo(() => {
+    const a = [...(initialForwardsRef.current ?? [])].sort().join(',')
+    const b = [...myForwards].sort().join(',')
+    return a !== b
+  }, [myForwards])
 
   function toggleGroup (gid) {
     setEv(e => ({ ...e, groups: e.groups.includes(gid)
@@ -3215,9 +3363,25 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
   }, [])
 
   function handleSave () {
+    const isCreator = !ev.creatorId || (profile?.id && ev.creatorId === profile.id)
+    const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+    // Non-creator on a locked event: only busy-time forwards change. Skip the
+    // event write (we have no right to modify it) and fire only the forward diff.
+    if (isReadOnly) {
+      if (forwardsDirty) onForward?.(modal.event, myForwards)
+      setModal(null)
+      return
+    }
     if (!ev.title.trim()) { setTitleErr('Event title is required.'); return }
     setTitleErr('')
-    const toSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
+    // Edit mode: fire forward diff immediately against current events. Create
+    // mode: hand myForwards off to saveEvent so it can fan out against the
+    // newly-expanded occurrences (which aren't in events state yet).
+    if (modal.mode === 'edit' && forwardsDirty) onForward?.(modal.event, myForwards)
+    const baseSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
+    const toSave = modal.mode === 'create' && myForwards.length > 0
+      ? { ...baseSave, _myForwards: myForwards }
+      : baseSave
     if (modal.mode === 'edit' && ev.recurrenceId) {
       const origGroups   = [...(modal.event.groups   ?? [])].sort().join(',')
       const newGroups    = [...(toSave.groups         ?? [])].sort().join(',')
@@ -3247,6 +3411,11 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
     transition: 'border-color var(--duration-fast) var(--easing)',
   }
 
+  const formLocked = modal.mode === 'edit' && (
+    ev.creatorId === 'system' ||
+    (ev.editPermission === 'creator' && !(ev.creatorId && profile?.id && ev.creatorId === profile.id))
+  )
+
   return (
     <BottomSheet th={th} onClose={() => setModal(null)} zIndex={100} closeRef={bsCloseRef}>
       <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
@@ -3260,7 +3429,9 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
             const isHoliday = modal.mode === 'edit' && ev.creatorId === 'system'
             const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
-            if (isHoliday || isReadOnly) return null
+            if (isHoliday) return null
+            // Read-only viewers only get a Save button once they've toggled a forward
+            if (isReadOnly && !forwardsDirty) return null
             return (
               <button onClick={handleSave}
                 style={{ ...th.pillBtn, padding:'7px 16px', fontSize:13, fontWeight:300,
@@ -3271,18 +3442,11 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
           })()}
           <button onClick={() => bsCloseRef.current?.()} style={{ ...th.iconBtn, fontSize:20 }}>✕</button>
         </div>
-                {(() => {
-          const _ro = modal.mode === 'edit' && ev.editPermission === 'creator' &&
-            !(ev.creatorId && profile?.id && ev.creatorId === profile.id)
-          return null
-        })()}
         <div style={{ padding:'16px 20px', display:'flex', flexDirection:'column', gap:14,
           animation: 'pearFadeUp 150ms var(--easing) both' }}>
           <div style={{ display:'flex', flexDirection:'column', gap:14,
-            opacity: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 0.45 : 1,
-            pointerEvents: (modal.mode === 'edit' && (ev.creatorId === 'system' || (ev.editPermission === 'creator' &&
-              !(ev.creatorId && profile?.id && ev.creatorId === profile.id)))) ? 'none' : 'auto' }}>
+            opacity: formLocked ? 0.45 : 1,
+            pointerEvents: formLocked ? 'none' : 'auto' }}>
 
           {/* ── Responses banner (edit + RSVP + creator) ── */}
           {modal.mode === 'edit' && ev.rsvpEnabled && isEventCreator && (() => {
@@ -3430,10 +3594,10 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
             <RemindersEditor th={th} reminders={reminders} setReminders={setReminders} />
           </div>
 
-          {/* ── Section: Share ── */}
+          {/* ── Section: Invite ── */}
           <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>
             <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
-              textTransform:'uppercase', marginBottom:12 }}>Share</div>
+              textTransform:'uppercase', marginBottom:12 }}>Invite</div>
             <div style={{ display:'flex', flexDirection:'column', gap:14 }}>
               <div>
                 <Label th={th}>Peer Group(s)</Label>
@@ -3458,48 +3622,49 @@ function EventModal ({ th, modal, setModal, groups, profile, onSave, onDelete, o
                   })}
                 </div>
               </div>
-              {(() => {
-                const isCreator = !ev.creatorId || ev.creatorId === profile?.id
-                if (!isCreator) return null
-                const others = groups.filter(g => !ev.groups.includes(g.id))
-                if (others.length === 0) return null
-                const busy = ev.sharedAsBusyTo ?? []
-                const toggle = (gid) => setEv(e => {
-                  const cur = e.sharedAsBusyTo ?? []
-                  return { ...e, sharedAsBusyTo: cur.includes(gid)
-                    ? cur.filter(x => x !== gid) : [...cur, gid] }
-                })
-                return (
-                  <div>
-                    <Label th={th}>Share Busy Time With</Label>
-                    <div style={{ fontSize:11, color:th.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
-                      Members of these groups will see your title and time — nothing else.
-                    </div>
-                    <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:6 }}>
-                      {others.map(g => {
-                        const sel = busy.includes(g.id)
-                        return (
-                          <button key={g.id} onClick={() => toggle(g.id)}
-                            style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
-                              background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
-                              fontSize:13, fontWeight:300, cursor:'pointer',
-                              display:'flex', alignItems:'center', gap:6 }}>
-                            <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
-                              display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
-                              {g.icon
-                                ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-                                : g.emoji}
-                            </span>
-                            {g.name}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })()}
             </div>
           </div>
+
+          </div>
+          {/* Share Busy Time — per-viewer forwarding, always editable (stays interactive for non-creators). */}
+          {(() => {
+            if (ev.creatorId === 'system') return null
+            const others = groups.filter(g => !(ev.groups ?? []).includes(g.id))
+            if (others.length === 0) return null
+            return (
+              <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2,
+                display:'flex', flexDirection:'column', gap:6 }}>
+                <div style={{ fontSize:10, fontWeight:400, color:th.muted, letterSpacing:'0.1em',
+                  textTransform:'uppercase', marginBottom:6 }}>Share Busy Time</div>
+                <div style={{ fontSize:11, color:th.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
+                  Members of these groups will see the title and time — nothing else.
+                </div>
+                <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+                  {others.map(g => {
+                    const sel = myForwards.includes(g.id)
+                    return (
+                      <button key={g.id} onClick={() => toggleForward(g.id)}
+                        style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
+                          background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
+                          fontSize:13, fontWeight:300, cursor:'pointer',
+                          display:'flex', alignItems:'center', gap:6 }}>
+                        <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
+                          display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                          {g.icon
+                            ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                            : g.emoji}
+                        </span>
+                        {g.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+          <div style={{ display:'flex', flexDirection:'column', gap:14,
+            opacity: formLocked ? 0.45 : 1,
+            pointerEvents: formLocked ? 'none' : 'auto' }}>
 
           {/* ── Section: Details (expanders) ── */}
           <div style={{ borderTop:`1px solid ${th.border}`, paddingTop:12, marginTop:2 }}>

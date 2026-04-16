@@ -16586,8 +16586,9 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
+    const forwardBusyTimeRef = (0, import_react2.useRef)(null);
     const saveEvent = (0, import_react2.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
-      const { _prevDate, ...evClean } = ev2;
+      const { _prevDate, _myForwards, ...evClean } = ev2;
       ev2 = evClean;
       const occurrences = ev2.recurrence && ev2.recurrence !== "none" && ev2.recurrenceEnd && !ev2.recurrenceId ? expandRecurring(ev2) : scope === "future" && ev2.recurrenceId ? (() => {
         const PROPAGATE = [
@@ -16654,47 +16655,61 @@
             sync2?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
             });
           }
-          const busyTargets = (occ.sharedAsBusyTo ?? []).filter((g) => !(occ.groups ?? []).includes(g));
-          const origBusy = (original?.sharedAsBusyTo ?? []).filter((g) => !(original?.groups ?? []).includes(g));
-          for (const gid of busyTargets) {
-            const shadow = {
-              id: "shadow:" + occ.id + ":" + gid,
-              isShadow: true,
-              sourceEventId: occ.id,
-              sourceGroupId: (occ.groups ?? [])[0] ?? "",
-              title: occ.title,
-              date: occ.date,
-              endDate: occ.endDate ?? "",
-              allDay: !!occ.allDay,
-              start: occ.start,
-              end: occ.end,
-              recurrence: occ.recurrence ?? "none",
-              recurrenceId: occ.recurrenceId ?? "",
-              recurrenceEnd: occ.recurrenceEnd ?? "",
-              recurrenceNth: occ.recurrenceNth ?? 0,
-              recurrenceWeekday: occ.recurrenceWeekday ?? 0,
-              groups: [gid],
-              invitees: [],
-              creatorId: occ.creatorId,
-              editPermission: "creator",
-              rsvpEnabled: false,
-              color: occ.color,
-              updatedByName: profile?.name ?? "Someone",
-              updatedById: profile?.id ?? ""
-            };
-            sync2?.putEvent(gid, shadow).catch((e55) => console.warn("[SHADOW-ERR]", e55?.message));
-          }
-          const removedBusy = origBusy.filter((g) => !busyTargets.includes(g));
-          for (const gid of removedBusy) {
-            const shadowId = "shadow:" + occ.id + ":" + gid;
-            db2.deleteEvent(occ.date, shadowId).catch(() => {
-            });
-            sync2?.deleteEvent(gid, shadowId, occ.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
-            });
-          }
+        }
+        if (_myForwards && _myForwards.length > 0 && forwardBusyTimeRef.current) {
+          forwardBusyTimeRef.current(withAuthor, _myForwards);
         }
       }
     }, [db2, notifs2, sync2, profile, events, myRsvps]);
+    const forwardBusyTime = (0, import_react2.useCallback)((sourceOrOccs, newTargetGroupIds) => {
+      if (!db2 || !sync2 || !profile?.id) return;
+      const myId = profile.id;
+      const myName = profile?.name ?? "Someone";
+      const occurrences = Array.isArray(sourceOrOccs) ? sourceOrOccs : sourceOrOccs.recurrenceId ? events.filter((e55) => !e55.isShadow && e55.recurrenceId === sourceOrOccs.recurrenceId) : [sourceOrOccs];
+      for (const occ of occurrences) {
+        const targets = (newTargetGroupIds ?? []).filter((g) => !(occ.groups ?? []).includes(g));
+        const existingShadows = events.filter((e55) => e55.isShadow && e55.sourceEventId === occ.id && e55.creatorId === myId);
+        const existingTargets = existingShadows.map((e55) => (e55.groups ?? [])[0]).filter(Boolean);
+        for (const gid of targets) {
+          if (existingTargets.includes(gid)) continue;
+          const shadow = {
+            id: "shadow:" + occ.id + ":" + myId + ":" + gid,
+            isShadow: true,
+            sourceEventId: occ.id,
+            sourceGroupId: (occ.groups ?? [])[0] ?? "",
+            title: occ.title,
+            date: occ.date,
+            endDate: occ.endDate ?? "",
+            allDay: !!occ.allDay,
+            start: occ.start,
+            end: occ.end,
+            recurrence: occ.recurrence ?? "none",
+            recurrenceId: occ.recurrenceId ?? "",
+            recurrenceEnd: occ.recurrenceEnd ?? "",
+            recurrenceNth: occ.recurrenceNth ?? 0,
+            recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+            groups: [gid],
+            invitees: [],
+            creatorId: myId,
+            editPermission: "creator",
+            rsvpEnabled: false,
+            color: occ.color,
+            updatedByName: myName,
+            updatedById: myId
+          };
+          sync2.putEvent(gid, shadow).catch((e55) => console.warn("[SHADOW-ERR]", e55?.message));
+        }
+        const removed = existingTargets.filter((g) => !targets.includes(g));
+        for (const gid of removed) {
+          const shadowId = "shadow:" + occ.id + ":" + myId + ":" + gid;
+          db2.deleteEvent(occ.date, shadowId).catch(() => {
+          });
+          sync2.deleteEvent(gid, shadowId, occ.date, myName, myId).catch(() => {
+          });
+        }
+      }
+    }, [db2, sync2, events, profile]);
+    forwardBusyTimeRef.current = forwardBusyTime;
     const deleteEvent = (0, import_react2.useCallback)(async (id) => {
       const ev2 = events.find((e55) => e55.id === id);
       if (!ev2) return;
@@ -16707,14 +16722,20 @@
             await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", "", ev2.title ?? "").catch(() => {
             });
           }
-          for (const gid of ev2.sharedAsBusyTo ?? []) {
-            const shadowId = "shadow:" + id + ":" + gid;
-            await db2.deleteEvent(ev2.date, shadowId).catch(() => {
+        }
+        const myId = profile?.id;
+        if (myId) {
+          const myShadows = events.filter((e55) => e55.isShadow && e55.sourceEventId === id && e55.creatorId === myId);
+          for (const sh of myShadows) {
+            const gid = (sh.groups ?? [])[0];
+            if (!gid) continue;
+            await db2.deleteEvent(sh.date, sh.id).catch(() => {
             });
-            await sync2?.deleteEvent(gid, shadowId, ev2.date, profile?.name ?? "Someone", profile?.id ?? "").catch(() => {
+            await sync2?.deleteEvent(gid, sh.id, sh.date, profile?.name ?? "Someone", myId).catch(() => {
             });
           }
-        } else {
+        }
+        if (!isCreator) {
           await db2.localDeleteEvent(ev2.date, id);
           await notifs2?.cancelForEvent(id);
         }
@@ -16740,6 +16761,74 @@
       setEvents((prev) => prev.filter((e55) => e55.recurrenceId !== recurrenceId));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
+    (0, import_react2.useEffect)(() => {
+      if (!db2 || !sync2 || !profile?.id || events.length === 0) return;
+      const myId = profile.id;
+      const myName = profile?.name ?? "Someone";
+      const sourceById = /* @__PURE__ */ new Map();
+      for (const e55 of events) if (!e55.isShadow) sourceById.set(e55.id, e55);
+      const myShadows = events.filter((e55) => e55.isShadow && e55.creatorId === myId);
+      for (const sh of myShadows) {
+        const gid = (sh.groups ?? [])[0];
+        if (!gid) continue;
+        const src = sourceById.get(sh.sourceEventId);
+        const idParts = sh.id.split(":");
+        if (idParts.length === 3) {
+          const newId = "shadow:" + sh.sourceEventId + ":" + myId + ":" + gid;
+          const migrated = {
+            ...sh,
+            id: newId,
+            creatorId: myId,
+            title: src?.title ?? sh.title,
+            date: src?.date ?? sh.date,
+            endDate: src?.endDate ?? sh.endDate ?? "",
+            allDay: !!(src?.allDay ?? sh.allDay),
+            start: src?.start ?? sh.start,
+            end: src?.end ?? sh.end,
+            color: src?.color ?? sh.color,
+            updatedByName: myName,
+            updatedById: myId
+          };
+          sync2.putEvent(gid, migrated).catch(() => {
+          });
+          db2.deleteEvent(sh.date, sh.id).catch(() => {
+          });
+          sync2.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {
+          });
+          continue;
+        }
+        if (!src) {
+          db2.deleteEvent(sh.date, sh.id).catch(() => {
+          });
+          sync2.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {
+          });
+          continue;
+        }
+        const stale = sh.title !== src.title || sh.date !== src.date || sh.start !== src.start || sh.end !== src.end || (sh.endDate ?? "") !== (src.endDate ?? "") || !!sh.allDay !== !!src.allDay;
+        if (!stale) continue;
+        const updated = {
+          ...sh,
+          title: src.title,
+          date: src.date,
+          endDate: src.endDate ?? "",
+          allDay: !!src.allDay,
+          start: src.start,
+          end: src.end,
+          recurrence: src.recurrence ?? "none",
+          recurrenceEnd: src.recurrenceEnd ?? "",
+          recurrenceNth: src.recurrenceNth ?? 0,
+          recurrenceWeekday: src.recurrenceWeekday ?? 0,
+          color: src.color,
+          updatedByName: myName,
+          updatedById: myId
+        };
+        if (sh.date !== src.date) {
+          db2.deleteEvent(sh.date, sh.id).catch(() => {
+          });
+        }
+        sync2.putEvent(gid, updated).catch((e55) => console.warn("[SHADOW-RESYNC-ERR]", e55?.message));
+      }
+    }, [events, db2, sync2, profile]);
     function parseGroupIdFromUrl(url) {
       try {
         const u = new URL(url.replace(/^pear:\/\//, "https://"));
@@ -16972,8 +17061,7 @@
         recurrenceWeekday: 0,
         editPermission: "creator",
         endDate: "",
-        rsvpEnabled: false,
-        sharedAsBusyTo: []
+        rsvpEnabled: false
       } });
     }
     if (error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -17260,6 +17348,8 @@
           groups,
           profile,
           db: db2,
+          events,
+          onForward: forwardBusyTime,
           onSave: saveEvent,
           onDelete: deleteEvent,
           onDeleteSeries: deleteEventSeries,
@@ -19872,10 +19962,32 @@
       )
     ] });
   }
-  function EventModal({ th, modal, setModal, groups, profile, onSave, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
+  function EventModal({ th, modal, setModal, groups, profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
     const [ev2, setEv] = (0, import_react2.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e55) => ({ ...e55, [k]: v }));
+    const [myForwards, setMyForwards] = (0, import_react2.useState)(() => {
+      if (!profile?.id) return [];
+      const myId = profile.id;
+      const srcIds = modal.event.recurrenceId ? new Set(events.filter((e55) => !e55.isShadow && e55.recurrenceId === modal.event.recurrenceId).map((e55) => e55.id)) : /* @__PURE__ */ new Set([modal.event.id]);
+      const targets = /* @__PURE__ */ new Set();
+      for (const e55 of events) {
+        if (!e55.isShadow) continue;
+        if (e55.creatorId !== myId) continue;
+        if (!srcIds.has(e55.sourceEventId)) continue;
+        const gid = (e55.groups ?? [])[0];
+        if (gid) targets.add(gid);
+      }
+      return Array.from(targets);
+    });
+    const initialForwardsRef = (0, import_react2.useRef)(null);
+    if (initialForwardsRef.current === null) initialForwardsRef.current = myForwards;
+    const toggleForward = (gid) => setMyForwards((cur) => cur.includes(gid) ? cur.filter((x) => x !== gid) : [...cur, gid]);
+    const forwardsDirty = (0, import_react2.useMemo)(() => {
+      const a36 = [...initialForwardsRef.current ?? []].sort().join(",");
+      const b = [...myForwards].sort().join(",");
+      return a36 !== b;
+    }, [myForwards]);
     function toggleGroup(gid) {
       setEv((e55) => ({ ...e55, groups: e55.groups.includes(gid) ? e55.groups.filter((x) => x !== gid) : [...e55.groups, gid] }));
     }
@@ -19976,12 +20088,21 @@
       });
     }, []);
     function handleSave() {
+      const isCreator = !ev2.creatorId || profile?.id && ev2.creatorId === profile.id;
+      const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
+      if (isReadOnly) {
+        if (forwardsDirty) onForward?.(modal.event, myForwards);
+        setModal(null);
+        return;
+      }
       if (!ev2.title.trim()) {
         setTitleErr("Event title is required.");
         return;
       }
       setTitleErr("");
-      const toSave = origDate && origDate !== ev2.date ? { ...ev2, _prevDate: origDate } : ev2;
+      if (modal.mode === "edit" && forwardsDirty) onForward?.(modal.event, myForwards);
+      const baseSave = origDate && origDate !== ev2.date ? { ...ev2, _prevDate: origDate } : ev2;
+      const toSave = modal.mode === "create" && myForwards.length > 0 ? { ...baseSave, _myForwards: myForwards } : baseSave;
       if (modal.mode === "edit" && ev2.recurrenceId) {
         const origGroups = [...modal.event.groups ?? []].sort().join(",");
         const newGroups = [...toSave.groups ?? []].sort().join(",");
@@ -20023,6 +20144,7 @@
       outline: "none",
       transition: "border-color var(--duration-fast) var(--easing)"
     };
+    const formLocked = modal.mode === "edit" && (ev2.creatorId === "system" || ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id));
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(BottomSheet, { th, onClose: () => setModal(null), zIndex: 100, closeRef: bsCloseRef, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         position: "sticky",
@@ -20050,7 +20172,8 @@
           const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
           const isHoliday = modal.mode === "edit" && ev2.creatorId === "system";
           const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
-          if (isHoliday || isReadOnly) return null;
+          if (isHoliday) return null;
+          if (isReadOnly && !forwardsDirty) return null;
           return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
             {
@@ -20070,10 +20193,6 @@
         })(),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...th.iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
-      (() => {
-        const _ro = modal.mode === "edit" && ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id);
-        return null;
-      })(),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
         padding: "16px 20px",
         display: "flex",
@@ -20085,8 +20204,8 @@
           display: "flex",
           flexDirection: "column",
           gap: 14,
-          opacity: modal.mode === "edit" && (ev2.creatorId === "system" || ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id)) ? 0.45 : 1,
-          pointerEvents: modal.mode === "edit" && (ev2.creatorId === "system" || ev2.editPermission === "creator" && !(ev2.creatorId && profile?.id && ev2.creatorId === profile.id)) ? "none" : "auto"
+          opacity: formLocked ? 0.45 : 1,
+          pointerEvents: formLocked ? "none" : "auto"
         }, children: [
           modal.mode === "edit" && ev2.rsvpEnabled && isEventCreator && (() => {
             const going = rsvpList.filter((r9) => r9.status === "going");
@@ -20320,104 +20439,118 @@
               letterSpacing: "0.1em",
               textTransform: "uppercase",
               marginBottom: 12
-            }, children: "Share" }),
-            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
-                  const sel = ev2.groups.includes(g.id);
-                  return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                    "button",
-                    {
-                      onClick: () => toggleGroup(g.id),
-                      style: {
-                        padding: "6px 14px",
-                        borderRadius: 20,
-                        border: `2px solid ${g.color}`,
-                        fontFamily: FONT,
-                        background: sel ? g.color : "transparent",
-                        color: sel ? "#fff" : g.color,
-                        fontSize: 13,
-                        fontWeight: 300,
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6
-                      },
-                      children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                          width: 18,
-                          height: 18,
-                          borderRadius: 4,
-                          overflow: "hidden",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 14,
-                          flexShrink: 0
-                        }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
-                        g.name
-                      ]
+            }, children: "Invite" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Peer Group(s)" }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: groups.map((g) => {
+                const sel = ev2.groups.includes(g.id);
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "button",
+                  {
+                    onClick: () => toggleGroup(g.id),
+                    style: {
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      border: `2px solid ${g.color}`,
+                      fontFamily: FONT,
+                      background: sel ? g.color : "transparent",
+                      color: sel ? "#fff" : g.color,
+                      fontSize: 13,
+                      fontWeight: 300,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6
                     },
-                    g.id
-                  );
-                }) })
-              ] }),
-              (() => {
-                const isCreator = !ev2.creatorId || ev2.creatorId === profile?.id;
-                if (!isCreator) return null;
-                const others = groups.filter((g) => !ev2.groups.includes(g.id));
-                if (others.length === 0) return null;
-                const busy = ev2.sharedAsBusyTo ?? [];
-                const toggle = (gid) => setEv((e55) => {
-                  const cur = e55.sharedAsBusyTo ?? [];
-                  return { ...e55, sharedAsBusyTo: cur.includes(gid) ? cur.filter((x) => x !== gid) : [...cur, gid] };
-                });
-                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Share Busy Time With" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2, marginBottom: 6, fontWeight: 300 }, children: "Members of these groups will see your title and time \u2014 nothing else." }),
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: others.map((g) => {
-                    const sel = busy.includes(g.id);
-                    return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                      "button",
-                      {
-                        onClick: () => toggle(g.id),
-                        style: {
-                          padding: "6px 14px",
-                          borderRadius: 20,
-                          border: `2px solid ${g.color}`,
-                          fontFamily: FONT,
-                          background: sel ? g.color : "transparent",
-                          color: sel ? "#fff" : g.color,
-                          fontSize: 13,
-                          fontWeight: 300,
-                          cursor: "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6
-                        },
-                        children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
-                            width: 18,
-                            height: 18,
-                            borderRadius: 4,
-                            overflow: "hidden",
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 14,
-                            flexShrink: 0
-                          }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
-                          g.name
-                        ]
-                      },
-                      g.id
-                    );
-                  }) })
-                ] });
-              })()
-            ] })
-          ] }),
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                        width: 18,
+                        height: 18,
+                        borderRadius: 4,
+                        overflow: "hidden",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        flexShrink: 0
+                      }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                      g.name
+                    ]
+                  },
+                  g.id
+                );
+              }) })
+            ] }) })
+          ] })
+        ] }),
+        (() => {
+          if (ev2.creatorId === "system") return null;
+          const others = groups.filter((g) => !(ev2.groups ?? []).includes(g.id));
+          if (others.length === 0) return null;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            borderTop: `1px solid ${th.border}`,
+            paddingTop: 12,
+            marginTop: 2,
+            display: "flex",
+            flexDirection: "column",
+            gap: 6
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 10,
+              fontWeight: 400,
+              color: th.muted,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              marginBottom: 6
+            }, children: "Share Busy Time" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2, marginBottom: 6, fontWeight: 300 }, children: "Members of these groups will see the title and time \u2014 nothing else." }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 }, children: others.map((g) => {
+              const sel = myForwards.includes(g.id);
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  onClick: () => toggleForward(g.id),
+                  style: {
+                    padding: "6px 14px",
+                    borderRadius: 20,
+                    border: `2px solid ${g.color}`,
+                    fontFamily: FONT,
+                    background: sel ? g.color : "transparent",
+                    color: sel ? "#fff" : g.color,
+                    fontSize: 13,
+                    fontWeight: 300,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+                      width: 18,
+                      height: 18,
+                      borderRadius: 4,
+                      overflow: "hidden",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 14,
+                      flexShrink: 0
+                    }, children: g.icon ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: g.icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }) : g.emoji }),
+                    g.name
+                  ]
+                },
+                g.id
+              );
+            }) })
+          ] });
+        })(),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          opacity: formLocked ? 0.45 : 1,
+          pointerEvents: formLocked ? "none" : "auto"
+        }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { borderTop: `1px solid ${th.border}`, paddingTop: 12, marginTop: 2 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
               fontSize: 10,
