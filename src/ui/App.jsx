@@ -561,9 +561,22 @@ export default function App ({ db, notifs, sync }) {
         return fresh
       })
 
-      // Reload the updated group record (membership may have changed)
+      // Reload the updated group record (membership may have changed, or the
+      // group may be brand-new — e.g. adopted via group-migration marker).
       const g = await db.getGroup(groupId)
-      if (g) setGroups(prev => prev.map(x => x.id === groupId ? g : x))
+      if (g) {
+        if (g.migratedTo) {
+          setGroups(prev => prev.filter(x => x.id !== groupId))
+        } else {
+          setGroups(prev => {
+            const idx = prev.findIndex(x => x.id === groupId)
+            if (idx === -1) return [...prev, g]
+            const next = prev.slice()
+            next[idx] = g
+            return next
+          })
+        }
+      }
 
       // Refresh my RSVPs in case a peer-synced response arrived (or event deleted)
       db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})
@@ -1481,6 +1494,28 @@ export default function App ({ db, notifs, sync }) {
                   onConfirm: async () => {
                     const updated = { ...req.g, admins: [...(req.g.admins ?? []), req.memberId], updatedAt: Date.now() }
                     await updateGroup(updated)
+                  },
+                })
+              } else if (req.type === 'rekeyGroup') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Rekey Group?',
+                  message: `Rotate "${req.g.name}" onto a fresh group key. Owner-only. Other members stay on the old key until Phase 2b ships — they won't see events added to the rekeyed group. Use only on throwaway groups while we're testing.`,
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Rekey',
+                  dangerous: true,
+                  onConfirm: async () => {
+                    try {
+                      await sync.rekeyGroup(req.g.id)
+                      const res = await sync.commitRekey(req.g.id)
+                      const fresh = await db.listGroups()
+                      setGroups(fresh)
+                      const evts = await db.listEvents()
+                      setEvents(evts)
+                      window.alert('Rekeyed. New group id: ' + res.newGroupId)
+                    } catch (e) {
+                      window.alert('Rekey failed: ' + (e?.message ?? e))
+                    }
                   },
                 })
               } else if (req.type === 'removeAdmin') {
@@ -4577,6 +4612,22 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
 
           {/* Danger zone */}
           <div>
+            {isOwner && (
+              <>
+                {section('MIGRATION (DEV)')}
+                <div style={{ border:`1px solid ${th.border}`, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'rekeyGroup', g }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Rekey Group</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Rotate group key to reclaim Autobase history (experimental)
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
               {!isOwner && (
