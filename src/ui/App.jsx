@@ -561,9 +561,22 @@ export default function App ({ db, notifs, sync }) {
         return fresh
       })
 
-      // Reload the updated group record (membership may have changed)
+      // Reload the updated group record (membership may have changed, or the
+      // group may be brand-new — e.g. adopted via group-migration marker).
       const g = await db.getGroup(groupId)
-      if (g) setGroups(prev => prev.map(x => x.id === groupId ? g : x))
+      if (g) {
+        if (g.migratedTo) {
+          setGroups(prev => prev.filter(x => x.id !== groupId))
+        } else {
+          setGroups(prev => {
+            const idx = prev.findIndex(x => x.id === groupId)
+            if (idx === -1) return [...prev, g]
+            const next = prev.slice()
+            next[idx] = g
+            return next
+          })
+        }
+      }
 
       // Refresh my RSVPs in case a peer-synced response arrived (or event deleted)
       db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})

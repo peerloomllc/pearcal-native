@@ -484,6 +484,9 @@ async function debugGroup (id) {
 async function listGroups () {
   const groups = []
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    // Tombstoned by a group-migration marker — user-invisible; the new group
+    // record (keyed by migratedFrom ↔ this id) carries all live state.
+    if (value?.migratedTo) continue
     groups.push(value)
   }
   return groups
@@ -613,6 +616,11 @@ async function joinGroup (group) {
     })) {
       migratedGroups.add(group.id)
       console.log('[REKEY] old base opened in migrated state:', group.id, '→', marker.newGroupId)
+      // Phase 2b: member-side auto-pickup after restart — marker was applied
+      // in a prior session so apply() won't re-fire for it. Defer so the
+      // surrounding joinGroup finishes setting up the old base first.
+      setTimeout(() => adoptGroupMigration(group.id, marker).catch(e =>
+        console.error('[REKEY] adopt error:', e.message)), 0)
     }
   } catch (e) {
     console.warn('[REKEY] marker preload error:', e.message)
@@ -848,6 +856,68 @@ async function commitRekey (oldGroupId) {
     newGroupId:  descriptor.newGroupId,
     newGroupKey: descriptor.newGroupKey,
   }
+}
+
+// Phase 2b: member-side auto-pickup. Called when a verified migration marker
+// lands on our copy of the OLD base — either live via apply(), or via the
+// marker preload on a later joinGroup. Non-owners inherit local metadata from
+// the old group record, reuse profile.id as memberId, open the new Autobase
+// via joinGroup (which handles swarm + blind peer + broadcastSelf so the
+// owner re-adds us as a writer on the new base), and tombstone the old group
+// locally so the UI can de-emphasize / hide it.
+//
+// Idempotent on every axis so apply() replays and marker preloads across
+// restarts don't duplicate work:
+//   - owner short-circuits (commitRekey already handled their side)
+//   - if the new group record already exists locally, we just ensure the base
+//     is open (handles crash between putGroup and joinGroup)
+//   - re-writing migratedTo is skipped once set
+async function adoptGroupMigration (oldGroupId, marker) {
+  if (!marker || typeof marker !== 'object') return
+  const profile = await getProfile().catch(() => null)
+  if (!profile?.id) return
+  if (marker.ownerId === profile.id) return
+
+  const newGroupId  = marker.newGroupId
+  const newGroupKey = marker.newGroupKey
+  if (!newGroupId || !newGroupKey) return
+
+  const oldGroup = await getGroup(oldGroupId)
+  if (!oldGroup) return
+
+  const existingNew = await db.get(NS.groups + newGroupId).catch(() => null)
+  if (!existingNew?.value) {
+    const newGroupRec = {
+      ...oldGroup,
+      id:           newGroupId,
+      groupKey:     newGroupKey,
+      ownerId:      marker.ownerId,
+      migratedFrom: oldGroupId,
+      joinedAt:     Date.now(),
+      updatedAt:    Date.now(),
+    }
+    delete newGroupRec.migratedTo
+    await putGroup(newGroupRec)
+    await joinGroup(newGroupRec)
+  } else if (!bases.has(newGroupId)) {
+    await joinGroup(existingNew.value)
+  }
+
+  if (!oldGroup.migratedTo) {
+    await db.put(NS.groups + oldGroupId, {
+      ...oldGroup,
+      migratedTo: newGroupId,
+      updatedAt:  Date.now(),
+    })
+  }
+
+  send({ type: 'event', event: 'sync', data: oldGroupId })
+  send({ type: 'event', event: 'sync', data: newGroupId })
+  send({ type: 'event', event: 'groupMigrated', data: {
+    oldGroupId,
+    newGroupId,
+    newGroupKey,
+  }})
 }
 
 async function syncPutEvent (groupId, event) {
@@ -1086,6 +1156,10 @@ function makeApply (groupId) {
               newGroupKey: val.value.newGroupKey,
               ownerId:     val.value.ownerId,
             }})
+            // Defer so we don't spin up a new Autobase from inside apply().
+            const _markerCopy = val.value
+            setTimeout(() => adoptGroupMigration(groupId, _markerCopy).catch(e =>
+              console.error('[REKEY] adopt error:', e.message)), 0)
           } else {
             console.warn('[REKEY] rejected invalid migration marker for', groupId)
           }
