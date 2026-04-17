@@ -67,18 +67,20 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
 rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/peerloomllc/pearcal-native/ \
   Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
-ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+ssh Tims-Mac-mini.local 'set -o pipefail && export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/peerloomllc/pearcal-native && \
   xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
-    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -20 && \
   rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
   cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
   cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'
 rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
 ideviceinstaller install /tmp/PearCal-release.ipa
 ```
+
+`set -o pipefail` is required — without it, `tail` swallows xcodebuild's non-zero exit code and the chain falls through to repackage an old cached `PearCal.app` in DerivedData, silently shipping a stale IPA.
 
 **bare.js changes** (rebuild both bundles, then build iOS):
 ```bash
@@ -95,12 +97,12 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
 rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
   /home/tim/peerloomllc/pearcal-native/ \
   Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
-ssh Tims-Mac-mini.local 'export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
+ssh Tims-Mac-mini.local 'set -o pipefail && export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
   cd ~/peerloomllc/pearcal-native/ios && pod install && \
   cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
     -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
-    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -3 && \
+    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -20 && \
   rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
   cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
   cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'

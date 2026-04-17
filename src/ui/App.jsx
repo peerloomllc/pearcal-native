@@ -483,6 +483,8 @@ export default function App ({ db, notifs, sync }) {
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
+  const [infoSheet, setInfoSheet] = useState(null) // null | { title, message, icon }
+  const closeInfoSheetRef = useRef(null)
   const [scopeSheet, setScopeSheet] = useState(null) // null | { ev }
   const closeScopeSheetRef = useRef(null)
   const closeEventModalRef = useRef(null)
@@ -676,6 +678,7 @@ export default function App ({ db, notifs, sync }) {
       if (closeInviteSheetRef.current?.()) return
       if (closeJoinSheetRef.current?.()) return
       if (closePendingJoinRef.current?.()) return
+      if (closeInfoSheetRef.current?.()) return
       if (closeConfirmSheetRef.current?.()) return
       if (closeScopeSheetRef.current?.()) return
       if (closeEventModalRef.current?.()) return
@@ -1350,6 +1353,17 @@ export default function App ({ db, notifs, sync }) {
           />
         )}
 
+        {infoSheet && (
+          <InfoSheet
+            th={th}
+            title={infoSheet.title}
+            message={infoSheet.message}
+            icon={infoSheet.icon}
+            onDismiss={() => setInfoSheet(null)}
+            closeRef={closeInfoSheetRef}
+          />
+        )}
+
         {scopeSheet && (
           <ScopeSheet th={th} ev={scopeSheet.ev}
             onSave={(ev, scope, opts) => saveEvent(ev, scope, opts, scopeSheet.reminders ?? [])}
@@ -1496,155 +1510,33 @@ export default function App ({ db, notifs, sync }) {
                     await updateGroup(updated)
                   },
                 })
-              } else if (req.type === 'purgeMigrated') {
-                setSettingsGroup(null)
-                setConfirmSheet({
-                  title: 'Purge Migrated Corestores?',
-                  message: 'Force-delete on-disk Hypercore storage for every tombstoned group on this device. Skips the 14-day grace period. Use for dev testing of the rekey storage reclaim.',
-                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
-                  confirmLabel: 'Purge',
-                  dangerous: true,
-                  onConfirm: async () => {
-                    try {
-                      const results = await sync.purgeAllMigratedGroups({ force: true })
-                      const ok = results.filter(r => r.ok)
-                      const freed = ok.reduce((n, r) => n + (r.freed ?? 0), 0)
-                      const cores = ok.reduce((n, r) => n + (r.purgedCores ?? 0), 0)
-                      const diagStr = ok.map(r => JSON.stringify(r.diag) + (r.firstErr ? '\nerr: ' + r.firstErr + ' (' + r.errCount + ')' : '')).join('\n')
-                      window.alert('Purged ' + ok.length + ' groups, ' + cores + ' cores, freed ' + (freed / 1024 / 1024).toFixed(2) + ' MB\n\n' + diagStr)
-                    } catch (e) {
-                      window.alert('Purge failed: ' + (e?.message ?? e))
-                    }
-                  },
-                })
-              } else if (req.type === 'forceCompact') {
-                setSettingsGroup(null)
-                setConfirmSheet({
-                  title: 'Force Compact RocksDB?',
-                  message: 'Runs compactRange on core/db and store/db with blobGarbageCollectionAgeCutoff=1.0 so every blob file becomes GC-eligible. Safe — does not delete any group data, just rewrites storage to reclaim orphaned blob bytes.',
-                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
-                  confirmLabel: 'Compact',
-                  onConfirm: async () => {
-                    try {
-                      const res = await sync.reclaimStorage()
-                      const bb = res.blobBefore, ba = res.blobAfter
-                      const blobMsg = bb && ba
-                        ? '\nblobs: ' + bb.count + ' / ' + (bb.bytes/1024/1024).toFixed(1) + ' MB → ' + ba.count + ' / ' + (ba.bytes/1024/1024).toFixed(1) + ' MB'
-                        : ''
-                      window.alert('Compacted. Freed ' + ((res.freed ?? 0)/1024/1024).toFixed(2) + ' MB' + blobMsg)
-                    } catch (e) {
-                      window.alert('Compact failed: ' + (e?.message ?? e))
-                    }
-                  },
-                })
-              } else if (req.type === 'auditStorage') {
-                setSettingsGroup(null)
-                setConfirmSheet({
-                  title: 'Audit Storage?',
-                  message: 'Enumerates every core in store/db via createCoreStream() and classifies each as reachable-from-a-tracked-group or orphan. Read-only; no deletions.',
-                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
-                  confirmLabel: 'Audit',
-                  onConfirm: async () => {
-                    try {
-                      const r = await sync.auditStorage({ purge: false })
-                      const sample = (r.orphanList || []).slice(0, 5).map(o =>
-                        o.dk.slice(0, 10) + ' cp=' + o.corePointer + ' dp=' + o.dataPointer + (o.alias ? ' ns=' + o.alias.namespace.slice(0, 8) : '')
-                      ).join('\n')
-                      window.alert(
-                        'Groups: ' + r.groupCount +
-                        '\nReachable dks: ' + r.reachableCount +
-                        '\nTotal cores: ' + r.totalCores +
-                        '\nOrphans: ' + r.orphans +
-                        (sample ? '\n\nFirst orphans:\n' + sample : '')
-                      )
-                    } catch (e) {
-                      window.alert('Audit failed: ' + (e?.message ?? e))
-                    }
-                  },
-                })
-              } else if (req.type === 'purgeOrphans') {
-                setSettingsGroup(null)
-                setConfirmSheet({
-                  title: 'Purge Orphan Cores?',
-                  message: 'Calls deleteCore(ptr) on every core in store/db whose discovery key is NOT reachable from any tracked group. Then runs compactRange to reclaim the freed bytes. Destructive — a miss in the reachability snapshot would wipe a live core.',
-                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
-                  confirmLabel: 'Purge',
-                  dangerous: true,
-                  onConfirm: async () => {
-                    try {
-                      const r = await sync.auditStorage({ purge: true })
-                      if (r.abortedLiveWithoutBase?.length) {
-                        window.alert(
-                          'Aborted: ' + r.abortedLiveWithoutBase.length + ' live group(s) have no open base.\n' +
-                          'Purge would wipe their replicated writer cores.\n' +
-                          'Groups: ' + r.abortedLiveWithoutBase.slice(0, 3).join(', ') +
-                          '\n\nRestart app to load bases, then retry.'
-                        )
-                        return
-                      }
-                      const rc = r.reclaim
-                      const freedMB = rc?.freed != null ? (rc.freed / 1024 / 1024).toFixed(2) : '?'
-                      window.alert(
-                        'Orphans: ' + r.orphans +
-                        '\nPurged: ' + r.purged +
-                        '\nPurge errors: ' + (r.purgeErrors?.length || 0) +
-                        '\nFreed: ' + freedMB + ' MB'
-                      )
-                    } catch (e) {
-                      window.alert('Purge failed: ' + (e?.message ?? e))
-                    }
-                  },
-                })
-              } else if (req.type === 'scanOrphanDps') {
-                const isDryRun = req.dryRun
-                setSettingsGroup(null)
-                setConfirmSheet({
-                  title: isDryRun ? 'Scan Orphan Data Ranges?' : 'Purge Orphan Data Ranges?',
-                  message: isDryRun
-                    ? 'Walks the raw TL_DATA key range in store/db RocksDB and counts dataPointers not referenced by any live core. Read-only.'
-                    : 'Deletes TL_DATA key sub-ranges for every dataPointer that is not referenced by any live core (core.dataPointer, sessions[], or dependency). Destructive — catches stranded block/tree/bitfield keys left by prior purges.',
-                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
-                  confirmLabel: isDryRun ? 'Scan' : 'Purge',
-                  dangerous: !isDryRun,
-                  onConfirm: async () => {
-                    try {
-                      const r = await sync.purgeOrphanDataRanges({ dryRun: isDryRun })
-                      const rc = r.reclaim
-                      const freedMB = rc?.freed != null ? (rc.freed / 1024 / 1024).toFixed(2) : '—'
-                      window.alert(
-                        'Live cores: ' + r.liveCoreCount +
-                        '\nLive dps: ' + r.liveDps +
-                        '\nUnique dps in TL_DATA: ' + r.uniqueDps +
-                        '\nOrphan dps: ' + r.orphanDps +
-                        (isDryRun ? '' :
-                          '\nDeleted: ' + r.deleted +
-                          '\nErrors: ' + (r.errors?.length || 0) +
-                          '\nFreed: ' + freedMB + ' MB')
-                      )
-                    } catch (e) {
-                      window.alert('Failed: ' + (e?.message ?? e))
-                    }
-                  },
-                })
               } else if (req.type === 'rekeyGroup') {
                 setSettingsGroup(null)
                 setConfirmSheet({
                   title: 'Rekey Group?',
-                  message: `Rotate "${req.g.name}" onto a fresh group key. Owner-only. Other members stay on the old key until Phase 2b ships — they won't see events added to the rekeyed group. Use only on throwaway groups while we're testing.`,
+                  message: `Rotates "${req.g.name}" onto a fresh group key to reclaim shared history storage. Members auto-migrate on their next sync. Old storage is retained for 14 days, then deleted automatically.`,
                   icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
                   confirmLabel: 'Rekey',
                   dangerous: true,
                   onConfirm: async () => {
                     try {
                       await sync.rekeyGroup(req.g.id)
-                      const res = await sync.commitRekey(req.g.id)
+                      await sync.commitRekey(req.g.id)
                       const fresh = await db.listGroups()
                       setGroups(fresh)
                       const evts = await db.listEvents()
                       setEvents(evts)
-                      window.alert('Rekeyed. New group id: ' + res.newGroupId)
+                      setInfoSheet({
+                        title: 'Rekey successful',
+                        message: 'Other members will automatically migrate on their next sync.',
+                        icon: <Check size={36} weight="thin" color="var(--color-accent)" />,
+                      })
                     } catch (e) {
-                      window.alert('Rekey failed: ' + (e?.message ?? e))
+                      setInfoSheet({
+                        title: 'Rekey failed',
+                        message: e?.message ?? String(e),
+                        icon: <Warning size={36} weight="thin" color="var(--color-destructive)" />,
+                      })
                     }
                   },
                 })
@@ -4744,71 +4636,15 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
           <div>
             {isOwner && (
               <>
-                {section('MIGRATION (DEV)')}
+                {section('STORAGE')}
                 <div style={{ border:`1px solid ${th.border}`, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
                   <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'rekeyGroup', g }) }}
                     style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                       fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10,
-                      borderBottom:`1px solid ${th.border}` }}>
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
                     <span>Rekey Group</span>
                     <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Rotate group key to reclaim Autobase history (experimental)
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'purgeMigrated' }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10,
-                      borderBottom:`1px solid ${th.border}` }}>
-                    <span>Purge Migrated Corestores</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Force-purge all tombstoned groups now (skip 14-day grace)
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'forceCompact' }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                    <span>Force Compact RocksDB</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Compact both core/db and store/db with blob GC age_cutoff=1.0
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'auditStorage' }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                    <span>Audit Storage (dry-run)</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Enumerate every core in store/db; report orphans not tied to any tracked group
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'purgeOrphans' }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                    <span>Purge Orphan Cores</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      deleteCore(ptr) on every core not reachable from a tracked group, then compact
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'scanOrphanDps', dryRun: true }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                    <span>Scan Orphan Data Ranges (dry-run)</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Walk TL_DATA key range; count dataPointers not used by any live core
-                    </span>
-                  </button>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'scanOrphanDps', dryRun: false }) }}
-                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
-                    <span>Purge Orphan Data Ranges</span>
-                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
-                      Delete TL_DATA sub-ranges for orphan dataPointers, then compact
+                      Reclaim shared history storage
                     </span>
                   </button>
                 </div>
@@ -5114,6 +4950,33 @@ function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onCo
             {confirmLabel}
           </button>
         </div>
+      </div>
+    </BottomSheet>
+  )
+}
+
+function InfoSheet ({ th, title, message, icon, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+
+  return (
+    <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        {icon && <div style={{ marginBottom:4 }}>{icon}</div>}
+        <div style={{ fontWeight:300, fontSize:17, ...th.text }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
+        <button onClick={() => bsCloseRef.current?.()}
+          style={{ width:'100%', marginTop:8, padding:'12px', borderRadius:12, border:'none',
+            background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300,
+            cursor:'pointer', fontFamily:FONT }}>
+          OK
+        </button>
       </div>
     </BottomSheet>
   )
