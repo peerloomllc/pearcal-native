@@ -5494,6 +5494,53 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         </div>
       </div>
 
+      {/* Daily Digest */}
+      {(() => {
+        const digestEnabled = profile?.digestEnabled !== false
+        const digestHour    = Number.isFinite(Number(profile?.digestHour))   ? Number(profile.digestHour)   : 9
+        const digestMinute  = Number.isFinite(Number(profile?.digestMinute)) ? Number(profile.digestMinute) : 0
+        const hhmm = String(digestHour).padStart(2, '0') + ':' + String(digestMinute).padStart(2, '0')
+        return (
+          <>
+            <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+              DAILY DIGEST
+            </div>
+            <div style={{ marginBottom:12 }}>
+              <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
+                justifyContent:'space-between' }}>
+                <div style={{ flex:1, paddingRight:12 }}>
+                  <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Morning summary</div>
+                  <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+                    Notifies you of today's events so the app foregrounds and peers sync
+                  </div>
+                </div>
+                <Toggle val={digestEnabled}
+                  onChange={v => { window.__pearSync?.haptic('light'); onUpdateProfile({ digestEnabled: v }) }}
+                  accent={th.accent} />
+              </div>
+              {digestEnabled && (
+                <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
+                  justifyContent:'space-between' }}>
+                  <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Time</div>
+                  <input type="time" value={hhmm}
+                    onChange={e => {
+                      const [hStr, mStr] = e.target.value.split(':')
+                      const h = Number(hStr), m = Number(mStr)
+                      if (!isNaN(h) && !isNaN(m)) {
+                        window.__pearSync?.haptic('light')
+                        onUpdateProfile({ digestHour: h, digestMinute: m })
+                      }
+                    }}
+                    style={{ padding:'8px 12px', borderRadius:10, fontSize:13, fontWeight:300,
+                      border:`1px solid ${th.border}`, background:th.inputBg, color:th.text.color,
+                      fontFamily:FONT, appearance:'none' }} />
+                </div>
+              )}
+            </div>
+          </>
+        )
+      })()}
+
       {/* Time Format */}
       <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         TIME FORMAT

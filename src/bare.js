@@ -116,6 +116,7 @@ async function handle (method, args) {
     case 'getPrivateNote':   return getPrivateNote(args[0])
     case 'putPrivateNote':   return putPrivateNote(args[0], args[1])
     case 'refreshWidgetCache': return refreshWidgetCache()
+    case 'scheduleMorningDigest': return scheduleMorningDigest()
     // Notifications handled on RN side
     case 'scheduleForEvent': return null
     case 'cancelForEvent':   return null
@@ -275,6 +276,9 @@ async function getProfile () {
 async function updateProfile (updates) {
   const current = await getProfile()
   await db.put(NS.profile, { ...current, ...updates, updatedAt: Date.now() })
+  if ('digestEnabled' in updates || 'digestHour' in updates || 'digestMinute' in updates) {
+    scheduleMorningDigest().catch(e => console.warn('morning digest reschedule:', e.message))
+  }
 }
 
 // ── Blind peer key management ────────────────────────────────────────────────
@@ -384,7 +388,90 @@ async function refreshWidgetCache () {
     isInvitedToEvent,
   })
   send({ type: 'event', event: 'widgetCache', data: payload })
+  scheduleMorningDigest().catch(e => console.warn('morning digest refresh:', e.message))
   return payload
+}
+
+// ── Morning digest ───────────────────────────────────────────────────────────
+// Daily notification at user-chosen hour (default 9 AM). Pre-schedules the
+// next 3 occurrences so users who ignore the app for a few days still get
+// reminded to foreground — which is what actually wakes Hyperswarm and
+// replicates pending group changes from peers.
+const DIGEST_LOOKAHEAD_DAYS = 3
+
+function _nthMorningMs (nowMs, n, hour, minute) {
+  const d = new Date(nowMs)
+  d.setHours(hour, minute, 0, 0)
+  if (d.getTime() <= nowMs) d.setDate(d.getDate() + 1)
+  d.setDate(d.getDate() + n)
+  return d.getTime()
+}
+
+function _isoDate (ms) {
+  const d = new Date(ms)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return y + '-' + m + '-' + day
+}
+
+function _formatTime (start) {
+  const parts = (start ?? '').split(':')
+  const h = Number(parts[0])
+  const m = Number(parts[1])
+  if (isNaN(h)) return ''
+  const h12 = ((h + 11) % 12) + 1
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const mStr = m === 0 ? '' : ':' + String(m).padStart(2, '0')
+  return h12 + mStr + ampm
+}
+
+function _buildDigestBody (events) {
+  if (!events || events.length === 0) {
+    return 'No events today — tap to check for updates'
+  }
+  const sorted = events.slice().sort((a, b) => {
+    if (a.allDay && !b.allDay) return -1
+    if (!a.allDay && b.allDay) return 1
+    return (a.start ?? '').localeCompare(b.start ?? '')
+  })
+  const previews = sorted.slice(0, 2).map(ev => {
+    if (ev.allDay) return ev.title
+    const t = _formatTime(ev.start)
+    return t ? (t + ' ' + ev.title) : ev.title
+  })
+  const count = events.length
+  const head = count === 1 ? '1 event today' : (count + ' events today')
+  return head + ' — ' + previews.join(', ')
+}
+
+async function scheduleMorningDigest () {
+  if (!db) return
+  const profile = await getProfile().catch(() => null)
+  // Don't schedule until onboarding is complete — avoids nagging users
+  // who haven't finished setup yet.
+  if (!profile?.onboardingComplete) return
+  const enabled = profile?.digestEnabled !== false
+  if (!enabled) {
+    send({ type: 'event', event: 'cancelMorningDigest', data: null })
+    return
+  }
+  const hour = Number.isFinite(Number(profile?.digestHour)) ? Number(profile.digestHour) : 9
+  const minute = Number.isFinite(Number(profile?.digestMinute)) ? Number(profile.digestMinute) : 0
+  const now = Date.now()
+  const items = []
+  for (let i = 0; i < DIGEST_LOOKAHEAD_DAYS; i++) {
+    const fireAt = _nthMorningMs(now, i, hour, minute)
+    const dateStr = _isoDate(fireAt)
+    const events = await listEvents({ from: dateStr, to: dateStr }).catch(() => [])
+    items.push({
+      slot: i,
+      fireAt,
+      title: 'Good morning',
+      body: _buildDigestBody(events),
+    })
+  }
+  send({ type: 'event', event: 'scheduleMorningDigest', data: items })
 }
 
 // ── RSVP storage & sync ───────────────────────────────────────────────────────
@@ -1496,6 +1583,7 @@ async function foregroundSync () {
       }
     } catch (e) { console.warn('[FGSYNC] error:', e.message) }
   }
+  scheduleMorningDigest().catch(e => console.warn('morning digest fg:', e.message))
 }
 
 async function resyncGroup (groupId) {
@@ -3082,6 +3170,7 @@ async function _doInit (dir, attempt = 0) {
     _dbReady = true
     _dbReadyResolve()
     send({ type: 'event', event: 'ready' })
+    scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
   } catch(e) {
     console.error('Init failed:', e.message)
     if (e.message && e.message.includes('lock') && attempt < 20) {

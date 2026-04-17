@@ -44,6 +44,9 @@ function notifId (eventId: string): number {
   return Math.abs(h)
 }
 
+const MORNING_DIGEST_BASE = 900000
+const MORNING_DIGEST_SLOTS = 3
+
 function calcFireTime (event: any): number | null {
   const [y, mo, d] = event.date.split('-').map(Number)
   let h = 9, m = 0
@@ -393,6 +396,36 @@ webViewRef.current?.injectJavaScript(
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupDeleted",' + JSON.stringify(groupId) + ');true;'
         )
+      })
+
+      onEvent('scheduleMorningDigest', async (items: any) => {
+        try {
+          for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {
+            await PearCalNotifications?.cancel?.(MORNING_DIGEST_BASE + i).catch(() => {})
+          }
+          if (!Array.isArray(items)) return
+          for (const it of items) {
+            if (!it || typeof it.slot !== 'number' || !it.fireAt) continue
+            if (it.fireAt <= Date.now()) continue
+            try {
+              await PearCalNotifications?.schedule?.({
+                id:    MORNING_DIGEST_BASE + it.slot,
+                title: it.title ?? 'Good morning',
+                body:  it.body ?? '',
+                fireAt: it.fireAt,
+                tab:   'calendar',
+              })
+            } catch (e: any) {
+              console.log('Morning digest schedule error (non-fatal):', e?.message)
+            }
+          }
+        } catch (e) {}
+      })
+
+      onEvent('cancelMorningDigest', async () => {
+        for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {
+          await PearCalNotifications?.cancel?.(MORNING_DIGEST_BASE + i).catch(() => {})
+        }
       })
 
       onEvent('syncNotify', (data: any) => {
