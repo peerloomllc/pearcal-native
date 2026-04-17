@@ -464,11 +464,12 @@ async function scheduleMorningDigest () {
     const fireAt = _nthMorningMs(now, i, hour, minute)
     const dateStr = _isoDate(fireAt)
     const events = await listEvents({ from: dateStr, to: dateStr }).catch(() => [])
+    const visible = events.filter(e => !e.isShadow)
     items.push({
       slot: i,
       fireAt,
       title: 'Good morning',
-      body: _buildDigestBody(events),
+      body: _buildDigestBody(visible),
     })
   }
   send({ type: 'event', event: 'scheduleMorningDigest', data: items })
