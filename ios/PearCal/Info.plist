@@ -51,6 +51,12 @@
     </dict>
     <key>NSCameraUsageDescription</key>
     <string>Used to set your profile photo</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>PearCal connects directly to nearby devices on your Wi-Fi to sync calendars peer-to-peer.</string>
+    <key>NSBonjourServices</key>
+    <array>
+      <string>_hyperswarm._udp</string>
+    </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>Required by AVCaptureSession for QR scanning and camera capture</string>
     <key>NSPhotoLibraryUsageDescription</key>
