@@ -1517,6 +1517,115 @@ export default function App ({ db, notifs, sync }) {
                     }
                   },
                 })
+              } else if (req.type === 'forceCompact') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Force Compact RocksDB?',
+                  message: 'Runs compactRange on core/db and store/db with blobGarbageCollectionAgeCutoff=1.0 so every blob file becomes GC-eligible. Safe — does not delete any group data, just rewrites storage to reclaim orphaned blob bytes.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Compact',
+                  onConfirm: async () => {
+                    try {
+                      const res = await sync.reclaimStorage()
+                      const bb = res.blobBefore, ba = res.blobAfter
+                      const blobMsg = bb && ba
+                        ? '\nblobs: ' + bb.count + ' / ' + (bb.bytes/1024/1024).toFixed(1) + ' MB → ' + ba.count + ' / ' + (ba.bytes/1024/1024).toFixed(1) + ' MB'
+                        : ''
+                      window.alert('Compacted. Freed ' + ((res.freed ?? 0)/1024/1024).toFixed(2) + ' MB' + blobMsg)
+                    } catch (e) {
+                      window.alert('Compact failed: ' + (e?.message ?? e))
+                    }
+                  },
+                })
+              } else if (req.type === 'auditStorage') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Audit Storage?',
+                  message: 'Enumerates every core in store/db via createCoreStream() and classifies each as reachable-from-a-tracked-group or orphan. Read-only; no deletions.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Audit',
+                  onConfirm: async () => {
+                    try {
+                      const r = await sync.auditStorage({ purge: false })
+                      const sample = (r.orphanList || []).slice(0, 5).map(o =>
+                        o.dk.slice(0, 10) + ' cp=' + o.corePointer + ' dp=' + o.dataPointer + (o.alias ? ' ns=' + o.alias.namespace.slice(0, 8) : '')
+                      ).join('\n')
+                      window.alert(
+                        'Groups: ' + r.groupCount +
+                        '\nReachable dks: ' + r.reachableCount +
+                        '\nTotal cores: ' + r.totalCores +
+                        '\nOrphans: ' + r.orphans +
+                        (sample ? '\n\nFirst orphans:\n' + sample : '')
+                      )
+                    } catch (e) {
+                      window.alert('Audit failed: ' + (e?.message ?? e))
+                    }
+                  },
+                })
+              } else if (req.type === 'purgeOrphans') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Purge Orphan Cores?',
+                  message: 'Calls deleteCore(ptr) on every core in store/db whose discovery key is NOT reachable from any tracked group. Then runs compactRange to reclaim the freed bytes. Destructive — a miss in the reachability snapshot would wipe a live core.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Purge',
+                  dangerous: true,
+                  onConfirm: async () => {
+                    try {
+                      const r = await sync.auditStorage({ purge: true })
+                      if (r.abortedLiveWithoutBase?.length) {
+                        window.alert(
+                          'Aborted: ' + r.abortedLiveWithoutBase.length + ' live group(s) have no open base.\n' +
+                          'Purge would wipe their replicated writer cores.\n' +
+                          'Groups: ' + r.abortedLiveWithoutBase.slice(0, 3).join(', ') +
+                          '\n\nRestart app to load bases, then retry.'
+                        )
+                        return
+                      }
+                      const rc = r.reclaim
+                      const freedMB = rc?.freed != null ? (rc.freed / 1024 / 1024).toFixed(2) : '?'
+                      window.alert(
+                        'Orphans: ' + r.orphans +
+                        '\nPurged: ' + r.purged +
+                        '\nPurge errors: ' + (r.purgeErrors?.length || 0) +
+                        '\nFreed: ' + freedMB + ' MB'
+                      )
+                    } catch (e) {
+                      window.alert('Purge failed: ' + (e?.message ?? e))
+                    }
+                  },
+                })
+              } else if (req.type === 'scanOrphanDps') {
+                const isDryRun = req.dryRun
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: isDryRun ? 'Scan Orphan Data Ranges?' : 'Purge Orphan Data Ranges?',
+                  message: isDryRun
+                    ? 'Walks the raw TL_DATA key range in store/db RocksDB and counts dataPointers not referenced by any live core. Read-only.'
+                    : 'Deletes TL_DATA key sub-ranges for every dataPointer that is not referenced by any live core (core.dataPointer, sessions[], or dependency). Destructive — catches stranded block/tree/bitfield keys left by prior purges.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: isDryRun ? 'Scan' : 'Purge',
+                  dangerous: !isDryRun,
+                  onConfirm: async () => {
+                    try {
+                      const r = await sync.purgeOrphanDataRanges({ dryRun: isDryRun })
+                      const rc = r.reclaim
+                      const freedMB = rc?.freed != null ? (rc.freed / 1024 / 1024).toFixed(2) : '—'
+                      window.alert(
+                        'Live cores: ' + r.liveCoreCount +
+                        '\nLive dps: ' + r.liveDps +
+                        '\nUnique dps in TL_DATA: ' + r.uniqueDps +
+                        '\nOrphan dps: ' + r.orphanDps +
+                        (isDryRun ? '' :
+                          '\nDeleted: ' + r.deleted +
+                          '\nErrors: ' + (r.errors?.length || 0) +
+                          '\nFreed: ' + freedMB + ' MB')
+                      )
+                    } catch (e) {
+                      window.alert('Failed: ' + (e?.message ?? e))
+                    }
+                  },
+                })
               } else if (req.type === 'rekeyGroup') {
                 setSettingsGroup(null)
                 setConfirmSheet({
@@ -4650,10 +4759,56 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                   <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'purgeMigrated' }) }}
                     style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                       fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10,
+                      borderBottom:`1px solid ${th.border}` }}>
                     <span>Purge Migrated Corestores</span>
                     <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
                       Force-purge all tombstoned groups now (skip 14-day grace)
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'forceCompact' }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Force Compact RocksDB</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Compact both core/db and store/db with blob GC age_cutoff=1.0
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'auditStorage' }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Audit Storage (dry-run)</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Enumerate every core in store/db; report orphans not tied to any tracked group
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'purgeOrphans' }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Purge Orphan Cores</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      deleteCore(ptr) on every core not reachable from a tracked group, then compact
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'scanOrphanDps', dryRun: true }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Scan Orphan Data Ranges (dry-run)</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Walk TL_DATA key range; count dataPointers not used by any live core
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'scanOrphanDps', dryRun: false }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Purge Orphan Data Ranges</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Delete TL_DATA sub-ranges for orphan dataPointers, then compact
                     </span>
                   </button>
                 </div>

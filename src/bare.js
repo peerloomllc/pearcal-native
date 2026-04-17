@@ -128,6 +128,8 @@ async function handle (method, args) {
     case 'commitRekey':      return commitRekey(args[0])
     case 'purgeMigratedGroup':    return purgeMigratedGroup(args[0], args[1] ?? {})
     case 'purgeAllMigratedGroups': return purgeAllMigratedGroups(args[0] ?? {})
+    case 'auditStorage':     return auditStorage(args[0] ?? {})
+    case 'purgeOrphanDataRanges': return purgeOrphanDataRanges(args[0] ?? {})
     case 'reclaimStorage': return reclaimStorage()
     case 'storageBreakdown': return storageBreakdown()
     case 'getAvatar':        return getAvatar(args[0])
@@ -1103,15 +1105,25 @@ async function purgeMigratedGroup (oldGroupId, opts = {}) {
 
   migratedGroups.delete(oldGroupId)
 
-  // 5. Compact RocksDB to release the freed core blocks.
+  // 5. Scan the raw TL_DATA key-range and delete any stranded dataPointer
+  //    sub-range that's no longer referenced by a live core. deleteCore(ptr)
+  //    only clears dps listed in the current sessions[]; Autobase writer
+  //    cores accumulate historical dps across truncations/snapshots that
+  //    would otherwise leak on every rekey.
+  const orphanDp = await purgeOrphanDataRanges({ dryRun: false }).catch(e => {
+    console.warn('[PURGE] orphan-dp sweep failed:', e.message)
+    return { errors: [e.message] }
+  })
+
+  // 6. Compact RocksDB to release the freed core blocks + blob bytes.
   const reclaim = await reclaimStorage().catch(e => {
     console.warn('[PURGE] reclaim failed:', e.message)
     return { errors: [e.message] }
   })
 
-  console.log('[PURGE] done:', oldGroupId, 'cores=' + purgedCores, 'freed=' + (reclaim?.freed ?? 0))
+  console.log('[PURGE] done:', oldGroupId, 'cores=' + purgedCores, 'orphanDps=' + (orphanDp?.deleted ?? 0), 'freed=' + (reclaim?.freed ?? 0))
   send({ type: 'event', event: 'groupPurged', data: { oldGroupId, purgedCores, ...reclaim } })
-  return { oldGroupId, purgedCores, diag, firstErr: purgeErrors[0] ?? null, errCount: purgeErrors.length, ...reclaim }
+  return { oldGroupId, purgedCores, diag, orphanDpsDeleted: orphanDp?.deleted ?? 0, firstErr: purgeErrors[0] ?? null, errCount: purgeErrors.length, ...reclaim }
 }
 
 // Scan every local group record (including tombstoned ones hidden from the
@@ -1134,6 +1146,229 @@ async function purgeAllMigratedGroups (opts = {}) {
     }
   }
   return results
+}
+
+// Enumerate every core in store/db and classify as reachable (belongs to a
+// tracked group) vs orphan. Optional `opts.purge` runs deleteCore(ptr) on
+// every orphan. Returns a per-core report so the caller can sanity check
+// before destroying anything.
+async function auditStorage (opts = {}) {
+  const purge = !!opts.purge
+  const reachable = new Map() // dkHex → source tag
+  const addDk = (dk, tag) => {
+    if (!dk) return
+    try {
+      const buf = b4a.isBuffer(dk) ? dk : b4a.from(dk)
+      const hex = b4a.toString(buf, 'hex')
+      if (!reachable.has(hex)) reachable.set(hex, tag)
+    } catch {}
+  }
+
+  const hpc = require('hypercore-crypto')
+  const groups = []
+  for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    if (value?.id) groups.push(value)
+  }
+
+  for (const g of groups) {
+    const base = bases.get(g.id)
+    const tag = (g.migratedTo ? 'migrated:' : '') + g.id
+    if (base) {
+      try {
+        addDk(base.local?.discoveryKey, tag)
+        if (base.key) addDk(hpc.discoveryKey(base.key), tag)
+        if (base.bootstrap) addDk(hpc.discoveryKey(base.bootstrap), tag)
+        for (const w of (base.activeWriters || base.writers || [])) addDk(w?.core?.discoveryKey, tag)
+        addDk(base.system?.core?.discoveryKey, tag)
+        addDk(base.core?.discoveryKey, tag)
+        addDk(base.view?.feed?.discoveryKey, tag)
+        addDk(base.view?.core?.discoveryKey, tag)
+      } catch (e) { console.warn('[AUDIT] base dks for', g.id, e.message) }
+    }
+    try {
+      if (g.groupKey) addDk(hpc.discoveryKey(b4a.from(g.groupKey, 'hex')), tag)
+    } catch {}
+    try {
+      const nsBuf = store.namespace(g.id).ns
+      for await (const dk of store.list(nsBuf)) addDk(dk, tag)
+    } catch (e) { console.warn('[AUDIT] namespace list for', g.id, e.message) }
+  }
+
+  const storeStorage = store.storage
+  const allCores = []
+  for await (const { discoveryKey, core } of storeStorage.createCoreStream()) {
+    const hex = b4a.toString(discoveryKey, 'hex')
+    const reach = reachable.get(hex) || null
+    allCores.push({
+      dk: hex,
+      corePointer: core.corePointer,
+      dataPointer: core.dataPointer,
+      alias: core.alias ? { namespace: b4a.toString(core.alias.namespace, 'hex'), name: core.alias.name } : null,
+      reach,
+    })
+  }
+
+  const orphans = allCores.filter(c => !c.reach)
+  console.log('[AUDIT] total cores:', allCores.length, 'reachable:', reachable.size, 'orphans:', orphans.length)
+
+  // Safety: refuse to purge if any live (non-migrated) group has no open base.
+  // Without the base open we miss replicated writer cores that have no alias,
+  // and purging would wipe live group data.
+  const liveWithoutBase = groups
+    .filter(g => !g.migratedTo && !bases.has(g.id))
+    .map(g => g.id)
+
+  let purged = 0
+  let dataRangesCleared = 0
+  const purgeErrors = []
+  if (purge && liveWithoutBase.length) {
+    return {
+      totalCores: allCores.length,
+      reachableCount: reachable.size,
+      groupCount: groups.length,
+      orphans: orphans.length,
+      orphanList: [],
+      purged: 0,
+      purgeErrors: [],
+      reclaim: null,
+      abortedLiveWithoutBase: liveWithoutBase,
+    }
+  }
+  if (purge && orphans.length) {
+    const hsKeys = require('hypercore-storage/lib/keys.js')
+    for (const o of orphans) {
+      try {
+        // 1. deleteCore clears auth, sessions, the core range, and any data
+        //    ranges declared in the sessions list. If sessions is null the
+        //    block-data keys keyed by dataPointer get left behind.
+        await storeStorage.deleteCore({ corePointer: o.corePointer, dataPointer: o.dataPointer })
+        purged++
+
+        // 2. Belt-and-suspenders: delete the [core.data(dp), core.data(dp+1))
+        //    range using the stream's dataPointer. Covers the sessions==null
+        //    case and clears block/tree/bitfield/userData/local for that dp.
+        const tx = storeStorage.db.write({ autoDestroy: true })
+        const dStart = hsKeys.core.data(o.dataPointer)
+        const dEnd = hsKeys.core.data(o.dataPointer + 1)
+        tx.tryDeleteRange(dStart, dEnd)
+        await tx.flush()
+        dataRangesCleared++
+      } catch (e) { purgeErrors.push(e.message) }
+    }
+    console.log('[AUDIT] purged orphans:', purged, 'data ranges:', dataRangesCleared, 'errors:', purgeErrors.length)
+  }
+
+  let reclaim = null
+  if (purge && purged > 0) {
+    reclaim = await reclaimStorage().catch(e => ({ errors: [e.message] }))
+  }
+
+  return {
+    totalCores: allCores.length,
+    reachableCount: reachable.size,
+    groupCount: groups.length,
+    orphans: orphans.length,
+    orphanList: orphans.slice(0, 50), // cap for IPC payload
+    sampleReachable: allCores.filter(c => c.reach).slice(0, 5),
+    purged,
+    dataRangesCleared,
+    purgeErrors: purgeErrors.slice(0, 5),
+    reclaim,
+  }
+}
+
+// Scan the raw TL_DATA key-range in store/db RocksDB and delete any
+// [core.data(dp), core.data(dp+1)) sub-range whose dataPointer isn't
+// referenced by any live core (via core.dataPointer, sessions[].dataPointer,
+// or dependency.dataPointer). Catches block/tree/bitfield/userData keys that
+// got orphaned when we wiped core metadata but left stale session-dp ranges
+// behind.
+async function purgeOrphanDataRanges (opts = {}) {
+  const dryRun = !!opts.dryRun
+  const { UINT } = require('index-encoder')
+  const hsKeys = require('hypercore-storage/lib/keys.js')
+  const { CoreRX } = require('hypercore-storage/lib/tx.js')
+  const EMPTY = require('b4a').alloc(0)
+  const storeStorage = store.storage
+
+  // 1. Build live-dp set from every core currently in storage.
+  const liveDps = new Set()
+  const liveCores = []
+  for await (const { discoveryKey, core } of storeStorage.createCoreStream()) {
+    liveCores.push({ dk: b4a.toString(discoveryKey, 'hex'), corePointer: core.corePointer, dataPointer: core.dataPointer })
+    liveDps.add(core.dataPointer)
+  }
+  for (const c of liveCores) {
+    try {
+      const rx = new CoreRX({ corePointer: c.corePointer, dataPointer: c.dataPointer }, storeStorage.db, EMPTY)
+      const sessionsP = rx.getSessions()
+      const depP = rx.getDependency()
+      rx.tryFlush()
+      const sessions = await sessionsP
+      const dep = await depP
+      if (sessions) for (const s of sessions) liveDps.add(s.dataPointer)
+      if (dep) liveDps.add(dep.dataPointer)
+    } catch (e) { /* best-effort */ }
+  }
+
+  // 2. Walk the TL_DATA range one unique-dp at a time. UINT-encoded TL_DATA
+  //    = 4 (single byte); end of range = UINT(5) (single byte).
+  const TL_DATA_START = b4a.from([4])
+  const TL_DATA_END = b4a.from([5])
+  const decodeDp = (key) => {
+    const state = { buffer: key, start: 0, end: key.byteLength }
+    UINT.decode(state) // ns
+    return UINT.decode(state)
+  }
+
+  let pos = TL_DATA_START
+  const uniqueDps = []
+  const orphanDps = []
+  let iterations = 0
+  while (iterations++ < 200000) {
+    let peeked = null
+    for await (const entry of storeStorage.db.iterator({ gte: pos, lt: TL_DATA_END, limit: 1 })) {
+      peeked = entry
+      break
+    }
+    if (!peeked) break
+    const dp = decodeDp(peeked.key)
+    uniqueDps.push(dp)
+    if (!liveDps.has(dp)) orphanDps.push(dp)
+    pos = hsKeys.core.data(dp + 1)
+  }
+
+  console.log('[ORPHAN-DP] live dps:', liveDps.size, 'unique in TL_DATA:', uniqueDps.length, 'orphans:', orphanDps.length)
+
+  let deleted = 0
+  const errors = []
+  if (!dryRun && orphanDps.length) {
+    for (const dp of orphanDps) {
+      try {
+        const tx = storeStorage.db.write({ autoDestroy: true })
+        tx.tryDeleteRange(hsKeys.core.data(dp), hsKeys.core.data(dp + 1))
+        await tx.flush()
+        deleted++
+      } catch (e) { errors.push(e.message) }
+    }
+    console.log('[ORPHAN-DP] deleted ranges:', deleted, 'errors:', errors.length)
+  }
+
+  let reclaim = null
+  if (!dryRun && deleted > 0) {
+    reclaim = await reclaimStorage().catch(e => ({ errors: [e.message] }))
+  }
+
+  return {
+    liveCoreCount: liveCores.length,
+    liveDps: liveDps.size,
+    uniqueDps: uniqueDps.length,
+    orphanDps: orphanDps.length,
+    orphanDpSample: orphanDps.slice(0, 10),
+    deleted,
+    errors: errors.slice(0, 5),
+    reclaim,
+  }
 }
 
 // Rewrite stale groups[] references on local event records after a
@@ -2321,7 +2556,7 @@ async function rebuildLocalDb () {
     try {
       if (store?.storage?.db) {
         await store.storage.db.compactRange(null, null, {
-          exclusive: true, blobGarbageCollectionPolicy: 1, bottommostLevelCompaction: 2,
+          exclusive: true, blobGarbageCollectionPolicy: 1, blobGarbageCollectionAgeCutoff: 1.0, bottommostLevelCompaction: 2,
         })
       }
     } catch (e) { console.warn('[rebuild] store compact failed:', e.message) }
@@ -2354,8 +2589,26 @@ async function reclaimStorage () {
     return total
   }
 
+  async function blobStats (dir) {
+    let entries
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }) }
+    catch { return { count: 0, bytes: 0 } }
+    let count = 0, bytes = 0
+    for (const e of entries) {
+      if (!e.isFile() || !e.name.endsWith('.blob')) continue
+      try { bytes += (await fs.promises.stat(path.join(dir, e.name))).size; count++ } catch {}
+    }
+    return { count, bytes }
+  }
+
+  const storeDbDir = path.join(dataDir, 'store', 'db')
   const before = await dirSize(dataDir)
-  const opts = { exclusive: true, blobGarbageCollectionPolicy: 1, bottommostLevelCompaction: 2 }
+  const blobBefore = await blobStats(storeDbDir)
+  // age_cutoff 1.0 → every blob file is GC-eligible (default 0.25 leaves
+  // the newest 75% untouched, which is why huge .blob files survive purge).
+  // kForce policy on its own only schedules GC eagerly; the cutoff gate
+  // still applies unless we override it here.
+  const opts = { exclusive: true, blobGarbageCollectionPolicy: 1, blobGarbageCollectionAgeCutoff: 1.0, bottommostLevelCompaction: 2 }
   const errors = []
 
   try {
@@ -2371,7 +2624,10 @@ async function reclaimStorage () {
   } catch (e) { errors.push('store: ' + e.message); console.warn('[reclaim] store compact failed:', e.message) }
 
   const after = await dirSize(dataDir)
-  return { before, after, freed: before - after, errors }
+  const blobAfter = await blobStats(storeDbDir)
+  console.log('[reclaim] blobs before:', blobBefore.count, '/', (blobBefore.bytes/1024/1024).toFixed(1), 'MB',
+              '→ after:', blobAfter.count, '/', (blobAfter.bytes/1024/1024).toFixed(1), 'MB')
+  return { before, after, freed: before - after, blobBefore, blobAfter, errors }
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
