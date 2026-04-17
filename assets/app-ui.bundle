@@ -23426,6 +23426,73 @@ ${link}`;
             ]
           }
         ) }) }),
+        (() => {
+          const digestEnabled = profile?.digestEnabled !== false;
+          const digestHour = Number.isFinite(Number(profile?.digestHour)) ? Number(profile.digestHour) : 9;
+          const digestMinute = Number.isFinite(Number(profile?.digestMinute)) ? Number(profile.digestMinute) : 0;
+          const hhmm = String(digestHour).padStart(2, "0") + ":" + String(digestMinute).padStart(2, "0");
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DAILY DIGEST" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 12 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                padding: "14px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, paddingRight: 12 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "Morning summary" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: "Notifies you of today's events so the app foregrounds and peers sync" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  Toggle,
+                  {
+                    val: digestEnabled,
+                    onChange: (v) => {
+                      window.__pearSync?.haptic("light");
+                      onUpdateProfile({ digestEnabled: v });
+                    },
+                    accent: th.accent
+                  }
+                )
+              ] }),
+              digestEnabled && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                padding: "0 16px 14px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between"
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "Time" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "input",
+                  {
+                    type: "time",
+                    value: hhmm,
+                    onChange: (e58) => {
+                      const [hStr, mStr] = e58.target.value.split(":");
+                      const h2 = Number(hStr), m3 = Number(mStr);
+                      if (!isNaN(h2) && !isNaN(m3)) {
+                        window.__pearSync?.haptic("light");
+                        onUpdateProfile({ digestHour: h2, digestMinute: m3 });
+                      }
+                    },
+                    style: {
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      fontSize: 13,
+                      fontWeight: 300,
+                      border: `1px solid ${th.border}`,
+                      background: th.inputBg,
+                      color: th.text.color,
+                      fontFamily: FONT,
+                      appearance: "none"
+                    }
+                  }
+                )
+              ] })
+            ] })
+          ] });
+        })(),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "TIME FORMAT" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
           padding: "14px 16px",
