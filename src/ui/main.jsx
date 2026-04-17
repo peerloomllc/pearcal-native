@@ -100,6 +100,8 @@ const sync = {
   rebuildLocalDb: () => window.__pearDB.call('rebuildLocalDb'),
   rekeyGroup:   (id) => window.__pearDB.call('rekeyGroup', id),
   commitRekey:  (id) => window.__pearDB.call('commitRekey', id),
+  purgeMigratedGroup:     (id, opts) => window.__pearDB.call('purgeMigratedGroup', id, opts),
+  purgeAllMigratedGroups: (opts)     => window.__pearDB.call('purgeAllMigratedGroups', opts),
 }
 
 // Avatar hash resolver with in-memory LRU cache (shared across the app).

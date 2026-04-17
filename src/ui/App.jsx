@@ -1496,6 +1496,27 @@ export default function App ({ db, notifs, sync }) {
                     await updateGroup(updated)
                   },
                 })
+              } else if (req.type === 'purgeMigrated') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Purge Migrated Corestores?',
+                  message: 'Force-delete on-disk Hypercore storage for every tombstoned group on this device. Skips the 14-day grace period. Use for dev testing of the rekey storage reclaim.',
+                  icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
+                  confirmLabel: 'Purge',
+                  dangerous: true,
+                  onConfirm: async () => {
+                    try {
+                      const results = await sync.purgeAllMigratedGroups({ force: true })
+                      const ok = results.filter(r => r.ok)
+                      const freed = ok.reduce((n, r) => n + (r.freed ?? 0), 0)
+                      const cores = ok.reduce((n, r) => n + (r.purgedCores ?? 0), 0)
+                      const diagStr = ok.map(r => JSON.stringify(r.diag) + (r.firstErr ? '\nerr: ' + r.firstErr + ' (' + r.errCount + ')' : '')).join('\n')
+                      window.alert('Purged ' + ok.length + ' groups, ' + cores + ' cores, freed ' + (freed / 1024 / 1024).toFixed(2) + ' MB\n\n' + diagStr)
+                    } catch (e) {
+                      window.alert('Purge failed: ' + (e?.message ?? e))
+                    }
+                  },
+                })
               } else if (req.type === 'rekeyGroup') {
                 setSettingsGroup(null)
                 setConfirmSheet({
@@ -4619,10 +4640,20 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
                   <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'rekeyGroup', g }) }}
                     style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                       fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
-                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10,
+                      borderBottom:`1px solid ${th.border}` }}>
                     <span>Rekey Group</span>
                     <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
                       Rotate group key to reclaim Autobase history (experimental)
+                    </span>
+                  </button>
+                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'purgeMigrated' }) }}
+                    style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
+                      fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
+                      textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
+                    <span>Purge Migrated Corestores</span>
+                    <span style={{ fontSize:11, color:th.muted, fontWeight:300, textAlign:'right' }}>
+                      Force-purge all tombstoned groups now (skip 14-day grace)
                     </span>
                   </button>
                 </div>
