@@ -17,6 +17,7 @@ struct CachedPayload: Codable {
   let date: String
   let generatedAt: Double
   let events: [CachedEvent]
+  let slots: [[Int]]?
   let tomorrowFirst: CachedEvent?
 }
 
@@ -27,6 +28,7 @@ enum Theme {
   static let accent = Color(red: 0xC8 / 255.0, green: 0x92 / 255.0, blue: 0x2A / 255.0)
   static let text = Color(red: 0xF2 / 255.0, green: 0xEF / 255.0, blue: 0xE8 / 255.0)
   static let subtle = Color(red: 0xF2 / 255.0, green: 0xEF / 255.0, blue: 0xE8 / 255.0).opacity(0.6)
+  static let muted = Color(red: 0x8A / 255.0, green: 0x84 / 255.0, blue: 0x78 / 255.0)
 }
 
 // MARK: - Cache loader
@@ -97,6 +99,41 @@ private func eventTimeLabel(_ ev: CachedEvent) -> String {
   return prettyTime(ev.start)
 }
 
+private func minutesFromHHMM(_ s: String?) -> Int? {
+  guard let s = s, s.contains(":") else { return nil }
+  let parts = s.split(separator: ":")
+  guard parts.count >= 2, let h = Int(parts[0]), let m = Int(parts[1]) else { return nil }
+  return h * 60 + m
+}
+
+private func currentMinutes() -> Int {
+  let comps = Calendar.current.dateComponents([.hour, .minute], from: Date())
+  return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
+}
+
+private func findNextUp(_ events: [CachedEvent], nowMin: Int) -> Set<Int> {
+  var happening = Set<Int>()
+  for (i, e) in events.enumerated() {
+    if e.allDay { continue }
+    guard let startMin = minutesFromHHMM(e.start) else { continue }
+    let endMin = minutesFromHHMM(e.end) ?? (startMin + 30)
+    if startMin <= nowMin && nowMin < endMin { happening.insert(i) }
+  }
+  if !happening.isEmpty { return happening }
+  for (i, e) in events.enumerated() {
+    if e.allDay { continue }
+    guard let startMin = minutesFromHHMM(e.start) else { continue }
+    if startMin >= nowMin { return [i] }
+  }
+  return []
+}
+
+private func isPastEvent(_ e: CachedEvent, nowMin: Int) -> Bool {
+  if e.allDay { return false }
+  guard let endMin = minutesFromHHMM(e.end) else { return false }
+  return endMin < nowMin
+}
+
 private func headerDateString() -> String {
   let fmt = DateFormatter()
   fmt.dateFormat = "EEE, MMM d"
@@ -152,25 +189,45 @@ struct MediumView: View {
   let entry: PearCalEntry
 
   var body: some View {
-    let events = Array((entry.payload?.events ?? []).prefix(4))
+    let allEvents = entry.payload?.events ?? []
+    let allSlots: [[Int]] = entry.payload?.slots ?? allEvents.indices.map { [$0] }
+    let shownSlots = Array(allSlots.prefix(4))
+    let shownEventCount = shownSlots.reduce(0) { $0 + $1.count }
+    let remaining = allEvents.count - shownEventCount
     let tomorrow = entry.payload?.tomorrowFirst
+    let nowMin = currentMinutes()
+    let nextUp = findNextUp(allEvents, nowMin: nowMin)
 
     VStack(alignment: .leading, spacing: 6) {
-      HStack {
-        Text(headerDateString()).font(.caption2).foregroundColor(Theme.subtle)
-        Spacer()
-        Text("PearCal").font(.caption2).foregroundColor(Theme.accent)
-      }
-      if !events.isEmpty {
-        ForEach(events) { ev in row(ev) }
-        if (entry.payload?.events.count ?? 0) > events.count {
-          Text("+\((entry.payload?.events.count ?? 0) - events.count) more")
-            .font(.caption2).foregroundColor(Theme.subtle)
+      Text(headerDateString())
+        .font(.caption2)
+        .foregroundColor(Theme.subtle)
+        .frame(maxWidth: .infinity, alignment: .center)
+      if !allEvents.isEmpty {
+        ForEach(Array(shownSlots.enumerated()), id: \.offset) { _, slot in
+          if slot.count >= 2, slot[0] < allEvents.count, slot[1] < allEvents.count {
+            pairedRow(
+              allEvents[slot[0]], allEvents[slot[1]],
+              leftNextUp: nextUp.contains(slot[0]),
+              leftPast: isPastEvent(allEvents[slot[0]], nowMin: nowMin),
+              rightNextUp: nextUp.contains(slot[1]),
+              rightPast: isPastEvent(allEvents[slot[1]], nowMin: nowMin)
+            )
+          } else if slot.count >= 1, slot[0] < allEvents.count {
+            row(
+              allEvents[slot[0]],
+              isNextUp: nextUp.contains(slot[0]),
+              isPast: isPastEvent(allEvents[slot[0]], nowMin: nowMin)
+            )
+          }
+        }
+        if remaining > 0 {
+          Text("+\(remaining) more").font(.caption2).foregroundColor(Theme.subtle)
         }
       } else if let t = tomorrow {
         Spacer()
         Text("NOTHING TODAY — TOMORROW").font(.caption2).foregroundColor(Theme.accent)
-        row(t)
+        row(t, isNextUp: false, isPast: false)
         Spacer()
       } else {
         Spacer()
@@ -182,13 +239,48 @@ struct MediumView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 
+  private func titleColor(isNextUp: Bool, isPast: Bool) -> Color {
+    if isPast { return Theme.muted }
+    if isNextUp { return Theme.accent }
+    return Theme.text
+  }
+
   @ViewBuilder
-  private func row(_ ev: CachedEvent) -> some View {
-    HStack(spacing: 8) {
-      RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color)).frame(width: 3, height: 20)
-      Text(ev.title).font(.system(size: 13, weight: .medium)).foregroundColor(Theme.text).lineLimit(1)
+  private func row(_ ev: CachedEvent, isNextUp: Bool, isPast: Bool) -> some View {
+    let tColor = titleColor(isNextUp: isNextUp, isPast: isPast)
+    let timeColor: Color = isNextUp ? Theme.accent : Theme.muted
+    let hasLoc = !(ev.location ?? "").isEmpty
+    VStack(alignment: .leading, spacing: 1) {
+      HStack(spacing: 8) {
+        RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color)).frame(width: 3, height: 20)
+        Text(ev.title).font(.system(size: 13, weight: .medium)).foregroundColor(tColor).lineLimit(1)
+        Spacer()
+        Text(eventTimeLabel(ev)).font(.caption2).foregroundColor(timeColor)
+      }
+      if hasLoc, let loc = ev.location {
+        Text(loc)
+          .font(.system(size: 10))
+          .foregroundColor(isPast ? Theme.muted.opacity(0.5) : Theme.muted)
+          .lineLimit(1)
+          .padding(.leading, 11)
+      }
+    }
+  }
+
+  @ViewBuilder
+  private func pairedRow(_ a: CachedEvent, _ b: CachedEvent,
+                         leftNextUp: Bool, leftPast: Bool,
+                         rightNextUp: Bool, rightPast: Bool) -> some View {
+    let aColor = titleColor(isNextUp: leftNextUp, isPast: leftPast)
+    let bColor = titleColor(isNextUp: rightNextUp, isPast: rightPast)
+    let timeColor: Color = (leftNextUp || rightNextUp) ? Theme.accent : Theme.muted
+    HStack(spacing: 6) {
+      RoundedRectangle(cornerRadius: 2).fill(swatch(a.color)).frame(width: 3, height: 20)
+      Text(a.title).font(.system(size: 13, weight: .medium)).foregroundColor(aColor).lineLimit(1)
+      RoundedRectangle(cornerRadius: 2).fill(swatch(b.color)).frame(width: 3, height: 20).padding(.leading, 2)
+      Text(b.title).font(.system(size: 13, weight: .medium)).foregroundColor(bColor).lineLimit(1)
       Spacer()
-      Text(eventTimeLabel(ev)).font(.caption2).foregroundColor(Theme.accent)
+      Text(eventTimeLabel(a)).font(.caption2).foregroundColor(timeColor)
     }
   }
 }
