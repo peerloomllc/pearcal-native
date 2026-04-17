@@ -553,7 +553,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCal/PearCal.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -566,7 +566,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.17;
+				MARKETING_VERSION = 1.0.19;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -593,7 +593,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCal/PearCal.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				INFOPLIST_FILE = PearCal/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -601,7 +601,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.17;
+				MARKETING_VERSION = 1.0.19;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -627,7 +627,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCalWidget/PearCalWidget.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				INFOPLIST_FILE = PearCalWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -636,7 +636,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.17;
+				MARKETING_VERSION = 1.0.19;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pearcal.widget;
 				PRODUCT_NAME = PearCalWidget;
 				PROVISIONING_PROFILE_SPECIFIER = "PearCal Widget Development";
@@ -774,7 +774,7 @@
 				CODE_SIGN_ENTITLEMENTS = PearCalWidget/PearCalWidget.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Manual;
-				CURRENT_PROJECT_VERSION = 12;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = G79ALD29NA;
 				INFOPLIST_FILE = PearCalWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
@@ -783,7 +783,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.17;
+				MARKETING_VERSION = 1.0.19;
 				PRODUCT_BUNDLE_IDENTIFIER = com.pearcal.widget;
 				PRODUCT_NAME = PearCalWidget;
 				PROVISIONING_PROFILE_SPECIFIER = "PearCal Widget Development";
