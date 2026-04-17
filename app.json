@@ -39,6 +39,10 @@
         "NSCameraUsageDescription": "Used to set your profile photo",
         "NSPhotoLibraryUsageDescription": "Used to set your profile photo",
         "NSMicrophoneUsageDescription": "Required by AVCaptureSession for QR scanning and camera capture",
+        "NSLocalNetworkUsageDescription": "PearCal connects directly to nearby devices on your Wi-Fi to sync calendars peer-to-peer.",
+        "NSBonjourServices": [
+          "_hyperswarm._udp"
+        ],
         "LSApplicationQueriesSchemes": [
           "lightning"
         ]
