@@ -126,6 +126,8 @@ async function handle (method, args) {
     case 'removeBlindPeerKey': return removeBlindPeerKey()
     case 'rekeyGroup':       return rekeyGroup(args[0])
     case 'commitRekey':      return commitRekey(args[0])
+    case 'purgeMigratedGroup':    return purgeMigratedGroup(args[0], args[1] ?? {})
+    case 'purgeAllMigratedGroups': return purgeAllMigratedGroups(args[0] ?? {})
     case 'reclaimStorage': return reclaimStorage()
     case 'storageBreakdown': return storageBreakdown()
     case 'getAvatar':        return getAvatar(args[0])
@@ -577,7 +579,28 @@ const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pendi
 const notifiedRsvps = new Set()        // 'eventId:memberId:updatedAt' — prevents duplicate RSVP notifications across apply() replays
 const rsvpCoalesce = new Map()         // eventId → { timeout, entries: [{ name, status }] } — debounces RSVP bursts
 
+// De-dupe concurrent joinGroup(id) calls. The main startup loop and
+// adoptGroupMigration's setTimeout cascade can race for the same group:
+// both pass bases.has() before either reaches bases.set(), creating two
+// Autobase instances over the same corestore namespace. The second write
+// wins, but the first flight dangles awaiting base.ready() and can starve
+// subsequent init() steps. Returning the in-flight promise keeps the
+// post-joinGroup work on the single completion of the first call.
+const _joinInFlight = new Map()
+
 async function joinGroup (group) {
+  if (bases.has(group.id)) return
+  const inflight = _joinInFlight.get(group.id)
+  if (inflight) return inflight
+  const p = (async () => {
+    try { return await _joinGroupImpl(group) }
+    finally { _joinInFlight.delete(group.id) }
+  })()
+  _joinInFlight.set(group.id, p)
+  return p
+}
+
+async function _joinGroupImpl (group) {
   if (bases.has(group.id)) return
 
   // Persist joinedAt as a dedicated key so it survives group record overwrites
@@ -833,6 +856,7 @@ async function commitRekey (oldGroupId) {
     await db.put(NS.groups + oldGroupId, {
       ...oldNode.value,
       migratedTo: descriptor.newGroupId,
+      migratedAt: Date.now(),
       updatedAt:  Date.now(),
     })
   }
@@ -914,6 +938,7 @@ async function adoptGroupMigration (oldGroupId, marker) {
     await db.put(NS.groups + oldGroupId, {
       ...oldGroup,
       migratedTo: newGroupId,
+      migratedAt: Date.now(),
       updatedAt:  Date.now(),
     })
   }
@@ -930,6 +955,185 @@ async function adoptGroupMigration (oldGroupId, marker) {
     newGroupId,
     newGroupKey,
   }})
+}
+
+// Phase 3: grace period before an old (migrated) group's cores are purged
+// from disk. During the grace window the tombstoned group stays dormant
+// (not joined to the swarm, not mirrored) but its corestore is kept so a
+// straggler member can still adopt the migration marker over a direct
+// hyperswarm connection if they were offline at go-live time.
+const MIGRATION_GRACE_MS = 14 * 24 * 60 * 60 * 1000
+
+// Phase 3: purge the on-disk corestore footprint of a migrated (tombstoned)
+// group. Closes the old Autobase if still open, leaves the swarm topic,
+// enumerates every Hypercore in the old group's namespace and calls
+// core.purge() to wipe it from storage, then deletes local DB side-metadata
+// for the group and compacts RocksDB to release the freed blocks.
+//
+// Normally only runs once migratedAt is older than MIGRATION_GRACE_MS.
+// `{ force: true }` skips the grace check (dev / explicit "Purge now").
+async function purgeMigratedGroup (oldGroupId, opts = {}) {
+  const force = !!opts.force
+  const oldGroup = await getGroup(oldGroupId)
+  if (!oldGroup) throw new Error('purgeMigratedGroup: unknown group ' + oldGroupId)
+  if (!oldGroup.migratedTo) throw new Error('purgeMigratedGroup: group not migrated ' + oldGroupId)
+
+  if (!force) {
+    const migratedAt = oldGroup.migratedAt ?? 0
+    const age = Date.now() - migratedAt
+    if (age < MIGRATION_GRACE_MS) {
+      const daysLeft = Math.ceil((MIGRATION_GRACE_MS - age) / (24 * 60 * 60 * 1000))
+      throw new Error('purgeMigratedGroup: grace period not elapsed (' + daysLeft + 'd left)')
+    }
+  }
+
+  console.log('[PURGE] starting purge of migrated group:', oldGroupId, 'force=' + force)
+
+  // 1. Snapshot discovery keys held by the open base (writer cores, system,
+  //    view, local). Must run BEFORE base.close() so we can enumerate the
+  //    replicated-by-key cores that have no namespace alias. Namespace alias
+  //    enumeration (store.list) only catches locally-named cores and misses
+  //    writers adopted over replication.
+  const dkSet = new Map() // hex → Buffer
+  const addDk = (dk) => {
+    if (!dk) return
+    try {
+      const buf = b4a.isBuffer(dk) ? dk : b4a.from(dk)
+      dkSet.set(b4a.toString(buf, 'hex'), buf)
+    } catch {}
+  }
+  const diag = { baseFound: false, fromLocal: 0, fromWriters: 0, fromSystem: 0, fromView: 0, fromNs: 0 }
+  const base = bases.get(oldGroupId)
+  if (base) {
+    diag.baseFound = true
+    try {
+      const before = dkSet.size
+      addDk(base.local?.discoveryKey)
+      try {
+        const hpc = require('hypercore-crypto')
+        addDk(base.key && hpc.discoveryKey(base.key))
+        addDk(base.bootstrap && hpc.discoveryKey(base.bootstrap))
+      } catch {}
+      diag.fromLocal = dkSet.size - before
+
+      const beforeW = dkSet.size
+      const writers = base.activeWriters || base.writers || []
+      try {
+        for (const w of writers) addDk(w?.core?.discoveryKey)
+      } catch (e) { console.warn('[PURGE] writers iter:', e.message) }
+      diag.fromWriters = dkSet.size - beforeW
+
+      const beforeS = dkSet.size
+      addDk(base.system?.core?.discoveryKey)
+      addDk(base.core?.discoveryKey)
+      diag.fromSystem = dkSet.size - beforeS
+
+      const beforeV = dkSet.size
+      addDk(base.view?.feed?.discoveryKey)
+      addDk(base.view?.core?.discoveryKey)
+      diag.fromView = dkSet.size - beforeV
+    } catch (e) { console.warn('[PURGE] snapshot dks:', e.message) }
+    try { await base.close() } catch (e) { console.warn('[PURGE] base close:', e.message) }
+    bases.delete(oldGroupId)
+  }
+
+  // Also pull any cores alias-registered under the groupId namespace (covers
+  // the auto-purge path where the base was never reopened this session).
+  try {
+    const nsBuf = store.namespace(oldGroupId).ns
+    const beforeN = dkSet.size
+    for await (const dk of store.list(nsBuf)) addDk(dk)
+    diag.fromNs = dkSet.size - beforeN
+  } catch (e) { console.warn('[PURGE] namespace enumeration:', e.message) }
+
+  console.log('[PURGE] dk sources for', oldGroupId, diag)
+
+  // 2. Leave the swarm topic for this group.
+  if (swarm && oldGroup.groupKey) {
+    try {
+      const topic = b4a.from(oldGroup.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+      await swarm.leave(topic).catch(() => {})
+    } catch (e) { console.warn('[PURGE] swarm leave:', e.message) }
+  }
+
+  // 3. Purge every snapshotted core from storage. Hypercore 11.26 has a
+  //    broken session.purge() (references undefined _closeAllSessions), so
+  //    we open a session for each dk, capture the underlying core pointer,
+  //    close the session, then call CorestoreStorage.deleteCore(ptr).
+  let purgedCores = 0
+  const purgeErrors = []
+  for (const buf of dkSet.values()) {
+    try {
+      const core = store.get({ discoveryKey: buf })
+      await core.ready()
+      const sessionStorage = core.state?.storage
+      const storeStorage = sessionStorage?.store ?? store.storage
+      const ptr = sessionStorage?.core
+      try { await core.close() } catch {}
+      if (!ptr || !storeStorage?.deleteCore) throw new Error('no ptr/storage')
+      await storeStorage.deleteCore(ptr)
+      purgedCores++
+    } catch (e) { purgeErrors.push(e.message) }
+  }
+  if (purgeErrors.length) console.warn('[PURGE] core purge errors:', purgeErrors.length, purgeErrors[0])
+  console.log('[PURGE] discovery keys enumerated:', dkSet.size, 'purged:', purgedCores)
+
+  // 4. Delete local DB side-metadata keyed by the old groupId.
+  const sideDels = [
+    NS.groups  + oldGroupId,
+    'joinedAt:' + oldGroupId,
+    'selfBroadcasted:' + oldGroupId,
+    'pendingMigration:' + oldGroupId,
+    'pendingLeaveKey:' + oldGroupId,
+  ]
+  for (const k of sideDels) { await db.del(k).catch(() => {}) }
+
+  // Range-scoped deletes
+  const rangePrefixes = [
+    'knownWriter:' + oldGroupId + ':',
+    'blockedWriter:' + oldGroupId + ':',
+    NS.members + oldGroupId + ':',
+    'pendingLeave:' + oldGroupId + ':',
+  ]
+  for (const prefix of rangePrefixes) {
+    for await (const { key } of db.createReadStream({ gt: prefix, lt: prefix + '\xff' })) {
+      await db.del(key).catch(() => {})
+    }
+  }
+
+  migratedGroups.delete(oldGroupId)
+
+  // 5. Compact RocksDB to release the freed core blocks.
+  const reclaim = await reclaimStorage().catch(e => {
+    console.warn('[PURGE] reclaim failed:', e.message)
+    return { errors: [e.message] }
+  })
+
+  console.log('[PURGE] done:', oldGroupId, 'cores=' + purgedCores, 'freed=' + (reclaim?.freed ?? 0))
+  send({ type: 'event', event: 'groupPurged', data: { oldGroupId, purgedCores, ...reclaim } })
+  return { oldGroupId, purgedCores, diag, firstErr: purgeErrors[0] ?? null, errCount: purgeErrors.length, ...reclaim }
+}
+
+// Scan every local group record (including tombstoned ones hidden from the
+// UI) and purge any whose migration grace period has elapsed — or all of
+// them unconditionally when force is set (dev override).
+// Returns a per-group result array; failures are captured, not thrown.
+async function purgeAllMigratedGroups (opts = {}) {
+  const force = !!opts.force
+  const results = []
+  const candidates = []
+  for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    if (value?.migratedTo && value?.id) candidates.push(value)
+  }
+  for (const g of candidates) {
+    try {
+      const res = await purgeMigratedGroup(g.id, { force })
+      results.push({ ok: true, ...res })
+    } catch (e) {
+      results.push({ ok: false, oldGroupId: g.id, error: e.message })
+    }
+  }
+  return results
 }
 
 // Rewrite stale groups[] references on local event records after a
@@ -2540,6 +2744,20 @@ async function _doInit (dir, attempt = 0) {
         if (g?.migratedTo && g.id) await rewriteLocalEventGroupIds(g.id, g.migratedTo)
       }
     } catch (e) { console.warn('[REKEY] startup rewrite error:', e.message) }
+
+    // Phase 3: auto-purge any migrated group whose grace period has elapsed.
+    // Runs before joinGroup so we don't waste a swarm topic on cores we're
+    // about to delete. Errors are swallowed — purge is best-effort at boot.
+    try {
+      const purged = await purgeAllMigratedGroups({ force: false })
+      const wiped = new Set(purged.filter(r => r.ok).map(r => r.oldGroupId))
+      if (wiped.size > 0) {
+        console.log('[REKEY] startup purged', wiped.size, 'expired migrated groups')
+        for (let i = groups.length - 1; i >= 0; i--) {
+          if (wiped.has(groups[i].id)) groups.splice(i, 1)
+        }
+      }
+    } catch (e) { console.warn('[REKEY] startup purge error:', e.message) }
 
     // Startup dedup: clean up same-name duplicate members left over from
     // reinstall/wipe rejoins that occurred before the dedup logic was deployed.
