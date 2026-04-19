@@ -1,0 +1,43 @@
+diff --git a/node_modules/autobase/lib/apply-state.js b/node_modules/autobase/lib/apply-state.js
+index 76dd6dc..7197474 100644
+--- a/node_modules/autobase/lib/apply-state.js
++++ b/node_modules/autobase/lib/apply-state.js
+@@ -923,6 +923,7 @@ module.exports = class ApplyState extends ReadyResource {
+       const indexedLength = v ? v.length : 0
+ 
+       if (!indexedLength) continue
++      if (!view.ref) continue
+ 
+       const viewIndex = view.mappedIndex
+       promises[viewIndex] = this._signViewCore(view.ref.atomicBatch, indexedLength)
+@@ -1120,7 +1121,10 @@ module.exports = class ApplyState extends ReadyResource {
+   _startTrace(node) {
+     this.systemRef.tracer.start()
+     this.encryptionView.ref.tracer.start()
+-    for (let i = 0; i < this.views.length; i++) this.views[i].ref.tracer.start()
++    for (let i = 0; i < this.views.length; i++) {
++      const ref = this.views[i] && this.views[i].ref
++      if (ref) ref.tracer.start()
++    }
+   }
+ 
+   _endTrace(node) {
+@@ -1131,7 +1135,9 @@ module.exports = class ApplyState extends ReadyResource {
+     }
+ 
+     for (let i = 0; i < this.views.length; i++) {
+-      const blocks = this.views[i].ref.tracer.end()
++      const ref = this.views[i] && this.views[i].ref
++      if (!ref) continue
++      const blocks = ref.tracer.end()
+       if (blocks.length) trace.user.push({ view: i, blocks })
+     }
+ 
+@@ -1209,6 +1215,7 @@ module.exports = class ApplyState extends ReadyResource {
+       if (!blocks) continue
+ 
+       const view = this.views[k]
++      if (!view || !view.core) continue
+       view.core.download({ blocks })
+     }
+ 

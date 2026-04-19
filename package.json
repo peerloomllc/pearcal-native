@@ -7,7 +7,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "bundle:bare": "bare-pack --linked src/bare.js -o assets/bare-universal.bundle",
-    "bundle:ui": "esbuild src/ui/App.jsx --bundle --format=iife --global-name=PearCalApp --jsx-factory=React.createElement --jsx-fragment=React.Fragment --outfile=assets/app-ui.bundle"
+    "bundle:ui": "esbuild src/ui/App.jsx --bundle --format=iife --global-name=PearCalApp --jsx-factory=React.createElement --jsx-fragment=React.Fragment --outfile=assets/app-ui.bundle",
+    "postinstall": "patch-package"
   },
   "author": "Holepunch",
   "license": "Apache-2.0",
@@ -20,6 +21,7 @@
     "@phosphor-icons/react": "^2.1.10",
     "autobase": "^7.25.1",
     "b4a": "^1.8.0",
+    "blind-peering": "^2.0.1",
     "corestore": "^7.8.0",
     "expo": "^54.0.10",
     "expo-build-properties": "^1.0.9",
@@ -48,6 +50,7 @@
     "bare-bundle": "^1.10.0",
     "bare-pack": "^2.0.0",
     "esbuild": "^0.27.3",
+    "patch-package": "^8.0.1",
     "prettier": "^3.3.3",
     "prettier-config-standard": "^7.0.0",
     "typescript": "^5.3.3"
