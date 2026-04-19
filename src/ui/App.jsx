@@ -1273,9 +1273,11 @@ export default function App ({ db, notifs, sync }) {
             ? updatedProfile.avatar
             : (updatedProfile.avatar?.startsWith?.('data:') ? updatedProfile.avatar
                 : (updatedProfile.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?')
-          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar }
+          // Null avatarHash so a prior dedup ref doesn't outlive the avatar change.
+          // On a new photo, appendGroupWithAvatarSplit repopulates the hash via sync.
+          const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar, avatarHash: null }
           await db.putMember(g.id, updatedMember).catch(() => {})
-          const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember } : m), updatedAt: Date.now() }
+          const updatedGroup = { ...g, members: g.members.map(m => m.id === updatedProfile.id ? { ...m, ...updatedMember, avatarHash: null } : m), updatedAt: Date.now() }
           // Write updated group to local DB so sync reload gets correct data
           await db.putGroup(updatedGroup).catch(() => {})
           // Retry sync a few times in case Autobase isn't writable yet
@@ -1298,7 +1300,7 @@ export default function App ({ db, notifs, sync }) {
       : (updatedProfile2.name ?? '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0,2) || '?'
     setGroups(prev => prev.map(g => ({
       ...g,
-      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: memberAvatarForState } : m) ?? []
+      members: g.members?.map(m => m.id === updatedProfile2.id ? { ...m, name: updatedProfile2.name, avatar: memberAvatarForState, avatarHash: null } : m) ?? []
     })))
   }, [db, profile, groups, sync])
   const updateProfileRef = useRef(updateProfile)
