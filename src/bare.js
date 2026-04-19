@@ -776,6 +776,14 @@ async function _joinGroupImpl (group) {
 
   bases.set(group.id, base)
 
+  // Snapshot every writer key autobase currently knows about into the durable
+  // knownWriter:{groupId}:* index. Peer writer cores have no namespace alias
+  // and only live in `base.activeWriters` while the base is open, so without
+  // this snapshot the orphan-sweep audit can't tell them apart from genuine
+  // orphans once the base is closed (or hasn't fully drained yet).
+  await snapshotKnownWriters(group.id, base).catch(e =>
+    console.warn('[SNAPSHOT_WRITERS]', group.id, e?.message))
+
   // Non-owner: broadcast our member record to Autobase once we become writable.
   // This handles the case where the owner's iOS app was in the background when we
   // joined — the invite.js broadcastSelf retries exhaust before addWriter fires.
@@ -1136,6 +1144,22 @@ async function purgeMigratedGroup (oldGroupId, opts = {}) {
     diag.fromNs = dkSet.size - beforeN
   } catch (e) { console.warn('[PURGE] namespace enumeration:', e.message) }
 
+  // Fallback: peer writer cores have no namespace alias and only show up via
+  // base.activeWriters, so when the base wasn't open this session we miss
+  // them. The durable knownWriter index covers exactly that case — read it
+  // and convert to discovery keys.
+  diag.fromKnownWriter = 0
+  try {
+    const prefix = 'knownWriter:' + oldGroupId + ':'
+    const hpc = require('hypercore-crypto')
+    const beforeK = dkSet.size
+    for await (const { key } of db.createReadStream({ gt: prefix, lt: prefix + '\xff' })) {
+      const writerHex = key.slice(prefix.length)
+      try { addDk(hpc.discoveryKey(b4a.from(writerHex, 'hex'))) } catch {}
+    }
+    diag.fromKnownWriter = dkSet.size - beforeK
+  } catch (e) { console.warn('[PURGE] knownWriter enumeration:', e.message) }
+
   console.log('[PURGE] dk sources for', oldGroupId, diag)
 
   // 2. Leave the swarm topic for this group.
@@ -1236,6 +1260,26 @@ async function purgeAllMigratedGroups (opts = {}) {
   return results
 }
 
+// Persist every writer key autobase currently knows about for `groupId` to
+// the knownWriter:{groupId}:{writerHex} index. This is the durable record
+// orphan-sweep audit and migrated-group purge consult to identify peer writer
+// cores (which have no namespace alias) without needing to crack open the
+// base. Idempotent — already-recorded keys just get their ts refreshed.
+async function snapshotKnownWriters (groupId, base) {
+  if (!base) return
+  const writerKeys = new Set()
+  try { if (base.local?.key) writerKeys.add(b4a.toString(base.local.key, 'hex')) } catch {}
+  try {
+    for (const w of (base.activeWriters || base.writers || [])) {
+      const k = w?.core?.key
+      if (k) writerKeys.add(b4a.toString(k, 'hex'))
+    }
+  } catch {}
+  for (const hex of writerKeys) {
+    await db.put('knownWriter:' + groupId + ':' + hex, { ts: Date.now() }).catch(() => {})
+  }
+}
+
 // Enumerate every core in store/db and classify as reachable (belongs to a
 // tracked group) vs orphan. Optional `opts.purge` runs deleteCore(ptr) on
 // every orphan. Returns a per-core report so the caller can sanity check
@@ -1280,6 +1324,19 @@ async function auditStorage (opts = {}) {
       const nsBuf = store.namespace(g.id).ns
       for await (const dk of store.list(nsBuf)) addDk(dk, tag)
     } catch (e) { console.warn('[AUDIT] namespace list for', g.id, e.message) }
+    // Durable writer index — covers peer writer cores even when the base is
+    // closed (or wasn't loaded this session, e.g. migrated groups under
+    // grace). Without this, sweep can't tell unaliased peer writer cores
+    // apart from genuine orphans and would happily delete live data.
+    try {
+      const prefix = 'knownWriter:' + g.id + ':'
+      for await (const { key } of db.createReadStream({ gt: prefix, lt: prefix + '\xff' })) {
+        const writerHex = key.slice(prefix.length)
+        try {
+          addDk(hpc.discoveryKey(b4a.from(writerHex, 'hex')), 'knownWriter:' + tag)
+        } catch {}
+      }
+    } catch (e) { console.warn('[AUDIT] knownWriter for', g.id, e.message) }
   }
 
   const storeStorage = store.storage
@@ -2962,6 +3019,14 @@ async function _doInit (dir, attempt = 0) {
             }
             const { groupId, writerKey } = parsed
 
+            // Record this writer in our durable index regardless of role.
+            // Audit and migrated-group purge use knownWriter to identify peer
+            // writer cores; without this, non-owners' audits would see them
+            // as orphans and a sweep would purge live data.
+            if (groupId && writerKey) {
+              await db.put('knownWriter:' + groupId + ':' + writerKey, { ts: Date.now() }).catch(() => {})
+            }
+
             const base = bases.get(groupId)
             if (base) {
               Promise.all([getProfile(), getGroup(groupId)]).then(async ([profile, group]) => {
@@ -3173,6 +3238,15 @@ async function _doInit (dir, attempt = 0) {
     }
 
     for (const g of groups) {
+      // Skip migrated source groups whose target group exists locally — adopt
+      // already completed in a prior session, so re-opening the old base is
+      // unnecessary. Re-opening it can crash autobase apply when peer writer
+      // cores were misclassified as orphans by an earlier sweep, so we leave
+      // it dormant until the grace-period purge cleans it up.
+      if (g.migratedTo) {
+        const target = await db.get(NS.groups + g.migratedTo).catch(() => null)
+        if (target?.value) continue
+      }
       await joinGroup(g).catch(e => console.error('joinGroup error:', e.message))
     }
 
