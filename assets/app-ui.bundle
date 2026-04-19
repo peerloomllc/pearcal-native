@@ -16320,6 +16320,15 @@
     const h12 = h2 % 12 === 0 ? 12 : h2 % 12;
     return h12 + ":" + mStr + ampm;
   }
+  function formatRelativeTime(ts) {
+    if (!ts) return "";
+    const diff = Date.now() - ts;
+    if (diff < 0 || diff < 1e4) return "just now";
+    if (diff < 6e4) return Math.floor(diff / 1e3) + "s ago";
+    if (diff < 36e5) return Math.floor(diff / 6e4) + "m ago";
+    if (diff < 864e5) return Math.floor(diff / 36e5) + "h ago";
+    return Math.floor(diff / 864e5) + "d ago";
+  }
   var GROUP_COLORS = ["#6C9BF5", "#5DBF8A", "#E5864A", "#D45F7A", "#A97FD4", "#4BBDCC", "#F5C842", "#E07B54"];
   var GROUP_EMOJIS = ["\u{1F468}\u200D\u{1F469}\u200D\u{1F467}\u200D\u{1F466}", "\u26BD", "\u{1F4DA}", "\u{1F3AE}", "\u{1F3CB}\uFE0F", "\u{1F3B5}", "\u{1F33F}", "\u{1F43E}", "\u2708\uFE0F", "\u{1F355}", "\u{1F4BC}", "\u{1F3A8}"];
   var DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -16432,6 +16441,16 @@
     };
     const [readyGroupKeys, setReadyGroupKeys] = (0, import_react2.useState)(() => /* @__PURE__ */ new Set());
     const [blindPeerKey, setBlindPeerKey] = (0, import_react2.useState)(null);
+    const [syncingGroups, setSyncingGroups] = (0, import_react2.useState)(() => /* @__PURE__ */ new Set());
+    const [lastSyncedAt, setLastSyncedAt] = (0, import_react2.useState)(() => {
+      try {
+        return JSON.parse(localStorage.getItem("pearcal:lastSyncedAt") ?? "{}");
+      } catch {
+        return {};
+      }
+    });
+    const [pullState, setPullState] = (0, import_react2.useState)({ distance: 0, active: false });
+    const pullStateRef = (0, import_react2.useRef)({ startY: 0, pulling: false, distance: 0 });
     const th = themes();
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
@@ -16517,6 +16536,38 @@
         });
       }
       emitter.on("sync", onSync);
+      function onSyncing(d) {
+        const gid = d?.groupId;
+        if (!gid) return;
+        setSyncingGroups((prev) => {
+          const s10 = new Set(prev);
+          s10.add(gid);
+          return s10;
+        });
+      }
+      function onSynced(d) {
+        const gid = d?.groupId;
+        const ts = d?.ts ?? Date.now();
+        if (gid) {
+          setSyncingGroups((prev) => {
+            const s10 = new Set(prev);
+            s10.delete(gid);
+            return s10;
+          });
+          setLastSyncedAt((prev) => {
+            const next = { ...prev, [gid]: ts };
+            try {
+              localStorage.setItem("pearcal:lastSyncedAt", JSON.stringify(next));
+            } catch {
+            }
+            return next;
+          });
+        } else {
+          setSyncingGroups(/* @__PURE__ */ new Set());
+        }
+      }
+      emitter.on("syncing", onSyncing);
+      emitter.on("synced", onSynced);
       function onGroupDeleted(groupId) {
         setGroups((prev) => prev.filter((g) => g.id !== groupId));
         setEvents((prev) => prev.map((e58) => ({ ...e58, groups: e58.groups.filter((gid) => gid !== groupId) })).filter((e58) => e58.groups.length > 0));
@@ -16571,6 +16622,8 @@
       emitter.on("groupKeyUpdated", onGroupKeyUpdated);
       return () => {
         emitter.off("sync", onSync);
+        emitter.off("syncing", onSyncing);
+        emitter.off("synced", onSynced);
         emitter.off("groupDeleted", onGroupDeleted);
         emitter.off("inviteBlocked", onInviteBlocked);
         emitter.off("group:joined", onGroupJoined);
@@ -16583,6 +16636,63 @@
     (0, import_react2.useEffect)(() => {
       tabRef.current = tab;
     }, [tab]);
+    (0, import_react2.useEffect)(() => {
+      if (!db2) return;
+      if (tab !== "calendar") return;
+      const THRESHOLD = 80;
+      const CAP = 140;
+      function findScroller(el) {
+        let cur = el;
+        while (cur && cur !== document.body) {
+          const style = getComputedStyle(cur);
+          if (/auto|scroll/.test(style.overflowY) && cur.scrollHeight > cur.clientHeight) return cur;
+          cur = cur.parentElement;
+        }
+        return null;
+      }
+      function onStart(e58) {
+        const t7 = e58.touches?.[0];
+        if (!t7) return;
+        const scroller = findScroller(e58.target);
+        const top = scroller?.scrollTop ?? 0;
+        pullStateRef.current = { startY: t7.clientY, pulling: top <= 0, distance: 0 };
+      }
+      function onMove(e58) {
+        const s10 = pullStateRef.current;
+        if (!s10.pulling) return;
+        const t7 = e58.touches?.[0];
+        if (!t7) return;
+        const dy = t7.clientY - s10.startY;
+        if (dy <= 0) {
+          s10.pulling = false;
+          s10.distance = 0;
+          setPullState({ distance: 0, active: false });
+          return;
+        }
+        s10.distance = Math.min(dy, CAP);
+        setPullState({ distance: s10.distance, active: true });
+      }
+      function onEnd() {
+        const s10 = pullStateRef.current;
+        if (s10.pulling && s10.distance > THRESHOLD) {
+          db2.resyncAll?.().catch(() => {
+          });
+        }
+        s10.pulling = false;
+        s10.distance = 0;
+        setPullState({ distance: 0, active: false });
+      }
+      window.addEventListener("touchstart", onStart, { passive: true });
+      window.addEventListener("touchmove", onMove, { passive: true });
+      window.addEventListener("touchend", onEnd, { passive: true });
+      window.addEventListener("touchcancel", onEnd, { passive: true });
+      return () => {
+        window.removeEventListener("touchstart", onStart);
+        window.removeEventListener("touchmove", onMove);
+        window.removeEventListener("touchend", onEnd);
+        window.removeEventListener("touchcancel", onEnd);
+      };
+    }, [db2, tab]);
     const _scene = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
     (0, import_react2.useEffect)(() => {
       if (!_scene) return;
@@ -17027,6 +17137,13 @@
       setEvents((prev) => prev.map((e58) => ({ ...e58, groups: e58.groups.filter((gid) => gid !== id) })).filter((e58) => e58.groups.length > 0));
       setSettingsGroup(null);
     }, [db2, sync2, groups, profile]);
+    const removeBrokenGroup = (0, import_react2.useCallback)(async (id) => {
+      if (sync2?.removeBrokenGroup) await sync2.removeBrokenGroup(id).catch(() => {
+      });
+      setGroups((prev) => prev.filter((g) => g.id !== id));
+      setEvents((prev) => prev.map((e58) => ({ ...e58, groups: e58.groups.filter((gid) => gid !== id) })).filter((e58) => e58.groups.length > 0));
+      setSettingsGroup(null);
+    }, [sync2]);
     const removeMember = (0, import_react2.useCallback)(async (g, uid) => {
       const removedMember = g.members.find((m3) => m3.id === uid);
       const removedMembers = [...g.removedMembers ?? [], {
@@ -17271,6 +17388,56 @@
           textAlign: "center",
           lineHeight: 1.5
         }, children: "You were removed from this group and cannot rejoin with this link." }),
+        syncingGroups.size > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+          position: "fixed",
+          top: "calc(var(--safe-area-top) + 8px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: th.card?.background ?? "var(--color-card)",
+          border: `1px solid ${th.border}`,
+          borderRadius: "var(--radius-lg)",
+          padding: "6px 12px",
+          fontSize: 12,
+          fontWeight: 300,
+          zIndex: 400,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          ...th.text
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Spinner, { size: 12 }),
+          " Syncing\u2026"
+        ] }),
+        pullState.active && syncingGroups.size === 0 && (() => {
+          const pct = Math.min(1, pullState.distance / 80);
+          const ready2 = pullState.distance > 80;
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            position: "fixed",
+            top: `calc(var(--safe-area-top) + ${4 + pullState.distance * 0.25}px)`,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: th.card?.background ?? "var(--color-card)",
+            border: `1px solid ${th.border}`,
+            borderRadius: "var(--radius-lg)",
+            padding: "6px 12px",
+            fontSize: 12,
+            fontWeight: 300,
+            zIndex: 400,
+            opacity: pct,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            pointerEvents: "none",
+            ...th.text
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: {
+              display: "inline-block",
+              transform: `rotate(${ready2 ? 180 : 0}deg)`,
+              transition: "transform 120ms var(--easing)"
+            }, children: "\u2193" }),
+            ready2 ? "Release to sync" : "Pull to sync"
+          ] });
+        })(),
         tab === "groups" && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           GroupsTab,
           {
@@ -17540,6 +17707,8 @@
           me: profile,
           db: db2,
           sync: sync2,
+          isSyncing: syncingGroups.has(settingsGroup.id),
+          lastSyncedAt: lastSyncedAt[settingsGroup.id] ?? null,
           onMemberLeft: async (gid, uid) => sync2?.memberLeft(gid, uid).catch(() => {
           }),
           onClose: () => setSettingsGroup(null),
@@ -17572,6 +17741,16 @@
                 confirmLabel: "Leave",
                 dangerous: true,
                 onConfirm: () => deleteGroup(req.g.id, "leave")
+              });
+            } else if (req.type === "removeBrokenGroup") {
+              setSettingsGroup(null);
+              setConfirmSheet({
+                title: "Remove Broken Group?",
+                message: `"${req.g.name}" will be removed from this device. Local data for this group is already unrecoverable. ${req.g.ownerId === profile?.id ? "As the owner you will need to recreate the group to continue." : "You can rejoin from a fresh invite link."}`,
+                icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
+                confirmLabel: "Remove",
+                dangerous: true,
+                onConfirm: () => removeBrokenGroup(req.g.id)
               });
             } else if (req.type === "removeMember") {
               setSettingsGroup(null);
@@ -21709,7 +21888,7 @@ ${link}`;
       ] })
     ] }) });
   }
-  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
     const bsCloseRef = (0, import_react2.useRef)(null);
     (0, import_react2.useEffect)(() => {
       if (closeRef) {
@@ -21802,6 +21981,48 @@ ${link}`;
         ] })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "20px 20px 0", display: "flex", flexDirection: "column", gap: 20 }, children: [
+        g.brokenAt && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: "1px solid #D45F7A66", background: "#D45F7A11", borderRadius: 12, padding: "14px 16px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: "#D45F7A", marginBottom: 6 }, children: "\u26A0 This group's data couldn't be loaded" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300, lineHeight: 1.5, marginBottom: 10 }, children: [
+            "The local copy of this group is corrupted and can't be recovered in place.",
+            isOwner ? " As the owner, you\u2019ll need to recreate the group and re-invite everyone." : " Ask the group owner to send you a fresh invite link."
+          ] }),
+          g.brokenError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+            fontSize: 10,
+            color: th.muted,
+            fontWeight: 300,
+            fontFamily: "monospace",
+            marginBottom: 10,
+            opacity: 0.7
+          }, children: g.brokenError }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => {
+                bsCloseRef.current?.();
+                onRequestConfirm({ type: "removeBrokenGroup", g });
+              },
+              style: {
+                background: "#D45F7A",
+                border: "none",
+                borderRadius: 8,
+                color: "#fff",
+                fontSize: 13,
+                padding: "8px 14px",
+                cursor: "pointer",
+                fontWeight: 300,
+                fontFamily: FONT,
+                display: "flex",
+                alignItems: "center",
+                gap: 6
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 14, weight: "thin" }),
+                " Remove this group"
+              ]
+            }
+          )
+        ] }),
         canManage && (g.pendingInvites ?? []).length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           section("PENDING INVITES"),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: (g.pendingInvites ?? []).map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
@@ -22036,6 +22257,37 @@ ${link}`;
             },
             c8
           )) })
+        ] }),
+        isMember && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+          section("SYNC"),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => {
+                  db2?.resyncGroup(g.id).catch(() => {
+                  });
+                },
+                disabled: isSyncing,
+                style: {
+                  ...th.pillBtn,
+                  fontSize: 13,
+                  padding: "6px 16px",
+                  fontWeight: 300,
+                  opacity: isSyncing ? 0.6 : 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6
+                },
+                children: isSyncing ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Spinner, { size: 12 }),
+                  " Syncing\u2026"
+                ] }) : "Sync now"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: isSyncing ? "Fetching from peers\u2026" : lastSyncedAt ? "Last synced " + formatRelativeTime(lastSyncedAt) : "Not synced yet" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 6, lineHeight: 1.4 }, children: "Forces peer discovery and pulls every writer's core to its tip. Only shows data from peers currently reachable." })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           section("MY NICKNAME IN THIS GROUP"),
@@ -24829,6 +25081,7 @@ ${link}`;
     removeMember: (gid, mid) => window.__pearDB.call("removeMember", gid, mid),
     resyncGroup: (groupId) => window.__pearDB.call("resyncGroup", groupId),
     resyncAll: () => window.__pearDB.call("resyncAll"),
+    removeBrokenGroup: (id) => window.__pearDB.call("removeBrokenGroup", id),
     setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick),
     getReminders: (id) => window.__pearDB.call("getReminders", id),
     putReminders: (id, r10) => window.__pearDB.call("putReminders", id, r10),
