@@ -284,6 +284,43 @@ function eventColors (ev) {
   const cs = Array.isArray(ev?.colors) && ev.colors.length ? ev.colors : (ev?.color ? [ev.color] : [])
   return cs.slice(0, MAX_COLOR_SEGMENTS)
 }
+
+// Per-member color palette. Two resolvers:
+//   memberColorFor(id)          — hash fallback, stable across devices but may
+//                                 collide (used for shadow events where we
+//                                 don't have a canonical member list to index).
+//   memberColorIndexed(g, id)   — sorted-index within a group's member list.
+//                                 Guaranteed-distinct up to palette length, so
+//                                 the common 2-member group never collides.
+const MEMBER_PALETTE = [
+  '#6C9BF5', '#7FB77E', '#E8A87C', '#C38D9E',
+  '#85CDCA', '#E27D60', '#B388EB', '#F0C987',
+  '#8DD7BF', '#F2A365', '#F7B2AD', '#90AFC5',
+]
+function memberColorFor (memberId) {
+  if (!memberId) return MEMBER_PALETTE[0]
+  let h = 0
+  for (let i = 0; i < memberId.length; i++) h = ((h << 5) - h + memberId.charCodeAt(i)) | 0
+  return MEMBER_PALETTE[Math.abs(h) % MEMBER_PALETTE.length]
+}
+function memberColorIndexed (group, memberId) {
+  if (!group || !Array.isArray(group.members) || !memberId) return memberColorFor(memberId)
+  const ids = group.members.map(m => m?.id).filter(Boolean).sort()
+  const idx = ids.indexOf(memberId)
+  if (idx < 0) return memberColorFor(memberId)
+  return MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
+}
+function derivedEventColors (ev, groups) {
+  const cid = ev?.creatorId
+  const authored = cid && cid !== 'system' && cid !== 'unknown'
+  // Shadow events: author-color regardless of group count (collapses #56).
+  if (ev?.isShadow && authored) return [memberColorFor(cid)]
+  // Single-group case: distinct per-member color instead of the group color.
+  if (Array.isArray(groups) && groups.length === 1 && authored) {
+    return [memberColorIndexed(groups[0], cid)]
+  }
+  return eventColors(ev)
+}
 // Segmented vertical stripe as a CSS linear-gradient — used in place of a
 // solid borderLeft so 2–3 group colors are visible side-by-side.
 function stripeBackground (colors) {
@@ -1583,6 +1620,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
+            totalGroupsCount={groups.length}
             isSyncing={syncingGroups.has(settingsGroup.id)}
             lastSyncedAt={lastSyncedAt[settingsGroup.id] ?? null}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
@@ -2256,13 +2294,14 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
           {allDayEvents.slice(0, 3).map(ev => {
             const isShadow = !!ev.isShadow
             const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
+            const cs = derivedEventColors(ev, groups)
             return (
             <div key={ev.id} onClick={() => { if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
               style={{ padding:'4px 10px 4px 14px', borderRadius:8, marginBottom:4,
                 cursor: isShadow ? 'default' : 'pointer',
                 opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
-                backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
-                ...leftStripeStyle(eventColors(ev), 3) }}>
+                backgroundColor: (cs[0] ?? ev.color) + '22',
+                ...leftStripeStyle(cs, 3) }}>
               <span style={{ fontSize:13, fontWeight:300, ...th.text }}>{ev.title}
                 {isShadow && creatorName ? <span style={{ color:th.muted }}> — {creatorName}</span> : null}
               </span>
@@ -2296,6 +2335,7 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
             const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`
             const isShadow = !!ev.isShadow
             const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
+            const cs = derivedEventColors(ev, groups)
             return (
               <div key={ev.id}
                 onClick={(e) => { e.stopPropagation(); if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
@@ -2303,8 +2343,8 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
                   left: colLeft, width: `calc(${colWidth} - 4px)`,
                   borderRadius:8, cursor: isShadow ? 'default' : 'pointer', overflow:'hidden',
                   opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
-                  backgroundColor: (ev.colors?.[0] ?? ev.color) + '22',
-                  ...leftStripeStyle(eventColors(ev), 3),
+                  backgroundColor: (cs[0] ?? ev.color) + '22',
+                  ...leftStripeStyle(cs, 3),
                   zIndex:10, display:'flex', gap:0 }}>
                 <div style={{ flex:1, minWidth:0, padding:'4px 8px 4px 12px' }}>
                   <div style={{ fontSize:12, fontWeight:400, ...th.text, lineHeight:'1.3' }}>{ev.title}
@@ -2357,7 +2397,7 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
   )
 }
 
-function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId }) {
+function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
   useEffect(() => {
     if (!closeFullGridRef) return
     closeFullGridRef.current = () => { onExit(); return true }
@@ -2522,7 +2562,7 @@ function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeF
                 <div style={{ position:'absolute', top:22, left:0, right:0, bottom:0,
                   pointerEvents:'none' }}>
                   {placed.map((p, i) => {
-                    const cs = eventColors(p.event)
+                    const cs = derivedEventColors(p.event, groups)
                     const color = cs[0] ?? th.accent
                     const bg = dotBackground(cs) ?? color
                     return (
@@ -2716,7 +2756,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
 
   if (fullGrid) {
     return <FullGridView th={th} weekStart={weekStart} events={events} todayStr={todayStr}
-      filterGroupIds={filterGroupIds} closeFullGridRef={closeFullGridRef} myProfileId={myProfileId}
+      filterGroupIds={filterGroupIds} closeFullGridRef={closeFullGridRef} myProfileId={myProfileId} groups={groups}
       onExit={() => setFullGrid(false)}
       onDayTap={ds => { setSelectedDate(ds); setCalView('day'); setFullGrid(false) }}
       onEventTap={ev => setModal({ mode:'edit', event:{ ...ev } })} />
@@ -2833,7 +2873,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
                 color:isSel ? '#fff' : isToday ? th.accent : th.text.color }}>{cell.d}</span>
               <div style={{ display:'flex', gap:2, minHeight:6 }}>
                 {evs.slice(0,3).map(e => (
-                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background: dotBackground(eventColors(e)) ?? e.color }} />
+                  <div key={e.id} style={{ width:6, height:6, borderRadius:'50%', background: dotBackground(derivedEventColors(e, groups)) ?? e.color }} />
                 ))}
               </div>
             </button>
@@ -3285,7 +3325,7 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px 10px 18px' : '12px 14px 12px 20px',
         borderRadius:12, cursor: isShadow ? 'default' : 'pointer', ...th.card,
-        ...leftStripeStyle(eventColors(ev), 4), marginBottom:compact ? 0 : 8,
+        ...leftStripeStyle(derivedEventColors(ev, groups), 4), marginBottom:compact ? 0 : 8,
         opacity: (isPast || isDeclined) ? 0.5 : (isShadow ? 0.6 : 1),
         fontStyle: isShadow ? 'italic' : 'normal' }}>
       <div style={{ flex:1, minWidth:0 }}>
@@ -3446,6 +3486,10 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
   const [myForwards, setMyForwards] = useState(() => {
     if (!profile?.id) return []
     const myId = profile.id
+    if (modal.mode === 'create' && groups.length === 1
+        && !(modal.event.groups ?? []).includes(groups[0].id)) {
+      return [groups[0].id]
+    }
     const srcIds = modal.event.recurrenceId
       ? new Set(events.filter(e => !e.isShadow && e.recurrenceId === modal.event.recurrenceId).map(e => e.id))
       : new Set([modal.event.id])
@@ -3575,10 +3619,14 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
   function handleSave () {
     const isCreator = !ev.creatorId || (profile?.id && ev.creatorId === profile.id)
     const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
+    // Strip forwards that target a group the event is already in — a shadow
+    // would collide with the event itself in that group.
+    const evGroups = new Set(ev.groups ?? [])
+    const effectiveForwards = myForwards.filter(gid => !evGroups.has(gid))
     // Non-creator on a locked event: only busy-time forwards change. Skip the
     // event write (we have no right to modify it) and fire only the forward diff.
     if (isReadOnly) {
-      if (forwardsDirty) onForward?.(modal.event, myForwards)
+      if (forwardsDirty) onForward?.(modal.event, effectiveForwards)
       setModal(null)
       return
     }
@@ -3587,10 +3635,10 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
     // Edit mode: fire forward diff immediately against current events. Create
     // mode: hand myForwards off to saveEvent so it can fan out against the
     // newly-expanded occurrences (which aren't in events state yet).
-    if (modal.mode === 'edit' && forwardsDirty) onForward?.(modal.event, myForwards)
+    if (modal.mode === 'edit' && forwardsDirty) onForward?.(modal.event, effectiveForwards)
     const baseSave = origDate && origDate !== ev.date ? { ...ev, _prevDate: origDate } : ev
-    const toSave = modal.mode === 'create' && myForwards.length > 0
-      ? { ...baseSave, _myForwards: myForwards }
+    const toSave = modal.mode === 'create' && effectiveForwards.length > 0
+      ? { ...baseSave, _myForwards: effectiveForwards }
       : baseSave
     if (modal.mode === 'edit' && ev.recurrenceId) {
       const origGroups   = [...(modal.event.groups   ?? [])].sort().join(',')
@@ -4058,7 +4106,7 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                       {allMembers.map(m => {
                         const sel = ev.invitees.includes(m.id)
                         const g   = groups.find(x => x.members.some(mb => mb.id === m.id))
-                        const col = g ? g.color : '#888'
+                        const col = groups.length === 1 && g ? memberColorIndexed(g, m.id) : (g ? g.color : '#888')
                         return (
                           <button key={m.id} onClick={() => toggleInvitee(m.id)}
                             style={{ display:'flex', alignItems:'center', gap:6,
@@ -4389,7 +4437,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
               {(g.members ?? []).map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                  <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={g.color} size={34} fontSize={13} />
+                  <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={groups.length === 1 ? memberColorIndexed(g, m.id) : g.color} size={34} fontSize={13} />
                   <span style={{ fontSize:10, color:th.muted, fontWeight:300 }}>{m.nickname || m.name}</span>
                 </div>
               ))}
@@ -4504,7 +4552,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   useEffect(() => {
     if (closeRef) {
@@ -4609,7 +4657,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, isSyncing, lastSyncedAt,
                 {(g.pendingInvites ?? []).map(m => (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Invite sent</div>
@@ -4637,7 +4685,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, isSyncing, lastSyncedAt,
                 {(g.removedMembers ?? []).map(m => (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{m.name}</div>
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Removed</div>
@@ -4788,7 +4836,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, isSyncing, lastSyncedAt,
                 return (
                   <div key={m.id} style={{ display:'flex', alignItems:'center', gap:12,
                     ...th.card, borderRadius:12, padding:'10px 14px' }}>
-                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={g.color} size={38} fontSize={15} />
+                    <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
                       <div style={{ fontWeight:300, fontSize:14, ...th.text }}>
                         {m.nickname || m.name}
