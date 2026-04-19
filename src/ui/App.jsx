@@ -4639,7 +4639,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, is
               </div>
               {g.brokenError && (
                 <div style={{ fontSize:10, color:th.muted, fontWeight:300, fontFamily:'monospace',
-                  marginBottom:10, opacity:0.7 }}>
+                  marginBottom:10, opacity:0.7, overflowWrap:'anywhere' }}>
                   {g.brokenError}
                 </div>
               )}

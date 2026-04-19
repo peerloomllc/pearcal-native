@@ -581,6 +581,15 @@ async function listGroups () {
     // Tombstoned by a group-migration marker — user-invisible; the new group
     // record (keyed by migratedFrom ↔ this id) carries all live state.
     if (value?.migratedTo) continue
+    // Tombstoned by removeBrokenGroup — user forgot this group. Force-stop may
+    // have lost the `db.del(NS.groups + id)` write before it fsynced, so the
+    // record can re-appear on disk. Filter here so the UI never sees it even
+    // if the startup cleanup hasn't run yet. Lazy cleanup: if we find a stray
+    // record, kick off a delete in the background.
+    if (value?.id && await isForgottenGroup(value.id)) {
+      deleteGroup(value.id).catch(() => {})
+      continue
+    }
     groups.push(value)
   }
   return groups
@@ -653,12 +662,31 @@ async function clearGroupBroken (groupId) {
   await db.put(NS.groups + groupId, rest).catch(() => {})
 }
 
-// User-initiated cleanup for a group whose base failed to open. Closes the
-// base if it somehow did open (rare — usually we only get here because it
-// didn't), wipes local DB state via deleteGroup, and clears the durable
-// knownWriter index. Orphan namespace cores left behind in the corestore
-// will be reclaimed by the next auditStorage sweep.
+// Durable tombstone preventing a removed broken group from being
+// re-materialised by mirrorToLocal / foregroundSync / adopt on subsequent
+// peer writes. Checked by every group-record writeback path.
+async function isForgottenGroup (groupId) {
+  const node = await db.get('forgottenGroup:' + groupId).catch(() => null)
+  return !!node?.value
+}
+
+// User-initiated cleanup for a group whose base failed to open. Writes a
+// tombstone first so any in-flight apply()/mirror can't race us and
+// re-create the record. Leaves the swarm topic (if the groupKey is known)
+// so we stop answering peer connections for it. Then closes the base if
+// it somehow did open, wipes local DB state via deleteGroup, and clears
+// the durable knownWriter index. Orphan namespace cores left behind in
+// the corestore will be reclaimed by the next auditStorage sweep.
 async function removeBrokenGroup (groupId) {
+  const existing = await db.get(NS.groups + groupId).catch(() => null)
+  const groupKey = existing?.value?.groupKey
+  await db.put('forgottenGroup:' + groupId, { ts: Date.now() }).catch(() => {})
+  if (groupKey) {
+    try {
+      const topic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+      await swarm.leave(topic).catch(() => {})
+    } catch (e) { console.warn('[REMOVE_BROKEN] swarm.leave:', e?.message) }
+  }
   try { await leaveGroup(groupId) } catch (e) { console.warn('[REMOVE_BROKEN] leave:', e?.message) }
   try { await deleteGroup(groupId) } catch (e) { console.warn('[REMOVE_BROKEN] delete:', e?.message) }
   return { ok: true, groupId }
@@ -1047,6 +1075,10 @@ async function adoptGroupMigration (oldGroupId, marker) {
   const newGroupId  = marker.newGroupId
   const newGroupKey = marker.newGroupKey
   if (!newGroupId || !newGroupKey) return
+
+  // User removed the old group — don't adopt the migration into a new record.
+  if (await isForgottenGroup(oldGroupId)) return
+  if (await isForgottenGroup(newGroupId)) return
 
   const oldGroup = await getGroup(oldGroupId)
   if (!oldGroup) return
@@ -1675,6 +1707,7 @@ async function foregroundSync () {
   if (swarm) await swarm.flush().catch(() => {})
   for (const [groupId, base] of bases) {
     try {
+      if (await isForgottenGroup(groupId)) continue
       await base.update()
       // Re-mirror group record from Autobase view to local DB to catch any
       // membership changes that mirrorToLocal may have missed during apply()
@@ -2480,6 +2513,8 @@ function deduplicateReinstalls (mergedMap, existingMembers, incomingMembers) {
 
 async function mirrorToLocal (type, key, value, groupId) {
   try {
+    // User removed this group — don't resurrect any of its records from sync.
+    if (groupId && await isForgottenGroup(groupId)) return
     if (type === 'avatar') {
       const existing = await db.get(key).catch(() => null)
       if (!existing) await db.put(key, value)
@@ -3344,17 +3379,43 @@ async function _doInit (dir, attempt = 0) {
     }
 
     for (const g of groups) {
+      // Tombstoned by removeBrokenGroup — the user forgot this group. A prior
+      // session may have resurrected it via mirror/foregroundSync before the
+      // tombstone existed; clean up now and skip the join.
+      if (await isForgottenGroup(g.id)) {
+        console.log('[STARTUP] clearing resurrected forgotten group:', g.id)
+        await deleteGroup(g.id).catch(() => {})
+        continue
+      }
       // Skip migrated source groups whose target group exists locally — adopt
       // already completed in a prior session, so re-opening the old base is
       // unnecessary. Re-opening it can crash autobase apply when peer writer
       // cores were misclassified as orphans by an earlier sweep, so we leave
       // it dormant until the grace-period purge cleans it up.
       if (g.migratedTo) {
+        // If the target group is tombstoned, this old record is orphaned —
+        // clean it up too so startup doesn't keep trying to re-open it.
+        if (await isForgottenGroup(g.migratedTo)) {
+          console.log('[STARTUP] clearing orphan migrated-from group:', g.id, '→ target', g.migratedTo, 'is forgotten')
+          await deleteGroup(g.id).catch(() => {})
+          continue
+        }
         const target = await db.get(NS.groups + g.migratedTo).catch(() => null)
         if (target?.value) continue
       }
       await joinGroup(g).catch(async e => {
-        console.error('joinGroup error:', e.message)
+        console.error('joinGroup error:', e.message, 'groupId:', g.id)
+        // STORAGE_EMPTY means the group's bootstrap Hypercore is gone from
+        // the corestore. The group is unrecoverable — it can never sync again
+        // without its bootstrap. Auto-delete the record so it stops
+        // resurrecting after force-stop-and-reopen cycles when the tombstone
+        // write from removeBrokenGroup doesn't fsync in time.
+        if (/STORAGE_EMPTY/i.test(e?.message || '')) {
+          console.log('[STARTUP] auto-deleting unrecoverable group:', g.id)
+          await db.put('forgottenGroup:' + g.id, { ts: Date.now(), reason: 'storage_empty' }).catch(() => {})
+          await deleteGroup(g.id).catch(() => {})
+          return
+        }
         await markGroupBroken(g.id, e)
       })
     }
