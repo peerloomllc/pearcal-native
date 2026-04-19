@@ -16221,6 +16221,42 @@
     const cs = Array.isArray(ev2?.colors) && ev2.colors.length ? ev2.colors : ev2?.color ? [ev2.color] : [];
     return cs.slice(0, MAX_COLOR_SEGMENTS);
   }
+  var MEMBER_PALETTE = [
+    "#6C9BF5",
+    "#7FB77E",
+    "#E8A87C",
+    "#C38D9E",
+    "#85CDCA",
+    "#E27D60",
+    "#B388EB",
+    "#F0C987",
+    "#8DD7BF",
+    "#F2A365",
+    "#F7B2AD",
+    "#90AFC5"
+  ];
+  function memberColorFor(memberId) {
+    if (!memberId) return MEMBER_PALETTE[0];
+    let h2 = 0;
+    for (let i2 = 0; i2 < memberId.length; i2++) h2 = (h2 << 5) - h2 + memberId.charCodeAt(i2) | 0;
+    return MEMBER_PALETTE[Math.abs(h2) % MEMBER_PALETTE.length];
+  }
+  function memberColorIndexed(group, memberId) {
+    if (!group || !Array.isArray(group.members) || !memberId) return memberColorFor(memberId);
+    const ids = group.members.map((m3) => m3?.id).filter(Boolean).sort();
+    const idx = ids.indexOf(memberId);
+    if (idx < 0) return memberColorFor(memberId);
+    return MEMBER_PALETTE[idx % MEMBER_PALETTE.length];
+  }
+  function derivedEventColors(ev2, groups) {
+    const cid = ev2?.creatorId;
+    const authored = cid && cid !== "system" && cid !== "unknown";
+    if (ev2?.isShadow && authored) return [memberColorFor(cid)];
+    if (Array.isArray(groups) && groups.length === 1 && authored) {
+      return [memberColorIndexed(groups[0], cid)];
+    }
+    return eventColors(ev2);
+  }
   function stripeBackground(colors) {
     if (!colors || colors.length === 0) return null;
     if (colors.length === 1) return colors[0];
@@ -17707,6 +17743,7 @@
           me: profile,
           db: db2,
           sync: sync2,
+          totalGroupsCount: groups.length,
           isSyncing: syncingGroups.has(settingsGroup.id),
           lastSyncedAt: lastSyncedAt[settingsGroup.id] ?? null,
           onMemberLeft: async (gid, uid) => sync2?.memberLeft(gid, uid).catch(() => {
@@ -18490,6 +18527,7 @@
             allDayEvents.slice(0, 3).map((ev2) => {
               const isShadow = !!ev2.isShadow;
               const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
+              const cs = derivedEventColors(ev2, groups);
               return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "div",
                 {
@@ -18505,8 +18543,8 @@
                     cursor: isShadow ? "default" : "pointer",
                     opacity: isShadow ? 0.6 : 1,
                     fontStyle: isShadow ? "italic" : "normal",
-                    backgroundColor: (ev2.colors?.[0] ?? ev2.color) + "22",
-                    ...leftStripeStyle(eventColors(ev2), 3)
+                    backgroundColor: (cs[0] ?? ev2.color) + "22",
+                    ...leftStripeStyle(cs, 3)
                   },
                   children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: [
                     ev2.title,
@@ -18560,6 +18598,7 @@
               const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`;
               const isShadow = !!ev2.isShadow;
               const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
+              const cs = derivedEventColors(ev2, groups);
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                 "div",
                 {
@@ -18580,8 +18619,8 @@
                     overflow: "hidden",
                     opacity: isShadow ? 0.6 : 1,
                     fontStyle: isShadow ? "italic" : "normal",
-                    backgroundColor: (ev2.colors?.[0] ?? ev2.color) + "22",
-                    ...leftStripeStyle(eventColors(ev2), 3),
+                    backgroundColor: (cs[0] ?? ev2.color) + "22",
+                    ...leftStripeStyle(cs, 3),
                     zIndex: 10,
                     display: "flex",
                     gap: 0
@@ -18677,7 +18716,7 @@
       }
     );
   }
-  function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId }) {
+  function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
     (0, import_react2.useEffect)(() => {
       if (!closeFullGridRef) return;
       closeFullGridRef.current = () => {
@@ -18883,7 +18922,7 @@
                   pointerEvents: "none"
                 }, children: [
                   placed.map((p3, i2) => {
-                    const cs = eventColors(p3.event);
+                    const cs = derivedEventColors(p3.event, groups);
                     const color = cs[0] ?? th.accent;
                     const bg = dotBackground(cs) ?? color;
                     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -19160,6 +19199,7 @@
           filterGroupIds,
           closeFullGridRef,
           myProfileId,
+          groups,
           onExit: () => setFullGrid(false),
           onDayTap: (ds) => {
             setSelectedDate(ds);
@@ -19322,7 +19362,7 @@
                         fontWeight: isToday || isSel ? 400 : isCur ? 300 : 200,
                         color: isSel ? "#fff" : isToday ? th.accent : th.text.color
                       }, children: cell.d }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, minHeight: 6 }, children: evs.slice(0, 3).map((e58) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 6, height: 6, borderRadius: "50%", background: dotBackground(eventColors(e58)) ?? e58.color } }, e58.id)) })
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 2, minHeight: 6 }, children: evs.slice(0, 3).map((e58) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { width: 6, height: 6, borderRadius: "50%", background: dotBackground(derivedEventColors(e58, groups)) ?? e58.color } }, e58.id)) })
                     ]
                   },
                   ds + i2
@@ -20040,7 +20080,7 @@
           borderRadius: 12,
           cursor: isShadow ? "default" : "pointer",
           ...th.card,
-          ...leftStripeStyle(eventColors(ev2), 4),
+          ...leftStripeStyle(derivedEventColors(ev2, groups), 4),
           marginBottom: compact ? 0 : 8,
           opacity: isPast || isDeclined ? 0.5 : isShadow ? 0.6 : 1,
           fontStyle: isShadow ? "italic" : "normal"
@@ -20286,6 +20326,9 @@
     const [myForwards, setMyForwards] = (0, import_react2.useState)(() => {
       if (!profile?.id) return [];
       const myId = profile.id;
+      if (modal.mode === "create" && groups.length === 1 && !(modal.event.groups ?? []).includes(groups[0].id)) {
+        return [groups[0].id];
+      }
       const srcIds = modal.event.recurrenceId ? new Set(events.filter((e58) => !e58.isShadow && e58.recurrenceId === modal.event.recurrenceId).map((e58) => e58.id)) : /* @__PURE__ */ new Set([modal.event.id]);
       const targets = /* @__PURE__ */ new Set();
       for (const e58 of events) {
@@ -20407,8 +20450,10 @@
     function handleSave() {
       const isCreator = !ev2.creatorId || profile?.id && ev2.creatorId === profile.id;
       const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
+      const evGroups = new Set(ev2.groups ?? []);
+      const effectiveForwards = myForwards.filter((gid) => !evGroups.has(gid));
       if (isReadOnly) {
-        if (forwardsDirty) onForward?.(modal.event, myForwards);
+        if (forwardsDirty) onForward?.(modal.event, effectiveForwards);
         setModal(null);
         return;
       }
@@ -20417,9 +20462,9 @@
         return;
       }
       setTitleErr("");
-      if (modal.mode === "edit" && forwardsDirty) onForward?.(modal.event, myForwards);
+      if (modal.mode === "edit" && forwardsDirty) onForward?.(modal.event, effectiveForwards);
       const baseSave = origDate && origDate !== ev2.date ? { ...ev2, _prevDate: origDate } : ev2;
-      const toSave = modal.mode === "create" && myForwards.length > 0 ? { ...baseSave, _myForwards: myForwards } : baseSave;
+      const toSave = modal.mode === "create" && effectiveForwards.length > 0 ? { ...baseSave, _myForwards: effectiveForwards } : baseSave;
       if (modal.mode === "edit" && ev2.recurrenceId) {
         const origGroups = [...modal.event.groups ?? []].sort().join(",");
         const newGroups = [...toSave.groups ?? []].sort().join(",");
@@ -21229,7 +21274,7 @@
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }, children: allMembers.map((m3) => {
                   const sel = ev2.invitees.includes(m3.id);
                   const g = groups.find((x) => x.members.some((mb) => mb.id === m3.id));
-                  const col = g ? g.color : "#888";
+                  const col = groups.length === 1 && g ? memberColorIndexed(g, m3.id) : g ? g.color : "#888";
                   return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
                     "button",
                     {
@@ -21725,7 +21770,7 @@
             )
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: (g.members ?? []).map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: g.color, size: 34, fontSize: 13 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: groups.length === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 34, fontSize: 13 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 10, color: th.muted, fontWeight: 300 }, children: m3.nickname || m3.name })
           ] }, m3.id)) }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -21888,7 +21933,7 @@ ${link}`;
       ] })
     ] }) });
   }
-  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+  function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, totalGroupsCount = 1, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
     const bsCloseRef = (0, import_react2.useRef)(null);
     (0, import_react2.useEffect)(() => {
       if (closeRef) {
@@ -22033,7 +22078,7 @@ ${link}`;
             borderRadius: 12,
             padding: "10px 14px"
           }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: m3.name }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: "Invite sent" })
@@ -22076,7 +22121,7 @@ ${link}`;
             borderRadius: 12,
             padding: "10px 14px"
           }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: m3.name }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: "Removed" })
@@ -22336,7 +22381,7 @@ ${link}`;
               borderRadius: 12,
               padding: "10px 14px"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: g.color, size: 38, fontSize: 15 }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
               /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontWeight: 300, fontSize: 14, ...th.text }, children: [
                   m3.nickname || m3.name,
