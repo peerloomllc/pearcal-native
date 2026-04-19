@@ -17214,10 +17214,10 @@
           const isMember = g.members?.some((m3) => m3.id === updatedProfile.id);
           if (isMember) {
             const memberAvatar = settingPhoto ? updatedProfile.avatar : updatedProfile.avatar?.startsWith?.("data:") ? updatedProfile.avatar : (updatedProfile.name ?? "").trim().split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?";
-            const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar };
+            const updatedMember = { id: updatedProfile.id, name: updatedProfile.name, avatar: memberAvatar, avatarHash: null };
             await db2.putMember(g.id, updatedMember).catch(() => {
             });
-            const updatedGroup = { ...g, members: g.members.map((m3) => m3.id === updatedProfile.id ? { ...m3, ...updatedMember } : m3), updatedAt: Date.now() };
+            const updatedGroup = { ...g, members: g.members.map((m3) => m3.id === updatedProfile.id ? { ...m3, ...updatedMember, avatarHash: null } : m3), updatedAt: Date.now() };
             await db2.putGroup(updatedGroup).catch(() => {
             });
             const trySyncGroup = async (attempts = 0) => {
@@ -17236,7 +17236,7 @@
       const memberAvatarForState = updatedProfile2.avatar?.startsWith?.("data:") ? updatedProfile2.avatar : (updatedProfile2.name ?? "").trim().split(/\s+/).map((w) => w[0]).join("").toUpperCase().slice(0, 2) || "?";
       setGroups((prev) => prev.map((g) => ({
         ...g,
-        members: g.members?.map((m3) => m3.id === updatedProfile2.id ? { ...m3, name: updatedProfile2.name, avatar: memberAvatarForState } : m3) ?? []
+        members: g.members?.map((m3) => m3.id === updatedProfile2.id ? { ...m3, name: updatedProfile2.name, avatar: memberAvatarForState, avatarHash: null } : m3) ?? []
       })));
     }, [db2, profile, groups, sync2]);
     const updateProfileRef = (0, import_react2.useRef)(updateProfile);
