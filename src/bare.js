@@ -1299,6 +1299,25 @@ async function auditStorage (opts = {}) {
   const orphans = allCores.filter(c => !c.reach)
   console.log('[AUDIT] total cores:', allCores.length, 'reachable:', reachable.size, 'orphans:', orphans.length)
 
+  // Size each orphan by briefly opening the core to read byteLength. Needed
+  // for the pre-purge confirmation report so the user can see how much disk
+  // space will be reclaimed before committing.
+  let orphanBytes = 0
+  for (const o of orphans) {
+    try {
+      const c = store.get({ discoveryKey: b4a.from(o.dk, 'hex') })
+      await c.ready()
+      const bytes = c.byteLength ?? 0
+      o.bytes = bytes
+      o.length = c.length ?? 0
+      orphanBytes += bytes
+      try { await c.close() } catch {}
+    } catch (e) {
+      o.bytes = 0
+      o.length = 0
+    }
+  }
+
   // Safety: refuse to purge if any live (non-migrated) group has no open base.
   // Without the base open we miss replicated writer cores that have no alias,
   // and purging would wipe live group data.
@@ -1315,7 +1334,9 @@ async function auditStorage (opts = {}) {
       reachableCount: reachable.size,
       groupCount: groups.length,
       orphans: orphans.length,
-      orphanList: [],
+      orphanBytes,
+      orphanList: orphans.slice(0, 50),
+      liveWithoutBase,
       purged: 0,
       purgeErrors: [],
       reclaim: null,
@@ -1356,8 +1377,10 @@ async function auditStorage (opts = {}) {
     reachableCount: reachable.size,
     groupCount: groups.length,
     orphans: orphans.length,
+    orphanBytes,
     orphanList: orphans.slice(0, 50), // cap for IPC payload
     sampleReachable: allCores.filter(c => c.reach).slice(0, 5),
+    liveWithoutBase,
     purged,
     dataRangesCleared,
     purgeErrors: purgeErrors.slice(0, 5),

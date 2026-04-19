@@ -5312,6 +5312,9 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [rebuildConfirm,    setRebuildConfirm]    = useState(false)
   const [storageOpen,       setStorageOpen]       = useState(false)
   const [reportOpen,        setReportOpen]        = useState(null) // 'breakdown' | 'analyze' | null
+  const [sweepReport,       setSweepReport]       = useState(null) // dry-run audit result
+  const [sweepBusy,         setSweepBusy]         = useState(false)
+  const [sweepResult,       setSweepResult]       = useState(null) // post-purge summary
 
   const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
                          : b > 1e6 ? (b/1e6).toFixed(1)+' MB'
@@ -5873,6 +5876,102 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         </div>
       )}
+      {sweepReport && (
+        <div onClick={() => !sweepBusy && (sweepResult ? (setSweepReport(null), setSweepResult(null)) : setSweepReport(null))}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'24px' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ ...th.card, borderRadius:14, padding:'20px', maxWidth:460, width:'100%',
+              maxHeight:'80vh', overflowY:'auto', border:`1px solid ${th.border}` }}>
+            <div style={{ fontSize:16, fontWeight:400, marginBottom:10, textAlign:'center', ...th.text }}>
+              {sweepResult ? 'Sweep Complete' : 'Sweep Orphaned Group Data?'}
+            </div>
+            {!sweepResult && (
+              <>
+                <div style={{ textAlign:'center', marginBottom:16 }}>
+                  <div style={{ fontSize:28, fontWeight:300, ...th.text }}>{formatBytes(sweepReport.orphanBytes ?? 0)}</div>
+                  <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>
+                    across {sweepReport.orphans} orphan core{sweepReport.orphans === 1 ? '' : 's'}
+                  </div>
+                </div>
+                <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:1.5, marginBottom:12 }}>
+                  Cores belonging to groups you've left, deleted, or that were rekeyed.
+                  They sit in <span style={{ fontFamily:'monospace' }}>pearcal/store</span> and aren't
+                  freed by the normal Reclaim flow. Purging them is permanent.
+                </div>
+                <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:14 }}>
+                  Total cores on disk: {sweepReport.totalCores} · reachable: {sweepReport.reachableCount} · groups tracked: {sweepReport.groupCount}
+                </div>
+                {sweepReport.liveWithoutBase?.length > 0 && (
+                  <div style={{ fontSize:12, fontWeight:300, color:'#d04', background:'rgba(221,0,68,0.08)',
+                    border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14 }}>
+                    ⚠ {sweepReport.liveWithoutBase.length} live group{sweepReport.liveWithoutBase.length === 1 ? '' : 's'} {sweepReport.liveWithoutBase.length === 1 ? 'is' : 'are'} not loaded yet
+                    ({sweepReport.liveWithoutBase.join(', ')}).
+                    Sweeping now could mistakenly purge their data. Open the group in the app first, then retry.
+                  </div>
+                )}
+                <div style={{ display:'flex', gap:10 }}>
+                  <button onClick={() => setSweepReport(null)} disabled={sweepBusy}
+                    style={{ flex:1, padding:'10px 16px', borderRadius:8, border:`1px solid ${th.border}`,
+                      background:'transparent', color:th.text.color, fontFamily:FONT, fontSize:13, fontWeight:300,
+                      cursor: sweepBusy ? 'wait' : 'pointer', opacity: sweepBusy ? 0.5 : 1 }}>
+                    Cancel
+                  </button>
+                  <button onClick={async () => {
+                    if (sweepReport.liveWithoutBase?.length > 0) return
+                    window.__pearSync?.haptic('medium')
+                    setSweepBusy(true)
+                    try {
+                      const r = await sync.auditStorage({ purge: true })
+                      setSweepResult(r)
+                    } catch (e) {
+                      setSweepResult({ error: e.message })
+                    } finally {
+                      setSweepBusy(false)
+                    }
+                  }} disabled={sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0}
+                    style={{ flex:1, padding:'10px 16px', borderRadius:8, border:'none',
+                      background: th.accent, color:'#fff', fontFamily:FONT, fontSize:13, fontWeight:400,
+                      cursor: sweepBusy ? 'wait' : 'pointer',
+                      opacity: (sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0) ? 0.5 : 1 }}>
+                    {sweepBusy ? 'Sweeping…' : sweepReport.orphans === 0 ? 'Nothing to sweep' : 'Purge'}
+                  </button>
+                </div>
+              </>
+            )}
+            {sweepResult && (
+              <>
+                {sweepResult.error ? (
+                  <div style={{ fontSize:13, fontWeight:300, color:'#d04', textAlign:'center', marginBottom:16 }}>
+                    Error: {sweepResult.error}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ textAlign:'center', marginBottom:16 }}>
+                      <div style={{ fontSize:28, fontWeight:300, ...th.text }}>
+                        {formatBytes(sweepResult.reclaim?.freed ?? 0)}
+                      </div>
+                      <div style={{ fontSize:12, fontWeight:300, color:th.muted }}>freed from disk</div>
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:1.7, marginBottom:14 }}>
+                      Purged {sweepResult.purged} core{sweepResult.purged === 1 ? '' : 's'}
+                      {sweepResult.dataRangesCleared > 0 ? ` · cleared ${sweepResult.dataRangesCleared} data range${sweepResult.dataRangesCleared === 1 ? '' : 's'}` : ''}
+                      {sweepResult.reclaim?.before !== undefined ? <><br />{formatBytes(sweepResult.reclaim.before)} → {formatBytes(sweepResult.reclaim.after)}</> : null}
+                      {sweepResult.purgeErrors?.length > 0 ? <><br /><span style={{ color:'#d04' }}>{sweepResult.purgeErrors.length} error{sweepResult.purgeErrors.length === 1 ? '' : 's'} (first: {sweepResult.purgeErrors[0]})</span></> : null}
+                    </div>
+                  </>
+                )}
+                <button onClick={() => { setSweepReport(null); setSweepResult(null) }}
+                  style={{ width:'100%', padding:'10px 16px', borderRadius:8,
+                    border:`1px solid ${th.border}`, background:'transparent', color:th.text.color,
+                    fontFamily:FONT, fontSize:13, fontWeight:300, cursor:'pointer' }}>
+                  Close
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         STORAGE
       </div>
@@ -5938,6 +6037,32 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             </button>
           )
         })()}
+        <button onClick={async () => {
+          window.__pearSync?.haptic('light')
+          setSweepBusy(true)
+          setSweepResult(null)
+          try {
+            const r = await sync.auditStorage({ purge: false })
+            setSweepReport(r)
+          } catch (e) {
+            setSweepReport({ error: e.message, orphans: 0, orphanBytes: 0, totalCores: 0, reachableCount: 0, groupCount: 0 })
+          } finally {
+            setSweepBusy(false)
+          }
+        }} disabled={sweepBusy}
+          style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+            padding:'12px 14px', borderRadius:10, cursor: sweepBusy ? 'wait' : 'pointer',
+            border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+            opacity: sweepBusy ? 0.6 : 1 }}>
+          <div style={{ flex:1, textAlign:'left' }}>
+            <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+              {sweepBusy && !sweepReport ? 'Scanning…' : 'Sweep Orphaned Data'}
+            </div>
+            <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+              Purge cores from deleted / left groups (shows report first)
+            </div>
+          </div>
+        </button>
         {reclaimResult?.analyze && (
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', padding:'4px 0' }}>
             {reclaimResult.analyze.pct}% reclaimable — tap Reclaim below to continue
