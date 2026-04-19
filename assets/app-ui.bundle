@@ -23160,6 +23160,9 @@ ${link}`;
     const [rebuildConfirm, setRebuildConfirm] = (0, import_react2.useState)(false);
     const [storageOpen, setStorageOpen] = (0, import_react2.useState)(false);
     const [reportOpen, setReportOpen] = (0, import_react2.useState)(null);
+    const [sweepReport, setSweepReport] = (0, import_react2.useState)(null);
+    const [sweepBusy, setSweepBusy] = (0, import_react2.useState)(false);
+    const [sweepResult, setSweepResult] = (0, import_react2.useState)(null);
     const formatBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " KB" : b + " B";
     const [icsImport, setIcsImport] = (0, import_react2.useState)(null);
     const icsFileRef = (0, import_react2.useRef)(null);
@@ -23953,6 +23956,198 @@ ${link}`;
             )
           }
         ),
+        sweepReport && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "div",
+          {
+            onClick: () => !sweepBusy && (sweepResult ? (setSweepReport(null), setSweepResult(null)) : setSweepReport(null)),
+            style: {
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.5)",
+              zIndex: 1e3,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "24px"
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+              "div",
+              {
+                onClick: (e58) => e58.stopPropagation(),
+                style: {
+                  ...th.card,
+                  borderRadius: 14,
+                  padding: "20px",
+                  maxWidth: 460,
+                  width: "100%",
+                  maxHeight: "80vh",
+                  overflowY: "auto",
+                  border: `1px solid ${th.border}`
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", ...th.text }, children: sweepResult ? "Sweep Complete" : "Sweep Orphaned Group Data?" }),
+                  !sweepResult && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 16 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(sweepReport.orphanBytes ?? 0) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: [
+                        "across ",
+                        sweepReport.orphans,
+                        " orphan core",
+                        sweepReport.orphans === 1 ? "" : "s"
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.5, marginBottom: 12 }, children: [
+                      "Cores belonging to groups you've left, deleted, or that were rekeyed. They sit in ",
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontFamily: "monospace" }, children: "pearcal/store" }),
+                      " and aren't freed by the normal Reclaim flow. Purging them is permanent."
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, marginBottom: 14 }, children: [
+                      "Total cores on disk: ",
+                      sweepReport.totalCores,
+                      " \xB7 reachable: ",
+                      sweepReport.reachableCount,
+                      " \xB7 groups tracked: ",
+                      sweepReport.groupCount
+                    ] }),
+                    sweepReport.liveWithoutBase?.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                      fontSize: 12,
+                      fontWeight: 300,
+                      color: "#d04",
+                      background: "rgba(221,0,68,0.08)",
+                      border: "1px solid rgba(221,0,68,0.3)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      marginBottom: 14
+                    }, children: [
+                      "\u26A0 ",
+                      sweepReport.liveWithoutBase.length,
+                      " live group",
+                      sweepReport.liveWithoutBase.length === 1 ? "" : "s",
+                      " ",
+                      sweepReport.liveWithoutBase.length === 1 ? "is" : "are",
+                      " not loaded yet (",
+                      sweepReport.liveWithoutBase.join(", "),
+                      "). Sweeping now could mistakenly purge their data. Open the group in the app first, then retry."
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: () => setSweepReport(null),
+                          disabled: sweepBusy,
+                          style: {
+                            flex: 1,
+                            padding: "10px 16px",
+                            borderRadius: 8,
+                            border: `1px solid ${th.border}`,
+                            background: "transparent",
+                            color: th.text.color,
+                            fontFamily: FONT,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            cursor: sweepBusy ? "wait" : "pointer",
+                            opacity: sweepBusy ? 0.5 : 1
+                          },
+                          children: "Cancel"
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: async () => {
+                            if (sweepReport.liveWithoutBase?.length > 0) return;
+                            window.__pearSync?.haptic("medium");
+                            setSweepBusy(true);
+                            try {
+                              const r10 = await sync2.auditStorage({ purge: true });
+                              setSweepResult(r10);
+                            } catch (e58) {
+                              setSweepResult({ error: e58.message });
+                            } finally {
+                              setSweepBusy(false);
+                            }
+                          },
+                          disabled: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0,
+                          style: {
+                            flex: 1,
+                            padding: "10px 16px",
+                            borderRadius: 8,
+                            border: "none",
+                            background: th.accent,
+                            color: "#fff",
+                            fontFamily: FONT,
+                            fontSize: 13,
+                            fontWeight: 400,
+                            cursor: sweepBusy ? "wait" : "pointer",
+                            opacity: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 ? 0.5 : 1
+                          },
+                          children: sweepBusy ? "Sweeping\u2026" : sweepReport.orphans === 0 ? "Nothing to sweep" : "Purge"
+                        }
+                      )
+                    ] })
+                  ] }),
+                  sweepResult && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                    sweepResult.error ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: "#d04", textAlign: "center", marginBottom: 16 }, children: [
+                      "Error: ",
+                      sweepResult.error
+                    ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { textAlign: "center", marginBottom: 16 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 28, fontWeight: 300, ...th.text }, children: formatBytes(sweepResult.reclaim?.freed ?? 0) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted }, children: "freed from disk" })
+                      ] }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.7, marginBottom: 14 }, children: [
+                        "Purged ",
+                        sweepResult.purged,
+                        " core",
+                        sweepResult.purged === 1 ? "" : "s",
+                        sweepResult.dataRangesCleared > 0 ? ` \xB7 cleared ${sweepResult.dataRangesCleared} data range${sweepResult.dataRangesCleared === 1 ? "" : "s"}` : "",
+                        sweepResult.reclaim?.before !== void 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+                          formatBytes(sweepResult.reclaim.before),
+                          " \u2192 ",
+                          formatBytes(sweepResult.reclaim.after)
+                        ] }) : null,
+                        sweepResult.purgeErrors?.length > 0 ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("br", {}),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", { style: { color: "#d04" }, children: [
+                            sweepResult.purgeErrors.length,
+                            " error",
+                            sweepResult.purgeErrors.length === 1 ? "" : "s",
+                            " (first: ",
+                            sweepResult.purgeErrors[0],
+                            ")"
+                          ] })
+                        ] }) : null
+                      ] })
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: () => {
+                          setSweepReport(null);
+                          setSweepResult(null);
+                        },
+                        style: {
+                          width: "100%",
+                          padding: "10px 16px",
+                          borderRadius: 8,
+                          border: `1px solid ${th.border}`,
+                          background: "transparent",
+                          color: th.text.color,
+                          fontFamily: FONT,
+                          fontSize: 13,
+                          fontWeight: 300,
+                          cursor: "pointer"
+                        },
+                        children: "Close"
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
+          }
+        ),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "STORAGE" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -24049,6 +24244,42 @@ ${link}`;
               }
             );
           })(),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: async () => {
+                window.__pearSync?.haptic("light");
+                setSweepBusy(true);
+                setSweepResult(null);
+                try {
+                  const r10 = await sync2.auditStorage({ purge: false });
+                  setSweepReport(r10);
+                } catch (e58) {
+                  setSweepReport({ error: e58.message, orphans: 0, orphanBytes: 0, totalCores: 0, reachableCount: 0, groupCount: 0 });
+                } finally {
+                  setSweepBusy(false);
+                }
+              },
+              disabled: sweepBusy,
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: sweepBusy ? "wait" : "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT,
+                opacity: sweepBusy ? 0.6 : 1
+              },
+              children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: sweepBusy && !sweepReport ? "Scanning\u2026" : "Sweep Orphaned Data" }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Purge cores from deleted / left groups (shows report first)" })
+              ] })
+            }
+          ),
           reclaimResult?.analyze && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, textAlign: "center", padding: "4px 0" }, children: [
             reclaimResult.analyze.pct,
             "% reclaimable \u2014 tap Reclaim below to continue"
@@ -24489,6 +24720,7 @@ ${link}`;
       putMember: () => resolve(true),
       removeMember: () => resolve(true),
       resyncGroup: () => resolve(true),
+      resyncAll: () => resolve(true),
       setMemberNickname: () => resolve(true),
       getReminders: (id) => resolve(REMINDERS_BY_EVENT[id] ?? []),
       putReminders: () => resolve(true),
@@ -24575,6 +24807,8 @@ ${link}`;
     emitter.emit("groupDeleted", e58.detail);
     emitter.emit("inviteBlocked");
   });
+  window.addEventListener("pear:syncing", (e58) => emitter.emit("syncing", e58.detail));
+  window.addEventListener("pear:synced", (e58) => emitter.emit("synced", e58.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),
@@ -24594,6 +24828,7 @@ ${link}`;
     putMember: (gid, m3) => window.__pearDB.call("putMember", gid, m3),
     removeMember: (gid, mid) => window.__pearDB.call("removeMember", gid, mid),
     resyncGroup: (groupId) => window.__pearDB.call("resyncGroup", groupId),
+    resyncAll: () => window.__pearDB.call("resyncAll"),
     setMemberNickname: (groupId, nick) => window.__pearDB.call("setMemberNickname", groupId, nick),
     getReminders: (id) => window.__pearDB.call("getReminders", id),
     putReminders: (id, r10) => window.__pearDB.call("putReminders", id, r10),
