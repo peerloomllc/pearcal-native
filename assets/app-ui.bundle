@@ -22038,7 +22038,8 @@ ${link}`;
             fontWeight: 300,
             fontFamily: "monospace",
             marginBottom: 10,
-            opacity: 0.7
+            opacity: 0.7,
+            overflowWrap: "anywhere"
           }, children: g.brokenError }),
           /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
             "button",
