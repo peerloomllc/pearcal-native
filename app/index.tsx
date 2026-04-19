@@ -47,6 +47,44 @@ function notifId (eventId: string): number {
 const MORNING_DIGEST_BASE = 900000
 const MORNING_DIGEST_SLOTS = 3
 
+// Coalesce syncNotify bursts. When the phone wakes on charger overnight, Autobase
+// catch-up applies N buffered remote changes at once and each emits a syncNotify →
+// postNow → a separate local notification. Without a window the user wakes to a
+// flood. Buffer within a fixed window and collapse >1 into a single summary.
+const SYNC_NOTIFY_COALESCE_MS = 5000
+let _syncNotifyBuffer: Array<{ title: string, body: string, tab: string }> = []
+let _syncNotifyTimer: any = null
+
+function flushSyncNotify () {
+  _syncNotifyTimer = null
+  const buf = _syncNotifyBuffer
+  _syncNotifyBuffer = []
+  if (buf.length === 0) return
+  const id = Math.floor(Math.random() * 2000000) + 1000000
+  if (buf.length === 1) {
+    const { title, body, tab } = buf[0]
+    PearCalNotifications?.postNow?.({ id, title, body, tab }).catch?.(() => {})
+    return
+  }
+  PearCalNotifications?.postNow?.({
+    id,
+    title: 'Calendar updated',
+    body: buf.length + ' changes',
+    tab: buf[0].tab || 'calendar',
+  }).catch?.(() => {})
+}
+
+function queueSyncNotify (data: any) {
+  _syncNotifyBuffer.push({
+    title: data?.title ?? 'Calendar updated',
+    body:  data?.body  ?? '',
+    tab:   data?.tab   ?? '',
+  })
+  if (!_syncNotifyTimer) {
+    _syncNotifyTimer = setTimeout(flushSyncNotify, SYNC_NOTIFY_COALESCE_MS)
+  }
+}
+
 function calcFireTime (event: any): number | null {
   const [y, mo, d] = event.date.split('-').map(Number)
   let h = 9, m = 0
@@ -429,11 +467,7 @@ webViewRef.current?.injectJavaScript(
       })
 
       onEvent('syncNotify', (data: any) => {
-        try {
-          const { title, body, tab } = data
-          const id = Math.floor(Math.random() * 2000000) + 1000000
-          PearCalNotifications?.postNow?.({ id, title: title ?? 'Calendar updated', body: body ?? '', tab: tab ?? '' }).catch?.(() => {})
-        } catch (e) {}
+        try { queueSyncNotify(data) } catch (e) {}
       })
 
       // Handle share requests from WebView
