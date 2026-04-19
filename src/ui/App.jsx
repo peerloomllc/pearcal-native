@@ -394,6 +394,16 @@ function formatTime (t, use24h) {
   return h12 + ':' + mStr + ampm
 }
 
+function formatRelativeTime (ts) {
+  if (!ts) return ''
+  const diff = Date.now() - ts
+  if (diff < 0 || diff < 10_000)       return 'just now'
+  if (diff < 60_000)                    return Math.floor(diff / 1000)  + 's ago'
+  if (diff < 3_600_000)                 return Math.floor(diff / 60_000) + 'm ago'
+  if (diff < 86_400_000)                return Math.floor(diff / 3_600_000) + 'h ago'
+  return Math.floor(diff / 86_400_000) + 'd ago'
+}
+
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 const DAYS   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -493,6 +503,12 @@ export default function App ({ db, notifs, sync }) {
   const goTab = (t) => { tabHistoryRef.current.push(tabRef.current); tabRef.current = t; setTab(t) }
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
   const [blindPeerKey,   setBlindPeerKey]   = useState(null)
+  const [syncingGroups,  setSyncingGroups]  = useState(() => new Set())
+  const [lastSyncedAt,   setLastSyncedAt]   = useState(() => {
+    try { return JSON.parse(localStorage.getItem('pearcal:lastSyncedAt') ?? '{}') } catch { return {} }
+  })
+  const [pullState,      setPullState]      = useState({ distance: 0, active: false })
+  const pullStateRef = useRef({ startY: 0, pulling: false, distance: 0 })
 
   const th = themes()
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -586,6 +602,28 @@ export default function App ({ db, notifs, sync }) {
 
     emitter.on('sync', onSync)
 
+    function onSyncing (d) {
+      const gid = d?.groupId
+      if (!gid) return
+      setSyncingGroups(prev => { const s = new Set(prev); s.add(gid); return s })
+    }
+    function onSynced (d) {
+      const gid = d?.groupId
+      const ts  = d?.ts ?? Date.now()
+      if (gid) {
+        setSyncingGroups(prev => { const s = new Set(prev); s.delete(gid); return s })
+        setLastSyncedAt(prev => {
+          const next = { ...prev, [gid]: ts }
+          try { localStorage.setItem('pearcal:lastSyncedAt', JSON.stringify(next)) } catch {}
+          return next
+        })
+      } else {
+        setSyncingGroups(new Set())
+      }
+    }
+    emitter.on('syncing', onSyncing)
+    emitter.on('synced',  onSynced)
+
     function onGroupDeleted (groupId) {
       setGroups(prev => prev.filter(g => g.id !== groupId))
       setEvents(prev => prev
@@ -640,6 +678,8 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     return () => {
       emitter.off('sync', onSync)
+      emitter.off('syncing', onSyncing)
+      emitter.off('synced',  onSynced)
       emitter.off('groupDeleted', onGroupDeleted)
       emitter.off('inviteBlocked', onInviteBlocked)
       emitter.off('group:joined', onGroupJoined)
@@ -650,6 +690,67 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])
+
+  // Pull-to-refresh gesture: triggers db.resyncAll() when the user drags
+  // downward past a threshold while at the top of any scroll container.
+  // Scoped to the calendar tab to avoid false triggers in settings sheets.
+  useEffect(() => {
+    if (!db) return
+    if (tab !== 'calendar') return
+    const THRESHOLD = 80
+    const CAP       = 140
+
+    function findScroller (el) {
+      let cur = el
+      while (cur && cur !== document.body) {
+        const style = getComputedStyle(cur)
+        if (/auto|scroll/.test(style.overflowY) && cur.scrollHeight > cur.clientHeight) return cur
+        cur = cur.parentElement
+      }
+      return null
+    }
+
+    function onStart (e) {
+      const t = e.touches?.[0]
+      if (!t) return
+      const scroller = findScroller(e.target)
+      const top = scroller?.scrollTop ?? 0
+      pullStateRef.current = { startY: t.clientY, pulling: top <= 0, distance: 0 }
+    }
+    function onMove (e) {
+      const s = pullStateRef.current
+      if (!s.pulling) return
+      const t = e.touches?.[0]
+      if (!t) return
+      const dy = t.clientY - s.startY
+      if (dy <= 0) {
+        s.pulling = false; s.distance = 0
+        setPullState({ distance: 0, active: false })
+        return
+      }
+      s.distance = Math.min(dy, CAP)
+      setPullState({ distance: s.distance, active: true })
+    }
+    function onEnd () {
+      const s = pullStateRef.current
+      if (s.pulling && s.distance > THRESHOLD) {
+        db.resyncAll?.().catch(() => {})
+      }
+      s.pulling = false; s.distance = 0
+      setPullState({ distance: 0, active: false })
+    }
+
+    window.addEventListener('touchstart',  onStart, { passive: true })
+    window.addEventListener('touchmove',   onMove,  { passive: true })
+    window.addEventListener('touchend',    onEnd,   { passive: true })
+    window.addEventListener('touchcancel', onEnd,   { passive: true })
+    return () => {
+      window.removeEventListener('touchstart',  onStart)
+      window.removeEventListener('touchmove',   onMove)
+      window.removeEventListener('touchend',    onEnd)
+      window.removeEventListener('touchcancel', onEnd)
+    }
+  }, [db, tab])
 
   // Screenshot mode: drive tab/date/modal from preconfigured scene
   const _scene = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
@@ -1086,6 +1187,15 @@ export default function App ({ db, notifs, sync }) {
     setSettingsGroup(null)
   }, [db, sync, groups, profile])
 
+  const removeBrokenGroup = useCallback(async (id) => {
+    if (sync?.removeBrokenGroup) await sync.removeBrokenGroup(id).catch(() => {})
+    setGroups(prev => prev.filter(g => g.id !== id))
+    setEvents(prev => prev
+      .map(e => ({ ...e, groups: e.groups.filter(gid => gid !== id) }))
+      .filter(e => e.groups.length > 0))
+    setSettingsGroup(null)
+  }, [sync])
+
   const removeMember = useCallback(async (g, uid) => {
     const removedMember = g.members.find(m => m.id === uid)
     const removedMembers = [...(g.removedMembers ?? []), {
@@ -1269,6 +1379,37 @@ export default function App ({ db, notifs, sync }) {
               You were removed from this group and cannot rejoin with this link.
             </div>
           )}
+          {syncingGroups.size > 0 && (
+            <div style={{ position:'fixed', top:'calc(var(--safe-area-top) + 8px)',
+              left:'50%', transform:'translateX(-50%)',
+              background:th.card?.background ?? 'var(--color-card)',
+              border:`1px solid ${th.border}`,
+              borderRadius:'var(--radius-lg)',
+              padding:'6px 12px', fontSize:12, fontWeight:300, zIndex:400,
+              display:'flex', alignItems:'center', gap:8,
+              ...th.text }}>
+              <Spinner size={12} /> Syncing…
+            </div>
+          )}
+          {pullState.active && syncingGroups.size === 0 && (() => {
+            const pct    = Math.min(1, pullState.distance / 80)
+            const ready  = pullState.distance > 80
+            return (
+              <div style={{ position:'fixed', top:`calc(var(--safe-area-top) + ${4 + pullState.distance * 0.25}px)`,
+                left:'50%', transform:'translateX(-50%)',
+                background:th.card?.background ?? 'var(--color-card)',
+                border:`1px solid ${th.border}`,
+                borderRadius:'var(--radius-lg)',
+                padding:'6px 12px', fontSize:12, fontWeight:300, zIndex:400,
+                opacity: pct, display:'flex', alignItems:'center', gap:8,
+                pointerEvents:'none', ...th.text }}>
+                <span style={{ display:'inline-block',
+                  transform:`rotate(${ready ? 180 : 0}deg)`,
+                  transition:'transform 120ms var(--easing)' }}>↓</span>
+                {ready ? 'Release to sync' : 'Pull to sync'}
+              </div>
+            )
+          })()}
           {tab === 'groups' && (
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               onNewGroup={() => setNewGroupOpen(true)}
@@ -1442,6 +1583,8 @@ export default function App ({ db, notifs, sync }) {
         )}
         {settingsGroup && (
           <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
+            isSyncing={syncingGroups.has(settingsGroup.id)}
+            lastSyncedAt={lastSyncedAt[settingsGroup.id] ?? null}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
             onClose={() => setSettingsGroup(null)}
             onUpdate={updateGroup} onDelete={deleteGroup}
@@ -1475,6 +1618,16 @@ export default function App ({ db, notifs, sync }) {
                   confirmLabel: 'Leave',
                   dangerous: true,
                   onConfirm: () => deleteGroup(req.g.id, 'leave'),
+                })
+              } else if (req.type === 'removeBrokenGroup') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: 'Remove Broken Group?',
+                  message: `"${req.g.name}" will be removed from this device. Local data for this group is already unrecoverable. ${req.g.ownerId === profile?.id ? 'As the owner you will need to recreate the group to continue.' : 'You can rejoin from a fresh invite link.'}`,
+                  icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                  confirmLabel: 'Remove',
+                  dangerous: true,
+                  onConfirm: () => removeBrokenGroup(req.g.id),
                 })
               } else if (req.type === 'removeMember') {
                 setSettingsGroup(null)
@@ -4351,7 +4504,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+function GroupSettingsModal ({ th, group, me, db, sync, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   useEffect(() => {
     if (closeRef) {
@@ -4423,6 +4576,31 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
         </div>
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
+          {g.brokenAt && (
+            <div style={{ border:'1px solid #D45F7A66', background:'#D45F7A11', borderRadius:12, padding:'14px 16px' }}>
+              <div style={{ fontSize:13, fontWeight:300, color:'#D45F7A', marginBottom:6 }}>
+                ⚠ This group's data couldn't be loaded
+              </div>
+              <div style={{ fontSize:12, color:th.muted, fontWeight:300, lineHeight:1.5, marginBottom:10 }}>
+                The local copy of this group is corrupted and can't be recovered in place.
+                {isOwner
+                  ? ' As the owner, you\u2019ll need to recreate the group and re-invite everyone.'
+                  : ' Ask the group owner to send you a fresh invite link.'}
+              </div>
+              {g.brokenError && (
+                <div style={{ fontSize:10, color:th.muted, fontWeight:300, fontFamily:'monospace',
+                  marginBottom:10, opacity:0.7 }}>
+                  {g.brokenError}
+                </div>
+              )}
+              <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeBrokenGroup', g }) }}
+                style={{ background:'#D45F7A', border:'none', borderRadius:8, color:'#fff',
+                  fontSize:13, padding:'8px 14px', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                  display:'flex', alignItems:'center', gap:6 }}>
+                <Trash size={14} weight="thin" /> Remove this group
+              </button>
+            </div>
+          )}
           {/* Identity — owner only */}
           {canManage && (g.pendingInvites ?? []).length > 0 && (
             <div>
@@ -4547,6 +4725,32 @@ function GroupSettingsModal ({ th, group, me, db, sync, onClose, onUpdate, onDel
               ))}
             </div>
           </div>}
+
+          {/* Sync — visible to all members */}
+          {isMember && (
+            <div>
+              {section('SYNC')}
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <button onClick={() => { db?.resyncGroup(g.id).catch(() => {}) }}
+                  disabled={isSyncing}
+                  style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300,
+                    opacity: isSyncing ? 0.6 : 1, display:'flex', alignItems:'center', gap:6 }}>
+                  {isSyncing ? <><Spinner size={12} /> Syncing…</> : 'Sync now'}
+                </button>
+                <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
+                  {isSyncing
+                    ? 'Fetching from peers…'
+                    : lastSyncedAt
+                      ? 'Last synced ' + formatRelativeTime(lastSyncedAt)
+                      : 'Not synced yet'}
+                </div>
+              </div>
+              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:6, lineHeight:1.4 }}>
+                Forces peer discovery and pulls every writer's core to its tip.
+                Only shows data from peers currently reachable.
+              </div>
+            </div>
+          )}
 
           {/* My Nickname — visible to all members */}
           <div>

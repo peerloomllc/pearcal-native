@@ -36,6 +36,8 @@ window.addEventListener('pear:cameraResult', e => emitter.emit('cameraResult', e
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
+window.addEventListener('pear:syncing', e => emitter.emit('syncing', e.detail))
+window.addEventListener('pear:synced', e => emitter.emit('synced', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -56,6 +58,8 @@ const db = {
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),
   removeMember:  (gid, mid)  => window.__pearDB.call('removeMember', gid, mid),
   resyncGroup:   (groupId)   => window.__pearDB.call('resyncGroup', groupId),
+  resyncAll:     ()          => window.__pearDB.call('resyncAll'),
+  removeBrokenGroup: (id)    => window.__pearDB.call('removeBrokenGroup', id),
   setMemberNickname: (groupId, nick) => window.__pearDB.call('setMemberNickname', groupId, nick),
   getReminders:  (id)     => window.__pearDB.call('getReminders', id),
   putReminders:  (id, r)  => window.__pearDB.call('putReminders', id, r),

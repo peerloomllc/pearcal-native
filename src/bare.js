@@ -81,6 +81,7 @@ async function handle (method, args) {
     case 'listGroups':       return listGroups()
     case 'putGroup':         return putGroup(args[0])
     case 'deleteGroup':      return deleteGroup(args[0])
+    case 'removeBrokenGroup': return removeBrokenGroup(args[0])
     case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
     case 'clearBlockedFromGroup': return db.del('blockedFromGroup:' + args[0]).catch(() => {})
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
@@ -105,6 +106,7 @@ async function handle (method, args) {
     case 'purgeMember:sync':      return syncPurgeMember(args[0], args[1])
     case 'reinviteMember:sync':   return syncReinviteMember(args[0], args[1])
     case 'resyncGroup':        return resyncGroup(args[0])
+    case 'resyncAll':          return resyncAll()
     case 'sync':               return bgSync()
     case 'foregroundSync':     return foregroundSync()
     case 'getReminders':     return getReminders(args[0])
@@ -630,6 +632,38 @@ async function deleteGroup (id) {
   }
 }
 
+// Mark a group as broken on the LOCAL record only — never synced via Autobase
+// (since `brokenAt`/`brokenError` are local diagnostics, not group state). UI
+// reads these to render the recovery banner in Group Settings.
+async function markGroupBroken (groupId, error) {
+  const cur = await db.get(NS.groups + groupId).catch(() => null)
+  if (!cur?.value) return
+  await db.put(NS.groups + groupId, {
+    ...cur.value,
+    brokenAt: Date.now(),
+    brokenError: String(error?.message || error || 'unknown')
+  }).catch(() => {})
+}
+
+async function clearGroupBroken (groupId) {
+  const cur = await db.get(NS.groups + groupId).catch(() => null)
+  if (!cur?.value) return
+  if (cur.value.brokenAt == null && cur.value.brokenError == null) return
+  const { brokenAt, brokenError, ...rest } = cur.value
+  await db.put(NS.groups + groupId, rest).catch(() => {})
+}
+
+// User-initiated cleanup for a group whose base failed to open. Closes the
+// base if it somehow did open (rare — usually we only get here because it
+// didn't), wipes local DB state via deleteGroup, and clears the durable
+// knownWriter index. Orphan namespace cores left behind in the corestore
+// will be reclaimed by the next auditStorage sweep.
+async function removeBrokenGroup (groupId) {
+  try { await leaveGroup(groupId) } catch (e) { console.warn('[REMOVE_BROKEN] leave:', e?.message) }
+  try { await deleteGroup(groupId) } catch (e) { console.warn('[REMOVE_BROKEN] delete:', e?.message) }
+  return { ok: true, groupId }
+}
+
 async function listMembers (groupId) {
   const members = []
   for await (const { value } of db.createReadStream({ gt: NS.members + groupId + ':', lt: NS.members + groupId + ':\xff' })) {
@@ -783,6 +817,9 @@ async function _joinGroupImpl (group) {
   // orphans once the base is closed (or hasn't fully drained yet).
   await snapshotKnownWriters(group.id, base).catch(e =>
     console.warn('[SNAPSHOT_WRITERS]', group.id, e?.message))
+
+  // Open succeeded — clear any prior broken marker so the UI banner goes away.
+  await clearGroupBroken(group.id)
 
   // Non-owner: broadcast our member record to Autobase once we become writable.
   // This handles the case where the owner's iOS app was in the background when we
@@ -1670,13 +1707,70 @@ async function foregroundSync () {
 async function resyncGroup (groupId) {
   const base = bases.get(groupId)
   if (!base) return
-  // Re-mirror everything from the Autobase view to local DB.
-  // Needed after rejoin when local DB was cleaned up on leave
-  // but Autobase view already has entries and won't re-fire apply.
+  send({ type: 'event', event: 'syncing', data: { groupId } })
   try {
-    await base.update()
+    // Bounce Hyperswarm on this group's topic — forces fresh peer discovery,
+    // recovering from silently-dropped connections (backgrounded sockets, stale DHT).
+    const group = await getGroup(groupId).catch(() => null)
+    if (swarm && group?.groupKey) {
+      try {
+        const topic = b4a.from(group.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+        await swarm.leave(topic).catch(() => {})
+        swarm.join(topic, { server: true, client: true })
+        await swarm.flush().catch(() => {})
+      } catch (e) { console.warn('[RESYNC] swarm bounce:', e?.message) }
+    }
+
+    // Re-broadcast writer-announce on open channels — if the owner has come
+    // online since the last handshake, this is how they learn to grant addWriter.
+    try {
+      const profile = await getProfile().catch(() => null)
+      const writerKey = b4a.toString(base.local.key, 'hex')
+      const announce = Buffer.from(JSON.stringify({ groupId, writerKey, memberId: profile?.id ?? null }))
+      for (const ch of activeChannels) {
+        try { ch.send(announce) } catch (e) {}
+      }
+    } catch (e) { console.warn('[RESYNC] announce:', e?.message) }
+
+    // Eagerly download every writer's core to tip. Hypercore's default is
+    // lazy-pull (only fetch blocks apply() needs); this forces "pull everything
+    // any connected peer will serve" so future events / membership tips land
+    // even when the local apply loop wouldn't have asked for them.
+    const writers = base.activeWriters || base.writers || []
+    const deadline = Date.now() + 8000
+    const downloads = []
+    for (const w of writers) {
+      const core = w?.core
+      if (!core) continue
+      try {
+        if (typeof core.update === 'function') {
+          await core.update().catch(() => {})
+        }
+        const end = core.length
+        if (end > 0 && typeof core.download === 'function') {
+          const range = core.download({ start: 0, end })
+          if (range && typeof range.done === 'function') {
+            downloads.push(range.done().catch(() => {}))
+          }
+        }
+      } catch (e) {}
+    }
+    if (downloads.length) {
+      const remaining = Math.max(0, deadline - Date.now())
+      await Promise.race([
+        Promise.all(downloads),
+        new Promise(r => setTimeout(r, remaining)),
+      ])
+    }
+
+    // Force Autobase to re-run apply() over anything that arrived.
+    await base.update().catch(e => console.warn('[RESYNC] base.update:', e?.message))
+
     const view = base.view
-    if (!view) return
+    if (!view) {
+      send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now() } })
+      return
+    }
     for await (const { key, value } of view.createReadStream()) {
       if (!value) continue
       if (key.startsWith('events:')) {
@@ -1738,7 +1832,19 @@ async function resyncGroup (groupId) {
       }
     }
     send({ type: 'event', event: 'sync', data: groupId })
-  } catch(e) { console.error('[RESYNC] error:', e.message) }
+    send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now() } })
+  } catch(e) {
+    console.error('[RESYNC] error:', e.message)
+    send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now(), error: e.message } })
+  }
+}
+
+async function resyncAll () {
+  const ids = [...bases.keys()]
+  for (const gid of ids) {
+    await resyncGroup(gid).catch(e => console.warn('[RESYNC_ALL]', gid, e?.message))
+  }
+  send({ type: 'event', event: 'synced', data: { groupId: null, ts: Date.now() } })
 }
 
 function isInvitedToEvent (event, profileId) {
@@ -3247,7 +3353,10 @@ async function _doInit (dir, attempt = 0) {
         const target = await db.get(NS.groups + g.migratedTo).catch(() => null)
         if (target?.value) continue
       }
-      await joinGroup(g).catch(e => console.error('joinGroup error:', e.message))
+      await joinGroup(g).catch(async e => {
+        console.error('joinGroup error:', e.message)
+        await markGroupBroken(g.id, e)
+      })
     }
 
     // Reload persisted pending member leaves so they can be delivered on next peer connection
