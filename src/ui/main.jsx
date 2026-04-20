@@ -113,7 +113,7 @@ const sync = {
 // Avatar hash resolver with in-memory LRU cache (shared across the app).
 // Records will carry `avatarHash` in place of inline base64 once dedup writes land;
 // this read-both shim resolves either form.
-const AVATAR_CACHE_MAX = 64
+const AVATAR_CACHE_MAX = 256
 const _avatarCache = new Map()
 const _avatarInflight = new Map()
 window.__pearResolveAvatar = function (hash) {

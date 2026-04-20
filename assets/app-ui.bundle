@@ -25175,7 +25175,7 @@ ${link}`;
     auditStorage: (opts) => window.__pearDB.call("auditStorage", opts),
     purgeOrphanDataRanges: (opts) => window.__pearDB.call("purgeOrphanDataRanges", opts)
   };
-  var AVATAR_CACHE_MAX = 64;
+  var AVATAR_CACHE_MAX = 256;
   var _avatarCache = /* @__PURE__ */ new Map();
   var _avatarInflight = /* @__PURE__ */ new Map();
   window.__pearResolveAvatar = function(hash) {
