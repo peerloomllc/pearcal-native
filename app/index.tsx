@@ -422,9 +422,9 @@ webViewRef.current?.injectJavaScript(
           PearCalNotifications?.cancel?.(base + i).catch(() => {})
         }
       })
-      onEvent('sync', (groupId: string) => {
+      onEvent('sync', (payload: any) => {
         webViewRef.current?.injectJavaScript(
-          'window.__pearEvent("sync",' + JSON.stringify(groupId) + ');true;'
+          'window.__pearEvent("sync",' + JSON.stringify(payload) + ');true;'
         )
         // No-op if no BGTask is pending; harmless for foreground syncs
         if (Platform.OS === 'ios') PearCalBGSync?.completeBGSync?.(true)
