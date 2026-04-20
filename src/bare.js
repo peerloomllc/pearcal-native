@@ -337,14 +337,25 @@ async function listEvents (opts) {
   const gt = NS.events + (from ?? '')
   const lt = NS.events + (to ? to + '\xff' : '\xff')
   const profile = await getProfile()
-  const events = []
+  const matched = []
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (groupId && !value.groups?.includes(groupId)) continue
     if (!isInvitedToEvent(value, profile?.id)) continue
-    const privateNote = await getPrivateNote(value.id)
-    events.push(privateNote ? { ...value, privateNote } : value)
+    matched.push(value)
   }
-  return events
+  // Batch-fetch private notes: one sequential scan over `privateNotes:` beats
+  // N per-event `db.get()` calls (each pays tree traversal + proof verify).
+  // Only matters if any matched event actually had a note; otherwise skip.
+  if (matched.length === 0) return matched
+  const notes = new Map()
+  for await (const { key, value } of db.createReadStream({ gt: NS.privateNotes, lt: NS.privateNotes + '\xff' })) {
+    const text = value?.text
+    if (text) notes.set(key.slice(NS.privateNotes.length), text)
+  }
+  return matched.map(ev => {
+    const note = notes.get(ev.id)
+    return note ? { ...ev, privateNote: note } : ev
+  })
 }
 
 async function putEvent (event) {
