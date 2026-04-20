@@ -937,7 +937,12 @@ async function _joinGroupImpl (group) {
         console.error('[BROADCAST_SELF] auto-broadcast error:', e.message)
       }
     }
-    base.once('writable', doBroadcastSelf)
+    // On rejoin (same namespace = same writerKey, addWriter already linearized),
+    // the base opens already writable and 'writable' never re-fires, so the
+    // once-handler would hang indefinitely. Check synchronously first and
+    // invoke directly in that case — this is the JS one-shot-init pattern.
+    if (base.writable) doBroadcastSelf()
+    else base.once('writable', doBroadcastSelf)
   }
 
   // Register onAppend for this base so replication triggers apply() even if the
@@ -2296,10 +2301,15 @@ function makeApply (groupId) {
             for (const m of (winningValue.removedMembers ?? []))      removedMap.set(m.id ?? m, m)
             for (const m of (val.value.removedMembers ?? []))         removedMap.set(m.id ?? m, m)
             for (const m of dedupRemoved)                             removedMap.set(m.id, m)
-            // Exclude reinstated members (reinvited or purged via Autobase op)
+            // Exclude reinstated members (reinvited or purged via Autobase op).
+            // Compare timestamps so a later re-kick supersedes the earlier reinstate;
+            // otherwise a second kick is silently filtered out (sticky reinstated key).
+            const groupUpdatedAt = Math.max(winningValue.updatedAt ?? 0, val.value.updatedAt ?? 0)
             for (const id of [...removedMap.keys()]) {
               const reinstated = await db.get('reinstated:' + groupId + ':' + id).catch(() => null)
-              if (reinstated) removedMap.delete(id)
+              if (reinstated && (reinstated.value?.ts ?? 0) > groupUpdatedAt) {
+                removedMap.delete(id)
+              }
             }
             for (const id of removedMap.keys()) mergedMap.delete(id)
 
@@ -2708,10 +2718,16 @@ async function mirrorToLocal (type, key, value, groupId) {
       for (const m of (value.removedMembers ?? []))           removedMap.set(m.id ?? m, m)
       for (const m of dedupRemoved)                           removedMap.set(m.id, m)
       // Exclude members that were reinstated (reinvited or purged) — the reinstated:
-      // key is set by the reinviteMember/purgeMember Autobase ops in apply()
+      // key is set by the reinviteMember/purgeMember Autobase ops in apply().
+      // Compare timestamps so a later re-kick supersedes the earlier reinstate;
+      // otherwise the key stays sticky and a second kick is silently filtered
+      // out of local removedMembers, which suppresses #74 auto-leave (its
+      // re-read sees stillRemoved=false and bails).
       for (const id of [...removedMap.keys()]) {
         const reinstated = await db.get('reinstated:' + groupId + ':' + id).catch(() => null)
-        if (reinstated) removedMap.delete(id)
+        if (reinstated && (reinstated.value?.ts ?? 0) > (value.updatedAt ?? 0)) {
+          removedMap.delete(id)
+        }
       }
       // Filter out any member who appears in removedMembers
       for (const id of removedMap.keys()) mergedMap.delete(id)
