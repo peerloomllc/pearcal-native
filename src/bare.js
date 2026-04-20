@@ -2546,6 +2546,19 @@ function deduplicateReinstalls (mergedMap, existingMembers, incomingMembers) {
   return removed
 }
 
+// Two mirrored records are "the same" if they differ only in `updatedAt`.
+// Hypercore is append-only, so rewriting an unchanged record wastes a block
+// (and the trailing sync emit triggers a pointless UI refetch). JSON compare
+// is safe because both sides are built from the same merge code paths — key
+// order is stable.
+function sameExceptUpdatedAt (a, b) {
+  if (a === b) return true
+  if (!a || !b) return false
+  const { updatedAt: _a, ...ac } = a
+  const { updatedAt: _b, ...bc } = b
+  return JSON.stringify(ac) === JSON.stringify(bc)
+}
+
 async function mirrorToLocal (type, key, value, groupId) {
   try {
     // User removed this group — don't resurrect any of its records from sync.
@@ -2573,7 +2586,10 @@ async function mirrorToLocal (type, key, value, groupId) {
         await db.del('events:' + value._prevDate + ':' + value.id).catch(() => {})
       }
       const { _prevDate, ...clean } = value
-      await db.put(key, { ...clean, updatedAt: value.updatedAt || Date.now() })
+      const next = { ...clean, updatedAt: value.updatedAt || Date.now() }
+      const existing = await db.get(key).catch(() => null)
+      if (existing?.value && sameExceptUpdatedAt(existing.value, next)) return
+      await db.put(key, next)
     } else if (type === 'group') {
       // Merge members from incoming group with existing local members
       // so no device's member list overwrites another's
@@ -2629,6 +2645,7 @@ async function mirrorToLocal (type, key, value, groupId) {
         members: splitMembers,
         updatedAt: value.updatedAt || Date.now()
       }
+      if (existing?.value && sameExceptUpdatedAt(existing.value, merged)) return
       await db.put(key, merged)
     }
     // Notify UI to refresh
