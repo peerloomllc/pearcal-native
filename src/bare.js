@@ -165,6 +165,7 @@ const NS = {
   profile: 'profile',
   events:  'events:',
   groups:  'groups:',
+  groupMembers: 'groupMembers:',
   members: 'members:',
   rsvp:    'rsvp:',
   privateNotes: 'privateNotes:',
@@ -603,9 +604,20 @@ async function pruneExpiredTombstones () {
   }
 }
 
+// Phase 1 read-both shim for TODO #70. When a Phase 2+ peer writes split ops
+// (`type: 'groupMembers'`), the members list lives in `groupMembers:{id}` and
+// the `groups:{id}` record holds metadata only. Rehydrate to the unified shape
+// so every existing `group.members` reader keeps working.
+async function rehydrateGroupMembers (groupValue) {
+  if (!groupValue?.id) return groupValue
+  const gm = await db.get(NS.groupMembers + groupValue.id).catch(() => null)
+  if (gm?.value?.members) return { ...groupValue, members: gm.value.members }
+  return groupValue
+}
+
 async function getGroup (id) {
   const node = await db.get(NS.groups + id)
-  return node?.value ?? null
+  return rehydrateGroupMembers(node?.value ?? null)
 }
 
 async function debugGroup (id) {
@@ -640,7 +652,7 @@ async function listGroups () {
       deleteGroup(value.id).catch(() => {})
       continue
     }
-    groups.push(value)
+    groups.push(await rehydrateGroupMembers(value))
   }
   return groups
 }
@@ -673,6 +685,7 @@ async function reinviteMember (groupId, memberId) {
 
 async function deleteGroup (id) {
   await db.del(NS.groups + id)
+  await db.del(NS.groupMembers + id).catch(() => {})
   await db.del('joinedAt:' + id).catch(() => {})
   // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
@@ -2585,6 +2598,18 @@ async function mirrorToLocal (type, key, value, groupId) {
     }
     if (type === 'rsvp') {
       // LWW mirror — only overwrite local if incoming is newer
+      const existing = await db.get(key).catch(() => null)
+      if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        await db.put(key, value)
+        emitSync(groupId)
+      }
+      return
+    }
+    if (type === 'groupMembers') {
+      // Phase 1 read-both shim for TODO #70. Phase 2+ peers will append split
+      // ops alongside `type: 'group'` metadata writes. Plain LWW here —
+      // authoritative-vs-union merge lives in Phase 2 when we become a writer
+      // of these ops. For now just accept the newer record so rehydrate has it.
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
         await db.put(key, value)
