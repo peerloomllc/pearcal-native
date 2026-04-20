@@ -19,6 +19,21 @@ const {
 
 const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
+// Per-groupId debounce so clustered apply()/mirror emits (one peer reconnect
+// can linearise dozens of blocks) collapse into a single UI refetch instead
+// of paying serialize → IPC bridge → deserialize → re-render per block.
+const SYNC_EMIT_DEBOUNCE_MS = 50
+const _syncEmitTimers = new Map()
+function emitSync (groupId) {
+  const key = groupId == null ? '__global__' : groupId
+  const existing = _syncEmitTimers.get(key)
+  if (existing) clearTimeout(existing)
+  _syncEmitTimers.set(key, setTimeout(() => {
+    _syncEmitTimers.delete(key)
+    send({ type: 'event', event: 'sync', data: groupId })
+  }, SYNC_EMIT_DEBOUNCE_MS))
+}
+
 let db      = null   // main Hyperbee (local profile/events/groups)
 let store   = null   // Corestore for Autobase
 let swarm   = null   // Hyperswarm
@@ -1070,8 +1085,8 @@ async function commitRekey (oldGroupId) {
   // UI would target the old base (whose ops are gated into no-ops).
   await rewriteLocalEventGroupIds(oldGroupId, descriptor.newGroupId)
 
-  send({ type: 'event', event: 'sync', data: oldGroupId })
-  send({ type: 'event', event: 'sync', data: descriptor.newGroupId })
+  emitSync(oldGroupId)
+  emitSync(descriptor.newGroupId)
   send({ type: 'event', event: 'groupMigrated', data: {
     oldGroupId,
     newGroupId:  descriptor.newGroupId,
@@ -1150,8 +1165,8 @@ async function adoptGroupMigration (oldGroupId, marker) {
   // so subsequent put/delete ops from this device target the new base.
   await rewriteLocalEventGroupIds(oldGroupId, newGroupId)
 
-  send({ type: 'event', event: 'sync', data: oldGroupId })
-  send({ type: 'event', event: 'sync', data: newGroupId })
+  emitSync(oldGroupId)
+  emitSync(newGroupId)
   send({ type: 'event', event: 'groupMigrated', data: {
     oldGroupId,
     newGroupId,
@@ -1733,7 +1748,7 @@ async function bgSync () {
   await Promise.all(updates)
   // Emit sync so completeBGSync is always called, even if no new data arrived.
   // apply() may have already emitted sync events for changed groups; this is a no-op fallback.
-  send({ type: 'event', event: 'sync', data: null })
+  emitSync(null)
 }
 
 // Called when app returns to foreground — flush Hyperswarm to reconnect peers
@@ -1764,7 +1779,7 @@ async function foregroundSync () {
             joinedAt: lv?.joinedAt || gNode.value.joinedAt,
             nickname: lv?.nickname || gNode.value.nickname,
           })
-          send({ type: 'event', event: 'sync', data: groupId })
+          emitSync(groupId)
         }
       }
     } catch (e) { console.warn('[FGSYNC] error:', e.message) }
@@ -1899,7 +1914,7 @@ async function resyncGroup (groupId) {
         })
       }
     }
-    send({ type: 'event', event: 'sync', data: groupId })
+    emitSync(groupId)
     send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now() } })
   } catch(e) {
     console.error('[RESYNC] error:', e.message)
@@ -2110,7 +2125,7 @@ function makeApply (groupId) {
                   const updatedPending = { ...localGroup.value,
                     pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
                   await db.put(NS.groups + groupId, updatedPending).catch(() => {})
-                  send({ type: 'event', event: 'sync', data: groupId })
+                  emitSync(groupId)
                 }
               }
               } // end else (non-historical)
@@ -2246,7 +2261,7 @@ function makeApply (groupId) {
               members: splitMembers,
             }
             await db.put(val.key, merged)
-            send({ type: 'event', event: 'sync', data: groupId })
+            emitSync(groupId)
           } else {
             await mirrorToLocal(val.type, val.key, existing.value, groupId)
           }
@@ -2263,7 +2278,7 @@ function makeApply (groupId) {
           await leaveGroup(groupId)
           send({ type: 'event', event: 'groupDeleted', data: groupId })
         } else {
-          send({ type: 'event', event: 'sync', data: groupId })
+          emitSync(groupId)
           if (isRemote && val.type === 'event') {
             const eventId = val.key.split(':').pop()
             // Cancel any scheduled notification for this deleted event
@@ -2315,7 +2330,7 @@ function makeApply (groupId) {
             }
           }
         }
-        send({ type: 'event', event: 'sync', data: val.groupId })
+        emitSync(val.groupId)
       } else if (val.op === 'purgeMember') {
         const gKey = NS.groups + val.groupId
         const gNode = await view.get(gKey)
@@ -2331,7 +2346,7 @@ function makeApply (groupId) {
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
         }
-        send({ type: 'event', event: 'sync', data: val.groupId })
+        emitSync(val.groupId)
       }
     }
   }
@@ -2573,7 +2588,7 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
         await db.put(key, value)
-        send({ type: 'event', event: 'sync', data: groupId })
+        emitSync(groupId)
       }
       return
     }
@@ -2649,7 +2664,7 @@ async function mirrorToLocal (type, key, value, groupId) {
       await db.put(key, merged)
     }
     // Notify UI to refresh
-    send({ type: 'event', event: 'sync', data: groupId })
+    emitSync(groupId)
     if (type === 'event') scheduleWidgetCacheRefresh()
   } catch(e) {
     console.error('mirrorToLocal error:', e.message)
@@ -2685,7 +2700,7 @@ async function setMemberNickname (groupId, nickname) {
     await appendGroupWithAvatarSplit(base, updatedGroup)
       .catch(e => console.error('[NICKNAME] sync error:', e.message))
   }
-  send({ type: 'event', event: 'sync', data: groupId })
+  emitSync(groupId)
 }
 
 // ── Storage diagnostics ──────────────────────────────────────────────────────
@@ -3178,7 +3193,7 @@ async function _doInit (dir, attempt = 0) {
                   // Rebroadcast so other members see the updated list
                   const base = bases.get(groupId)
                   if (base) await appendGroupWithAvatarSplit(base, updated)
-                  send({ type: 'event', event: 'sync', data: groupId })
+                  emitSync(groupId)
                 }
               } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
               return

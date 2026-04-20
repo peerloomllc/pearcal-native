@@ -240,7 +240,7 @@ export default function Root () {
           )
         }
       } catch(e) {}
-    }, 500)
+    }, 1000)
     return () => clearInterval(interval)
   }, [dbReady, webViewReady])
 
@@ -428,6 +428,16 @@ webViewRef.current?.injectJavaScript(
         )
         // No-op if no BGTask is pending; harmless for foreground syncs
         if (Platform.OS === 'ios') PearCalBGSync?.completeBGSync?.(true)
+      })
+      onEvent('syncing', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("syncing",' + JSON.stringify(data) + ');true;'
+        )
+      })
+      onEvent('synced', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("synced",' + JSON.stringify(data) + ');true;'
+        )
       })
 
       onEvent('groupDeleted', (groupId: string) => {
