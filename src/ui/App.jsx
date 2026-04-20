@@ -843,7 +843,15 @@ export default function App ({ db, notifs, sync }) {
         activeCameraConsumer.current(base64)
         activeCameraConsumer.current = null
       } else if (base64) {
-        updateProfileRef.current({ avatar: base64 }).catch(() => {})
+        // Preserve animated formats — canvas would flatten to a static frame.
+        const animated = base64.startsWith('data:image/gif') || base64.startsWith('data:image/webp')
+        if (animated) {
+          updateProfileRef.current({ avatar: base64 }).catch(() => {})
+        } else {
+          downscaleAvatarDataUrl(base64)
+            .then(small => updateProfileRef.current({ avatar: small }))
+            .catch(() => updateProfileRef.current({ avatar: base64 }).catch(() => {}))
+        }
       }
     }
     emitter.on('cameraResult', onCameraResult)
@@ -1844,40 +1852,44 @@ function MemberAvatarByHash ({ avatarHash, fallback, name, color, size, fontSize
 }
 
 /**
- * compressAvatar — resize & JPEG-compress a File to a base64 data URL.
- * Target: 200×200px, JPEG quality 0.7 — matches native camera module output.
+ * downscaleAvatarDataUrl — centre-crop + shrink an image data URL to 96×96 webp.
+ * Target: <10 KB per avatar. Falls back to JPEG on WebKit < 16 (webp encoding
+ * only supported in Safari 16+; older WebViews silently emit PNG which is
+ * larger than JPEG for photos).
  */
+function downscaleAvatarDataUrl (dataUrl) {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img')
+    const timeout = setTimeout(() => reject(new Error('Image load timed out')), 15000)
+    img.onload = () => {
+      clearTimeout(timeout)
+      const SIZE = 96
+      const canvas = document.createElement('canvas')
+      canvas.width = SIZE
+      canvas.height = SIZE
+      const ctx = canvas.getContext('2d')
+      const side = Math.min(img.width, img.height)
+      const sx = (img.width - side) / 2
+      const sy = (img.height - side) / 2
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE)
+      let out = canvas.toDataURL('image/webp', 0.82)
+      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', 0.82)
+      resolve(out)
+    }
+    img.onerror = () => { clearTimeout(timeout); reject(new Error('Image load failed')) }
+    img.src = dataUrl
+  })
+}
+
 function compressAvatar (file) {
-  // For animated formats, skip canvas compression (canvas strips animation)
-  if (file.type === 'image/gif' || file.type === 'image/webp') {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = e => resolve(e.target.result)
-      reader.onerror = reject
-      reader.readAsDataURL(file)
-    })
-  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
+    // Pass animated formats through unchanged — canvas flattens to a static
+    // first frame, so downscaling a gif/webp would strip animation.
+    const passThrough = file.type === 'image/gif' || file.type === 'image/webp'
     reader.onload = ev => {
-      const img = document.createElement('img')
-      const timeout = setTimeout(() => reject(new Error('Image load timed out')), 15000)
-      img.onload = () => {
-        clearTimeout(timeout)
-        const SIZE = 200
-        const canvas = document.createElement('canvas')
-        canvas.width = SIZE
-        canvas.height = SIZE
-        const ctx = canvas.getContext('2d')
-        // Centre-crop to square
-        const side = Math.min(img.width, img.height)
-        const sx = (img.width - side) / 2
-        const sy = (img.height - side) / 2
-        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE)
-        resolve(canvas.toDataURL('image/jpeg', 0.7))
-      }
-      img.onerror = () => { clearTimeout(timeout); reject(new Error('Image load failed')) }
-      img.src = ev.target.result
+      if (passThrough) resolve(ev.target.result)
+      else downscaleAvatarDataUrl(ev.target.result).then(resolve, reject)
     }
     reader.onerror = reject
     reader.readAsDataURL(file)
