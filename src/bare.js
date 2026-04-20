@@ -154,7 +154,14 @@ const NS = {
   rsvp:    'rsvp:',
   privateNotes: 'privateNotes:',
   avatars: 'avatars:',
+  deleted: 'deleted:',
 }
+
+// Tombstones (`deleted:{eventId}`) guard against sync-replay resurrection and
+// duplicate delete notifications. After this window the originating delete op
+// will have linearized on every peer's Autobase, so the guard is no longer
+// load-bearing and the record is safe to drop.
+const TOMBSTONE_TTL_MS = 180 * 24 * 60 * 60 * 1000
 
 async function getAvatar (hash) {
   if (!hash) return null
@@ -550,7 +557,24 @@ async function putReminders (eventId, reminders) {
 
 async function localDeleteEvent (date, id) {
   await db.del(NS.events + date + ':' + id)
-  await db.put('deleted:' + id, { date, ts: Date.now() })
+  await db.put(NS.deleted + id, { date, ts: Date.now() })
+}
+
+async function pruneExpiredTombstones () {
+  const cutoff = Date.now() - TOMBSTONE_TTL_MS
+  const stale = []
+  try {
+    for await (const { key, value } of db.createReadStream({ gt: NS.deleted, lt: NS.deleted + '\xff' })) {
+      const ts = value?.ts
+      if (typeof ts !== 'number' || ts < cutoff) stale.push(key)
+    }
+    for (const key of stale) {
+      await db.del(key).catch(() => {})
+    }
+    if (stale.length > 0) console.log('[TOMBSTONE_PRUNE] dropped', stale.length, 'expired tombstones')
+  } catch (e) {
+    console.warn('[TOMBSTONE_PRUNE] error:', e.message)
+  }
 }
 
 async function getGroup (id) {
@@ -1809,7 +1833,7 @@ async function resyncGroup (groupId) {
       if (key.startsWith('events:')) {
         // Respect local delete tombstone — never resurrect user-deleted events
         const eventId = key.split(':').pop()
-        const tombstone = await db.get('deleted:' + eventId).catch(() => null)
+        const tombstone = await db.get(NS.deleted + eventId).catch(() => null)
         if (tombstone) continue
         await db.put(key, value)
       } else if (key.startsWith('groups:')) {
@@ -2107,7 +2131,7 @@ function makeApply (groupId) {
             // Shadow (busy-time) events carry no invitation/commitment — silent
             if (val.value.isShadow) continue
             // Skip notification if user locally deleted this event
-            const notifTombstone = await db.get('deleted:' + val.value.id).catch(() => null)
+            const notifTombstone = await db.get(NS.deleted + val.value.id).catch(() => null)
             if (notifTombstone) continue
             // Skip notification for past events (prevents overnight flood from background sync replay).
             // Compare against LOCAL date, not UTC, since event.date is a local YYYY-MM-DD string.
@@ -2235,7 +2259,7 @@ function makeApply (groupId) {
             send({ type: 'event', event: 'cancelNotification', data: eventId })
             // Shadow (busy-time) deletes are silent — mirror the put side
             const isShadowKey = val.key.includes(':shadow:')
-            const delTombstone = await db.get('deleted:' + eventId).catch(() => null)
+            const delTombstone = await db.get(NS.deleted + eventId).catch(() => null)
             if (!delTombstone && !isShadowKey && !recentDeleteNotifs.has(eventId)) {
               recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
@@ -2251,7 +2275,7 @@ function makeApply (groupId) {
             }
             // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire
             if (!isShadowKey) {
-              await db.put('deleted:' + eventId, { ts: Date.now() }).catch(() => {})
+              await db.put(NS.deleted + eventId, { ts: Date.now() }).catch(() => {})
             }
           }
         }
@@ -2531,7 +2555,7 @@ async function mirrorToLocal (type, key, value, groupId) {
     }
     if (type === 'event') {
       // If user locally deleted this event, don't resurrect it from sync
-      const tombstone = await db.get('deleted:' + value.id).catch(() => null)
+      const tombstone = await db.get(NS.deleted + value.id).catch(() => null)
       if (tombstone) return
       // If date changed, remove old local entry to prevent duplicate
       if (value._prevDate && value._prevDate !== value.date) {
@@ -3303,6 +3327,11 @@ async function _doInit (dir, attempt = 0) {
     } catch (e) {
       console.error('[MIGRATION avatarDedupV1] error:', e.message)
     }
+    // Drop tombstones older than TOMBSTONE_TTL_MS (and legacy tombstones with
+    // no `ts`). Safe after the TTL window: the delete op has long since
+    // linearized on every peer, so the sync-replay guard is no longer load-bearing.
+    await pruneExpiredTombstones()
+
     // Re-join all existing groups
     const groups = []
     for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
