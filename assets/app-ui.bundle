@@ -16800,8 +16800,14 @@
           activeCameraConsumer.current(base64);
           activeCameraConsumer.current = null;
         } else if (base64) {
-          updateProfileRef.current({ avatar: base64 }).catch(() => {
-          });
+          const animated = base64.startsWith("data:image/gif") || base64.startsWith("data:image/webp");
+          if (animated) {
+            updateProfileRef.current({ avatar: base64 }).catch(() => {
+            });
+          } else {
+            downscaleAvatarDataUrl(base64).then((small) => updateProfileRef.current({ avatar: small })).catch(() => updateProfileRef.current({ avatar: base64 }).catch(() => {
+            }));
+          }
         }
       }
       emitter.on("cameraResult", onCameraResult);
@@ -17967,38 +17973,39 @@
       flexShrink: 0
     }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: resolved, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: fallback || "?" }) });
   }
+  function downscaleAvatarDataUrl(dataUrl) {
+    return new Promise((resolve2, reject) => {
+      const img = document.createElement("img");
+      const timeout = setTimeout(() => reject(new Error("Image load timed out")), 15e3);
+      img.onload = () => {
+        clearTimeout(timeout);
+        const SIZE = 96;
+        const canvas = document.createElement("canvas");
+        canvas.width = SIZE;
+        canvas.height = SIZE;
+        const ctx = canvas.getContext("2d");
+        const side = Math.min(img.width, img.height);
+        const sx = (img.width - side) / 2;
+        const sy = (img.height - side) / 2;
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+        let out = canvas.toDataURL("image/webp", 0.82);
+        if (!out.startsWith("data:image/webp")) out = canvas.toDataURL("image/jpeg", 0.82);
+        resolve2(out);
+      };
+      img.onerror = () => {
+        clearTimeout(timeout);
+        reject(new Error("Image load failed"));
+      };
+      img.src = dataUrl;
+    });
+  }
   function compressAvatar(file) {
-    if (file.type === "image/gif" || file.type === "image/webp") {
-      return new Promise((resolve2, reject) => {
-        const reader = new FileReader();
-        reader.onload = (e58) => resolve2(e58.target.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-    }
     return new Promise((resolve2, reject) => {
       const reader = new FileReader();
+      const passThrough = file.type === "image/gif" || file.type === "image/webp";
       reader.onload = (ev2) => {
-        const img = document.createElement("img");
-        const timeout = setTimeout(() => reject(new Error("Image load timed out")), 15e3);
-        img.onload = () => {
-          clearTimeout(timeout);
-          const SIZE = 200;
-          const canvas = document.createElement("canvas");
-          canvas.width = SIZE;
-          canvas.height = SIZE;
-          const ctx = canvas.getContext("2d");
-          const side = Math.min(img.width, img.height);
-          const sx = (img.width - side) / 2;
-          const sy = (img.height - side) / 2;
-          ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
-          resolve2(canvas.toDataURL("image/jpeg", 0.7));
-        };
-        img.onerror = () => {
-          clearTimeout(timeout);
-          reject(new Error("Image load failed"));
-        };
-        img.src = ev2.target.result;
+        if (passThrough) resolve2(ev2.target.result);
+        else downscaleAvatarDataUrl(ev2.target.result).then(resolve2, reject);
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
