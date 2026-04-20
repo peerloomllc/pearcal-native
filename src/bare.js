@@ -2166,6 +2166,51 @@ function makeApply (groupId) {
               }
             } catch(e) { console.error('[ADMIN_NOTIF] error:', e.message) }
           }
+          // Self-removal auto-leave (TODO #74). If the owner kicks me while my app
+          // is already connected to the swarm, no fresh writer-announce fires, so the
+          // protomux `{ blocked: true }` path (bare.js:3227) never triggers. We'd
+          // otherwise linger in the group with ourselves absent from members[] and
+          // no notification. Detect that state here in the group-put path.
+          if (isRemote && val.type === 'group') {
+            try {
+              const profile = await getProfile()
+              const selfId = profile?.id
+              const isOwner = selfId && viewValue.ownerId === selfId
+              const inRemoved = selfId && (viewValue.removedMembers ?? []).some(m => (m.id ?? m) === selfId)
+              // Skip historical replay during initial Autobase catch-up — we may have
+              // been removed AND reinstated before coming online; the final view state
+              // (post-replay) is what matters, and a later reinstate op clears us.
+              const joinedAtEntry = await db.get('joinedAt:' + groupId).catch(() => null)
+              const joinedAt = joinedAtEntry?.value?.ts ?? 0
+              const isHistorical = val.value.updatedAt && val.value.updatedAt < joinedAt
+              if (inRemoved && !isOwner && !isHistorical) {
+                // Defer so any immediately-following reinstate op in the same apply
+                // batch can first clear removedMembers. Re-check before acting.
+                setTimeout(async () => {
+                  const recheck = await db.get(NS.groups + groupId).catch(() => null)
+                  if (!recheck?.value) return
+                  const stillRemoved = (recheck.value.removedMembers ?? []).some(m => (m.id ?? m) === selfId)
+                  if (!stillRemoved) return
+                  const allMembers = [...(recheck.value.members ?? []), ...(recheck.value.removedMembers ?? [])]
+                  const ownerName = allMembers.find(m => m.id === recheck.value.ownerId)?.name || 'The owner'
+                  const kickedGroupName = recheck.value.name || 'a group'
+                  send({ type: 'event', event: 'syncNotify', data: {
+                    title: ownerName + ' removed you from ' + kickedGroupName,
+                    body: 'You no longer have access to this group',
+                    tab: 'groups'
+                  }})
+                  await db.put('blockedFromGroup:' + groupId, { ts: Date.now() }).catch(() => {})
+                  await deleteGroup(groupId).catch(() => {})
+                  await leaveGroup(groupId).catch(() => {})
+                  // `groupDeleted` actually filters the group out of the UI list
+                  // via onGroupDeleted in App.jsx. `inviteBlocked` only shows a
+                  // toast. Mirror the memberLeft protomux self-kick path
+                  // (bare.js:3232) which uses groupDeleted for the same reason.
+                  send({ type: 'event', event: 'groupDeleted', data: groupId })
+                }, 100)
+              }
+            } catch(e) { console.error('[SELF_REMOVAL] error:', e.message) }
+          }
           if (isRemote && val.type === 'event') {
             // Shadow (busy-time) events carry no invitation/commitment — silent
             if (val.value.isShadow) continue
