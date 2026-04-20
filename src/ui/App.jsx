@@ -589,37 +589,27 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => {
     if (!db) return
 
-    async function onSync (groupId) {
-      // Reload events (group-filtered for efficiency on large datasets)
-      const fresh = await db.listEvents()
-      setEvents(prev => {
-        // Apply user's default reminder to newly synced events that have no local reminders
-        const prevIds = new Set(prev.map(e => e.id))
-        const newEvents = fresh.filter(e =>
-          !prevIds.has(e.id) && (e.groups ?? []).includes(groupId) && !e.isShadow
-        )
-        if (newEvents.length > 0) {
-          db.getProfile().then(prof => {
-            const defaultReminder = typeof prof?.defaultReminder === 'number'
-              ? prof.defaultReminder : 15
-            if (defaultReminder <= 0) return
-            for (const ev of newEvents) {
-              db.getReminders(ev.id).then(existing => {
-                if (existing && existing.length > 0) return
-                const reminders = [defaultReminder]
-                db.putReminders(ev.id, reminders).catch(() => {})
-                notifs?.scheduleForEvent(ev, reminders).catch(() => {})
-              }).catch(() => {})
-            }
+    function scheduleDefaultReminders (newEvents) {
+      if (!newEvents || newEvents.length === 0) return
+      db.getProfile().then(prof => {
+        const defaultReminder = typeof prof?.defaultReminder === 'number'
+          ? prof.defaultReminder : 15
+        if (defaultReminder <= 0) return
+        for (const ev of newEvents) {
+          db.getReminders(ev.id).then(existing => {
+            if (existing && existing.length > 0) return
+            const reminders = [defaultReminder]
+            db.putReminders(ev.id, reminders).catch(() => {})
+            notifs?.scheduleForEvent(ev, reminders).catch(() => {})
           }).catch(() => {})
         }
-        return fresh
-      })
+      }).catch(() => {})
+    }
 
-      // Reload the updated group record (membership may have changed, or the
-      // group may be brand-new — e.g. adopted via group-migration marker).
-      const g = await db.getGroup(groupId)
-      if (g) {
+    function refreshGroupRecord (groupId) {
+      if (!groupId) return
+      db.getGroup(groupId).then(g => {
+        if (!g) return
         if (g.migratedTo) {
           setGroups(prev => prev.filter(x => x.id !== groupId))
         } else {
@@ -631,10 +621,59 @@ export default function App ({ db, notifs, sync }) {
             return next
           })
         }
+      }).catch(() => {})
+    }
+
+    async function onSync (payload) {
+      // Back-compat: accept the legacy bare groupId string shape.
+      const groupId = typeof payload === 'string' ? payload : payload?.groupId
+      const delta   = (payload && typeof payload === 'object') ? payload.delta : null
+
+      if (!delta || delta.fullReload) {
+        // Legacy full-reload path — re-fetch everything for this group.
+        const fresh = await db.listEvents()
+        setEvents(prev => {
+          const prevIds = new Set(prev.map(e => e.id))
+          const newEvents = fresh.filter(e =>
+            !prevIds.has(e.id) && (e.groups ?? []).includes(groupId) && !e.isShadow
+          )
+          scheduleDefaultReminders(newEvents)
+          return fresh
+        })
+        refreshGroupRecord(groupId)
+        db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})
+        return
       }
 
-      // Refresh my RSVPs in case a peer-synced response arrived (or event deleted)
-      db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})
+      // Delta path — patch state directly from the payload.
+      const changed = delta.changedEvents ?? []
+      const removed = delta.removedIds ?? []
+      if (changed.length || removed.length) {
+        setEvents(prev => {
+          const removedSet = new Set(removed)
+          const changedMap = new Map(changed.map(e => [e.id, e]))
+          const prevIds = new Set()
+          const next = []
+          for (const e of prev) {
+            if (removedSet.has(e.id)) continue
+            prevIds.add(e.id)
+            const upsert = changedMap.get(e.id)
+            next.push(upsert ?? e)
+          }
+          const newEvents = []
+          for (const e of changed) {
+            if (prevIds.has(e.id)) continue
+            next.push(e)
+            if ((e.groups ?? []).includes(groupId) && !e.isShadow) newEvents.push(e)
+          }
+          scheduleDefaultReminders(newEvents)
+          return next
+        })
+      }
+      if (delta.groupChanged) refreshGroupRecord(groupId)
+      if (delta.rsvpsChanged) {
+        db.listMyRsvps().then(r => setMyRsvps(r ?? {})).catch(() => {})
+      }
     }
 
     emitter.on('sync', onSync)

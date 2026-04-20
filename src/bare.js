@@ -22,15 +22,40 @@ const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
 // Per-groupId debounce so clustered apply()/mirror emits (one peer reconnect
 // can linearise dozens of blocks) collapse into a single UI refetch instead
 // of paying serialize → IPC bridge → deserialize → re-render per block.
+// A delta ({ changedEvents, removedIds, groupChanged, rsvpsChanged, fullReload })
+// may be supplied so the UI patches local state instead of re-running listEvents().
+// Omitting the second arg defaults to { fullReload: true } — lets unmigrated sites
+// keep working while the delta path is being rolled out.
 const SYNC_EMIT_DEBOUNCE_MS = 50
 const _syncEmitTimers = new Map()
-function emitSync (groupId) {
+const _syncEmitPending = new Map()
+function mergeSyncDelta (a, b) {
+  if (!a) return b
+  if (!b) return a
+  const out = {}
+  if (a.fullReload || b.fullReload) out.fullReload = true
+  if (a.groupChanged || b.groupChanged) out.groupChanged = true
+  if (a.rsvpsChanged || b.rsvpsChanged) out.rsvpsChanged = true
+  const eventMap = new Map()
+  for (const e of (a.changedEvents ?? [])) eventMap.set(e.id, e)
+  for (const e of (b.changedEvents ?? [])) eventMap.set(e.id, e)
+  const removed = new Set([...(a.removedIds ?? []), ...(b.removedIds ?? [])])
+  for (const id of removed) eventMap.delete(id)
+  if (eventMap.size) out.changedEvents = [...eventMap.values()]
+  if (removed.size) out.removedIds = [...removed]
+  return out
+}
+function emitSync (groupId, delta) {
   const key = groupId == null ? '__global__' : groupId
+  const incoming = delta ?? { fullReload: true }
+  _syncEmitPending.set(key, mergeSyncDelta(_syncEmitPending.get(key), incoming))
   const existing = _syncEmitTimers.get(key)
   if (existing) clearTimeout(existing)
   _syncEmitTimers.set(key, setTimeout(() => {
     _syncEmitTimers.delete(key)
-    send({ type: 'event', event: 'sync', data: groupId })
+    const merged = _syncEmitPending.get(key)
+    _syncEmitPending.delete(key)
+    send({ type: 'event', event: 'sync', data: { groupId, delta: merged } })
   }, SYNC_EMIT_DEBOUNCE_MS))
 }
 
@@ -1797,7 +1822,7 @@ async function foregroundSync () {
             joinedAt: lv?.joinedAt || gNode.value.joinedAt,
             nickname: lv?.nickname || gNode.value.nickname,
           })
-          emitSync(groupId)
+          emitSync(groupId, { groupChanged: true })
         }
       }
     } catch (e) { console.warn('[FGSYNC] error:', e.message) }
@@ -1872,6 +1897,8 @@ async function resyncGroup (groupId) {
       send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now() } })
       return
     }
+    const changedEvents = []
+    let groupChanged = false
     for await (const { key, value } of view.createReadStream()) {
       if (!value) continue
       if (key.startsWith('events:')) {
@@ -1879,7 +1906,18 @@ async function resyncGroup (groupId) {
         const eventId = key.split(':').pop()
         const tombstone = await db.get(NS.deleted + eventId).catch(() => null)
         if (tombstone) continue
+        const existing = await db.get(key).catch(() => null)
+        if (existing?.value && sameExceptUpdatedAt(existing.value, value)) continue
         await db.put(key, value)
+        changedEvents.push(value)
+      } else if (key.startsWith(NS.avatars)) {
+        // Repair missing avatar bytes. apply() mirrors avatars via mirrorToLocal
+        // on the first pass, but if the op was already linearised when this peer
+        // joined and mirror silently dropped it, the hash is referenced in member
+        // records with no local bytes — UI renders "?". Put-if-absent matches
+        // mirrorToLocal's avatar branch.
+        const existing = await db.get(key).catch(() => null)
+        if (!existing) await db.put(key, value)
       } else if (key.startsWith('groups:')) {
         const existing = await db.get(key).catch(() => null)
         const localJoinedAt  = existing?.value?.joinedAt  ?? 0
@@ -1920,7 +1958,7 @@ async function resyncGroup (groupId) {
         // the Autobase view record has none (e.g. joiner's broadcastSelf on rejoin)
         const ev = existing?.value
         const { members: splitMembers } = await splitMembersInline([...mergedMap.values()])
-        await db.put(key, {
+        const mergedGroup = {
           ...value,
           color:   value.color   || ev?.color,
           name:    value.name    || ev?.name,
@@ -1929,10 +1967,15 @@ async function resyncGroup (groupId) {
           joinedAt: ev?.joinedAt || value.joinedAt,
           removedMembers: [...removedMap.values()],
           members: splitMembers,
-        })
+        }
+        if (ev && sameExceptUpdatedAt(ev, mergedGroup)) continue
+        await db.put(key, mergedGroup)
+        groupChanged = true
       }
     }
-    emitSync(groupId)
+    if (changedEvents.length || groupChanged) {
+      emitSync(groupId, { changedEvents, groupChanged })
+    }
     send({ type: 'event', event: 'synced', data: { groupId, ts: Date.now() } })
   } catch(e) {
     console.error('[RESYNC] error:', e.message)
@@ -2143,7 +2186,7 @@ function makeApply (groupId) {
                   const updatedPending = { ...localGroup.value,
                     pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
                   await db.put(NS.groups + groupId, updatedPending).catch(() => {})
-                  emitSync(groupId)
+                  emitSync(groupId, { groupChanged: true })
                 }
               }
               } // end else (non-historical)
@@ -2329,7 +2372,7 @@ function makeApply (groupId) {
               members: splitMembers,
             }
             await db.put(val.key, merged)
-            emitSync(groupId)
+            emitSync(groupId, { groupChanged: true })
           } else {
             await mirrorToLocal(val.type, val.key, existing.value, groupId)
           }
@@ -2346,7 +2389,14 @@ function makeApply (groupId) {
           await leaveGroup(groupId)
           send({ type: 'event', event: 'groupDeleted', data: groupId })
         } else {
-          emitSync(groupId)
+          const delDelta = val.type === 'event'
+            ? { removedIds: [val.key.split(':').pop()] }
+            : val.type === 'rsvp'
+              ? { rsvpsChanged: true }
+              : val.type === 'group' || val.type === 'groupMembers'
+                ? { groupChanged: true }
+                : { fullReload: true }
+          emitSync(groupId, delDelta)
           if (isRemote && val.type === 'event') {
             const eventId = val.key.split(':').pop()
             // Cancel any scheduled notification for this deleted event
@@ -2398,7 +2448,7 @@ function makeApply (groupId) {
             }
           }
         }
-        emitSync(val.groupId)
+        emitSync(val.groupId, { groupChanged: true })
       } else if (val.op === 'purgeMember') {
         const gKey = NS.groups + val.groupId
         const gNode = await view.get(gKey)
@@ -2414,7 +2464,7 @@ function makeApply (groupId) {
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
         }
-        emitSync(val.groupId)
+        emitSync(val.groupId, { groupChanged: true })
       }
     }
   }
@@ -2656,7 +2706,7 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
         await db.put(key, value)
-        emitSync(groupId)
+        emitSync(groupId, { rsvpsChanged: true })
       }
       return
     }
@@ -2668,7 +2718,7 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
         await db.put(key, value)
-        emitSync(groupId)
+        emitSync(groupId, { groupChanged: true })
       }
       return
     }
@@ -2685,6 +2735,9 @@ async function mirrorToLocal (type, key, value, groupId) {
       const existing = await db.get(key).catch(() => null)
       if (existing?.value && sameExceptUpdatedAt(existing.value, next)) return
       await db.put(key, next)
+      emitSync(groupId, { changedEvents: [next] })
+      scheduleWidgetCacheRefresh()
+      return
     } else if (type === 'group') {
       // Merge members from incoming group with existing local members
       // so no device's member list overwrites another's
@@ -2748,10 +2801,8 @@ async function mirrorToLocal (type, key, value, groupId) {
       }
       if (existing?.value && sameExceptUpdatedAt(existing.value, merged)) return
       await db.put(key, merged)
+      emitSync(groupId, { groupChanged: true })
     }
-    // Notify UI to refresh
-    emitSync(groupId)
-    if (type === 'event') scheduleWidgetCacheRefresh()
   } catch(e) {
     console.error('mirrorToLocal error:', e.message)
   }
@@ -2786,7 +2837,7 @@ async function setMemberNickname (groupId, nickname) {
     await appendGroupWithAvatarSplit(base, updatedGroup)
       .catch(e => console.error('[NICKNAME] sync error:', e.message))
   }
-  emitSync(groupId)
+  emitSync(groupId, { groupChanged: true })
 }
 
 // ── Storage diagnostics ──────────────────────────────────────────────────────
@@ -3279,7 +3330,7 @@ async function _doInit (dir, attempt = 0) {
                   // Rebroadcast so other members see the updated list
                   const base = bases.get(groupId)
                   if (base) await appendGroupWithAvatarSplit(base, updated)
-                  emitSync(groupId)
+                  emitSync(groupId, { groupChanged: true })
                 }
               } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
               return

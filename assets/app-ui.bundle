@@ -16527,35 +16527,29 @@
     }, [db2]);
     (0, import_react2.useEffect)(() => {
       if (!db2) return;
-      async function onSync(groupId) {
-        const fresh = await db2.listEvents();
-        setEvents((prev) => {
-          const prevIds = new Set(prev.map((e58) => e58.id));
-          const newEvents = fresh.filter(
-            (e58) => !prevIds.has(e58.id) && (e58.groups ?? []).includes(groupId) && !e58.isShadow
-          );
-          if (newEvents.length > 0) {
-            db2.getProfile().then((prof) => {
-              const defaultReminder = typeof prof?.defaultReminder === "number" ? prof.defaultReminder : 15;
-              if (defaultReminder <= 0) return;
-              for (const ev2 of newEvents) {
-                db2.getReminders(ev2.id).then((existing) => {
-                  if (existing && existing.length > 0) return;
-                  const reminders = [defaultReminder];
-                  db2.putReminders(ev2.id, reminders).catch(() => {
-                  });
-                  notifs2?.scheduleForEvent(ev2, reminders).catch(() => {
-                  });
-                }).catch(() => {
-                });
-              }
+      function scheduleDefaultReminders(newEvents) {
+        if (!newEvents || newEvents.length === 0) return;
+        db2.getProfile().then((prof) => {
+          const defaultReminder = typeof prof?.defaultReminder === "number" ? prof.defaultReminder : 15;
+          if (defaultReminder <= 0) return;
+          for (const ev2 of newEvents) {
+            db2.getReminders(ev2.id).then((existing) => {
+              if (existing && existing.length > 0) return;
+              const reminders = [defaultReminder];
+              db2.putReminders(ev2.id, reminders).catch(() => {
+              });
+              notifs2?.scheduleForEvent(ev2, reminders).catch(() => {
+              });
             }).catch(() => {
             });
           }
-          return fresh;
+        }).catch(() => {
         });
-        const g = await db2.getGroup(groupId);
-        if (g) {
+      }
+      function refreshGroupRecord(groupId) {
+        if (!groupId) return;
+        db2.getGroup(groupId).then((g) => {
+          if (!g) return;
           if (g.migratedTo) {
             setGroups((prev) => prev.filter((x) => x.id !== groupId));
           } else {
@@ -16567,9 +16561,56 @@
               return next;
             });
           }
-        }
-        db2.listMyRsvps().then((r10) => setMyRsvps(r10 ?? {})).catch(() => {
+        }).catch(() => {
         });
+      }
+      async function onSync(payload) {
+        const groupId = typeof payload === "string" ? payload : payload?.groupId;
+        const delta = payload && typeof payload === "object" ? payload.delta : null;
+        if (!delta || delta.fullReload) {
+          const fresh = await db2.listEvents();
+          setEvents((prev) => {
+            const prevIds = new Set(prev.map((e58) => e58.id));
+            const newEvents = fresh.filter(
+              (e58) => !prevIds.has(e58.id) && (e58.groups ?? []).includes(groupId) && !e58.isShadow
+            );
+            scheduleDefaultReminders(newEvents);
+            return fresh;
+          });
+          refreshGroupRecord(groupId);
+          db2.listMyRsvps().then((r10) => setMyRsvps(r10 ?? {})).catch(() => {
+          });
+          return;
+        }
+        const changed = delta.changedEvents ?? [];
+        const removed = delta.removedIds ?? [];
+        if (changed.length || removed.length) {
+          setEvents((prev) => {
+            const removedSet = new Set(removed);
+            const changedMap = new Map(changed.map((e58) => [e58.id, e58]));
+            const prevIds = /* @__PURE__ */ new Set();
+            const next = [];
+            for (const e58 of prev) {
+              if (removedSet.has(e58.id)) continue;
+              prevIds.add(e58.id);
+              const upsert = changedMap.get(e58.id);
+              next.push(upsert ?? e58);
+            }
+            const newEvents = [];
+            for (const e58 of changed) {
+              if (prevIds.has(e58.id)) continue;
+              next.push(e58);
+              if ((e58.groups ?? []).includes(groupId) && !e58.isShadow) newEvents.push(e58);
+            }
+            scheduleDefaultReminders(newEvents);
+            return next;
+          });
+        }
+        if (delta.groupChanged) refreshGroupRecord(groupId);
+        if (delta.rsvpsChanged) {
+          db2.listMyRsvps().then((r10) => setMyRsvps(r10 ?? {})).catch(() => {
+          });
+        }
       }
       emitter.on("sync", onSync);
       function onSyncing(d) {
