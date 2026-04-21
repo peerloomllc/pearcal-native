@@ -186,7 +186,7 @@ const MORNING_DIGEST_SLOTS = 3
 // postNow → a separate local notification. Without a window the user wakes to a
 // flood. Buffer within a fixed window and collapse >1 into a single summary.
 const SYNC_NOTIFY_COALESCE_MS = 5000
-let _syncNotifyBuffer: Array<{ title: string, body: string, tab: string }> = []
+let _syncNotifyBuffer: Array<{ title: string, body: string, tab: string, groupSettingsId?: string }> = []
 let _syncNotifyTimer: any = null
 
 function flushSyncNotify () {
@@ -196,8 +196,8 @@ function flushSyncNotify () {
   if (buf.length === 0) return
   const id = Math.floor(Math.random() * 2000000) + 1000000
   if (buf.length === 1) {
-    const { title, body, tab } = buf[0]
-    PearCalNotifications?.postNow?.({ id, title, body, tab }).catch?.(() => {})
+    const { title, body, tab, groupSettingsId } = buf[0]
+    PearCalNotifications?.postNow?.({ id, title, body, tab, groupSettingsId }).catch?.(() => {})
     return
   }
   PearCalNotifications?.postNow?.({
@@ -213,7 +213,16 @@ function queueSyncNotify (data: any) {
     title: data?.title ?? 'Calendar updated',
     body:  data?.body  ?? '',
     tab:   data?.tab   ?? '',
+    groupSettingsId: data?.groupSettingsId,
   })
+  // Bypass the coalesce window for one-off important alerts (rejoin requests, etc).
+  // Otherwise Android doze / backgrounded setTimeout throttling can delay the post
+  // by minutes, and the owner misses the cue that someone is waiting.
+  if (data?.immediate) {
+    if (_syncNotifyTimer) { clearTimeout(_syncNotifyTimer); _syncNotifyTimer = null }
+    flushSyncNotify()
+    return
+  }
   if (!_syncNotifyTimer) {
     _syncNotifyTimer = setTimeout(flushSyncNotify, SYNC_NOTIFY_COALESCE_MS)
   }
@@ -372,6 +381,14 @@ export default function Root () {
           webViewRef.current.injectJavaScript(
             `if(window.__pearSetTab) { window.__pearSetTab(${JSON.stringify(tab)}); } true;`
           )
+        }
+        if (PearCalLink.getPendingGroupSettingsId) {
+          const gid = await PearCalLink.getPendingGroupSettingsId()
+          if (gid && webViewRef.current) {
+            webViewRef.current.injectJavaScript(
+              `if(window.__pearOpenGroupSettings) { window.__pearOpenGroupSettings(${JSON.stringify(gid)}); } true;`
+            )
+          }
         }
       } catch(e) {}
     }, 1000)
@@ -583,6 +600,30 @@ webViewRef.current?.injectJavaScript(
       onEvent('groupDeleted', (groupId: string) => {
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("groupDeleted",' + JSON.stringify(groupId) + ');true;'
+        )
+      })
+
+      onEvent('pendingApproval', (groupId: string) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pendingApproval",' + JSON.stringify(groupId) + ');true;'
+        )
+      })
+
+      onEvent('pendingApprovalCleared', (groupId: string) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pendingApprovalCleared",' + JSON.stringify(groupId) + ');true;'
+        )
+      })
+
+      onEvent('pendingRejoin', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pendingRejoin",' + JSON.stringify(data) + ');true;'
+        )
+      })
+
+      onEvent('inviteBlocked', (groupId: string) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("inviteBlocked",' + JSON.stringify(groupId) + ');true;'
         )
       })
 

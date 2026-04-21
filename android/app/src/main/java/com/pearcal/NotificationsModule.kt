@@ -106,12 +106,14 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
             }
 
             val tab = opts.getString("tab") ?: ""
+            val groupSettingsId = if (opts.hasKey("groupSettingsId")) opts.getString("groupSettingsId") ?: "" else ""
             val tapIntent = android.content.Intent(
                 reactApplicationContext, MainActivity::class.java
             ).apply {
                 flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
                         android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
                 if (tab.isNotEmpty()) putExtra("pearTab", tab)
+                if (groupSettingsId.isNotEmpty()) putExtra("pearGroupSettingsId", groupSettingsId)
             }
             val tapPending = android.app.PendingIntent.getActivity(
                 reactApplicationContext, notifId, tapIntent,

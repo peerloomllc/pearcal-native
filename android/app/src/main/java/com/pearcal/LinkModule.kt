@@ -11,6 +11,7 @@ class LinkModule(reactContext: ReactApplicationContext) :
         const val NAME = "PearCalLink"
         var pendingLink: String? = null
         var pendingTab: String? = null
+        var pendingGroupSettingsId: String? = null
     }
 
     override fun getName() = NAME
@@ -25,6 +26,12 @@ class LinkModule(reactContext: ReactApplicationContext) :
     fun getPendingTab(promise: Promise) {
         promise.resolve(pendingTab)
         pendingTab = null
+    }
+
+    @ReactMethod
+    fun getPendingGroupSettingsId(promise: Promise) {
+        promise.resolve(pendingGroupSettingsId)
+        pendingGroupSettingsId = null
     }
 
     @ReactMethod

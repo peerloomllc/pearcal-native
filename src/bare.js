@@ -211,6 +211,10 @@ async function handle (method, args) {
     case 'setBackupEnabled': return nativeRequest('setBackupEnabled', [args[0]])
     case 'revealMnemonic':   return nativeRequest('getMnemonic')
     case 'restoreMnemonic':  return restoreMnemonic(args[0])
+    case 'listPendingRejoins': return listPendingRejoins()
+    case 'approveRejoin':    return approveRejoin(args[0], args[1])
+    case 'denyRejoin':       return denyRejoin(args[0], args[1])
+    case 'listPendingApprovals': return listPendingApprovals()
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -464,6 +468,10 @@ async function getOrCreateWriterProof (groupId, writerKey) {
 // tolerate missing fields in Phase 1.
 async function buildWriterAnnounce (groupId, writerKey, memberId) {
   const payload = { groupId, writerKey, memberId: memberId ?? null }
+  try {
+    const prof = await getProfile().catch(() => null)
+    if (prof?.name) payload.name = prof.name
+  } catch (e) {}
   try {
     const proof = await getOrCreateWriterProof(groupId, writerKey)
     if (proof && _identity) {
@@ -1933,6 +1941,105 @@ async function syncReinviteMember (groupId, memberId) {
   await base.append({ op: 'reinviteMember', groupId, memberId, ts: Date.now() })
 }
 
+// Phase 2 pending-rejoin queue. The writer-announce handler stores
+// `pendingRejoin:{groupId}:{identityPublicKey}` whenever a kicked member
+// returns with a valid identity proof. The owner UI approves or denies each
+// request.
+async function listPendingRejoins () {
+  const out = []
+  for await (const { value } of db.createReadStream({ gt: 'pendingRejoin:', lt: 'pendingRejoin:\xff' })) {
+    if (value) out.push(value)
+  }
+  return out
+}
+
+// Approve a pending rejoin: move the member back into members[], clear the
+// block + pending keys, and grant write access to the stored writerKey. The
+// peer's next writer-announce retry (or a stored writerKey addWriter here)
+// takes effect. Runs the same LWW group append so peers converge.
+async function approveRejoin (groupId, identityPublicKey) {
+  const node = await db.get('pendingRejoin:' + groupId + ':' + identityPublicKey).catch(() => null)
+  if (!node?.value) return { ok: false, error: 'not_found' }
+  const pending = node.value
+  const group = await getGroup(groupId)
+  if (!group) return { ok: false, error: 'group_gone' }
+  const removed = group.removedMembers ?? []
+  const match = removed.find(m => m.identityPublicKey === identityPublicKey)
+    || removed.find(m => (m.id ?? m) === pending.memberId)
+  // If the joiner's handleInviteLink broadcastSelf has already landed, prefer
+  // its fresh name/avatar/avatarHash over the stale tombstone snapshot —
+  // pre-wipe the user may have had different name or avatar fields.
+  const existingMember = (group.members ?? []).find(m => m.id === pending.memberId)
+  const baseRestored = match
+    ? { ...match, id: pending.memberId, identityPublicKey, updatedAt: Date.now() }
+    : { id: pending.memberId, identityPublicKey, name: pending.name || '', avatarHash: pending.avatarHash || null, updatedAt: Date.now() }
+  // Merge order: tombstone restore first, then existingMember overrides fresh
+  // profile fields (name/avatar/avatarHash), then bookkeeping fields get the
+  // authoritative values.
+  const restored = existingMember
+    ? {
+        ...baseRestored,
+        ...existingMember,
+        id: pending.memberId,
+        identityPublicKey,
+        updatedAt: Date.now(),
+      }
+    : baseRestored
+  const members = existingMember
+    ? (group.members ?? []).map(m => m.id === pending.memberId ? restored : m)
+    : [...(group.members ?? []), restored]
+  // Drop the matching identity entry + legacy tombstones: pre-Phase 2 kicks
+  // carry no identityPublicKey and a different UUID, so they'd survive an
+  // identity-based filter. Strip any removed row with matching name that
+  // lacks identityPublicKey — it represents the same user under an older id.
+  const pendName = (pending.name || '').trim().toLowerCase()
+  const removedMembers = removed.filter(m => {
+    if (m.identityPublicKey === identityPublicKey) return false
+    if ((m.id ?? m) === pending.memberId) return false
+    if (!m.identityPublicKey && pendName && (m.name || '').trim().toLowerCase() === pendName) return false
+    return true
+  })
+  const updated = { ...group, members, removedMembers, updatedAt: Date.now() }
+  await putGroup(updated).catch(() => {})
+  const base = bases.get(groupId)
+  if (base) await appendGroupWithAvatarSplit(base, updated).catch(() => {})
+  await db.del('pendingRejoin:' + groupId + ':' + identityPublicKey).catch(() => {})
+  await db.del('deniedRejoin:' + groupId + ':' + identityPublicKey).catch(() => {})
+  if (pending.writerKey) {
+    await db.del('blockedWriter:' + groupId + ':' + pending.writerKey).catch(() => {})
+    const alreadyGranted = await db.get('knownWriter:' + groupId + ':' + pending.writerKey).catch(() => null)
+    if (!alreadyGranted && base) {
+      base.append({ addWriter: pending.writerKey })
+        .then(() => db.put('knownWriter:' + groupId + ':' + pending.writerKey, { ts: Date.now() }).catch(() => {}))
+        .catch(e => console.error('[APPROVE_REJOIN] addWriter error:', e.message))
+    }
+  }
+  return { ok: true }
+}
+
+// Deny a pending rejoin: persist the decision so the next retry short-circuits
+// straight to the blocked path, and surface a blocked message now if the peer
+// is still reachable via a stored writerKey.
+async function denyRejoin (groupId, identityPublicKey) {
+  const node = await db.get('pendingRejoin:' + groupId + ':' + identityPublicKey).catch(() => null)
+  await db.put('deniedRejoin:' + groupId + ':' + identityPublicKey, { ts: Date.now() }).catch(() => {})
+  if (node?.value?.writerKey) {
+    await db.put('blockedWriter:' + groupId + ':' + node.value.writerKey, { memberId: node.value.memberId, ts: Date.now() }).catch(() => {})
+  }
+  await db.del('pendingRejoin:' + groupId + ':' + identityPublicKey).catch(() => {})
+  return { ok: true }
+}
+
+// Joiner-side: list groupIds for which the owner has queued our rejoin. Used
+// by the UI to show a "waiting for approval" banner on the affected group.
+async function listPendingApprovals () {
+  const out = []
+  for await (const { key } of db.createReadStream({ gt: 'pendingApproval:', lt: 'pendingApproval:\xff' })) {
+    out.push(key.slice('pendingApproval:'.length))
+  }
+  return out
+}
+
 // Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
 // Flushes Hyperswarm to re-establish peer connections, waits for replication,
 // then runs base.update() on every active group.
@@ -2250,29 +2357,37 @@ function makeApply (groupId) {
           if (val.type === 'group' && existing?.value) {
             const existMembers = existing.value.members ?? []
             const incMembers = val.value.members ?? []
-            // Union removedMembers by ID
             const existRemoved = existing.value.removedMembers ?? []
             const incRemoved = val.value.removedMembers ?? []
-            const removedMap = new Map()
-            for (const m of existRemoved) removedMap.set(m.id ?? m, m)
-            for (const m of incRemoved) removedMap.set(m.id ?? m, m)
-            const removedIds = new Set(removedMap.keys())
             // Determine if incoming record is authoritative (sent by owner with full member list)
             // vs a broadcastSelf (joiner sending only their own member record).
             // Owner records include the owner in members[]; broadcastSelf does not.
             const ownerId = val.value.ownerId || existing.value.ownerId
             const isAuthoritative = ownerId && incMembers.some(m => m.id === ownerId)
-            const incIds = new Set(incMembers.map(m => m.id))
-            // Authoritative: trust incoming members list (owner has full picture);
-            // only filter out removedMembers.
-            // Non-authoritative (broadcastSelf): union members so partial records don't wipe others.
-            const merged = isAuthoritative
-              ? incMembers.filter(m => !removedIds.has(m.id))
-              : [...incMembers, ...existMembers.filter(m => !incIds.has(m.id))]
-                  .filter(m => !removedIds.has(m.id))
-            // Don't keep active members in removedMembers
-            const activeIds = new Set(merged.map(m => m.id))
-            const mergedRemoved = [...removedMap.values()].filter(m => !activeIds.has(m.id ?? m))
+            let merged, mergedRemoved
+            if (isAuthoritative) {
+              // Owner speaks with full authority: trust incoming members AND
+              // removedMembers lists. Approving a rejoin needs the previously-
+              // removed entry actually gone, which a union against the old view
+              // would silently undo.
+              const incRemovedIds = new Set(incRemoved.map(m => m.id ?? m))
+              merged = incMembers.filter(m => !incRemovedIds.has(m.id))
+              const activeIds = new Set(merged.map(m => m.id))
+              mergedRemoved = incRemoved.filter(m => !activeIds.has(m.id ?? m))
+            } else {
+              // broadcastSelf: union members so partial records don't wipe others,
+              // and keep existing removedMembers entries so a stale broadcastSelf
+              // from a kicked member can't resurrect themselves.
+              const removedMap = new Map()
+              for (const m of existRemoved) removedMap.set(m.id ?? m, m)
+              for (const m of incRemoved) removedMap.set(m.id ?? m, m)
+              const removedIds = new Set(removedMap.keys())
+              const incIds = new Set(incMembers.map(m => m.id))
+              merged = [...incMembers, ...existMembers.filter(m => !incIds.has(m.id))]
+                .filter(m => !removedIds.has(m.id))
+              const activeIds = new Set(merged.map(m => m.id))
+              mergedRemoved = [...removedMap.values()].filter(m => !activeIds.has(m.id ?? m))
+            }
             viewValue = {
               ...val.value,
               color: val.value.color || existing.value.color,
@@ -2286,6 +2401,19 @@ function makeApply (groupId) {
           await view.put(val.key, viewValue)
           // Always mirror so local DB has latest invitees list — listEvents filters at read time.
           await mirrorToLocal(val.type, val.key, viewValue, groupId)
+          // Joiner-side: clear the "waiting for approval" flag if the owner's
+          // latest authoritative group record now includes us as an active member.
+          if (val.type === 'group' && viewValue.members) {
+            const pendingKey = 'pendingApproval:' + groupId
+            const pending = await db.get(pendingKey).catch(() => null)
+            if (pending?.value) {
+              const profile = await getProfile().catch(() => null)
+              if (profile?.id && viewValue.members.some(m => m.id === profile.id)) {
+                await db.del(pendingKey).catch(() => {})
+                send({ type: 'event', event: 'pendingApprovalCleared', data: groupId })
+              }
+            }
+          }
           // Invitee filter: skip notifications for uninvited events (mirrorToLocal already sent sync).
           if (isRemote && val.type === 'event') {
             const profile = await getProfile()
@@ -2318,10 +2446,19 @@ function makeApply (groupId) {
               const incomingMembers = val.value.members ?? []
               const existingIds = new Set(existingMembers.map(m => m.id))
               // Dedup: seed notified set from local DB members on first encounter per group
-              // so members already known before app restart don't trigger duplicate notifications
+              // so members already known before app restart don't trigger duplicate notifications.
+              // Fresh-join case: after wipe+rejoin the local record is just {self, Inviter placeholder}
+              // and Autobase catch-up will deliver the full owner roster — seeding from the tiny
+              // local list would mark every pre-existing member as "new". Detect fresh-join and
+              // seed from the incoming authoritative list so we silently absorb the historical roster.
               if (!notifiedMemberJoins.has(groupId)) {
                 const localMembers = localGroupBeforeMirror?.value?.members ?? []
-                notifiedMemberJoins.set(groupId, new Set(localMembers.map(m => m.id)))
+                const hasInviterPlaceholder = localMembers.some(m => m.name === 'Inviter' || m.name === '? Inviter')
+                const isFreshJoin = localMembers.length <= 2 && hasInviterPlaceholder
+                const seedIds = isFreshJoin
+                  ? incomingMembers.map(m => m.id)
+                  : localMembers.map(m => m.id)
+                notifiedMemberJoins.set(groupId, new Set(seedIds))
               }
               const notifiedSet = notifiedMemberJoins.get(groupId)
               const newMembers = incomingMembers.filter(m =>
@@ -3495,6 +3632,18 @@ async function _doInit (dir, attempt = 0) {
               } catch(e) { console.error('[MEMBER_LEFT] error:', e.message) }
               return
             }
+            // Handle pending-approval message — owner queued our rejoin for review.
+            // Persist so the banner survives restarts; cleared when the owner
+            // approves (next group update arrives with us in members[]) or denies
+            // (triggers the blocked path above).
+            if (parsed.pendingApproval) {
+              const gid = parsed.groupId
+              if (gid) {
+                await db.put('pendingApproval:' + gid, { ts: Date.now() }).catch(() => {})
+                send({ type: 'event', event: 'pendingApproval', data: gid })
+              }
+              return
+            }
             // Handle blocked message — owner rejected our writer key (we were removed)
             if (parsed.blocked) {
               const gid = parsed.groupId
@@ -3604,18 +3753,142 @@ async function _doInit (dir, attempt = 0) {
                     const set = pendingWriterAnnouncements.get(groupId) || new Set()
                     set.add(writerKey)
                     pendingWriterAnnouncements.set(groupId, set)
-                    // Check blocklist before granting write access — only block members
-                    // explicitly removed (kicked) by the owner
+                    // Phase 2 admission control. Five cases for a writer-announce:
+                    //   (A) identity in removedMembers[] → queue for owner approval
+                    //   (B) memberId in removedMembers[] (no identity path) → auto-block
+                    //   (C) new joiner with no valid identity proof → reject
+                    //   (D) identity matches existing member with a different memberId
+                    //       (legacy profile.id migration) → rebind members[n].id
+                    //   (E) otherwise → fall through to the existing addWriter path
                     const removedMembers = group.removedMembers ?? []
+                    const activeMembers = group.members ?? []
                     const parsed_memberId = parsed.memberId ?? null
-                    if (parsed_memberId && removedMembers.some(m => (m.id ?? m) === parsed_memberId)) {
-                      // Store writerKey so apply() can also block Autobase log replay
+                    const memberIdInMembers = parsed_memberId && activeMembers.some(m => m.id === parsed_memberId)
+                    const identityInMembers = verifiedIdentityHex && activeMembers.some(m => m.identityPublicKey === verifiedIdentityHex)
+                    const removedByMemberId = parsed_memberId ? removedMembers.find(m => (m.id ?? m) === parsed_memberId) : null
+                    const removedByIdentity = verifiedIdentityHex ? removedMembers.find(m => m.identityPublicKey === verifiedIdentityHex) : null
+                    // Legacy-tombstone match: pre-Phase 2 kicks left rows with no identityPublicKey
+                    // and a UUID that no longer matches the returning member's deterministic id.
+                    // If the joiner's announce carries a profile name that matches a legacy
+                    // tombstone row, treat it as a rejoin request.
+                    const announceName = (parsed.name || '').trim().toLowerCase()
+                    const removedByName = (verifiedIdentityHex && announceName)
+                      ? removedMembers.find(m => !m.identityPublicKey && (m.name || '').trim().toLowerCase() === announceName)
+                      : null
+
+                    // (A) Queue a pendingRejoin for owner decision — valid identity
+                    // proof from a user previously kicked. Don't block; don't grant.
+                    if ((removedByIdentity || (removedByMemberId && verifiedIdentityHex) || removedByName) && !memberIdInMembers && !identityInMembers) {
+                      const match = removedByIdentity || removedByMemberId || removedByName
+                      const deniedNode = await db.get('deniedRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
+                      if (deniedNode?.value) {
+                        // Owner already denied this identity — fall through to block.
+                        await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
+                        try {
+                          const ownerProfile = await getProfile().catch(() => null)
+                          msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
+                        } catch(e) {}
+                        return
+                      }
+                      // Send pendingApproval reply FIRST, before any awaits. The joiner's
+                      // Hyperswarm connection can be short-lived (LAN roam, background
+                      // transition, etc.); if we await db writes before replying the
+                      // channel may close and the banner message never arrives.
+                      try {
+                        msg.send(Buffer.from(JSON.stringify({ pendingApproval: true, groupId })))
+                      } catch(e) {}
+                      const alreadyPending = await db.get('pendingRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
+                      await db.put('pendingRejoin:' + groupId + ':' + verifiedIdentityHex, {
+                        groupId,
+                        identityPublicKey: verifiedIdentityHex,
+                        memberId: parsed_memberId,
+                        writerKey: parsed.writerKey,
+                        name: match?.name || null,
+                        avatarHash: match?.avatarHash || null,
+                        requestedAt: alreadyPending?.value?.requestedAt || Date.now(),
+                      }).catch(() => {})
+                      send({ type: 'event', event: 'pendingRejoin', data: { groupId, identityPublicKey: verifiedIdentityHex, memberId: parsed_memberId, name: match?.name || null } })
+                      if (!alreadyPending?.value) {
+                        const groupName = group.name || 'a group'
+                        const displayName = match?.name || 'Someone'
+                        send({ type: 'event', event: 'syncNotify', data: {
+                          title: displayName + ' wants to rejoin ' + groupName,
+                          body: 'Tap to approve or deny',
+                          tab: 'groups',
+                          groupSettingsId: groupId,
+                          immediate: true,
+                        }})
+                      }
+                      console.log('[identity] queued pendingRejoin for', groupId, 'identity', verifiedIdentityHex.slice(0, 12) + '…')
+                      return
+                    }
+
+                    // (B) Legacy auto-block: memberId matches removedMembers[] and we
+                    // have no identity to distinguish a post-wipe return from a plain
+                    // impersonation attempt.
+                    if (removedByMemberId && !verifiedIdentityHex) {
                       await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
                       try {
                         const ownerProfile = await getProfile().catch(() => null)
                         msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
                       } catch(e) {}
                       return
+                    }
+
+                    // (C) Enforcement: a brand-new joiner (not in members[] or
+                    // removedMembers[]) must present a valid identity proof.
+                    // Existing members without proof (pre-Phase 1 peers) remain
+                    // accepted so the rollout stays tolerant.
+                    if (!memberIdInMembers && !identityInMembers && !verifiedIdentityHex) {
+                      console.warn('[identity] rejecting proof-less new joiner', parsed_memberId, 'for', groupId)
+                      try {
+                        msg.send(Buffer.from(JSON.stringify({ rejected: 'missing_identity_proof', groupId })))
+                      } catch(e) {}
+                      return
+                    }
+
+                    // (D) Identity-match rebind + dedupe. Same identity may appear
+                    // under >1 memberId (a legacy UUID left over from pre-Phase 1
+                    // plus a broadcastSelf entry under the restored deterministic
+                    // id), or under a single legacy id that needs rebinding. Collapse
+                    // all identity-matched entries into a single record keyed on the
+                    // announcing memberId, keeping the richest record's fields.
+                    if (verifiedIdentityHex && parsed_memberId) {
+                      const matches = []
+                      activeMembers.forEach((m, i) => {
+                        if (m.identityPublicKey === verifiedIdentityHex) matches.push(i)
+                      })
+                      const idxById = activeMembers.findIndex(m => m.id === parsed_memberId)
+                      // Dedupe/rebind when identity appears under >1 id, or under a
+                      // different id than the announcer. Stamp identity when the
+                      // announcer's active entry exists but has no identity recorded
+                      // yet — otherwise a later kick strips identity from removedMembers.
+                      const needsFix = matches.length > 1
+                        || (matches.length === 1 && activeMembers[matches[0]].id !== parsed_memberId)
+                        || (matches.length === 0 && idxById >= 0 && !activeMembers[idxById].identityPublicKey)
+                      if (needsFix) {
+                        let keeperIdx
+                        if (matches.length > 0) {
+                          keeperIdx = matches.reduce((best, i) => {
+                            const bScore = JSON.stringify(activeMembers[best] ?? {}).length
+                            const iScore = JSON.stringify(activeMembers[i] ?? {}).length
+                            return iScore > bScore ? i : best
+                          }, matches[0])
+                        } else {
+                          keeperIdx = idxById
+                        }
+                        const keeper = { ...activeMembers[keeperIdx], id: parsed_memberId, identityPublicKey: verifiedIdentityHex }
+                        const drop = new Set(matches)
+                        drop.add(keeperIdx)
+                        const updatedMembers = [
+                          ...activeMembers.filter((_, i) => !drop.has(i)),
+                          keeper,
+                        ]
+                        const updated = { ...group, members: updatedMembers, updatedAt: Date.now() }
+                        await putGroup(updated).catch(() => {})
+                        await appendGroupWithAvatarSplit(base, updated).catch(() => {})
+                        console.log('[identity] stamp/rebind', matches.length, 'existing matches → 1 entry under id', parsed_memberId, 'in', groupId)
+                      }
                     }
                     // Clear knownWriter so addWriter fires for rejoining members
                     if (parsed_memberId) {
