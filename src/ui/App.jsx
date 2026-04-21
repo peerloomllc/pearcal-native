@@ -528,6 +528,11 @@ export default function App ({ db, notifs, sync }) {
   const closeInviteSheetRef = useRef(null)
   const closeNewGroupSheetRef = useRef(null)
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
+  const [backupStatus, setBackupStatus] = useState(null)
+  const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(() => {
+    try { return localStorage.getItem('pearcal:backupNudgeDismissed') === '1' } catch { return false }
+  })
+  const [focusBackup, setFocusBackup] = useState(0)
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
   const [infoSheet, setInfoSheet] = useState(null) // null | { title, message, icon }
@@ -584,6 +589,18 @@ export default function App ({ db, notifs, sync }) {
     load()
     return () => { cancelled = true }
   }, [db])
+
+  useEffect(() => {
+    if (!db?.getBackupStatus) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const s = await db.getBackupStatus()
+        if (!cancelled) setBackupStatus(s)
+      } catch { /* non-fatal */ }
+    })()
+    return () => { cancelled = true }
+  }, [db, tab])
 
   // ── Re-sync state when a P2P peer pushes new data ──────────────────────────
   useEffect(() => {
@@ -1465,6 +1482,47 @@ export default function App ({ db, notifs, sync }) {
               You were removed from this group and cannot rejoin with this link.
             </div>
           )}
+          {(() => {
+            if (!ready || !profile || backupNudgeDismissed) return null
+            if (!backupStatus?.local || backupStatus.platformSynced) return null
+            let sharedGroupCount = 0
+            const seen = new Set()
+            for (const e of events) {
+              if (e?.creatorId !== profile.id) continue
+              if (!Array.isArray(e?.groups)) continue
+              for (const gid of e.groups) { if (!seen.has(gid)) { seen.add(gid); sharedGroupCount++ } }
+              if (sharedGroupCount >= 1) break
+            }
+            if (sharedGroupCount < 1) return null
+            const dismiss = () => {
+              try { localStorage.setItem('pearcal:backupNudgeDismissed', '1') } catch {}
+              setBackupNudgeDismissed(true)
+            }
+            return (
+              <div style={{ position:'fixed', top:'calc(var(--safe-area-top) + 8px)',
+                left:'50%', transform:'translateX(-50%)',
+                width:'calc(100% - 32px)', maxWidth:398,
+                background:th.card?.background ?? 'var(--color-card)',
+                border:`1px solid ${th.border}`,
+                borderRadius:'var(--radius-lg)',
+                padding:'10px 12px', fontSize:12, fontWeight:300, zIndex:400,
+                display:'flex', alignItems:'center', gap:10, ...th.text }}>
+                <div style={{ flex:1, lineHeight:1.4 }}>
+                  Back up your recovery phrase so you don't lose access.
+                </div>
+                <button onClick={() => { dismiss(); setFocusBackup(n => n + 1); goTab('profile') }}
+                  style={{ ...th.pillBtn, fontSize:11, padding:'5px 10px', fontWeight:300 }}>
+                  Back up
+                </button>
+                <button onClick={dismiss}
+                  aria-label="Dismiss"
+                  style={{ background:'none', border:'none', color:th.muted,
+                    cursor:'pointer', fontFamily:FONT, padding:4, fontSize:14, lineHeight:1 }}>
+                  ✕
+                </button>
+              </div>
+            )
+          })()}
           {syncingGroups.size > 0 && (
             <div style={{ position:'fixed', top:'calc(var(--safe-area-top) + 8px)',
               left:'50%', transform:'translateX(-50%)',
@@ -1509,6 +1567,7 @@ export default function App ({ db, notifs, sync }) {
             <ProfileTab th={th} profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
+              focusBackup={focusBackup}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -3148,6 +3207,82 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
+  const [backupStatus, setBackupStatus] = useState(null)
+  const [restoreMode, setRestoreMode] = useState(null) // null | 'menu' | 'manual'
+  const [restorePhrase, setRestorePhrase] = useState('')
+  const [restoring, setRestoring] = useState(false)
+  const [restoreError, setRestoreError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function refresh () {
+      try {
+        const s = await db.getBackupStatus()
+        if (!cancelled) setBackupStatus(s)
+      } catch { /* non-fatal */ }
+    }
+    refresh()
+    // Refresh once after name save has mirrored to platform (slide 2 → 3).
+    const t = setTimeout(refresh, 1200)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [db, step])
+
+  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
+    : backupStatus?.platform === 'blockstore' ? 'Google'
+    : null
+
+  const backupToastText = !backupStatus
+    ? null
+    : backupStatus.platformSynced && backupPlatformLabel
+      ? `Recovery phrase saved to ${backupPlatformLabel}.`
+      : backupStatus.enabled && backupPlatformLabel
+        ? `Recovery phrase will sync to ${backupPlatformLabel}.`
+        : 'Recovery phrase saved on this device only — back up in Settings.'
+
+  async function tryCloudRestore () {
+    setRestoring(true); setRestoreError('')
+    try {
+      // getBackupStatus auto-triggers platform read on the native side via
+      // hasMnemonic/getMnemonic — if a mnemonic exists in cloud, it's already
+      // been pulled into local SecureStore and bare.js will pick it up on next
+      // ensureMnemonic. Check whether a mnemonic is now available.
+      const s = await db.getBackupStatus()
+      if (s?.local) {
+        setBackupStatus(s)
+        setRestoreMode(null)
+        setSlideDir(1); setStep(2) // jump to name entry — identity already restored
+      } else {
+        setRestoreError(
+          s?.platform
+            ? `No backup found in ${s.platform === 'icloud' ? 'iCloud Keychain' : 'Google'}.`
+            : 'Cloud backup is not available on this device.'
+        )
+      }
+    } catch (e) {
+      setRestoreError(e?.message || 'Restore failed')
+    }
+    setRestoring(false)
+  }
+
+  async function submitManualRestore () {
+    const words = restorePhrase.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (words.length !== 12) {
+      setRestoreError('Recovery phrase must be exactly 12 words.')
+      return
+    }
+    setRestoring(true); setRestoreError('')
+    try {
+      await db.restoreMnemonic(words.join(' '))
+      setRestorePhrase('')
+      setRestoreMode(null)
+      const s = await db.getBackupStatus()
+      setBackupStatus(s)
+      setSlideDir(1); setStep(2)
+    } catch (e) {
+      setRestoreError(e?.message || 'Invalid recovery phrase.')
+    }
+    setRestoring(false)
+  }
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -3173,19 +3308,83 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const dots = Array.from({ length: total }, (_, i) => i)
 
   const slides = [
-    // Slide 0 — Welcome
-    <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-      <PearIcon size={56} />
-      <div style={{ marginBottom: 0 }} />
-      <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
-      <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
-        A private shared calendar that works without servers, accounts, or subscriptions.
+    // Slide 0 — Welcome (or restore sub-flow when restoreMode is set)
+    restoreMode === 'manual' ? (
+      <div key="0-manual" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
+        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Enter recovery phrase</div>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:300, lineHeight:'1.6' }}>
+          Type or paste your 12-word recovery phrase to restore your identity.
+        </div>
+        <textarea value={restorePhrase} onChange={e => { setRestorePhrase(e.target.value); setRestoreError('') }}
+          placeholder="twelve words separated by spaces"
+          rows={3}
+          style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
+            padding:'12px 14px', color:th.text.color, fontSize:15, fontWeight:300,
+            fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none',
+            resize:'none', lineHeight:'1.5' }} />
+        {restoreError && (
+          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
+            {restoreError}
+          </div>
+        )}
+        <button onClick={submitManualRestore} disabled={restoring || !restorePhrase.trim()}
+          style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
+            opacity: (restoring || !restorePhrase.trim()) ? 0.4 : 1 }}>
+          {restoring ? 'Restoring…' : 'Restore'}
+        </button>
+        <button onClick={() => { setRestoreMode('menu'); setRestoreError('') }}
+          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
+            fontSize:13, fontWeight:300, cursor:'pointer', padding:4 }}>
+          Back
+        </button>
       </div>
-      <button onClick={() => { setSlideDir(1); setStep(1) }}
-        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
-        Get Started
-      </button>
-    </div>,
+    ) : restoreMode === 'menu' ? (
+      <div key="0-menu" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome back</div>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
+          How would you like to restore your identity?
+        </div>
+        {backupStatus?.platform && (
+          <button onClick={tryCloudRestore} disabled={restoring}
+            style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260,
+              opacity: restoring ? 0.5 : 1 }}>
+            {restoring ? 'Checking…' : `Restore from ${backupPlatformLabel}`}
+          </button>
+        )}
+        <button onClick={() => { setRestoreMode('manual'); setRestoreError('') }}
+          style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260 }}>
+          Enter recovery phrase
+        </button>
+        {restoreError && (
+          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
+            {restoreError}
+          </div>
+        )}
+        <button onClick={() => { setRestoreMode(null); setRestoreError('') }}
+          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
+            fontSize:13, fontWeight:300, cursor:'pointer', padding:4 }}>
+          Back
+        </button>
+      </div>
+    ) : (
+      <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
+        <PearIcon size={56} />
+        <div style={{ marginBottom: 0 }} />
+        <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
+        <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
+          A private shared calendar that works without servers, accounts, or subscriptions.
+        </div>
+        <button onClick={() => { setSlideDir(1); setStep(1) }}
+          style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
+          Get Started
+        </button>
+        <button onClick={() => setRestoreMode('menu')}
+          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
+            fontSize:13, fontWeight:300, cursor:'pointer', padding:4, textDecoration:'underline' }}>
+          I already use PearCal
+        </button>
+      </div>
+    ),
 
     // Slide 1 — How P2P works
     <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
@@ -3299,6 +3498,12 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           </div>
         </div>
       </div>
+      {backupToastText && (
+        <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center',
+          maxWidth:300, lineHeight:'1.5', marginTop:4 }}>
+          {backupToastText}
+        </div>
+      )}
       <button onClick={() => { onComplete?.() }}
         style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
         Let's go!
@@ -5598,7 +5803,7 @@ function AboutTab ({ th, sync, closeSheetRef }) {
   )
 }
 
-function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey }) {
+function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -5607,6 +5812,15 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [holidaysOpen,      setHolidaysOpen]      = useState((profile?.holidayCountries ?? []).length > 0)
   const [personalOpen,      setPersonalOpen]      = useState(false)
   const [advancedOpen,      setAdvancedOpen]      = useState(false)
+  const backupRowRef = useRef(null)
+  useEffect(() => {
+    if (!focusBackup) return
+    setAdvancedOpen(true)
+    const t = setTimeout(() => {
+      backupRowRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
+    }, 450)
+    return () => clearTimeout(t)
+  }, [focusBackup])
   const [appearanceOpen,    setAppearanceOpen]    = useState(false)
   const [timeFormatOpen,    setTimeFormatOpen]    = useState(false)
   const [weekStartOpen,     setWeekStartOpen]     = useState(false)
@@ -5636,6 +5850,63 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [seedPeerSaved,    setSeedPeerSaved]    = useState(false)
   const [seedPeerError,    setSeedPeerError]    = useState(null)
   const [seedPeerInfoOpen, setSeedPeerInfoOpen] = useState(false)
+  const [backupStatus,     setBackupStatus]     = useState(null)
+  const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
+  const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
+  const [mnemonicCopied,   setMnemonicCopied]   = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function refresh () {
+      try {
+        const s = await db.getBackupStatus()
+        if (!cancelled) setBackupStatus(s)
+      } catch (e) {
+        if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e?.message })
+      }
+    }
+    refresh()
+    return () => { cancelled = true }
+  }, [db])
+
+  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
+    : backupStatus?.platform === 'blockstore' ? 'Google'
+    : null
+
+  async function revealMnemonic () {
+    setMnemonicBusy(true)
+    try {
+      const m = await db.revealMnemonic()
+      setMnemonicReveal(m ?? '')
+    } catch (e) {
+      setMnemonicReveal('Error: ' + (e?.message ?? 'unknown'))
+    }
+    setMnemonicBusy(false)
+  }
+
+  async function copyMnemonic () {
+    if (!mnemonicReveal) return
+    try {
+      await navigator.clipboard?.writeText?.(mnemonicReveal)
+    } catch {}
+    setMnemonicCopied(true)
+    setTimeout(() => setMnemonicCopied(false), 2000)
+  }
+
+  async function shareMnemonic () {
+    if (!mnemonicReveal) return
+    try { window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal) } catch {}
+  }
+
+  async function toggleBackup () {
+    if (!backupStatus) return
+    const next = !backupStatus.enabled
+    try {
+      await db.setBackupEnabled(next)
+      const s = await db.getBackupStatus()
+      setBackupStatus(s)
+    } catch {}
+  }
 
   async function saveName () {
     setSaving(true)
@@ -5984,6 +6255,79 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
 
       <div style={{ maxHeight: advancedOpen ? '3000px' : '0px', overflow:'hidden',
         transition:'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+
+      {/* Recovery Phrase */}
+      <div ref={backupRowRef} style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        RECOVERY PHRASE
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
+          justifyContent:'space-between' }}>
+          <div style={{ fontSize:13, fontWeight:300, ...th.text, flex:1, minWidth:0 }}>
+            <div>Back up to {backupPlatformLabel ?? 'cloud'}</div>
+            <div style={{ fontSize:11, color:th.muted, marginTop:2 }}>
+              {!backupStatus ? '…'
+                : backupStatus.platform == null
+                  ? 'Not available on this device'
+                  : backupStatus.platformSynced
+                    ? `Synced to ${backupPlatformLabel}`
+                    : backupStatus.enabled
+                      ? `Will sync to ${backupPlatformLabel}`
+                      : 'Saved on this device only'}
+            </div>
+          </div>
+          <Toggle val={!!backupStatus?.enabled}
+            onChange={() => { window.__pearSync?.haptic('light'); toggleBackup() }}
+            accent={th.accent} />
+        </div>
+        <div style={{ padding:'0 16px 14px' }}>
+          {mnemonicReveal == null ? (
+            <button onClick={revealMnemonic} disabled={mnemonicBusy}
+              style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+                padding:'12px 14px', borderRadius:10, cursor:'pointer',
+                border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+                opacity: mnemonicBusy ? 0.5 : 1 }}>
+              <div style={{ flex:1, textAlign:'left' }}>
+                <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+                  {mnemonicBusy ? 'Loading…' : 'Show recovery phrase'}
+                </div>
+                <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+                  12 words that restore your identity on a new device
+                </div>
+              </div>
+              <CaretRight size={16} weight="thin" color="var(--color-muted)" />
+            </button>
+          ) : (
+            <div style={{ border:`1px solid ${th.border}`, borderRadius:10, padding:'14px' }}>
+              <div style={{ fontSize:13, fontWeight:400, letterSpacing:'0.02em',
+                fontFamily:'monospace', color:th.text.color, wordBreak:'break-word',
+                marginBottom:12, lineHeight:1.6 }}>
+                {mnemonicReveal || '(no mnemonic saved — reinstall required)'}
+              </div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap', justifyContent:'center' }}>
+                <button onClick={copyMnemonic} disabled={!mnemonicReveal}
+                  style={{ ...th.pillBtn, fontSize:12, padding:'6px 14px', fontWeight:300 }}>
+                  {mnemonicCopied ? 'Copied ✓' : 'Copy'}
+                </button>
+                <button onClick={shareMnemonic} disabled={!mnemonicReveal}
+                  style={{ ...th.pillBtn, fontSize:12, padding:'6px 14px', fontWeight:300 }}>
+                  Save
+                </button>
+                <button onClick={() => { setMnemonicReveal(null); setMnemonicCopied(false) }}
+                  style={{ fontSize:12, padding:'6px 14px', borderRadius:8,
+                    border:`1px solid ${th.border}`, background:'transparent',
+                    color:th.muted, cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
+                  Hide
+                </button>
+              </div>
+              <div style={{ fontSize:11, color:th.muted, marginTop:10, lineHeight:1.4 }}>
+                Keep these 12 words somewhere safe. Anyone with them can restore your
+                identity and rejoin your groups.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Import & Export */}
       <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>

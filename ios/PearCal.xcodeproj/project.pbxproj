@@ -29,7 +29,9 @@
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 30846C24E6F5560A4622850B /* ScreenshotModule.m */; };
 		C91178F09D46C3CE692B374F /* libPods-PearCal.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8F15DD1660F4C0FB78FB2898 /* libPods-PearCal.a */; };
+		CF06BE374A540FF7534F1E94 /* ICloudKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC269942DED08B0827F3FE73 /* ICloudKeychain.swift */; };
 		D281BE0BBE65065D21A3E8E1 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3ECA4F085A06A65C368166CE /* Foundation.framework */; };
+		D3F6A13094E9955F62C7EB33 /* ICloudKeychain.m in Sources */ = {isa = PBXBuildFile; fileRef = 4DDEF52E13963920929C2F2C /* ICloudKeychain.m */; };
 		DAF5708BAC84EEC6349AA1EF /* DeepLinkModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 17086FDCA2812725DD101353 /* DeepLinkModule.m */; };
 		E0DA430E00A88A151E604B9D /* ShareModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A19A60265BF82560F78ECA2 /* ShareModule.swift */; };
 		E44D8C6F81DEEB6F63A5B934 /* PearCalWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -80,6 +82,7 @@
 		42577A4E4AC6DD2C152A141A /* PearCalWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PearCalWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		432CF75ADD4963D7351063E9 /* LinkModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = LinkModule.m; path = PearCal/LinkModule.m; sourceTree = "<group>"; };
 		43B39E45E490E815F6A2E8DC /* NotificationsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = NotificationsModule.m; path = PearCal/NotificationsModule.m; sourceTree = "<group>"; };
+		4DDEF52E13963920929C2F2C /* ICloudKeychain.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ICloudKeychain.m; path = PearCal/ICloudKeychain.m; sourceTree = "<group>"; };
 		54388F28E7166576CD5644B8 /* BareBackgroundSync.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BareBackgroundSync.swift; path = PearCal/BareBackgroundSync.swift; sourceTree = "<group>"; };
 		5931FFF4F23A1A8825DCE94C /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-PearCal/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		6449AE41A3E8EF743FEA5BF3 /* CameraModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = CameraModule.m; path = PearCal/CameraModule.m; sourceTree = "<group>"; };
@@ -101,6 +104,7 @@
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = PearCal/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* PearCal-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "PearCal-Bridging-Header.h"; path = "PearCal/PearCal-Bridging-Header.h"; sourceTree = "<group>"; };
 		F2EC4DB5DC6197D20E4E6C67 /* WidgetCacheModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = WidgetCacheModule.swift; path = PearCal/WidgetCacheModule.swift; sourceTree = "<group>"; };
+		FC269942DED08B0827F3FE73 /* ICloudKeychain.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ICloudKeychain.swift; path = PearCal/ICloudKeychain.swift; sourceTree = "<group>"; };
 		FC70E1B14B4FC5F2C251DC62 /* DeepLinkModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = DeepLinkModule.swift; path = PearCal/DeepLinkModule.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -149,6 +153,8 @@
 				30846C24E6F5560A4622850B /* ScreenshotModule.m */,
 				F2EC4DB5DC6197D20E4E6C67 /* WidgetCacheModule.swift */,
 				6F845813E9C870F0FB256198 /* WidgetCacheModule.m */,
+				FC269942DED08B0827F3FE73 /* ICloudKeychain.swift */,
+				4DDEF52E13963920929C2F2C /* ICloudKeychain.m */,
 			);
 			name = PearCal;
 			sourceTree = "<group>";
@@ -521,6 +527,8 @@
 				C8BAA1660BAEF8EFEFFE3CF7 /* ScreenshotModule.m in Sources */,
 				78C4617EE425098AC019F5CD /* WidgetCacheModule.swift in Sources */,
 				1C2BFA5FAD5DD49B66A755C0 /* WidgetCacheModule.m in Sources */,
+				CF06BE374A540FF7534F1E94 /* ICloudKeychain.swift in Sources */,
+				D3F6A13094E9955F62C7EB33 /* ICloudKeychain.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -72,6 +72,10 @@ const db = {
   getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
   setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
+  getBackupStatus:    ()  => window.__pearDB.call('getBackupStatus'),
+  setBackupEnabled:   (b) => window.__pearDB.call('setBackupEnabled', b),
+  revealMnemonic:     ()  => window.__pearDB.call('revealMnemonic'),
+  restoreMnemonic:    (m) => window.__pearDB.call('restoreMnemonic', m),
 }
 
 const notifs = {
@@ -92,6 +96,7 @@ const sync = {
   debugGroup: (id) => window.__pearDB.call('debugGroup', id),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   exportIcs: (content) => window.__pearDB.call('exportIcs', content),
+  exportRecoveryPhrase: (content) => window.__pearDB.call('exportRecoveryPhrase', content),
   qrScan: () => window.__pearDB.call('qrScan'),
   takePhoto: () => window.__pearDB.call('takePhoto'),
   haptic: (style) => window.__pearDB.call('haptic', style),

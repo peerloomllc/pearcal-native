@@ -31,5 +31,20 @@ class ShareModule: NSObject {
     }
   }
 
+  @objc func shareRecoveryPhrase(_ content: String) {
+    DispatchQueue.main.async {
+      let tmpURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("pearcal-recovery-phrase.txt")
+      try? content.write(to: tmpURL, atomically: true, encoding: .utf8)
+      let items: [Any] = [tmpURL]
+      let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+      if let root = UIApplication.shared.connectedScenes
+          .compactMap({ $0 as? UIWindowScene })
+          .first?.windows.first?.rootViewController {
+        vc.popoverPresentationController?.sourceView = root.view
+        root.present(vc, animated: true)
+      }
+    }
+  }
+
   @objc static func requiresMainQueueSetup() -> Bool { return false }
 }

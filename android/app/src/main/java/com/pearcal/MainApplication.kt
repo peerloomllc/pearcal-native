@@ -33,6 +33,7 @@ class MainApplication : Application(), ReactApplication {
               add(CameraPackage())
               add(ScreenshotPackage())
               add(WidgetCachePackage())
+              add(BlockStorePackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

@@ -59,7 +59,8 @@
             "minSdkVersion": 29
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "assets": [
       "./assets/bare-universal.bundle"
