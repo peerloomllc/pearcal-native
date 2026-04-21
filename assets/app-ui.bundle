@@ -16461,6 +16461,15 @@
     const closeInviteSheetRef = (0, import_react2.useRef)(null);
     const closeNewGroupSheetRef = (0, import_react2.useRef)(null);
     const [groupCreatedToast, setGroupCreatedToast] = (0, import_react2.useState)(null);
+    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
+    const [backupNudgeDismissed, setBackupNudgeDismissed] = (0, import_react2.useState)(() => {
+      try {
+        return localStorage.getItem("pearcal:backupNudgeDismissed") === "1";
+      } catch {
+        return false;
+      }
+    });
+    const [focusBackup, setFocusBackup] = (0, import_react2.useState)(0);
     const [confirmSheet, setConfirmSheet] = (0, import_react2.useState)(null);
     const closeConfirmSheetRef = (0, import_react2.useRef)(null);
     const [infoSheet, setInfoSheet] = (0, import_react2.useState)(null);
@@ -16525,6 +16534,20 @@
         cancelled = true;
       };
     }, [db2]);
+    (0, import_react2.useEffect)(() => {
+      if (!db2?.getBackupStatus) return;
+      let cancelled = false;
+      (async () => {
+        try {
+          const s10 = await db2.getBackupStatus();
+          if (!cancelled) setBackupStatus(s10);
+        } catch {
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [db2, tab]);
     (0, import_react2.useEffect)(() => {
       if (!db2) return;
       function scheduleDefaultReminders(newEvents) {
@@ -17471,6 +17494,82 @@
           textAlign: "center",
           lineHeight: 1.5
         }, children: "You were removed from this group and cannot rejoin with this link." }),
+        (() => {
+          if (!ready || !profile || backupNudgeDismissed) return null;
+          if (!backupStatus?.local || backupStatus.platformSynced) return null;
+          let sharedGroupCount = 0;
+          const seen = /* @__PURE__ */ new Set();
+          for (const e58 of events) {
+            if (e58?.creatorId !== profile.id) continue;
+            if (!Array.isArray(e58?.groups)) continue;
+            for (const gid of e58.groups) {
+              if (!seen.has(gid)) {
+                seen.add(gid);
+                sharedGroupCount++;
+              }
+            }
+            if (sharedGroupCount >= 1) break;
+          }
+          if (sharedGroupCount < 1) return null;
+          const dismiss = () => {
+            try {
+              localStorage.setItem("pearcal:backupNudgeDismissed", "1");
+            } catch {
+            }
+            setBackupNudgeDismissed(true);
+          };
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            position: "fixed",
+            top: "calc(var(--safe-area-top) + 8px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "calc(100% - 32px)",
+            maxWidth: 398,
+            background: th.card?.background ?? "var(--color-card)",
+            border: `1px solid ${th.border}`,
+            borderRadius: "var(--radius-lg)",
+            padding: "10px 12px",
+            fontSize: 12,
+            fontWeight: 300,
+            zIndex: 400,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            ...th.text
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, lineHeight: 1.4 }, children: "Back up your recovery phrase so you don't lose access." }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: () => {
+                  dismiss();
+                  setFocusBackup((n17) => n17 + 1);
+                  goTab("profile");
+                },
+                style: { ...th.pillBtn, fontSize: 11, padding: "5px 10px", fontWeight: 300 },
+                children: "Back up"
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              "button",
+              {
+                onClick: dismiss,
+                "aria-label": "Dismiss",
+                style: {
+                  background: "none",
+                  border: "none",
+                  color: th.muted,
+                  cursor: "pointer",
+                  fontFamily: FONT,
+                  padding: 4,
+                  fontSize: 14,
+                  lineHeight: 1
+                },
+                children: "\u2715"
+              }
+            )
+          ] });
+        })(),
         syncingGroups.size > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
           position: "fixed",
           top: "calc(var(--safe-area-top) + 8px)",
@@ -17554,6 +17653,7 @@
             saveEvent,
             blindPeerKey,
             setBlindPeerKey,
+            focusBackup,
             onToggleDark: () => {
               const nd = !dark;
               setDark(nd);
@@ -19753,6 +19853,70 @@
     const fileRef = (0, import_react2.useRef)(null);
     const total = 5;
     const [slideDir, setSlideDir] = (0, import_react2.useState)(1);
+    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
+    const [restoreMode, setRestoreMode] = (0, import_react2.useState)(null);
+    const [restorePhrase, setRestorePhrase] = (0, import_react2.useState)("");
+    const [restoring, setRestoring] = (0, import_react2.useState)(false);
+    const [restoreError, setRestoreError] = (0, import_react2.useState)("");
+    (0, import_react2.useEffect)(() => {
+      let cancelled = false;
+      async function refresh() {
+        try {
+          const s10 = await db2.getBackupStatus();
+          if (!cancelled) setBackupStatus(s10);
+        } catch {
+        }
+      }
+      refresh();
+      const t7 = setTimeout(refresh, 1200);
+      return () => {
+        cancelled = true;
+        clearTimeout(t7);
+      };
+    }, [db2, step]);
+    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
+    const backupToastText = !backupStatus ? null : backupStatus.platformSynced && backupPlatformLabel ? `Recovery phrase saved to ${backupPlatformLabel}.` : backupStatus.enabled && backupPlatformLabel ? `Recovery phrase will sync to ${backupPlatformLabel}.` : "Recovery phrase saved on this device only \u2014 back up in Settings.";
+    async function tryCloudRestore() {
+      setRestoring(true);
+      setRestoreError("");
+      try {
+        const s10 = await db2.getBackupStatus();
+        if (s10?.local) {
+          setBackupStatus(s10);
+          setRestoreMode(null);
+          setSlideDir(1);
+          setStep(2);
+        } else {
+          setRestoreError(
+            s10?.platform ? `No backup found in ${s10.platform === "icloud" ? "iCloud Keychain" : "Google"}.` : "Cloud backup is not available on this device."
+          );
+        }
+      } catch (e58) {
+        setRestoreError(e58?.message || "Restore failed");
+      }
+      setRestoring(false);
+    }
+    async function submitManualRestore() {
+      const words = restorePhrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      if (words.length !== 12) {
+        setRestoreError("Recovery phrase must be exactly 12 words.");
+        return;
+      }
+      setRestoring(true);
+      setRestoreError("");
+      try {
+        await db2.restoreMnemonic(words.join(" "));
+        setRestorePhrase("");
+        setRestoreMode(null);
+        const s10 = await db2.getBackupStatus();
+        setBackupStatus(s10);
+        setSlideDir(1);
+        setStep(2);
+      } catch (e58) {
+        setRestoreError(e58?.message || "Invalid recovery phrase.");
+      }
+      setRestoring(false);
+    }
     async function handlePhotoChange(e58) {
       const file = e58.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
@@ -19777,8 +19941,125 @@
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const dots = Array.from({ length: total }, (_, i2) => i2);
     const slides = [
-      // Slide 0 — Welcome
-      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
+      // Slide 0 — Welcome (or restore sub-flow when restoreMode is set)
+      restoreMode === "manual" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Enter recovery phrase" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 300, lineHeight: "1.6" }, children: "Type or paste your 12-word recovery phrase to restore your identity." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "textarea",
+          {
+            value: restorePhrase,
+            onChange: (e58) => {
+              setRestorePhrase(e58.target.value);
+              setRestoreError("");
+            },
+            placeholder: "twelve words separated by spaces",
+            rows: 3,
+            style: {
+              background: th.inputBg,
+              border: `1px solid ${th.border}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+              color: th.text.color,
+              fontSize: 15,
+              fontWeight: 300,
+              fontFamily: FONT,
+              width: "100%",
+              boxSizing: "border-box",
+              outline: "none",
+              resize: "none",
+              lineHeight: "1.5"
+            }
+          }
+        ),
+        restoreError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: submitManualRestore,
+            disabled: restoring || !restorePhrase.trim(),
+            style: {
+              ...th.pillBtn,
+              padding: "12px 40px",
+              fontSize: 16,
+              fontWeight: 300,
+              opacity: restoring || !restorePhrase.trim() ? 0.4 : 1
+            },
+            children: restoring ? "Restoring\u2026" : "Restore"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              setRestoreMode("menu");
+              setRestoreError("");
+            },
+            style: {
+              background: "none",
+              border: "none",
+              color: th.muted,
+              fontFamily: FONT,
+              fontSize: 13,
+              fontWeight: 300,
+              cursor: "pointer",
+              padding: 4
+            },
+            children: "Back"
+          }
+        )
+      ] }, "0-manual") : restoreMode === "menu" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome back" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290, lineHeight: "1.6" }, children: "How would you like to restore your identity?" }),
+        backupStatus?.platform && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: tryCloudRestore,
+            disabled: restoring,
+            style: {
+              ...th.pillBtn,
+              padding: "12px 24px",
+              fontSize: 15,
+              fontWeight: 300,
+              minWidth: 260,
+              opacity: restoring ? 0.5 : 1
+            },
+            children: restoring ? "Checking\u2026" : `Restore from ${backupPlatformLabel}`
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              setRestoreMode("manual");
+              setRestoreError("");
+            },
+            style: { ...th.pillBtn, padding: "12px 24px", fontSize: 15, fontWeight: 300, minWidth: 260 },
+            children: "Enter recovery phrase"
+          }
+        ),
+        restoreError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              setRestoreMode(null);
+              setRestoreError("");
+            },
+            style: {
+              background: "none",
+              border: "none",
+              color: th.muted,
+              fontFamily: FONT,
+              fontSize: 13,
+              fontWeight: 300,
+              cursor: "pointer",
+              padding: 4
+            },
+            children: "Back"
+          }
+        )
+      ] }, "0-menu") : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PearIcon, { size: 56 }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 0 } }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome to PearCal" }),
@@ -19792,6 +20073,24 @@
             },
             style: { ...th.pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, marginTop: 8 },
             children: "Get Started"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => setRestoreMode("menu"),
+            style: {
+              background: "none",
+              border: "none",
+              color: th.muted,
+              fontFamily: FONT,
+              fontSize: 13,
+              fontWeight: 300,
+              cursor: "pointer",
+              padding: 4,
+              textDecoration: "underline"
+            },
+            children: "I already use PearCal"
           }
         )
       ] }, 0),
@@ -19985,6 +20284,15 @@
             ] })
           ] })
         ] }),
+        backupToastText && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          fontSize: 12,
+          fontWeight: 300,
+          color: th.muted,
+          textAlign: "center",
+          maxWidth: 300,
+          lineHeight: "1.5",
+          marginTop: 4
+        }, children: backupToastText }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
@@ -23487,7 +23795,7 @@ ${link}`;
       ] })
     ] });
   }
-  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey }) {
+  function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup }) {
     const [name, setName] = (0, import_react2.useState)(profile?.name ?? "");
     const [editing, setEditing] = (0, import_react2.useState)(false);
     const [saving, setSaving] = (0, import_react2.useState)(false);
@@ -23496,6 +23804,15 @@ ${link}`;
     const [holidaysOpen, setHolidaysOpen] = (0, import_react2.useState)((profile?.holidayCountries ?? []).length > 0);
     const [personalOpen, setPersonalOpen] = (0, import_react2.useState)(false);
     const [advancedOpen, setAdvancedOpen] = (0, import_react2.useState)(false);
+    const backupRowRef = (0, import_react2.useRef)(null);
+    (0, import_react2.useEffect)(() => {
+      if (!focusBackup) return;
+      setAdvancedOpen(true);
+      const t7 = setTimeout(() => {
+        backupRowRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      }, 450);
+      return () => clearTimeout(t7);
+    }, [focusBackup]);
     const [appearanceOpen, setAppearanceOpen] = (0, import_react2.useState)(false);
     const [timeFormatOpen, setTimeFormatOpen] = (0, import_react2.useState)(false);
     const [weekStartOpen, setWeekStartOpen] = (0, import_react2.useState)(false);
@@ -23522,6 +23839,62 @@ ${link}`;
     const [seedPeerSaved, setSeedPeerSaved] = (0, import_react2.useState)(false);
     const [seedPeerError, setSeedPeerError] = (0, import_react2.useState)(null);
     const [seedPeerInfoOpen, setSeedPeerInfoOpen] = (0, import_react2.useState)(false);
+    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
+    const [mnemonicReveal, setMnemonicReveal] = (0, import_react2.useState)(null);
+    const [mnemonicBusy, setMnemonicBusy] = (0, import_react2.useState)(false);
+    const [mnemonicCopied, setMnemonicCopied] = (0, import_react2.useState)(false);
+    (0, import_react2.useEffect)(() => {
+      let cancelled = false;
+      async function refresh() {
+        try {
+          const s10 = await db2.getBackupStatus();
+          if (!cancelled) setBackupStatus(s10);
+        } catch (e58) {
+          if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e58?.message });
+        }
+      }
+      refresh();
+      return () => {
+        cancelled = true;
+      };
+    }, [db2]);
+    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
+    async function revealMnemonic() {
+      setMnemonicBusy(true);
+      try {
+        const m3 = await db2.revealMnemonic();
+        setMnemonicReveal(m3 ?? "");
+      } catch (e58) {
+        setMnemonicReveal("Error: " + (e58?.message ?? "unknown"));
+      }
+      setMnemonicBusy(false);
+    }
+    async function copyMnemonic() {
+      if (!mnemonicReveal) return;
+      try {
+        await navigator.clipboard?.writeText?.(mnemonicReveal);
+      } catch {
+      }
+      setMnemonicCopied(true);
+      setTimeout(() => setMnemonicCopied(false), 2e3);
+    }
+    async function shareMnemonic() {
+      if (!mnemonicReveal) return;
+      try {
+        window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal);
+      } catch {
+      }
+    }
+    async function toggleBackup() {
+      if (!backupStatus) return;
+      const next = !backupStatus.enabled;
+      try {
+        await db2.setBackupEnabled(next);
+        const s10 = await db2.getBackupStatus();
+        setBackupStatus(s10);
+      } catch {
+      }
+    }
     async function saveName() {
       setSaving(true);
       await onUpdateProfile({ name });
@@ -24005,6 +24378,114 @@ ${link}`;
         overflow: "hidden",
         transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
       }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { ref: backupRowRef, style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "RECOVERY PHRASE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginBottom: 12 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+            padding: "14px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between"
+          }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text, flex: 1, minWidth: 0 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                "Back up to ",
+                backupPlatformLabel ?? "cloud"
+              ] }),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2 }, children: !backupStatus ? "\u2026" : backupStatus.platform == null ? "Not available on this device" : backupStatus.platformSynced ? `Synced to ${backupPlatformLabel}` : backupStatus.enabled ? `Will sync to ${backupPlatformLabel}` : "Saved on this device only" })
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+              Toggle,
+              {
+                val: !!backupStatus?.enabled,
+                onChange: () => {
+                  window.__pearSync?.haptic("light");
+                  toggleBackup();
+                },
+                accent: th.accent
+              }
+            )
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 16px 14px" }, children: mnemonicReveal == null ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: revealMnemonic,
+              disabled: mnemonicBusy,
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT,
+                opacity: mnemonicBusy ? 0.5 : 1
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: mnemonicBusy ? "Loading\u2026" : "Show recovery phrase" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "12 words that restore your identity on a new device" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 16, weight: "thin", color: "var(--color-muted)" })
+              ]
+            }
+          ) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: `1px solid ${th.border}`, borderRadius: 10, padding: "14px" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+              fontSize: 13,
+              fontWeight: 400,
+              letterSpacing: "0.02em",
+              fontFamily: "monospace",
+              color: th.text.color,
+              wordBreak: "break-word",
+              marginBottom: 12,
+              lineHeight: 1.6
+            }, children: mnemonicReveal || "(no mnemonic saved \u2014 reinstall required)" }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: copyMnemonic,
+                  disabled: !mnemonicReveal,
+                  style: { ...th.pillBtn, fontSize: 12, padding: "6px 14px", fontWeight: 300 },
+                  children: mnemonicCopied ? "Copied \u2713" : "Copy"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: shareMnemonic,
+                  disabled: !mnemonicReveal,
+                  style: { ...th.pillBtn, fontSize: 12, padding: "6px 14px", fontWeight: 300 },
+                  children: "Save"
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: () => {
+                    setMnemonicReveal(null);
+                    setMnemonicCopied(false);
+                  },
+                  style: {
+                    fontSize: 12,
+                    padding: "6px 14px",
+                    borderRadius: 8,
+                    border: `1px solid ${th.border}`,
+                    background: "transparent",
+                    color: th.muted,
+                    cursor: "pointer",
+                    fontWeight: 300,
+                    fontFamily: FONT
+                  },
+                  children: "Hide"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 10, lineHeight: 1.4 }, children: "Keep these 12 words somewhere safe. Anyone with them can restore your identity and rejoin your groups." })
+          ] }) })
+        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -25066,7 +25547,6 @@ ${link}`;
       putMember: () => resolve(true),
       removeMember: () => resolve(true),
       resyncGroup: () => resolve(true),
-      resyncAll: () => resolve(true),
       setMemberNickname: () => resolve(true),
       getReminders: (id) => resolve(REMINDERS_BY_EVENT[id] ?? []),
       putReminders: () => resolve(true),
@@ -25187,7 +25667,11 @@ ${link}`;
     putPrivateNote: (id, text) => window.__pearDB.call("putPrivateNote", id, text),
     getBlindPeerKey: () => window.__pearDB.call("getBlindPeerKey"),
     setBlindPeerKey: (k) => window.__pearDB.call("setBlindPeerKey", k),
-    removeBlindPeerKey: () => window.__pearDB.call("removeBlindPeerKey")
+    removeBlindPeerKey: () => window.__pearDB.call("removeBlindPeerKey"),
+    getBackupStatus: () => window.__pearDB.call("getBackupStatus"),
+    setBackupEnabled: (b) => window.__pearDB.call("setBackupEnabled", b),
+    revealMnemonic: () => window.__pearDB.call("revealMnemonic"),
+    restoreMnemonic: (m3) => window.__pearDB.call("restoreMnemonic", m3)
   };
   var notifs = {
     scheduleForEvent: (ev2, reminders) => window.__pearDB.call("scheduleForEvent", ev2, reminders),
@@ -25206,6 +25690,7 @@ ${link}`;
     debugGroup: (id) => window.__pearDB.call("debugGroup", id),
     nativeShare: (title, text) => window.__pearDB.call("nativeShare", title, text),
     exportIcs: (content) => window.__pearDB.call("exportIcs", content),
+    exportRecoveryPhrase: (content) => window.__pearDB.call("exportRecoveryPhrase", content),
     qrScan: () => window.__pearDB.call("qrScan"),
     takePhoto: () => window.__pearDB.call("takePhoto"),
     haptic: (style) => window.__pearDB.call("haptic", style),

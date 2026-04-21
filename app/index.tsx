@@ -13,6 +13,7 @@ import b4a from 'b4a'
 import { Asset } from 'expo-asset'
 import Constants from 'expo-constants'
 import * as FileSystem from 'expo-file-system/legacy'
+import * as SecureStore from 'expo-secure-store'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
@@ -21,6 +22,8 @@ const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
 const { PearCalBGSync } = NativeModules
+const { PearCalBlockStore } = NativeModules
+const { PearCalICloudKeychain } = NativeModules
 
 let _worklet: any = null
 let _workletStarted = false
@@ -36,6 +39,137 @@ function onEvent (event: string, fn: (data: any) => void) {
 
 function sendToWorklet (msg: object) {
   _worklet?.IPC.write(b4a.from(JSON.stringify(msg) + '\n'))
+}
+
+const MNEMONIC_KEY = 'pearcal.identity.mnemonic'
+const BACKUP_ENABLED_KEY = 'pearcal.identity.backupEnabled'
+
+const platformBackup: any = Platform.OS === 'ios' ? PearCalICloudKeychain : PearCalBlockStore
+const platformLabel: 'icloud' | 'blockstore' | null =
+  Platform.OS === 'ios' ? 'icloud' : (Platform.OS === 'android' ? 'blockstore' : null)
+
+async function isBackupEnabled (): Promise<boolean> {
+  try {
+    const v = await SecureStore.getItemAsync(BACKUP_ENABLED_KEY)
+    return v !== '0' // default on
+  } catch { return true }
+}
+
+async function platformIsAvailable (): Promise<boolean> {
+  if (!platformBackup?.isAvailable) return false
+  try { return !!(await platformBackup.isAvailable()) } catch { return false }
+}
+
+async function platformReadMnemonic (): Promise<string | null> {
+  if (!platformBackup?.readMnemonic) return null
+  try { return (await platformBackup.readMnemonic()) ?? null } catch { return null }
+}
+
+async function platformSaveMnemonic (value: string): Promise<boolean> {
+  if (!platformBackup?.saveMnemonic) return false
+  try { return !!(await platformBackup.saveMnemonic(value)) } catch { return false }
+}
+
+async function platformDeleteMnemonic (): Promise<boolean> {
+  if (!platformBackup?.deleteMnemonic) return false
+  try { return !!(await platformBackup.deleteMnemonic()) } catch { return false }
+}
+
+async function localSetMnemonic (value: string): Promise<void> {
+  await SecureStore.setItemAsync(MNEMONIC_KEY, value, {
+    keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+  })
+}
+
+async function handleNativeRequest (msg: any) {
+  const { nativeId, method, args = [] } = msg
+  try {
+    let result: any = null
+    switch (method) {
+      case 'hasMnemonic': {
+        const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
+        if (local) { result = true; break }
+        // Auto-restore from platform backup before reporting "no mnemonic".
+        if (await platformIsAvailable()) {
+          const restored = await platformReadMnemonic()
+          if (restored) {
+            await localSetMnemonic(restored)
+            result = true
+            break
+          }
+        }
+        result = false
+        break
+      }
+      case 'getMnemonic': {
+        const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
+        if (local) { result = local; break }
+        if (await platformIsAvailable()) {
+          const restored = await platformReadMnemonic()
+          if (restored) {
+            await localSetMnemonic(restored)
+            result = restored
+            break
+          }
+        }
+        result = null
+        break
+      }
+      case 'setMnemonic': {
+        const value = args[0]
+        if (typeof value !== 'string' || value.length === 0) {
+          throw new Error('setMnemonic: value must be a non-empty string')
+        }
+        await localSetMnemonic(value)
+        result = true
+        if (await isBackupEnabled()) {
+          // Fire-and-forget — never fail profile creation because backup wrote slowly.
+          platformSaveMnemonic(value).catch(() => {})
+        }
+        break
+      }
+      case 'getBackupStatus': {
+        const local = !!(await SecureStore.getItemAsync(MNEMONIC_KEY))
+        const platformAvail = await platformIsAvailable()
+        const enabled = await isBackupEnabled()
+        let platformSynced = false
+        let error: string | null = null
+        if (platformAvail && enabled) {
+          try {
+            const v = await platformReadMnemonic()
+            platformSynced = !!v
+          } catch (e: any) { error = e?.message ?? String(e) }
+        }
+        result = {
+          local,
+          platform: platformAvail && enabled ? platformLabel : null,
+          platformSynced,
+          enabled,
+          error,
+        }
+        break
+      }
+      case 'setBackupEnabled': {
+        const enable = args[0] !== false && args[0] !== '0' && args[0] !== 0
+        await SecureStore.setItemAsync(BACKUP_ENABLED_KEY, enable ? '1' : '0')
+        if (!enable) {
+          // User explicitly opted out — scrub any existing platform copy.
+          platformDeleteMnemonic().catch(() => {})
+        } else if (await platformIsAvailable()) {
+          // Opted in — mirror current local value up.
+          const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
+          if (local) platformSaveMnemonic(local).catch(() => {})
+        }
+        result = true
+        break
+      }
+      default:
+        throw new Error('Unknown native request: ' + method)
+    }
+    sendToWorklet({ type: 'nativeResponse', nativeId, result })
+  } catch (e: any) {
+    sendToWorklet({ type: 'nativeResponse', nativeId, error: e?.message ?? String(e) })
+  }
 }
 
 function notifId (eventId: string): number {
@@ -303,6 +437,10 @@ export default function Root () {
         PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
+      if (msg.method === 'exportRecoveryPhrase') {
+        PearCalShare?.shareRecoveryPhrase?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -388,6 +526,8 @@ export default function Root () {
             } else if (msg.type === 'response') {
               const resolve = _pending.get(msg.id)
               if (resolve) { _pending.delete(msg.id); resolve(msg) }
+            } else if (msg.type === 'nativeRequest') {
+              handleNativeRequest(msg)
             }
           } catch (e) { console.error('IPC parse error:', e) }
         }

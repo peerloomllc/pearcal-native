@@ -7,6 +7,8 @@ const BlindPeering  = require('blind-peering')
 const Wakeup        = require('protomux-wakeup')
 const sodium        = require('sodium-native')
 const b4a           = require('b4a')
+const IdentityKey   = require('keet-identity-key')
+const bip39         = require('bip39-mnemonic')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
@@ -80,7 +82,24 @@ const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
 // Stored in local Hyperbee under 'blindPeerKey'.
 let blind = null                     // BlindPeering instance
 
+// ── Identity (seed-word-derived) ─────────────────────────────────────────────
+// Cached IdentityKey instance for the life of the worklet. Derived from the
+// device mnemonic via SLIP-48; identityPublicKey survives wipes.
+let _identity = null                 // IdentityKey instance
+
 // ── IPC ──────────────────────────────────────────────────────────────────────
+
+// Bare→RN request/response: Bare sends {type:'nativeRequest', nativeId, method, args},
+// RN replies with {type:'nativeResponse', nativeId, result|error}.
+let _nativeNextId = 1
+const _nativePending = new Map()
+function nativeRequest (method, args = []) {
+  return new Promise((resolve, reject) => {
+    const nativeId = _nativeNextId++
+    _nativePending.set(nativeId, { resolve, reject })
+    send({ type: 'nativeRequest', nativeId, method, args })
+  })
+}
 
 BareKit.IPC.on('data', chunk => {
   buf += chunk.toString()
@@ -90,6 +109,15 @@ BareKit.IPC.on('data', chunk => {
     if (!line.trim()) continue
     try {
       const msg = JSON.parse(line)
+      if (msg.type === 'nativeResponse') {
+        const pending = _nativePending.get(msg.nativeId)
+        if (pending) {
+          _nativePending.delete(msg.nativeId)
+          if (msg.error) pending.reject(new Error(msg.error))
+          else pending.resolve(msg.result)
+        }
+        continue
+      }
       if (msg.method === 'init') init(msg.dataDir)
       else dispatch(msg.method, msg.args ?? [], msg.id)
     } catch(e) { console.error('IPC parse error:', e.message) }
@@ -179,6 +207,10 @@ async function handle (method, args) {
     case 'listAvatarHashes': return listAvatarHashes()
     case 'analyzeStorage': return analyzeStorage(args[0])
     case 'rebuildLocalDb': return rebuildLocalDb()
+    case 'getBackupStatus':  return nativeRequest('getBackupStatus')
+    case 'setBackupEnabled': return nativeRequest('setBackupEnabled', [args[0]])
+    case 'revealMnemonic':   return nativeRequest('getMnemonic')
+    case 'restoreMnemonic':  return restoreMnemonic(args[0])
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -329,6 +361,119 @@ async function updateProfile (updates) {
   if ('digestEnabled' in updates || 'digestHour' in updates || 'digestMinute' in updates) {
     scheduleMorningDigest().catch(e => console.warn('morning digest reschedule:', e.message))
   }
+}
+
+// Ensure a device mnemonic exists in RN secure storage. Generates one on first
+// boot, otherwise returns the existing one. 16 bytes entropy → 12 BIP39 words;
+// 128 bits is already beyond any practical brute-force threshold for an
+// Ed25519-derived identity.
+async function ensureMnemonic () {
+  const has = await nativeRequest('hasMnemonic')
+  if (!has) {
+    const fresh = bip39.generateMnemonic({ entropy: bip39.generateEntropy(16) })
+    await nativeRequest('setMnemonic', [fresh])
+    console.log('[identity] generated fresh mnemonic (' + fresh.split(' ').length + ' words)')
+    return fresh
+  }
+  const existing = await nativeRequest('getMnemonic')
+  console.log('[identity] loaded existing mnemonic (' + (existing?.split(' ').length ?? 0) + ' words)')
+  return existing
+}
+
+// Derive the device IdentityKey from the persisted mnemonic and cache it in
+// memory. Idempotent — safe to call multiple times.
+async function ensureIdentity () {
+  if (_identity) return _identity
+  const mnemonic = await ensureMnemonic()
+  _identity = await IdentityKey.from({ mnemonic })
+  console.log('[identity] derived identityPublicKey:',
+    b4a.toString(_identity.identityPublicKey, 'hex').slice(0, 16) + '…')
+  return _identity
+}
+
+// Validate a user-typed 12-word phrase, persist it to native storage, and
+// re-derive the in-memory identity. Called by the onboarding "I already use
+// PearCal → Enter recovery phrase" path. Profile id / name / avatar stay
+// untouched — user fills them in after restore.
+async function restoreMnemonic (mnemonic) {
+  if (typeof mnemonic !== 'string') throw new Error('restoreMnemonic: not a string')
+  const normalised = mnemonic.trim().replace(/\s+/g, ' ').toLowerCase()
+  if (!bip39.validateMnemonic(normalised)) {
+    throw new Error('restoreMnemonic: invalid BIP39 phrase')
+  }
+  await nativeRequest('setMnemonic', [normalised])
+  _identity = null
+  _writerProofs.clear()
+  await ensureIdentity()
+  return { identityPublicKey: b4a.toString(_identity.identityPublicKey, 'hex') }
+}
+
+// Deterministic profile.id derived from identityPublicKey so the same seed
+// phrase yields the same id across reinstalls. 16-byte blake2b → 32 hex chars,
+// matching the width of the legacy hex(ed25519 pub) format.
+function deriveProfileIdFromIdentity (identityPublicKey) {
+  const out = b4a.alloc(16)
+  sodium.crypto_generichash(out, identityPublicKey)
+  return b4a.toString(out, 'hex')
+}
+
+// Per-groupId cache of the proof binding this device's Autobase writer key
+// (base.local.key) to the mnemonic-derived identity. Persisted under
+// 'writerProof:{groupId}' so epoch stays stable across restarts; invalidated
+// automatically if the writerKey or identityPublicKey stored alongside no
+// longer match the current ones. Receivers recover identityPublicKey via
+// IdentityKey.verify(proof, writerKey).
+const _writerProofs = new Map()
+
+async function getOrCreateWriterProof (groupId, writerKey) {
+  const cached = _writerProofs.get(groupId)
+  if (cached) return cached
+  if (!_identity) return null
+
+  const currentIdentityHex = b4a.toString(_identity.identityPublicKey, 'hex')
+  const persisted = await db.get('writerProof:' + groupId).catch(() => null)
+  if (
+    persisted?.value?.proofHex &&
+    persisted.value.writerKey === writerKey &&
+    persisted.value.identityPublicKey === currentIdentityHex
+  ) {
+    const buf = b4a.from(persisted.value.proofHex, 'hex')
+    _writerProofs.set(groupId, buf)
+    return buf
+  }
+
+  const proof = await IdentityKey.bootstrap(
+    { identity: _identity.identityKeyPair },
+    b4a.from(writerKey, 'hex')
+  )
+  _writerProofs.set(groupId, proof)
+  await db.put('writerProof:' + groupId, {
+    proofHex: b4a.toString(proof, 'hex'),
+    writerKey,
+    identityPublicKey: currentIdentityHex,
+    createdAt: Date.now(),
+  }).catch(e => console.warn('[identity] writerProof persist failed:', e.message))
+  console.log('[identity] minted writerProof for', groupId, '(' + writerKey.slice(0, 12) + '…)')
+  return proof
+}
+
+// Build a writer-announce payload Buffer. If identity is available, attaches
+// identityPublicKey + proof so the receiver can bind this writerKey to the
+// identity (and recognise wipe+rejoin of an existing member in Phase 2).
+// Falls back to the legacy shape when identity hasn't derived yet — receivers
+// tolerate missing fields in Phase 1.
+async function buildWriterAnnounce (groupId, writerKey, memberId) {
+  const payload = { groupId, writerKey, memberId: memberId ?? null }
+  try {
+    const proof = await getOrCreateWriterProof(groupId, writerKey)
+    if (proof && _identity) {
+      payload.identityPublicKey = b4a.toString(_identity.identityPublicKey, 'hex')
+      payload.proof = b4a.toString(proof, 'hex')
+    }
+  } catch (e) {
+    console.warn('[identity] buildWriterAnnounce: proof unavailable for', groupId, e.message)
+  }
+  return Buffer.from(JSON.stringify(payload))
 }
 
 // ── Blind peer key management ────────────────────────────────────────────────
@@ -926,6 +1071,19 @@ async function _joinGroupImpl (group) {
 
   bases.set(group.id, base)
 
+  // Warm up the identity→writer-key proof so writer-announce can attach it.
+  // Fire-and-forget: writer-announce retries and re-calls this helper, so a
+  // one-off failure here (e.g. identity unavailable mid-boot) is recoverable.
+  try {
+    const localWriterKey = base.local?.key ? b4a.toString(base.local.key, 'hex') : null
+    if (localWriterKey) {
+      getOrCreateWriterProof(group.id, localWriterKey)
+        .catch(e => console.warn('[identity] writerProof warmup failed for', group.id, e.message))
+    }
+  } catch (e) {
+    console.warn('[identity] writerProof warmup threw for', group.id, e.message)
+  }
+
   // Snapshot every writer key autobase currently knows about into the durable
   // knownWriter:{groupId}:* index. Peer writer cores have no namespace alias
   // and only live in `base.activeWriters` while the base is open, so without
@@ -978,8 +1136,9 @@ async function _joinGroupImpl (group) {
 
   // Announce our writer key to any already-connected peers
   const writerKey = b4a.toString(base.local.key, 'hex')
+  const announceBuf = await buildWriterAnnounce(group.id, writerKey, profile?.id)
   for (const ch of activeChannels) {
-    try { ch.send(Buffer.from(JSON.stringify({ groupId: group.id, writerKey, memberId: profile?.id ?? null }))) } catch(e) {}
+    try { ch.send(announceBuf) } catch(e) {}
   }
 
   // Always use group.groupKey as swarm topic so both sides match
@@ -1852,7 +2011,7 @@ async function resyncGroup (groupId) {
     try {
       const profile = await getProfile().catch(() => null)
       const writerKey = b4a.toString(base.local.key, 'hex')
-      const announce = Buffer.from(JSON.stringify({ groupId, writerKey, memberId: profile?.id ?? null }))
+      const announce = await buildWriterAnnounce(groupId, writerKey, profile?.id)
       for (const ch of activeChannels) {
         try { ch.send(announce) } catch (e) {}
       }
@@ -3240,7 +3399,8 @@ async function _doInit (dir, attempt = 0) {
           const _announceMemberId = _announceProfile?.id ?? null
           for (const [groupId, base] of bases) {
             const writerKey = b4a.toString(base.local.key, 'hex')
-            msg.send(Buffer.from(JSON.stringify({ groupId, writerKey, memberId: _announceMemberId })))
+            const announce = await buildWriterAnnounce(groupId, writerKey, _announceMemberId)
+            msg.send(announce)
           }
           // Send any pending group deletes to this new peer
           for (const groupId of pendingGroupDeletes) {
@@ -3364,6 +3524,66 @@ async function _doInit (dir, attempt = 0) {
             }
             const { groupId, writerKey } = parsed
 
+            // Identity proof verification (Phase 1 — tolerate missing proofs).
+            // If the payload carries { identityPublicKey, proof }, verify the
+            // proof binds writerKey to that identity. On success, index the
+            // binding locally and (if we're the owner) stamp it onto the member
+            // record. On failure, log and drop — a bogus proof is a worse
+            // signal than a missing one.
+            let verifiedIdentityHex = null
+            if (groupId && writerKey && parsed.proof && parsed.identityPublicKey) {
+              try {
+                const proofBuf = b4a.from(parsed.proof, 'hex')
+                const writerKeyBuf = b4a.from(writerKey, 'hex')
+                const result = IdentityKey.verify(proofBuf, null, { expectedDevice: writerKeyBuf })
+                if (!result) {
+                  console.warn('[identity] writer-announce proof FAILED for group', groupId, 'writer', writerKey.slice(0, 12) + '…')
+                  return
+                }
+                const recoveredHex = b4a.toString(result.identityPublicKey, 'hex')
+                if (recoveredHex !== parsed.identityPublicKey) {
+                  console.warn('[identity] proof identity mismatch: payload', parsed.identityPublicKey.slice(0, 12) + '…', 'recovered', recoveredHex.slice(0, 12) + '…')
+                  return
+                }
+                verifiedIdentityHex = recoveredHex
+                await db.put('writerIdentity:' + groupId + ':' + writerKey, {
+                  identityPublicKey: verifiedIdentityHex,
+                  memberId: parsed.memberId ?? null,
+                  ts: Date.now(),
+                }).catch(() => {})
+              } catch (e) {
+                console.warn('[identity] verify threw for group', groupId, e.message)
+                return
+              }
+            }
+
+            // Owner-side: if we verified the identity and the announcing peer
+            // is already in our members list, stamp identityPublicKey onto
+            // their record and rebroadcast the group so all peers converge.
+            // Additive patch — we never overwrite a matching value.
+            if (verifiedIdentityHex && parsed.memberId) {
+              try {
+                const ownerProfile = await getProfile().catch(() => null)
+                const g = await getGroup(groupId).catch(() => null)
+                if (g && ownerProfile && g.ownerId === ownerProfile.id) {
+                  const members = g.members ?? []
+                  const idx = members.findIndex(m => m.id === parsed.memberId)
+                  if (idx !== -1 && members[idx].identityPublicKey !== verifiedIdentityHex) {
+                    const updatedMembers = members.map((m, i) =>
+                      i === idx ? { ...m, identityPublicKey: verifiedIdentityHex } : m
+                    )
+                    const updated = { ...g, members: updatedMembers, updatedAt: Date.now() }
+                    await putGroup(updated).catch(() => {})
+                    const b = bases.get(groupId)
+                    if (b) await appendGroupWithAvatarSplit(b, updated).catch(() => {})
+                    console.log('[identity] stamped identityPublicKey on member', parsed.memberId, 'in', groupId)
+                  }
+                }
+              } catch (e) {
+                console.warn('[identity] member-stamp failed for', groupId, e.message)
+              }
+            }
+
             // Record this writer in our durable index regardless of role.
             // Audit and migrated-group purge use knownWriter to identify peer
             // writer cores; without this, non-owners' audits would see them
@@ -3442,19 +3662,47 @@ async function _doInit (dir, attempt = 0) {
 
     })
 
+    // Ensure identity (mnemonic + derived Ed25519 keypair) before profile
+    // bootstrap so new profiles can anchor their id to the mnemonic-derived
+    // identityPublicKey. If this fails we fall through to legacy profile
+    // creation — identity is advisory in Phase 1.
+    let identity = null
+    try {
+      identity = await ensureIdentity()
+    } catch (e) {
+      console.warn('[identity] ensureIdentity failed, falling back to legacy profile:', e.message)
+    }
+
     // Bootstrap profile
     const existing = await db.get(NS.profile)
     if (!existing) {
       const pk = b4a.allocUnsafe(sodium.crypto_sign_PUBLICKEYBYTES)
       const sk = b4a.allocUnsafe(sodium.crypto_sign_SECRETKEYBYTES)
       sodium.crypto_sign_keypair(pk, sk)
-      await db.put(NS.profile, {
-        id:        b4a.toString(pk, 'hex'),
+      const idHex = identity
+        ? deriveProfileIdFromIdentity(identity.identityPublicKey)
+        : b4a.toString(pk, 'hex')
+      const record = {
+        id:        idHex,
         name:      '',
         avatar:    '',
         publicKey: b4a.toString(pk, 'hex'),
         secretKey: b4a.toString(sk, 'hex'),
         createdAt: Date.now(),
+      }
+      if (identity) {
+        record.identityPublicKey = b4a.toString(identity.identityPublicKey, 'hex')
+      }
+      await db.put(NS.profile, record)
+    } else if (identity && !existing.value?.identityPublicKey) {
+      // Existing profile pre-dates identity. Additively stamp identityPublicKey
+      // so later wipe+rejoin flows can match this user to a restored identity.
+      // Intentionally do NOT rewrite profile.id — invitee/RSVP references
+      // across every group already point at the legacy UUID.
+      await db.put(NS.profile, {
+        ...existing.value,
+        identityPublicKey: b4a.toString(identity.identityPublicKey, 'hex'),
+        updatedAt: Date.now(),
       })
     }
 

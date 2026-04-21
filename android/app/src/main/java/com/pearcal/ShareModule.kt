@@ -90,6 +90,28 @@ class ShareModule(reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
+    fun shareRecoveryPhrase(content: String, promise: Promise) {
+        try {
+            val ctx = reactApplicationContext
+            val cacheFile = File(ctx.cacheDir, "pearcal-recovery-phrase.txt")
+            cacheFile.writeText(content, Charsets.UTF_8)
+            val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".fileprovider", cacheFile)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "PearCal Recovery Phrase")
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val chooser = Intent.createChooser(intent, "Save Recovery Phrase")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            ctx.startActivity(chooser)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SHARE_ERROR", e.message)
+        }
+    }
+
     @ReactMethod fun addListener(eventName: String) {}
     @ReactMethod fun removeListeners(count: Int) {}
 }
