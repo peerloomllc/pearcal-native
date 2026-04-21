@@ -38,6 +38,9 @@ window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
 window.addEventListener('pear:syncing', e => emitter.emit('syncing', e.detail))
 window.addEventListener('pear:synced', e => emitter.emit('synced', e.detail))
+window.addEventListener('pear:pendingRejoin', e => emitter.emit('pendingRejoin', e.detail))
+window.addEventListener('pear:pendingApproval', e => emitter.emit('pendingApproval', e.detail))
+window.addEventListener('pear:pendingApprovalCleared', e => emitter.emit('pendingApprovalCleared', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -76,6 +79,10 @@ const db = {
   setBackupEnabled:   (b) => window.__pearDB.call('setBackupEnabled', b),
   revealMnemonic:     ()  => window.__pearDB.call('revealMnemonic'),
   restoreMnemonic:    (m) => window.__pearDB.call('restoreMnemonic', m),
+  listPendingRejoins: ()  => window.__pearDB.call('listPendingRejoins'),
+  approveRejoin:      (gid, ipk) => window.__pearDB.call('approveRejoin', gid, ipk),
+  denyRejoin:         (gid, ipk) => window.__pearDB.call('denyRejoin', gid, ipk),
+  listPendingApprovals: ()  => window.__pearDB.call('listPendingApprovals'),
 }
 
 const notifs = {
@@ -164,6 +171,10 @@ window.__pearEvent = function(name, data) {
 
 window.__pearSetTab = function(tab) {
   window.dispatchEvent(new CustomEvent('pear:setTab', { detail: tab }))
+}
+
+window.__pearOpenGroupSettings = function(groupId) {
+  window.dispatchEvent(new CustomEvent('pear:openGroupSettings', { detail: groupId }))
 }
 
 // Buffer invites that arrive before the App component has mounted its

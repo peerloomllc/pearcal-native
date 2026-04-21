@@ -90,6 +90,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     if let tab = info["tab"] as? String, !tab.isEmpty {
       LinkModule.pendingTab = tab
     }
+    if let gsid = info["groupSettingsId"] as? String, !gsid.isEmpty {
+      LinkModule.pendingGroupSettingsId = gsid
+    }
     completionHandler()
   }
 

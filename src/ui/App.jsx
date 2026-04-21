@@ -510,6 +510,7 @@ export default function App ({ db, notifs, sync }) {
   const eventsReady = useRef(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
+  const [pendingApprovalGroups, setPendingApprovalGroups] = useState(() => new Set())
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [joinOpen,       setJoinOpen]       = useState(false)
   const [joinPasteMode,  setJoinPasteMode]  = useState(false)
@@ -564,12 +565,13 @@ export default function App ({ db, notifs, sync }) {
 
     async function load () {
       try {
-        const [prof, grps, evts, bpk, rsvps] = await Promise.all([
+        const [prof, grps, evts, bpk, rsvps, pendingApprovals] = await Promise.all([
           db.getProfile(),
           db.listGroups(),
           db.listEvents(),
           db.getBlindPeerKey().catch(() => null),
           db.listMyRsvps().catch(() => ({})),
+          db.listPendingApprovals?.().catch(() => []) ?? [],
         ])
         if (cancelled) return
         setProfile(prof)
@@ -579,6 +581,7 @@ export default function App ({ db, notifs, sync }) {
         setEvents(evts)
         setMyRsvps(rsvps ?? {})
         setBlindPeerKey(bpk)
+        setPendingApprovalGroups(new Set(pendingApprovals ?? []))
         eventsReady.current = true
         setReady(true)
       } catch (e) {
@@ -755,6 +758,15 @@ export default function App ({ db, notifs, sync }) {
     window.addEventListener('pear:groupJoined', onDomGroupJoined)
     const onDomSetTab = (e) => setTab(e.detail)
     window.addEventListener('pear:setTab', onDomSetTab)
+    const onDomOpenGroupSettings = (e) => {
+      const gid = e.detail
+      if (!gid) return
+      setTab('groups')
+      // Pass a minimal stub — JSX does `groups.find(g => g.id === settingsGroup.id) ?? settingsGroup`
+      // and will resolve to the live group record once React re-renders.
+      setSettingsGroup(prev => prev?.id === gid ? prev : { id: gid })
+    }
+    window.addEventListener('pear:openGroupSettings', onDomOpenGroupSettings)
     const onDomPendingJoin = (e) => openPendingJoin(e.detail)
     window.addEventListener('pear:pendingJoin', onDomPendingJoin)
     // Drain any invites buffered before this listener was registered
@@ -769,6 +781,16 @@ export default function App ({ db, notifs, sync }) {
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
+    function onPendingApproval (gid) {
+      if (!gid) return
+      setPendingApprovalGroups(prev => { const s = new Set(prev); s.add(gid); return s })
+    }
+    function onPendingApprovalCleared (gid) {
+      if (!gid) return
+      setPendingApprovalGroups(prev => { const s = new Set(prev); s.delete(gid); return s })
+    }
+    emitter.on('pendingApproval', onPendingApproval)
+    emitter.on('pendingApprovalCleared', onPendingApprovalCleared)
     return () => {
       emitter.off('sync', onSync)
       emitter.off('syncing', onSyncing)
@@ -778,8 +800,11 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
       window.removeEventListener('pear:setTab', onDomSetTab)
+      window.removeEventListener('pear:openGroupSettings', onDomOpenGroupSettings)
       window.removeEventListener('pear:pendingJoin', onDomPendingJoin)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
+      emitter.off('pendingApproval', onPendingApproval)
+      emitter.off('pendingApprovalCleared', onPendingApprovalCleared)
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])
@@ -1299,11 +1324,10 @@ export default function App ({ db, notifs, sync }) {
 
   const removeMember = useCallback(async (g, uid) => {
     const removedMember = g.members.find(m => m.id === uid)
-    const removedMembers = [...(g.removedMembers ?? []), {
-      id: uid,
-      name: removedMember?.name ?? 'Member',
-      avatar: removedMember?.avatar ?? '?'
-    }]
+    const removedEntry = removedMember
+      ? { ...removedMember }
+      : { id: uid, name: 'Member', avatar: '?' }
+    const removedMembers = [...(g.removedMembers ?? []), removedEntry]
     const updatedGroup = { ...g, members: g.members.filter(m => m.id !== uid), removedMembers, updatedAt: Date.now() }
     await updateGroup(updatedGroup)
     await sync?.memberLeft(g.id, uid).catch(() => {})
@@ -1556,6 +1580,7 @@ export default function App ({ db, notifs, sync }) {
           })()}
           {tab === 'groups' && (
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
+              pendingApprovalGroups={pendingApprovalGroups}
               onNewGroup={() => setNewGroupOpen(true)}
               onSettings={g => setSettingsGroup({ ...g })}
               onQrGroup={g => setQrGroup(g)}
@@ -1727,8 +1752,9 @@ export default function App ({ db, notifs, sync }) {
             closeRef={closeNewGroupSheetRef} />
         )}
         {settingsGroup && (
-          <GroupSettingsModal th={th} group={settingsGroup} me={profile} db={db} sync={sync}
+          <GroupSettingsModal th={th} group={groups.find(g => g.id === settingsGroup.id) ?? settingsGroup} me={profile} db={db} sync={sync}
             totalGroupsCount={groups.length}
+            pendingApproval={pendingApprovalGroups.has(settingsGroup.id)}
             isSyncing={syncingGroups.has(settingsGroup.id)}
             lastSyncedAt={lastSyncedAt[settingsGroup.id] ?? null}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
@@ -4639,7 +4665,7 @@ function NicknameBeforeJoinSheet ({ th, groupName, defaultName, onConfirm, onClo
   )
 }
 
-function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
+function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, pendingApprovalGroups, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
   const [copiedId,         setCopiedId]         = useState(null)
   const [inviteModalGroup, setInviteModalGroup] = useState(null)
 
@@ -4690,6 +4716,18 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, onNewGroup,
                 <GearSix size={18} weight="thin" color="var(--color-muted)" />
               </button>
             </div>
+            {pendingApprovalGroups?.has(g.id) && (
+              <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
+                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
+                <div style={{ fontSize:18, lineHeight:1 }}>⏳</div>
+                <div style={{ flex:1, fontSize:12, color:th.text, fontWeight:300, lineHeight:1.4 }}>
+                  <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
+                  <div style={{ color:th.muted }}>
+                    The owner must approve your return before you'll see the group's members and events.
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Member avatars */}
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
@@ -4810,7 +4848,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pendingApproval = false, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   useEffect(() => {
     if (closeRef) {
@@ -4824,11 +4862,39 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, is
   const [saving,  setSaving]  = useState(false)
   const [nickInput, setNickInput] = useState(() => (group.members ?? []).find(m => m.id === me?.id)?.nickname ?? '')
   const [nickSaved, setNickSaved] = useState(false)
+  const [rejoinRequests, setRejoinRequests] = useState([])
   const fileRef = useRef()
   const isOwner  = g.ownerId === me?.id
   const isAdmin  = !isOwner && (g.admins ?? []).includes(me?.id)
   const canManage = isOwner || isAdmin
   const isMember = g.members.some(m => m.id === me?.id)
+
+  useEffect(() => {
+    if (!canManage) return
+    let cancelled = false
+    const refresh = () => {
+      db.listPendingRejoins?.().then(rows => {
+        if (cancelled) return
+        setRejoinRequests((rows ?? []).filter(r => r.groupId === g.id))
+      }).catch(() => {})
+    }
+    refresh()
+    const onPending = (d) => { if (d?.groupId === g.id) refresh() }
+    emitter.on('pendingRejoin', onPending)
+    return () => { cancelled = true; emitter.off('pendingRejoin', onPending) }
+  }, [canManage, g.id])
+
+  // Keep live member/removed/pending lists in sync with the parent's group state
+  // so approve/deny, remote member joins, and kicks reflect without closing the
+  // modal. Editable fields (name/color/emoji/icon) stay local until Save.
+  useEffect(() => {
+    setG(prev => ({
+      ...prev,
+      members: group.members ?? prev.members,
+      removedMembers: group.removedMembers ?? prev.removedMembers,
+      pendingInvites: group.pendingInvites ?? prev.pendingInvites,
+    }))
+  }, [group.members, group.removedMembers, group.pendingInvites])
 
   function set (k, v) { setG(prev => ({ ...prev, [k]:v })); setSaved(false) }
 
@@ -4882,6 +4948,19 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, is
         </div>
 
         <div style={{ padding:'20px 20px 0', display:'flex', flexDirection:'column', gap:20 }}>
+          {pendingApproval && (
+            <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:12,
+              padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <div style={{ fontSize:20, lineHeight:1 }}>⏳</div>
+              <div style={{ flex:1, fontSize:13, color:th.text, fontWeight:300, lineHeight:1.45 }}>
+                <div style={{ fontWeight:400, marginBottom:3 }}>Waiting for owner approval</div>
+                <div style={{ color:th.muted }}>
+                  The group owner is reviewing your recovery-phrase match. You'll see
+                  the full member list and events once they approve.
+                </div>
+              </div>
+            </div>
+          )}
           {g.brokenAt && (
             <div style={{ border:'1px solid #D45F7A66', background:'#D45F7A11', borderRadius:12, padding:'14px 16px' }}>
               <div style={{ fontSize:13, fontWeight:300, color:'#D45F7A', marginBottom:6 }}>
@@ -4930,6 +5009,48 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, is
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT }}>
                       <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Again
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {canManage && rejoinRequests.length > 0 && (
+            <div>
+              {section('REJOIN REQUESTS')}
+              <div style={{ fontSize:12, color:th.muted, fontWeight:300, marginBottom:8, lineHeight:1.5 }}>
+                Someone you previously removed has returned with a matching recovery phrase.
+                Approve to restore them as a member, or deny to keep them out.
+              </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                {rejoinRequests.map(r => (
+                  <div key={r.identityPublicKey} style={{ display:'flex', alignItems:'center', gap:12,
+                    ...th.card, borderRadius:12, padding:'10px 14px' }}>
+                    <MemberAvatar avatar={null} avatarHash={r.avatarHash} name={r.name || '?'} color={g.color} size={38} fontSize={15} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:300, fontSize:14, ...th.text }}>{r.name || 'Unknown'}</div>
+                      <div style={{ fontSize:11, color:th.muted, fontWeight:300,
+                        overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                        Recovery phrase matches · {r.identityPublicKey.slice(0, 12)}…
+                      </div>
+                    </div>
+                    <button onClick={async () => {
+                        await db.approveRejoin(g.id, r.identityPublicKey)
+                        setRejoinRequests(prev => prev.filter(x => x.identityPublicKey !== r.identityPublicKey))
+                      }}
+                      style={{ background:'transparent', border:'1px solid #5DBF8A66', borderRadius:8,
+                        color:'#5DBF8A', fontSize:12, padding:'5px 10px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT }}>
+                      Approve
+                    </button>
+                    <button onClick={async () => {
+                        await db.denyRejoin(g.id, r.identityPublicKey)
+                        setRejoinRequests(prev => prev.filter(x => x.identityPublicKey !== r.identityPublicKey))
+                      }}
+                      style={{ background:'transparent', border:'1px solid #D45F7A44', borderRadius:8,
+                        color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT }}>
+                      Deny
                     </button>
                   </div>
                 ))}

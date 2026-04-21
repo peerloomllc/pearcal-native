@@ -34,6 +34,10 @@ class MainActivity : ReactActivity() {
     if (!tab.isNullOrEmpty()) {
       LinkModule.pendingTab = tab
     }
+    val gsid = intent?.getStringExtra("pearGroupSettingsId")
+    if (!gsid.isNullOrEmpty()) {
+      LinkModule.pendingGroupSettingsId = gsid
+    }
     super.onCreate(null)
     DailyWidgetWorker.schedule(this)
     // Start foreground service to keep Bare worklet alive
@@ -55,6 +59,8 @@ class MainActivity : ReactActivity() {
     } else {
       val tab = intent.getStringExtra("pearTab")
       if (!tab.isNullOrEmpty()) LinkModule.pendingTab = tab
+      val gsid = intent.getStringExtra("pearGroupSettingsId")
+      if (!gsid.isNullOrEmpty()) LinkModule.pendingGroupSettingsId = gsid
       super.onNewIntent(intent)
     }
   }

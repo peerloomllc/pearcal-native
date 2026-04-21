@@ -83,12 +83,13 @@ class NotificationsModule: NSObject {
     let title = opts["title"] as? String ?? "PearCal"
     let body = opts["body"] as? String ?? ""
     let tab = opts["tab"] as? String ?? ""
+    let groupSettingsId = opts["groupSettingsId"] as? String ?? ""
 
     let content = UNMutableNotificationContent()
     content.title = title
     content.body = body
     content.sound = .default
-    content.userInfo = ["tab": tab]
+    content.userInfo = ["tab": tab, "groupSettingsId": groupSettingsId]
 
     let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
     let request = UNNotificationRequest(
