@@ -14422,6 +14422,8 @@
     let attempts = 0;
     const broadcastSelf = async () => {
       try {
+        const liveGroup = await db2.getGroup(group.id).catch(() => null);
+        if (liveGroup?.ownerId === profile.id) return;
         const updatedGroup = { id: group.id, groupKey: group.groupKey, ownerId: group.ownerId, members: [myMember], updatedAt: Date.now() };
         await sync2.putGroup(updatedGroup);
       } catch (e58) {
@@ -17204,6 +17206,11 @@
       }, nick);
       if (result?.ok && result.group) {
         setGroups((prev) => prev.find((x) => x.id === result.group.id) ? prev : [...prev, result.group]);
+        setReadyGroupKeys((prev) => {
+          const s10 = new Set(prev);
+          s10.add(result.group.id);
+          return s10;
+        });
         db2.resyncGroup(result.group.id).catch(() => {
         }).then(async () => {
           const evts = await db2.listEvents();
@@ -17219,10 +17226,12 @@
     }, [db2, sync2, profile]);
     const addGroup = (0, import_react2.useCallback)(async (g, opts) => {
       if (db2) {
-        await db2.putGroup(g);
-        for (const m3 of g.members) await db2.putMember(g.id, m3);
-        await sync2?.joinGroup(g).catch(() => {
-        });
+        if (!opts?.alreadyJoined) {
+          await db2.putGroup(g);
+          for (const m3 of g.members) await db2.putMember(g.id, m3);
+          await sync2?.joinGroup(g).catch(() => {
+          });
+        }
       }
       if (!opts?.pendingKey) {
         setReadyGroupKeys((prev) => {
@@ -17662,7 +17671,14 @@
             onSettings: (g) => setSettingsGroup({ ...g }),
             onQrGroup: (g) => setQrGroup(g),
             closeInviteSheetRef,
-            onJoined: (g) => setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]),
+            onJoined: (g) => {
+              setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]);
+              setReadyGroupKeys((prev) => {
+                const s10 = new Set(prev);
+                s10.add(g.id);
+                return s10;
+              });
+            },
             joinOpen,
             setJoinOpen
           }
@@ -17884,7 +17900,14 @@
             setJoinOpen(false);
             openPendingJoin(pj.url);
           },
-          onJoined: (g) => setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g])
+          onJoined: (g) => {
+            setGroups((prev) => prev.find((x) => x.id === g.id) ? prev : [...prev, g]);
+            setReadyGroupKeys((prev) => {
+              const s10 = new Set(prev);
+              s10.add(g.id);
+              return s10;
+            });
+          }
         }
       ),
       pendingJoin && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -23129,21 +23152,13 @@ ${link}`;
       }
       setCreating(true);
       try {
-        const newG = {
-          id: "g" + Math.random().toString(36).slice(2, 8),
-          name: name.trim(),
-          color,
-          emoji,
-          icon,
-          ownerId: me?.id ?? "unknown",
-          members: [{ id: me?.id, name: me?.name, avatar: me?.avatar ?? me?.name?.slice(0, 2).toUpperCase() ?? "??" }],
-          groupKey: Array.from({ length: 64 }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join(""),
-          removedMembers: []
-        };
-        await onAdd(newG);
+        const newG = await sync2.createGroup(name.trim(), { color, emoji, icon });
+        if (!newG) throw new Error("createGroup returned null");
+        await onAdd(newG, { alreadyJoined: true });
         onCreated(newG);
         bsCloseRef.current?.();
       } catch (e58) {
+        console.error("[createGroup]", e58?.message || e58);
       } finally {
         setCreating(false);
       }
@@ -25847,6 +25862,7 @@ ${link}`;
     restoreAll: () => window.__pearDB.call("restoreAll")
   };
   var sync = {
+    createGroup: (name, meta) => window.__pearDB.call("createGroup", name, meta),
     joinGroup: (g) => window.__pearDB.call("joinGroup", g),
     leaveGroup: (id) => window.__pearDB.call("leaveGroup", id),
     deleteGroup: (id) => window.__pearDB.call("deleteGroup:sync", id),

@@ -92,6 +92,7 @@ const notifs = {
 }
 
 const sync = {
+  createGroup: (name, meta) => window.__pearDB.call('createGroup', name, meta),
   joinGroup:   (g)          => window.__pearDB.call('joinGroup', g),
   leaveGroup:  (id)         => window.__pearDB.call('leaveGroup', id),
   deleteGroup: (id)         => window.__pearDB.call('deleteGroup:sync', id),

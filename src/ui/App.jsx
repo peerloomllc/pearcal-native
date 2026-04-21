@@ -1240,6 +1240,7 @@ export default function App ({ db, notifs, sync }) {
     }, nick)
     if (result?.ok && result.group) {
       setGroups(prev => prev.find(x => x.id === result.group.id) ? prev : [...prev, result.group])
+      setReadyGroupKeys(prev => { const s = new Set(prev); s.add(result.group.id); return s })
       // Re-mirror Autobase view → local DB so pre-existing events sync on rejoin
       db.resyncGroup(result.group.id).catch(() => {}).then(async () => {
         const evts = await db.listEvents()
@@ -1253,9 +1254,13 @@ export default function App ({ db, notifs, sync }) {
 
   const addGroup = useCallback(async (g, opts) => {
     if (db) {
-      await db.putGroup(g)
-      for (const m of g.members) await db.putMember(g.id, m)
-      await sync?.joinGroup(g).catch(() => {})
+      // Owner-create path writes group+members+joins via sync.createGroup on
+      // the Bare side; skip the redundant IPC round-trips here.
+      if (!opts?.alreadyJoined) {
+        await db.putGroup(g)
+        for (const m of g.members) await db.putMember(g.id, m)
+        await sync?.joinGroup(g).catch(() => {})
+      }
     }
     if (!opts?.pendingKey) {
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(g.id); return s })
@@ -1585,7 +1590,10 @@ export default function App ({ db, notifs, sync }) {
               onSettings={g => setSettingsGroup({ ...g })}
               onQrGroup={g => setQrGroup(g)}
               closeInviteSheetRef={closeInviteSheetRef}
-              onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])}
+              onJoined={g => {
+                setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
+                setReadyGroupKeys(prev => { const s = new Set(prev); s.add(g.id); return s })
+              }}
               joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
           {tab === 'profile' && (
@@ -1737,7 +1745,10 @@ export default function App ({ db, notifs, sync }) {
           <JoinGroupModal th={th} onClose={() => setJoinOpen(false)}
             closeRef={closeJoinSheetRef} db={db} sync={sync}
             onPendingJoin={pj => { setJoinOpen(false); openPendingJoin(pj.url) }}
-            onJoined={g => setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])} />
+            onJoined={g => {
+              setGroups(prev => prev.find(x => x.id === g.id) ? prev : [...prev, g])
+              setReadyGroupKeys(prev => { const s = new Set(prev); s.add(g.id); return s })
+            }} />
         )}
         {pendingJoin && (
           <NicknameBeforeJoinSheet th={th} groupName={pendingJoin.groupName}
@@ -5336,19 +5347,16 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
     if (!name.trim()) { setNameErr('Group name required'); return }
     setCreating(true)
     try {
-      const newG = {
-        id:      'g' + Math.random().toString(36).slice(2, 8),
-        name:    name.trim(), color, emoji, icon,
-        ownerId: me?.id ?? 'unknown',
-        members: [{ id:me?.id, name:me?.name, avatar:me?.avatar ?? me?.name?.slice(0,2).toUpperCase() ?? '??' }],
-        groupKey: Array.from({ length:64 }, () => '0123456789abcdef'[Math.floor(Math.random()*16)]).join(''),
-        removedMembers: [],
-      }
-      await onAdd(newG)
+      // Bare-side createGroup opens the Autobase, captures the real base.key
+      // as groupKey, persists the group record, then joins the swarm. Returns
+      // the materialised group record we can hand to the UI state.
+      const newG = await sync.createGroup(name.trim(), { color, emoji, icon })
+      if (!newG) throw new Error('createGroup returned null')
+      await onAdd(newG, { alreadyJoined: true })
       onCreated(newG)
       bsCloseRef.current?.()
     } catch (e) {
-      // inline error if needed
+      console.error('[createGroup]', e?.message || e)
     } finally {
       setCreating(false)
     }

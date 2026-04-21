@@ -158,6 +158,7 @@ async function handle (method, args) {
     case 'putMember':        return putMember(args[0], args[1])
     case 'removeMember':     return removeMember(args[0], args[1])
     case 'joinGroup':        return joinGroup(args[0])
+    case 'createGroup':      return createGroup(args[0], args[1])
     case 'leaveGroup':       return leaveGroup(args[0])
     case 'qrScan': send({ type: 'event', event: 'qrScan', data: {} }); break
     case 'takePhoto': send({ type: 'event', event: 'takePhoto', data: {} }); break
@@ -397,8 +398,12 @@ async function ensureIdentity () {
 
 // Validate a user-typed 12-word phrase, persist it to native storage, and
 // re-derive the in-memory identity. Called by the onboarding "I already use
-// PearCal → Enter recovery phrase" path. Profile id / name / avatar stay
-// untouched — user fills them in after restore.
+// PearCal → Enter recovery phrase" path.
+//
+// Also rewrites the local profile's id + identityPublicKey to the
+// mnemonic-derived values so the restored user can be recognised by groups
+// they originally owned (group.ownerId is the mnemonic-derived id).
+// Safe in onboarding because no groups exist yet under the fresh profile.
 async function restoreMnemonic (mnemonic) {
   if (typeof mnemonic !== 'string') throw new Error('restoreMnemonic: not a string')
   const normalised = mnemonic.trim().replace(/\s+/g, ' ').toLowerCase()
@@ -409,7 +414,35 @@ async function restoreMnemonic (mnemonic) {
   _identity = null
   _writerProofs.clear()
   await ensureIdentity()
-  return { identityPublicKey: b4a.toString(_identity.identityPublicKey, 'hex') }
+
+  // Propagate the restored identity into the profile record. Without this the
+  // local profile.id stays tied to whatever fresh random mnemonic ensureIdentity
+  // minted at first boot — so every owner-recovery check that compares
+  // profile.id against group.ownerId silently fails.
+  const idHex  = b4a.toString(_identity.identityPublicKey, 'hex')
+  const newId  = deriveProfileIdFromIdentity(_identity.identityPublicKey)
+  const existing = await db.get(NS.profile).catch(() => null)
+  if (existing?.value) {
+    // Refuse to rebrand a profile that already has local groups/events —
+    // rewriting id here would orphan every invitee/RSVP/member reference.
+    // Onboarding restore runs before any groups exist, so this is only a
+    // guardrail against accidentally hitting this path later.
+    let hasGroups = false
+    for await (const _ of db.createReadStream({ gt: NS.groups, lt: NS.groups + 'ÿ', limit: 1 })) {
+      hasGroups = true; break
+    }
+    if (hasGroups && existing.value.id !== newId) {
+      throw new Error('restoreMnemonic: local groups exist under a different id; wipe before restore')
+    }
+    await db.put(NS.profile, {
+      ...existing.value,
+      id: newId,
+      identityPublicKey: idHex,
+      updatedAt: Date.now(),
+    })
+  }
+
+  return { identityPublicKey: idHex }
 }
 
 // Deterministic profile.id derived from identityPublicKey so the same seed
@@ -981,6 +1014,67 @@ const rsvpCoalesce = new Map()         // eventId → { timeout, entries: [{ nam
 // post-joinGroup work on the single completion of the first call.
 const _joinInFlight = new Map()
 
+async function createGroup (name, metadata) {
+  const profile = await getProfile()
+  if (!profile?.id) throw new Error('createGroup: no profile')
+
+  const groupId = 'g' + Math.random().toString(36).slice(2, 8)
+  const groupStore = store.namespace(groupId)
+
+  // bootstrap=null mints a fresh Autobase key — that becomes the real groupKey.
+  const base = new Autobase(groupStore, null, {
+    valueEncoding: 'json',
+    open: (s) => new Hyperbee(s.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json' }),
+    apply: makeApply(groupId),
+    ackInterval: 1000,
+  })
+  await base.ready()
+  const groupKey = b4a.toString(base.key, 'hex')
+  const writerKey = b4a.toString(base.local.key, 'hex')
+
+  const meta = metadata || {}
+  const initials = (profile.name || '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
+  const ownerMember = {
+    id: profile.id,
+    name: profile.name,
+    avatar: profile.avatar ?? initials,
+    publicKey: profile.publicKey,
+  }
+  if (profile.identityPublicKey) ownerMember.identityPublicKey = profile.identityPublicKey
+
+  const group = {
+    id: groupId,
+    name: (name || '').trim() || 'Group',
+    color: meta.color,
+    emoji: meta.emoji,
+    icon: meta.icon,
+    ownerId: profile.id,
+    members: [ownerMember],
+    groupKey,
+    removedMembers: [],
+    joinedAt: Date.now(),
+    updatedAt: Date.now(),
+  }
+
+  await putGroup(group)
+  await putMember(groupId, ownerMember)
+  await db.put('joinedAt:' + groupId, { ts: group.joinedAt })
+
+  // Seed owner as writer + the group record into the Autobase view so
+  // apply()'s non-null group check passes when joiners' broadcastSelf arrives.
+  try {
+    await base.append({ addWriter: writerKey })
+    await db.put('knownWriter:' + groupId + ':' + writerKey, { ts: Date.now() }).catch(() => {})
+    await appendGroupWithAvatarSplit(base, group)
+  } catch (e) {
+    console.warn('[createGroup] seed error:', e.message)
+  }
+
+  await base.close()
+  await joinGroup(group)
+  return group
+}
+
 async function joinGroup (group) {
   if (bases.has(group.id)) return
   const inflight = _joinInFlight.get(group.id)
@@ -1009,9 +1103,9 @@ async function _joinGroupImpl (group) {
   const isOwner = group.ownerId === profile?.id
   const groupStore = store.namespace(group.id)
 
-  // Owner creates with null bootstrap to get a real Autobase key
-  // Joiner uses the groupKey (owner's real Autobase key) as bootstrap
-  const bootstrap = isOwner ? null : b4a.from(group.groupKey, 'hex')
+  // All peers (incl. restored owner) open the existing Autobase by groupKey.
+  // For the real-first-time group-creator path, see createGroup() above.
+  const bootstrap = b4a.from(group.groupKey, 'hex')
 
   const base = new Autobase(groupStore, bootstrap, {
     valueEncoding: 'json',
@@ -1042,27 +1136,13 @@ async function _joinGroupImpl (group) {
     console.warn('[REKEY] marker preload error:', e.message)
   }
 
-  const realKey = b4a.toString(base.key, 'hex')
-
-  // Owner: persist the real Autobase key and notify UI
-  if (isOwner && realKey !== group.groupKey) {
-    group = { ...group, groupKey: realKey }
-    await putGroup(group)
-    send({ type: 'event', event: 'groupKeyUpdated', data: group })
-  }
-
-  // Owner adds self as writer, seeds group into Autobase view, then processes pending joiners
+  // Owner's own write-access: if this is the same-device owner, base.writable
+  // is already true (bootstrap.writable = true → used as local). For a restored
+  // owner on a fresh device, base.writable is false — they wait for another
+  // member to grant addWriter via writer-announce admission (see §3 in plan).
+  // Owner-side pending-announce drain (owner rubber-stamps writerKeys queued
+  // before joinGroup finished — legacy behaviour kept for back-compat).
   if (isOwner) {
-    try {
-      const writerKey = b4a.toString(base.local.key, 'hex')
-      await base.append({ addWriter: writerKey })
-      // Seed the group record into the Autobase view so apply()'s existing check
-      // is non-null when a joiner's broadcastSelf arrives (enables join notifications)
-      await appendGroupWithAvatarSplit(base, { ...group, updatedAt: Date.now() })
-    } catch(e) {
-    }
-
-    // Process any writerAnnounce messages that arrived before joinGroup ran
     const pending = pendingWriterAnnouncements.get(group.id)
     if (pending) {
       for (const writerKey of pending) {
@@ -1118,6 +1198,14 @@ async function _joinGroupImpl (group) {
         if (!p?.id) return
         const g = await getGroup(groupId)
         if (!g) return
+        // Restored-owner guard: after Autobase replay corrects ownerId back to
+        // the mnemonic-derived profile.id, the joiner turns out to be the owner.
+        // A self-thin authoritative broadcast (members=[self]) would wipe every
+        // other member. Suppress permanently in that case.
+        if (g.ownerId === p.id) {
+          await db.put('selfBroadcasted:' + groupId, { ts: Date.now() }).catch(() => {})
+          return
+        }
         const initials = (p.name || '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
         const myMember = { id: p.id, name: p.name, avatar: p.avatar ?? initials, publicKey: p.publicKey }
         const updatedGroup = { id: g.id, groupKey: g.groupKey, ownerId: g.ownerId, members: [myMember], updatedAt: Date.now() }
@@ -2390,6 +2478,14 @@ function makeApply (groupId) {
             }
             viewValue = {
               ...val.value,
+              // Non-authoritative (broadcastSelf) writes carry the joiner's
+              // local-cached ownerId, which may be the invite link's
+              // `inviter` field — a publicKey, not a profile id. Preserve
+              // the existing ownerId so a joiner's broadcast can't rewrite
+              // the group's owner to whatever's in their placeholder record.
+              ownerId: isAuthoritative
+                ? (val.value.ownerId || existing.value.ownerId)
+                : (existing.value.ownerId || val.value.ownerId),
               color: val.value.color || existing.value.color,
               name:  val.value.name  || existing.value.name,
               emoji: val.value.emoji || existing.value.emoji,
@@ -3086,6 +3182,13 @@ async function mirrorToLocal (type, key, value, groupId) {
       const { members: splitMembers } = await splitMembersInline([...mergedMap.values()])
       const merged = {
         ...value,
+        // Same guard as apply()'s non-authoritative merge: a joiner's
+        // broadcastSelf carries the invite-link `inviter` publicKey as ownerId.
+        // Don't let it overwrite the authoritative ownerId already in the local
+        // record from a prior owner-authored Autobase replay.
+        ownerId: isAuthoritative
+          ? (value.ownerId || existing?.value?.ownerId)
+          : (existing?.value?.ownerId || value.ownerId),
         color:   value.color   || existing?.value?.color,
         name:    value.name    || existing?.value?.name,
         emoji:   value.emoji   || existing?.value?.emoji,
@@ -3745,180 +3848,191 @@ async function _doInit (dir, attempt = 0) {
             if (base) {
               Promise.all([getProfile(), getGroup(groupId)]).then(async ([profile, group]) => {
                 const isOwner = group && group.ownerId === profile.id
-                if (isOwner) {
-                  const connKey = groupId + ':' + writerKey
-                  if (!connSeenWriters.has(connKey)) {
-                    connSeenWriters.add(connKey)
-                    // Still track globally to handle duplicate announcements from same peer
-                    const set = pendingWriterAnnouncements.get(groupId) || new Set()
-                    set.add(writerKey)
-                    pendingWriterAnnouncements.set(groupId, set)
-                    // Phase 2 admission control. Five cases for a writer-announce:
-                    //   (A) identity in removedMembers[] → queue for owner approval
-                    //   (B) memberId in removedMembers[] (no identity path) → auto-block
-                    //   (C) new joiner with no valid identity proof → reject
-                    //   (D) identity matches existing member with a different memberId
-                    //       (legacy profile.id migration) → rebind members[n].id
-                    //   (E) otherwise → fall through to the existing addWriter path
-                    const removedMembers = group.removedMembers ?? []
-                    const activeMembers = group.members ?? []
-                    const parsed_memberId = parsed.memberId ?? null
-                    const memberIdInMembers = parsed_memberId && activeMembers.some(m => m.id === parsed_memberId)
-                    const identityInMembers = verifiedIdentityHex && activeMembers.some(m => m.identityPublicKey === verifiedIdentityHex)
-                    const removedByMemberId = parsed_memberId ? removedMembers.find(m => (m.id ?? m) === parsed_memberId) : null
-                    const removedByIdentity = verifiedIdentityHex ? removedMembers.find(m => m.identityPublicKey === verifiedIdentityHex) : null
-                    // Legacy-tombstone match: pre-Phase 2 kicks left rows with no identityPublicKey
-                    // and a UUID that no longer matches the returning member's deterministic id.
-                    // If the joiner's announce carries a profile name that matches a legacy
-                    // tombstone row, treat it as a rejoin request.
-                    const announceName = (parsed.name || '').trim().toLowerCase()
-                    const removedByName = (verifiedIdentityHex && announceName)
-                      ? removedMembers.find(m => !m.identityPublicKey && (m.name || '').trim().toLowerCase() === announceName)
-                      : null
+                const isMember = group && (group.members ?? []).some(m => m.id === profile.id)
+                // Only group participants (owner or current members) can make
+                // admission decisions on behalf of the group.
+                if (!isOwner && !isMember) return
+                const connKey = groupId + ':' + writerKey
+                if (connSeenWriters.has(connKey)) return
+                connSeenWriters.add(connKey)
+                // Still track globally to handle duplicate announcements from same peer
+                const _pendingSet = pendingWriterAnnouncements.get(groupId) || new Set()
+                _pendingSet.add(writerKey)
+                pendingWriterAnnouncements.set(groupId, _pendingSet)
+                // Phase 2 admission control. Five cases for a writer-announce:
+                //   (A) identity in removedMembers[] → queue for owner approval (OWNER ONLY)
+                //   (B) memberId in removedMembers[] (no identity path) → auto-block (OWNER ONLY)
+                //   (C) new joiner with no valid identity proof → reject (any member)
+                //   (D) identity matches existing member with a different memberId
+                //       (legacy profile.id migration) → rebind members[n].id (any member)
+                //   (E) otherwise → fall through to the existing addWriter path (any member)
+                // Cases A/B stay owner-only: kicks are an authoritative decision only
+                // the owner makes. Cases C/D/E can be handled by any member so new
+                // joiners (and restored owners) don't have to wait for the owner to
+                // come online — Autobase dedupes concurrent addWriter ops.
+                const removedMembers = group.removedMembers ?? []
+                const activeMembers = group.members ?? []
+                const parsed_memberId = parsed.memberId ?? null
+                const memberIdInMembers = parsed_memberId && activeMembers.some(m => m.id === parsed_memberId)
+                const identityInMembers = verifiedIdentityHex && activeMembers.some(m => m.identityPublicKey === verifiedIdentityHex)
+                const removedByMemberId = parsed_memberId ? removedMembers.find(m => (m.id ?? m) === parsed_memberId) : null
+                const removedByIdentity = verifiedIdentityHex ? removedMembers.find(m => m.identityPublicKey === verifiedIdentityHex) : null
+                // Legacy-tombstone match: pre-Phase 2 kicks left rows with no identityPublicKey
+                // and a UUID that no longer matches the returning member's deterministic id.
+                // If the joiner's announce carries a profile name that matches a legacy
+                // tombstone row, treat it as a rejoin request.
+                const announceName = (parsed.name || '').trim().toLowerCase()
+                const removedByName = (verifiedIdentityHex && announceName)
+                  ? removedMembers.find(m => !m.identityPublicKey && (m.name || '').trim().toLowerCase() === announceName)
+                  : null
 
-                    // (A) Queue a pendingRejoin for owner decision — valid identity
-                    // proof from a user previously kicked. Don't block; don't grant.
-                    if ((removedByIdentity || (removedByMemberId && verifiedIdentityHex) || removedByName) && !memberIdInMembers && !identityInMembers) {
-                      const match = removedByIdentity || removedByMemberId || removedByName
-                      const deniedNode = await db.get('deniedRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
-                      if (deniedNode?.value) {
-                        // Owner already denied this identity — fall through to block.
-                        await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
-                        try {
-                          const ownerProfile = await getProfile().catch(() => null)
-                          msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
-                        } catch(e) {}
-                        return
-                      }
-                      // Send pendingApproval reply FIRST, before any awaits. The joiner's
-                      // Hyperswarm connection can be short-lived (LAN roam, background
-                      // transition, etc.); if we await db writes before replying the
-                      // channel may close and the banner message never arrives.
-                      try {
-                        msg.send(Buffer.from(JSON.stringify({ pendingApproval: true, groupId })))
-                      } catch(e) {}
-                      const alreadyPending = await db.get('pendingRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
-                      await db.put('pendingRejoin:' + groupId + ':' + verifiedIdentityHex, {
-                        groupId,
-                        identityPublicKey: verifiedIdentityHex,
-                        memberId: parsed_memberId,
-                        writerKey: parsed.writerKey,
-                        name: match?.name || null,
-                        avatarHash: match?.avatarHash || null,
-                        requestedAt: alreadyPending?.value?.requestedAt || Date.now(),
-                      }).catch(() => {})
-                      send({ type: 'event', event: 'pendingRejoin', data: { groupId, identityPublicKey: verifiedIdentityHex, memberId: parsed_memberId, name: match?.name || null } })
-                      if (!alreadyPending?.value) {
-                        const groupName = group.name || 'a group'
-                        const displayName = match?.name || 'Someone'
-                        send({ type: 'event', event: 'syncNotify', data: {
-                          title: displayName + ' wants to rejoin ' + groupName,
-                          body: 'Tap to approve or deny',
-                          tab: 'groups',
-                          groupSettingsId: groupId,
-                          immediate: true,
-                        }})
-                      }
-                      console.log('[identity] queued pendingRejoin for', groupId, 'identity', verifiedIdentityHex.slice(0, 12) + '…')
-                      return
-                    }
+                // (A) Queue a pendingRejoin for owner decision — valid identity
+                // proof from a user previously kicked. Don't block; don't grant.
+                // Non-owner peers ignore and let the owner decide when online.
+                if ((removedByIdentity || (removedByMemberId && verifiedIdentityHex) || removedByName) && !memberIdInMembers && !identityInMembers) {
+                  if (!isOwner) {
+                    console.log('[identity] non-owner saw rejoin request for', groupId, '— awaiting owner')
+                    return
+                  }
+                  const match = removedByIdentity || removedByMemberId || removedByName
+                  const deniedNode = await db.get('deniedRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
+                  if (deniedNode?.value) {
+                    // Owner already denied this identity — fall through to block.
+                    await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
+                    try {
+                      const ownerProfile = await getProfile().catch(() => null)
+                      msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
+                    } catch(e) {}
+                    return
+                  }
+                  // Send pendingApproval reply FIRST, before any awaits. The joiner's
+                  // Hyperswarm connection can be short-lived (LAN roam, background
+                  // transition, etc.); if we await db writes before replying the
+                  // channel may close and the banner message never arrives.
+                  try {
+                    msg.send(Buffer.from(JSON.stringify({ pendingApproval: true, groupId })))
+                  } catch(e) {}
+                  const alreadyPending = await db.get('pendingRejoin:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
+                  await db.put('pendingRejoin:' + groupId + ':' + verifiedIdentityHex, {
+                    groupId,
+                    identityPublicKey: verifiedIdentityHex,
+                    memberId: parsed_memberId,
+                    writerKey: parsed.writerKey,
+                    name: match?.name || null,
+                    avatarHash: match?.avatarHash || null,
+                    requestedAt: alreadyPending?.value?.requestedAt || Date.now(),
+                  }).catch(() => {})
+                  send({ type: 'event', event: 'pendingRejoin', data: { groupId, identityPublicKey: verifiedIdentityHex, memberId: parsed_memberId, name: match?.name || null } })
+                  if (!alreadyPending?.value) {
+                    const groupName = group.name || 'a group'
+                    const displayName = match?.name || 'Someone'
+                    send({ type: 'event', event: 'syncNotify', data: {
+                      title: displayName + ' wants to rejoin ' + groupName,
+                      body: 'Tap to approve or deny',
+                      tab: 'groups',
+                      groupSettingsId: groupId,
+                      immediate: true,
+                    }})
+                  }
+                  console.log('[identity] queued pendingRejoin for', groupId, 'identity', verifiedIdentityHex.slice(0, 12) + '…')
+                  return
+                }
 
-                    // (B) Legacy auto-block: memberId matches removedMembers[] and we
-                    // have no identity to distinguish a post-wipe return from a plain
-                    // impersonation attempt.
-                    if (removedByMemberId && !verifiedIdentityHex) {
-                      await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
-                      try {
-                        const ownerProfile = await getProfile().catch(() => null)
-                        msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
-                      } catch(e) {}
-                      return
-                    }
+                // (B) Legacy auto-block: memberId matches removedMembers[] and we
+                // have no identity to distinguish a post-wipe return from a plain
+                // impersonation attempt. Owner-only — only owner writes authoritative blocks.
+                if (removedByMemberId && !verifiedIdentityHex) {
+                  if (!isOwner) return
+                  await db.put('blockedWriter:' + groupId + ':' + parsed.writerKey, { memberId: parsed_memberId, ts: Date.now() }).catch(() => {})
+                  try {
+                    const ownerProfile = await getProfile().catch(() => null)
+                    msg.send(Buffer.from(JSON.stringify({ blocked: true, groupId, ownerName: ownerProfile?.name || 'The owner' })))
+                  } catch(e) {}
+                  return
+                }
 
-                    // (C) Enforcement: a brand-new joiner (not in members[] or
-                    // removedMembers[]) must present a valid identity proof.
-                    // Existing members without proof (pre-Phase 1 peers) remain
-                    // accepted so the rollout stays tolerant.
-                    if (!memberIdInMembers && !identityInMembers && !verifiedIdentityHex) {
-                      console.warn('[identity] rejecting proof-less new joiner', parsed_memberId, 'for', groupId)
-                      try {
-                        msg.send(Buffer.from(JSON.stringify({ rejected: 'missing_identity_proof', groupId })))
-                      } catch(e) {}
-                      return
-                    }
+                // (C) Enforcement: a brand-new joiner (not in members[] or
+                // removedMembers[]) must present a valid identity proof.
+                // Existing members without proof (pre-Phase 1 peers) remain
+                // accepted so the rollout stays tolerant.
+                if (!memberIdInMembers && !identityInMembers && !verifiedIdentityHex) {
+                  console.warn('[identity] rejecting proof-less new joiner', parsed_memberId, 'for', groupId)
+                  try {
+                    msg.send(Buffer.from(JSON.stringify({ rejected: 'missing_identity_proof', groupId })))
+                  } catch(e) {}
+                  return
+                }
 
-                    // (D) Identity-match rebind + dedupe. Same identity may appear
-                    // under >1 memberId (a legacy UUID left over from pre-Phase 1
-                    // plus a broadcastSelf entry under the restored deterministic
-                    // id), or under a single legacy id that needs rebinding. Collapse
-                    // all identity-matched entries into a single record keyed on the
-                    // announcing memberId, keeping the richest record's fields.
-                    if (verifiedIdentityHex && parsed_memberId) {
-                      const matches = []
-                      activeMembers.forEach((m, i) => {
-                        if (m.identityPublicKey === verifiedIdentityHex) matches.push(i)
-                      })
-                      const idxById = activeMembers.findIndex(m => m.id === parsed_memberId)
-                      // Dedupe/rebind when identity appears under >1 id, or under a
-                      // different id than the announcer. Stamp identity when the
-                      // announcer's active entry exists but has no identity recorded
-                      // yet — otherwise a later kick strips identity from removedMembers.
-                      const needsFix = matches.length > 1
-                        || (matches.length === 1 && activeMembers[matches[0]].id !== parsed_memberId)
-                        || (matches.length === 0 && idxById >= 0 && !activeMembers[idxById].identityPublicKey)
-                      if (needsFix) {
-                        let keeperIdx
-                        if (matches.length > 0) {
-                          keeperIdx = matches.reduce((best, i) => {
-                            const bScore = JSON.stringify(activeMembers[best] ?? {}).length
-                            const iScore = JSON.stringify(activeMembers[i] ?? {}).length
-                            return iScore > bScore ? i : best
-                          }, matches[0])
-                        } else {
-                          keeperIdx = idxById
-                        }
-                        const keeper = { ...activeMembers[keeperIdx], id: parsed_memberId, identityPublicKey: verifiedIdentityHex }
-                        const drop = new Set(matches)
-                        drop.add(keeperIdx)
-                        const updatedMembers = [
-                          ...activeMembers.filter((_, i) => !drop.has(i)),
-                          keeper,
-                        ]
-                        const updated = { ...group, members: updatedMembers, updatedAt: Date.now() }
-                        await putGroup(updated).catch(() => {})
-                        await appendGroupWithAvatarSplit(base, updated).catch(() => {})
-                        console.log('[identity] stamp/rebind', matches.length, 'existing matches → 1 entry under id', parsed_memberId, 'in', groupId)
-                      }
+                // (D) Identity-match rebind + dedupe. Same identity may appear
+                // under >1 memberId (a legacy UUID left over from pre-Phase 1
+                // plus a broadcastSelf entry under the restored deterministic
+                // id), or under a single legacy id that needs rebinding. Collapse
+                // all identity-matched entries into a single record keyed on the
+                // announcing memberId, keeping the richest record's fields.
+                if (verifiedIdentityHex && parsed_memberId) {
+                  const matches = []
+                  activeMembers.forEach((m, i) => {
+                    if (m.identityPublicKey === verifiedIdentityHex) matches.push(i)
+                  })
+                  const idxById = activeMembers.findIndex(m => m.id === parsed_memberId)
+                  // Dedupe/rebind when identity appears under >1 id, or under a
+                  // different id than the announcer. Stamp identity when the
+                  // announcer's active entry exists but has no identity recorded
+                  // yet — otherwise a later kick strips identity from removedMembers.
+                  const needsFix = matches.length > 1
+                    || (matches.length === 1 && activeMembers[matches[0]].id !== parsed_memberId)
+                    || (matches.length === 0 && idxById >= 0 && !activeMembers[idxById].identityPublicKey)
+                  if (needsFix) {
+                    let keeperIdx
+                    if (matches.length > 0) {
+                      keeperIdx = matches.reduce((best, i) => {
+                        const bScore = JSON.stringify(activeMembers[best] ?? {}).length
+                        const iScore = JSON.stringify(activeMembers[i] ?? {}).length
+                        return iScore > bScore ? i : best
+                      }, matches[0])
+                    } else {
+                      keeperIdx = idxById
                     }
-                    // Clear knownWriter so addWriter fires for rejoining members
-                    if (parsed_memberId) {
-                      await db.del('knownWriter:' + groupId + ':' + writerKey).catch(() => {})
-                    }
-                    // Skip addWriter + rebroadcast if this writer is already known (persisted across restarts)
-                    const knownWriterKey = 'knownWriter:' + groupId + ':' + writerKey
-                    const alreadyGranted = await db.get(knownWriterKey).catch(() => null)
-                    if (alreadyGranted) {
-                      console.log('[ADDWRITER] writer already known, skipping:', writerKey.slice(0, 16), 'for group:', groupId)
-                      return
-                    }
-                    console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId)
-                    base.append({ addWriter: writerKey })
-                      .then(async () => {
-                        // Persist so we skip redundant addWriter on future reconnects
-                        await db.put(knownWriterKey, { ts: Date.now() }).catch(() => {})
-                        // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
-                        // so we can merge their real name into the group record
-                        await new Promise(r => setTimeout(r, 2000))
-                        try {
-                          const g = await getGroup(groupId)
-                          if (g) {
-                            await appendGroupWithAvatarSplit(base, { ...g, updatedAt: Date.now() })
-                          }
-                        } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
-                      })
-                      .catch(e => console.error('[ADDWRITER] error:', e.message))
+                    const keeper = { ...activeMembers[keeperIdx], id: parsed_memberId, identityPublicKey: verifiedIdentityHex }
+                    const drop = new Set(matches)
+                    drop.add(keeperIdx)
+                    const updatedMembers = [
+                      ...activeMembers.filter((_, i) => !drop.has(i)),
+                      keeper,
+                    ]
+                    const updated = { ...group, members: updatedMembers, updatedAt: Date.now() }
+                    await putGroup(updated).catch(() => {})
+                    await appendGroupWithAvatarSplit(base, updated).catch(() => {})
+                    console.log('[identity] stamp/rebind', matches.length, 'existing matches → 1 entry under id', parsed_memberId, 'in', groupId)
                   }
                 }
+                // Clear knownWriter so addWriter fires for rejoining members
+                if (parsed_memberId) {
+                  await db.del('knownWriter:' + groupId + ':' + writerKey).catch(() => {})
+                }
+                // Skip addWriter + rebroadcast if this writer is already known (persisted across restarts)
+                const knownWriterKey = 'knownWriter:' + groupId + ':' + writerKey
+                const alreadyGranted = await db.get(knownWriterKey).catch(() => null)
+                if (alreadyGranted) {
+                  console.log('[ADDWRITER] writer already known, skipping:', writerKey.slice(0, 16), 'for group:', groupId)
+                  return
+                }
+                console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId, 'as', isOwner ? 'owner' : 'member')
+                base.append({ addWriter: writerKey })
+                  .then(async () => {
+                    // Persist so we skip redundant addWriter on future reconnects
+                    await db.put(knownWriterKey, { ts: Date.now() }).catch(() => {})
+                    // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
+                    // so we can merge their real name into the group record
+                    await new Promise(r => setTimeout(r, 2000))
+                    try {
+                      const g = await getGroup(groupId)
+                      if (g) {
+                        await appendGroupWithAvatarSplit(base, { ...g, updatedAt: Date.now() })
+                      }
+                    } catch(e) { console.error('[ADDWRITER] rebroadcast error:', e.message) }
+                  })
+                  .catch(e => console.error('[ADDWRITER] error:', e.message))
               }).catch(e => console.error('[HANDSHAKE] ownership check error:', e.message))
             } else {
               const set = pendingWriterAnnouncements.get(groupId) || new Set()

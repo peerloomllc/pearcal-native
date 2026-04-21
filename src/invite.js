@@ -101,6 +101,11 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
   let attempts = 0
   const broadcastSelf = async () => {
     try {
+      // Restored-owner guard: once Autobase replay fixes the local group
+      // record to list us as owner (ownerId === our profile.id), skip the
+      // broadcast — otherwise our self-thin authoritative record wipes peers.
+      const liveGroup = await db.getGroup(group.id).catch(() => null)
+      if (liveGroup?.ownerId === profile.id) return
       // Send just ourselves — bare.js will merge with existing members on owner's side
       // Only include identity fields — never broadcast color/name/emoji or we may clobber owner's chosen values
       const updatedGroup = { id: group.id, groupKey: group.groupKey, ownerId: group.ownerId, members: [ myMember ], updatedAt: Date.now() }
