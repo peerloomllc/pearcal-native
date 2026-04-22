@@ -1899,6 +1899,48 @@ export default function App ({ db, notifs, sync }) {
                     await updateGroup(updated)
                   },
                 })
+              } else if (req.type === 'transferOwnership') {
+                setSettingsGroup(null)
+                setConfirmSheet({
+                  title: `Transfer ownership to ${req.targetName ?? 'this member'}?`,
+                  message: `They will gain the ability to remove members and approve rejoins in "${req.g.name}". You will lose these privileges.`,
+                  icon: <Crown size={36} weight="thin" color="var(--color-accent)" />,
+                  confirmLabel: 'Transfer',
+                  dangerous: true,
+                  onConfirm: async () => {
+                    try {
+                      await sync.transferOwnership(req.g.id, req.targetId)
+                    } catch (e) {
+                      setInfoSheet({
+                        title: 'Transfer failed',
+                        message: e?.message ?? String(e),
+                        icon: <Warning size={36} weight="thin" color="var(--color-destructive)" />,
+                      })
+                    }
+                  },
+                })
+              } else if (req.type === 'claimOwnership') {
+                setSettingsGroup(null)
+                const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0
+                const days = Math.max(0, Math.floor((Date.now() - lastTs) / 86_400_000))
+                setConfirmSheet({
+                  title: 'Claim ownership?',
+                  message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? '' : 's'}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
+                  icon: <Crown size={36} weight="thin" color="#E5864A" />,
+                  confirmLabel: 'Claim',
+                  dangerous: true,
+                  onConfirm: async () => {
+                    try {
+                      await sync.claimOwnership(req.g.id)
+                    } catch (e) {
+                      setInfoSheet({
+                        title: 'Claim failed',
+                        message: e?.message ?? String(e),
+                        icon: <Warning size={36} weight="thin" color="var(--color-destructive)" />,
+                      })
+                    }
+                  },
+                })
               }
             }}
           />
@@ -4888,11 +4930,19 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
   const [nickInput, setNickInput] = useState(() => (group.members ?? []).find(m => m.id === me?.id)?.nickname ?? '')
   const [nickSaved, setNickSaved] = useState(false)
   const [rejoinRequests, setRejoinRequests] = useState([])
+  const [transferPicker, setTransferPicker] = useState(false)
+  const [showAllHistory, setShowAllHistory] = useState(false)
   const fileRef = useRef()
   const isOwner  = g.ownerId === me?.id
   const isAdmin  = !isOwner && (g.admins ?? []).includes(me?.id)
   const canManage = isOwner || isAdmin
   const isMember = g.members.some(m => m.id === me?.id)
+  // Mirrors the bare.js constant (CLAIM_OWNERSHIP_INACTIVITY_MS). Keep in sync.
+  const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000
+  const lastOwnerActivityTs = g.lastOwnerActivityTs ?? g.updatedAt ?? 0
+  const ownerInactiveMs = Date.now() - lastOwnerActivityTs
+  const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS
+  const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 86_400_000))
 
   useEffect(() => {
     if (!canManage) return
@@ -5286,6 +5336,148 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
               })}
             </div>
           </div>
+
+
+          {/* Ownership — visible to all members */}
+          {isMember && (() => {
+            const ownerMember = g.members.find(m => m.id === g.ownerId)
+            const ownerName = ownerMember?.nickname || ownerMember?.name || 'Unknown'
+            const lookupName = (id) => {
+              const m = (g.members ?? []).find(x => x.id === id)
+                     || (g.removedMembers ?? []).find(x => (x.id ?? x) === id)
+              return m?.nickname || m?.name || (typeof id === 'string' ? id.slice(0, 8) + '…' : 'Someone')
+            }
+            const nonOwnerMembers = (g.members ?? []).filter(m => m.id !== g.ownerId)
+            const log = g.promotionLog ?? []
+            return (
+              <div>
+                {section('OWNERSHIP')}
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <div style={{ ...th.card, borderRadius:12, padding:'12px 14px',
+                    display:'flex', alignItems:'center', gap:10 }}>
+                    <Crown size={18} weight="thin" style={{ color: g.color, flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0 }}>
+                      {isOwner ? (
+                        <>
+                          <div style={{ fontSize:14, fontWeight:300, ...th.text }}>You are the owner</div>
+                          <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+                            Only you can remove members and approve rejoin requests
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize:14, fontWeight:300, ...th.text }}>{ownerName}</div>
+                          <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+                            Active {formatRelativeTime(lastOwnerActivityTs) || 'recently'}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {isOwner && nonOwnerMembers.length > 0 && !transferPicker && (
+                    <button onClick={() => { window.__pearSync?.haptic('light'); setTransferPicker(true) }}
+                      style={{ background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
+                        color:th.text.color, fontSize:13, padding:'10px 14px', cursor:'pointer',
+                        fontWeight:300, fontFamily:FONT, textAlign:'left',
+                        display:'flex', alignItems:'center', gap:8 }}>
+                      <Crown size={14} weight="thin" /> Transfer ownership to…
+                    </button>
+                  )}
+
+                  {isOwner && transferPicker && (
+                    <div style={{ border:`1px solid ${th.border}`, borderRadius:12, overflow:'hidden' }}>
+                      <div style={{ padding:'10px 14px', fontSize:12, color:th.muted, fontWeight:300,
+                        borderBottom:`1px solid ${th.border}` }}>
+                        Pick a member to promote. They'll gain owner privileges; you'll lose them.
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column' }}>
+                        {nonOwnerMembers.map(m => (
+                          <button key={m.id} onClick={() => {
+                              setTransferPicker(false)
+                              bsCloseRef.current?.()
+                              onRequestConfirm({ type: 'transferOwnership', g, targetId: m.id, targetName: m.nickname || m.name })
+                            }}
+                            style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
+                              background:'transparent', border:'none', borderBottom:`1px solid ${th.border}`,
+                              cursor:'pointer', fontFamily:FONT, textAlign:'left' }}>
+                            <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={32} fontSize={13} />
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, fontWeight:300, ...th.text }}>{m.nickname || m.name}</div>
+                              {m.nickname && <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>{m.name}</div>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setTransferPicker(false)}
+                        style={{ width:'100%', padding:'10px 14px', background:'transparent', border:'none',
+                          color:th.muted, fontSize:12, cursor:'pointer', fontWeight:300, fontFamily:FONT, textAlign:'center' }}>
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
+                  {canClaimOwnership && (
+                    <div style={{ border:'1px solid #F5C47466', background:'#F5C47411', borderRadius:12, padding:'12px 14px' }}>
+                      <div style={{ fontSize:13, color:th.text.color, fontWeight:300, marginBottom:6, lineHeight:1.45 }}>
+                        The owner has been inactive for {ownerInactiveDays} day{ownerInactiveDays === 1 ? '' : 's'}.
+                        If you can't reach them, you can claim ownership of this group.
+                      </div>
+                      <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'claimOwnership', g }) }}
+                        style={{ background:'transparent', border:'1px solid #E5864A66', borderRadius:8,
+                          color:'#E5864A', fontSize:13, padding:'6px 12px', cursor:'pointer',
+                          fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:6 }}>
+                        <Crown size={14} weight="thin" /> Claim ownership
+                      </button>
+                    </div>
+                  )}
+
+                  {log.length > 0 && (() => {
+                    const HISTORY_PREVIEW = 5
+                    const reversed = [...log].reverse()
+                    const hiddenCount = Math.max(0, reversed.length - HISTORY_PREVIEW)
+                    const visible = showAllHistory ? reversed : reversed.slice(0, HISTORY_PREVIEW)
+                    return (
+                      <div>
+                        <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:4, marginBottom:6,
+                          letterSpacing:'0.04em' }}>
+                          HISTORY
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                          {visible.map((e, i) => {
+                            const when = new Date(e.ts)
+                            const whenStr = when.toLocaleDateString() + ' ' +
+                              when.toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })
+                            const byName = lookupName(e.by)
+                            const toName = lookupName(e.to)
+                            const selfPromoted = e.by === e.to
+                            return (
+                              <div key={i} style={{ fontSize:12, color:th.muted, fontWeight:300, lineHeight:1.5 }}>
+                                {selfPromoted
+                                  ? `${toName} claimed ownership`
+                                  : `${byName} transferred to ${toName}`}
+                                <span style={{ marginLeft:8, opacity:0.7 }}>{whenStr}</span>
+                              </div>
+                            )
+                          })}
+                          {hiddenCount > 0 && (
+                            <button onClick={() => setShowAllHistory(v => !v)}
+                              style={{ background:'transparent', border:'none', color:th.muted,
+                                fontSize:11, fontFamily:FONT, fontWeight:300, cursor:'pointer',
+                                textAlign:'left', padding:'2px 0', marginTop:2 }}>
+                              {showAllHistory
+                                ? 'Show less'
+                                : `Show ${hiddenCount} older`}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+            )
+          })()}
 
 
           {/* Danger zone */}

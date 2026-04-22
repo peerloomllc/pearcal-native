@@ -121,6 +121,8 @@ const sync = {
   purgeAllMigratedGroups: (opts)     => window.__pearDB.call('purgeAllMigratedGroups', opts),
   auditStorage:           (opts)     => window.__pearDB.call('auditStorage', opts),
   purgeOrphanDataRanges:  (opts)     => window.__pearDB.call('purgeOrphanDataRanges', opts),
+  transferOwnership: (groupId, targetProfileId) => window.__pearDB.call('transferOwnership', groupId, targetProfileId),
+  claimOwnership:    (groupId)                  => window.__pearDB.call('claimOwnership', groupId),
 }
 
 // Avatar hash resolver with in-memory LRU cache (shared across the app).

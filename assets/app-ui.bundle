@@ -18063,6 +18063,48 @@
                   await updateGroup(updated);
                 }
               });
+            } else if (req.type === "transferOwnership") {
+              setSettingsGroup(null);
+              setConfirmSheet({
+                title: `Transfer ownership to ${req.targetName ?? "this member"}?`,
+                message: `They will gain the ability to remove members and approve rejoins in "${req.g.name}". You will lose these privileges.`,
+                icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s6, { size: 36, weight: "thin", color: "var(--color-accent)" }),
+                confirmLabel: "Transfer",
+                dangerous: true,
+                onConfirm: async () => {
+                  try {
+                    await sync2.transferOwnership(req.g.id, req.targetId);
+                  } catch (e58) {
+                    setInfoSheet({
+                      title: "Transfer failed",
+                      message: e58?.message ?? String(e58),
+                      icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(c7, { size: 36, weight: "thin", color: "var(--color-destructive)" })
+                    });
+                  }
+                }
+              });
+            } else if (req.type === "claimOwnership") {
+              setSettingsGroup(null);
+              const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0;
+              const days = Math.max(0, Math.floor((Date.now() - lastTs) / 864e5));
+              setConfirmSheet({
+                title: "Claim ownership?",
+                message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? "" : "s"}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
+                icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s6, { size: 36, weight: "thin", color: "#E5864A" }),
+                confirmLabel: "Claim",
+                dangerous: true,
+                onConfirm: async () => {
+                  try {
+                    await sync2.claimOwnership(req.g.id);
+                  } catch (e58) {
+                    setInfoSheet({
+                      title: "Claim failed",
+                      message: e58?.message ?? String(e58),
+                      icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(c7, { size: 36, weight: "thin", color: "var(--color-destructive)" })
+                    });
+                  }
+                }
+              });
             }
           }
         }
@@ -22379,11 +22421,18 @@ ${link}`;
     const [nickInput, setNickInput] = (0, import_react2.useState)(() => (group.members ?? []).find((m3) => m3.id === me?.id)?.nickname ?? "");
     const [nickSaved, setNickSaved] = (0, import_react2.useState)(false);
     const [rejoinRequests, setRejoinRequests] = (0, import_react2.useState)([]);
+    const [transferPicker, setTransferPicker] = (0, import_react2.useState)(false);
+    const [showAllHistory, setShowAllHistory] = (0, import_react2.useState)(false);
     const fileRef = (0, import_react2.useRef)();
     const isOwner = g.ownerId === me?.id;
     const isAdmin = !isOwner && (g.admins ?? []).includes(me?.id);
     const canManage = isOwner || isAdmin;
     const isMember = g.members.some((m3) => m3.id === me?.id);
+    const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1e3;
+    const lastOwnerActivityTs = g.lastOwnerActivityTs ?? g.updatedAt ?? 0;
+    const ownerInactiveMs = Date.now() - lastOwnerActivityTs;
+    const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS;
+    const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 864e5));
     (0, import_react2.useEffect)(() => {
       if (!canManage) return;
       let cancelled = false;
@@ -23022,6 +23071,211 @@ ${link}`;
             ] }, m3.id);
           }) })
         ] }),
+        isMember && (() => {
+          const ownerMember = g.members.find((m3) => m3.id === g.ownerId);
+          const ownerName = ownerMember?.nickname || ownerMember?.name || "Unknown";
+          const lookupName = (id) => {
+            const m3 = (g.members ?? []).find((x) => x.id === id) || (g.removedMembers ?? []).find((x) => (x.id ?? x) === id);
+            return m3?.nickname || m3?.name || (typeof id === "string" ? id.slice(0, 8) + "\u2026" : "Someone");
+          };
+          const nonOwnerMembers = (g.members ?? []).filter((m3) => m3.id !== g.ownerId);
+          const log = g.promotionLog ?? [];
+          return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+            section("OWNERSHIP"),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 10 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: {
+                ...th.card,
+                borderRadius: 12,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10
+              }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s6, { size: 18, weight: "thin", style: { color: g.color, flexShrink: 0 } }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { flex: 1, minWidth: 0 }, children: isOwner ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "You are the owner" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: "Only you can remove members and approve rejoin requests" })
+                ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: ownerName }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: [
+                    "Active ",
+                    formatRelativeTime(lastOwnerActivityTs) || "recently"
+                  ] })
+                ] }) })
+              ] }),
+              isOwner && nonOwnerMembers.length > 0 && !transferPicker && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                "button",
+                {
+                  onClick: () => {
+                    window.__pearSync?.haptic("light");
+                    setTransferPicker(true);
+                  },
+                  style: {
+                    background: "transparent",
+                    border: `1px solid ${th.border}`,
+                    borderRadius: 10,
+                    color: th.text.color,
+                    fontSize: 13,
+                    padding: "10px 14px",
+                    cursor: "pointer",
+                    fontWeight: 300,
+                    fontFamily: FONT,
+                    textAlign: "left",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s6, { size: 14, weight: "thin" }),
+                    " Transfer ownership to\u2026"
+                  ]
+                }
+              ),
+              isOwner && transferPicker && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: `1px solid ${th.border}`, borderRadius: 12, overflow: "hidden" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  padding: "10px 14px",
+                  fontSize: 12,
+                  color: th.muted,
+                  fontWeight: 300,
+                  borderBottom: `1px solid ${th.border}`
+                }, children: "Pick a member to promote. They'll gain owner privileges; you'll lose them." }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", flexDirection: "column" }, children: nonOwnerMembers.map((m3) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "button",
+                  {
+                    onClick: () => {
+                      setTransferPicker(false);
+                      bsCloseRef.current?.();
+                      onRequestConfirm({ type: "transferOwnership", g, targetId: m3.id, targetName: m3.nickname || m3.name });
+                    },
+                    style: {
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 14px",
+                      background: "transparent",
+                      border: "none",
+                      borderBottom: `1px solid ${th.border}`,
+                      cursor: "pointer",
+                      fontFamily: FONT,
+                      textAlign: "left"
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 32, fontSize: 13 }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1 }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: m3.nickname || m3.name }),
+                        m3.nickname && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: m3.name })
+                      ] })
+                    ]
+                  },
+                  m3.id
+                )) }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: () => setTransferPicker(false),
+                    style: {
+                      width: "100%",
+                      padding: "10px 14px",
+                      background: "transparent",
+                      border: "none",
+                      color: th.muted,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      fontWeight: 300,
+                      fontFamily: FONT,
+                      textAlign: "center"
+                    },
+                    children: "Cancel"
+                  }
+                )
+              ] }),
+              canClaimOwnership && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { border: "1px solid #F5C47466", background: "#F5C47411", borderRadius: 12, padding: "12px 14px" }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, color: th.text.color, fontWeight: 300, marginBottom: 6, lineHeight: 1.45 }, children: [
+                  "The owner has been inactive for ",
+                  ownerInactiveDays,
+                  " day",
+                  ownerInactiveDays === 1 ? "" : "s",
+                  ". If you can't reach them, you can claim ownership of this group."
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                  "button",
+                  {
+                    onClick: () => {
+                      bsCloseRef.current?.();
+                      onRequestConfirm({ type: "claimOwnership", g });
+                    },
+                    style: {
+                      background: "transparent",
+                      border: "1px solid #E5864A66",
+                      borderRadius: 8,
+                      color: "#E5864A",
+                      fontSize: 13,
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                      fontWeight: 300,
+                      fontFamily: FONT,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s6, { size: 14, weight: "thin" }),
+                      " Claim ownership"
+                    ]
+                  }
+                )
+              ] }),
+              log.length > 0 && (() => {
+                const HISTORY_PREVIEW = 5;
+                const reversed = [...log].reverse();
+                const hiddenCount = Math.max(0, reversed.length - HISTORY_PREVIEW);
+                const visible = showAllHistory ? reversed : reversed.slice(0, HISTORY_PREVIEW);
+                return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                    fontSize: 11,
+                    color: th.muted,
+                    fontWeight: 300,
+                    marginTop: 4,
+                    marginBottom: 6,
+                    letterSpacing: "0.04em"
+                  }, children: "HISTORY" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 4 }, children: [
+                    visible.map((e58, i2) => {
+                      const when = new Date(e58.ts);
+                      const whenStr = when.toLocaleDateString() + " " + when.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+                      const byName = lookupName(e58.by);
+                      const toName = lookupName(e58.to);
+                      const selfPromoted = e58.by === e58.to;
+                      return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300, lineHeight: 1.5 }, children: [
+                        selfPromoted ? `${toName} claimed ownership` : `${byName} transferred to ${toName}`,
+                        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { marginLeft: 8, opacity: 0.7 }, children: whenStr })
+                      ] }, i2);
+                    }),
+                    hiddenCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: () => setShowAllHistory((v) => !v),
+                        style: {
+                          background: "transparent",
+                          border: "none",
+                          color: th.muted,
+                          fontSize: 11,
+                          fontFamily: FONT,
+                          fontWeight: 300,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          padding: "2px 0",
+                          marginTop: 2
+                        },
+                        children: showAllHistory ? "Show less" : `Show ${hiddenCount} older`
+                      }
+                    )
+                  ] })
+                ] });
+              })()
+            ] })
+          ] });
+        })(),
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
           isOwner && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
             section("STORAGE"),
@@ -25891,7 +26145,9 @@ ${link}`;
     purgeMigratedGroup: (id, opts) => window.__pearDB.call("purgeMigratedGroup", id, opts),
     purgeAllMigratedGroups: (opts) => window.__pearDB.call("purgeAllMigratedGroups", opts),
     auditStorage: (opts) => window.__pearDB.call("auditStorage", opts),
-    purgeOrphanDataRanges: (opts) => window.__pearDB.call("purgeOrphanDataRanges", opts)
+    purgeOrphanDataRanges: (opts) => window.__pearDB.call("purgeOrphanDataRanges", opts),
+    transferOwnership: (groupId, targetProfileId) => window.__pearDB.call("transferOwnership", groupId, targetProfileId),
+    claimOwnership: (groupId) => window.__pearDB.call("claimOwnership", groupId)
   };
   var AVATAR_CACHE_MAX = 256;
   var _avatarCache = /* @__PURE__ */ new Map();
