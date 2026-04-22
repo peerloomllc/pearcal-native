@@ -394,7 +394,9 @@ function SkeletonBar ({ width = '100%', height = 12, style = {} }) {
 
 function isShadowHidden (e, allEvents, myId) {
   if (!e.isShadow) return false
-  if (e.creatorId && myId && e.creatorId === myId) return true
+  // Hide a shadow only when its source event is locally present — otherwise
+  // (e.g. after mnemonic-restore, where the forwarder's source events haven't
+  // been recovered) the shadow is the only visible proxy and must render.
   return allEvents.some(x => !x.isShadow && x.id === e.sourceEventId)
 }
 
@@ -1151,6 +1153,7 @@ export default function App ({ db, notifs, sync }) {
     if (!db || !sync || !profile?.id || events.length === 0) return
     const myId = profile.id
     const myName = profile?.name ?? 'Someone'
+    const myGroupIds = new Set((groups ?? []).map(g => g.id))
     const sourceById = new Map()
     for (const e of events) if (!e.isShadow) sourceById.set(e.id, e)
     const myShadows = events.filter(e => e.isShadow && e.creatorId === myId)
@@ -1184,6 +1187,11 @@ export default function App ({ db, notifs, sync }) {
         continue
       }
       if (!src) {
+        // Cascade-delete only when we actually belong to the source group —
+        // otherwise the source is just unreplicated (e.g. after mnemonic
+        // restore, before we've rejoined the source group), not deleted.
+        const srcGid = sh.sourceGroupId
+        if (!srcGid || !myGroupIds.has(srcGid)) continue
         db.deleteEvent(sh.date, sh.id).catch(() => {})
         sync.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {})
         continue
@@ -1216,7 +1224,7 @@ export default function App ({ db, notifs, sync }) {
       }
       sync.putEvent(gid, updated).catch(e => console.warn('[SHADOW-RESYNC-ERR]', e?.message))
     }
-  }, [events, db, sync, profile])
+  }, [events, db, sync, profile, groups])
 
   function parseGroupIdFromUrl(url) {
     try {
@@ -1426,11 +1434,14 @@ export default function App ({ db, notifs, sync }) {
     const hidden = new Set()
     for (const e of events) {
       if (!e.isShadow) continue
-      if (e.creatorId && profile?.id && e.creatorId === profile.id) { hidden.add(e.id); continue }
+      // Hide a shadow only when the underlying source event is locally
+      // present. A restored owner may not have rejoined the source group yet —
+      // their forwarder-shadow is the only proxy for the event, so keep it
+      // visible until the source actually shows up. See TODO #86.
       if (e.sourceEventId && haveSource.has(e.sourceEventId)) hidden.add(e.id)
     }
     return hidden
-  }, [events, profile?.id])
+  }, [events])
   const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d && !hiddenShadowIds.has(e.id))
 
   function openCreate (date, startTime) {
@@ -2442,12 +2453,13 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
         <div style={{ padding:'0 16px 8px', maxHeight:80, overflowY:'auto' }}>
           {allDayEvents.slice(0, 3).map(ev => {
             const isShadow = !!ev.isShadow
+            const shadowEditable = isShadow && ev.creatorId && ev.creatorId === myProfileId
             const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
             const cs = derivedEventColors(ev, groups)
             return (
-            <div key={ev.id} onClick={() => { if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+            <div key={ev.id} onClick={() => { if (isShadow && !shadowEditable) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
               style={{ padding:'4px 10px 4px 14px', borderRadius:8, marginBottom:4,
-                cursor: isShadow ? 'default' : 'pointer',
+                cursor: (isShadow && !shadowEditable) ? 'default' : 'pointer',
                 opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
                 backgroundColor: (cs[0] ?? ev.color) + '22',
                 ...leftStripeStyle(cs, 3) }}>
@@ -2483,14 +2495,15 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
             const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`
             const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`
             const isShadow = !!ev.isShadow
+            const shadowEditable = isShadow && ev.creatorId && ev.creatorId === myProfileId
             const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
             const cs = derivedEventColors(ev, groups)
             return (
               <div key={ev.id}
-                onClick={(e) => { e.stopPropagation(); if (isShadow) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
+                onClick={(e) => { e.stopPropagation(); if (isShadow && !shadowEditable) return; window.__pearSync?.haptic('light'); setModal({ mode:'edit', event:{ ...ev } }) }}
                 style={{ position:'absolute', top, height: Math.max(height, 30),
                   left: colLeft, width: `calc(${colWidth} - 4px)`,
-                  borderRadius:8, cursor: isShadow ? 'default' : 'pointer', overflow:'hidden',
+                  borderRadius:8, cursor: (isShadow && !shadowEditable) ? 'default' : 'pointer', overflow:'hidden',
                   opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
                   backgroundColor: (cs[0] ?? ev.color) + '22',
                   ...leftStripeStyle(cs, 3),
@@ -3614,12 +3627,13 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
   const showRsvpPill = !ev.isShadow && ev.rsvpEnabled && !viewerIsCreator
   const isDeclined = showRsvpPill && myRsvpStatus === 'declined'
   const isShadow = !!ev.isShadow
+  const shadowEditable = isShadow && viewerIsCreator
   const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
   return (
-    <div onClick={() => { if (isShadow) return; window.__pearSync?.haptic('light'); onClick?.() }}
+    <div onClick={() => { if (isShadow && !shadowEditable) return; window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
         padding:compact ? '10px 12px 10px 18px' : '12px 14px 12px 20px',
-        borderRadius:12, cursor: isShadow ? 'default' : 'pointer', ...th.card,
+        borderRadius:12, cursor: (isShadow && !shadowEditable) ? 'default' : 'pointer', ...th.card,
         ...leftStripeStyle(derivedEventColors(ev, groups), 4), marginBottom:compact ? 0 : 8,
         opacity: (isPast || isDeclined) ? 0.5 : (isShadow ? 0.6 : 1),
         fontStyle: isShadow ? 'italic' : 'normal' }}>

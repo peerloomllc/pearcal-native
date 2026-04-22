@@ -16323,7 +16323,6 @@
   }
   function isShadowHidden(e58, allEvents, myId) {
     if (!e58.isShadow) return false;
-    if (e58.creatorId && myId && e58.creatorId === myId) return true;
     return allEvents.some((x) => !x.isShadow && x.id === e58.sourceEventId);
   }
   function shadowCreatorName(e58, groups) {
@@ -17111,6 +17110,7 @@
       if (!db2 || !sync2 || !profile?.id || events.length === 0) return;
       const myId = profile.id;
       const myName = profile?.name ?? "Someone";
+      const myGroupIds = new Set((groups ?? []).map((g) => g.id));
       const sourceById = /* @__PURE__ */ new Map();
       for (const e58 of events) if (!e58.isShadow) sourceById.set(e58.id, e58);
       const myShadows = events.filter((e58) => e58.isShadow && e58.creatorId === myId);
@@ -17144,6 +17144,8 @@
           continue;
         }
         if (!src) {
+          const srcGid = sh.sourceGroupId;
+          if (!srcGid || !myGroupIds.has(srcGid)) continue;
           db2.deleteEvent(sh.date, sh.id).catch(() => {
           });
           sync2.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {
@@ -17174,7 +17176,7 @@
         }
         sync2.putEvent(gid, updated).catch((e58) => console.warn("[SHADOW-RESYNC-ERR]", e58?.message));
       }
-    }, [events, db2, sync2, profile]);
+    }, [events, db2, sync2, profile, groups]);
     function parseGroupIdFromUrl(url) {
       try {
         const u = new URL(url.replace(/^pear:\/\//, "https://"));
@@ -17373,14 +17375,10 @@
       const hidden = /* @__PURE__ */ new Set();
       for (const e58 of events) {
         if (!e58.isShadow) continue;
-        if (e58.creatorId && profile?.id && e58.creatorId === profile.id) {
-          hidden.add(e58.id);
-          continue;
-        }
         if (e58.sourceEventId && haveSource.has(e58.sourceEventId)) hidden.add(e58.id);
       }
       return hidden;
-    }, [events, profile?.id]);
+    }, [events]);
     const eventsOnDate = (d) => events.filter((e58) => e58.date <= d && (e58.endDate || e58.date) >= d && !hiddenShadowIds.has(e58.id));
     function openCreate(date, startTime) {
       let defaultStart, defaultEnd;
@@ -18727,13 +18725,14 @@
           allDayEvents.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 8px", maxHeight: 80, overflowY: "auto" }, children: [
             allDayEvents.slice(0, 3).map((ev2) => {
               const isShadow = !!ev2.isShadow;
+              const shadowEditable = isShadow && ev2.creatorId && ev2.creatorId === myProfileId;
               const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
               const cs = derivedEventColors(ev2, groups);
               return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "div",
                 {
                   onClick: () => {
-                    if (isShadow) return;
+                    if (isShadow && !shadowEditable) return;
                     window.__pearSync?.haptic("light");
                     setModal({ mode: "edit", event: { ...ev2 } });
                   },
@@ -18741,7 +18740,7 @@
                     padding: "4px 10px 4px 14px",
                     borderRadius: 8,
                     marginBottom: 4,
-                    cursor: isShadow ? "default" : "pointer",
+                    cursor: isShadow && !shadowEditable ? "default" : "pointer",
                     opacity: isShadow ? 0.6 : 1,
                     fontStyle: isShadow ? "italic" : "normal",
                     backgroundColor: (cs[0] ?? ev2.color) + "22",
@@ -18798,6 +18797,7 @@
               const colWidth = `calc((100% - ${gutterPx}px) / ${totalCols})`;
               const colLeft = `calc(${gutterPx}px + ${col} * (100% - ${gutterPx}px) / ${totalCols})`;
               const isShadow = !!ev2.isShadow;
+              const shadowEditable = isShadow && ev2.creatorId && ev2.creatorId === myProfileId;
               const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
               const cs = derivedEventColors(ev2, groups);
               return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
@@ -18805,7 +18805,7 @@
                 {
                   onClick: (e58) => {
                     e58.stopPropagation();
-                    if (isShadow) return;
+                    if (isShadow && !shadowEditable) return;
                     window.__pearSync?.haptic("light");
                     setModal({ mode: "edit", event: { ...ev2 } });
                   },
@@ -18816,7 +18816,7 @@
                     left: colLeft,
                     width: `calc(${colWidth} - 4px)`,
                     borderRadius: 8,
-                    cursor: isShadow ? "default" : "pointer",
+                    cursor: isShadow && !shadowEditable ? "default" : "pointer",
                     overflow: "hidden",
                     opacity: isShadow ? 0.6 : 1,
                     fontStyle: isShadow ? "italic" : "normal",
@@ -20472,12 +20472,13 @@
     const showRsvpPill = !ev2.isShadow && ev2.rsvpEnabled && !viewerIsCreator;
     const isDeclined = showRsvpPill && myRsvpStatus === "declined";
     const isShadow = !!ev2.isShadow;
+    const shadowEditable = isShadow && viewerIsCreator;
     const creatorName = isShadow ? shadowCreatorName(ev2, groups) : null;
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
       "div",
       {
         onClick: () => {
-          if (isShadow) return;
+          if (isShadow && !shadowEditable) return;
           window.__pearSync?.haptic("light");
           onClick?.();
         },
@@ -20487,7 +20488,7 @@
           alignItems: "flex-start",
           padding: compact ? "10px 12px 10px 18px" : "12px 14px 12px 20px",
           borderRadius: 12,
-          cursor: isShadow ? "default" : "pointer",
+          cursor: isShadow && !shadowEditable ? "default" : "pointer",
           ...th.card,
           ...leftStripeStyle(derivedEventColors(ev2, groups), 4),
           marginBottom: compact ? 0 : 8,

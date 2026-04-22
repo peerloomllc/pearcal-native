@@ -564,12 +564,18 @@ async function listEvents (opts) {
   const gt = NS.events + (from ?? '')
   const lt = NS.events + (to ? to + '\xff' : '\xff')
   const profile = await getProfile()
-  const matched = []
+  const ownedGroupIds = await listOwnedGroupIds(profile?.id)
+  // Dedupe by id keeping highest updatedAt — out-of-order Autobase replay can
+  // leave a stale events:OLD_DATE:id sibling next to events:NEW_DATE:id when
+  // the create message arrives after the edit-with-_prevDate message.
+  const byId = new Map()
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (groupId && !value.groups?.includes(groupId)) continue
-    if (!isInvitedToEvent(value, profile?.id)) continue
-    matched.push(value)
+    if (!isInvitedToEvent(value, profile?.id, ownedGroupIds)) continue
+    const prev = byId.get(value.id)
+    if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
+  const matched = [...byId.values()]
   // Batch-fetch private notes: one sequential scan over `privateNotes:` beats
   // N per-event `db.get()` calls (each pays tree traversal + proof verify).
   // Only matters if any matched event actually had a note; otherwise skip.
@@ -583,6 +589,30 @@ async function listEvents (opts) {
     const note = notes.get(ev.id)
     return note ? { ...ev, privateNote: note } : ev
   })
+}
+
+async function dedupeStaleEventKeys () {
+  if (!db) return
+  const byId = new Map()
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!value?.id) continue
+    const list = byId.get(value.id) ?? []
+    list.push({ key, updatedAt: value.updatedAt ?? 0 })
+    byId.set(value.id, list)
+  }
+  let removed = 0
+  for (const [, entries] of byId) {
+    if (entries.length < 2) continue
+    entries.sort((a, b) => b.updatedAt - a.updatedAt)
+    for (let i = 1; i < entries.length; i++) {
+      await db.del(entries[i].key).catch(() => {})
+      removed++
+    }
+  }
+  if (removed > 0) {
+    console.log('[DEDUPE] removed', removed, 'stale event keys')
+    scheduleWidgetCacheRefresh()
+  }
 }
 
 async function putEvent (event) {
@@ -630,9 +660,11 @@ function scheduleWidgetCacheRefresh () {
 async function refreshWidgetCache () {
   if (!db) return null
   const profile = await getProfile().catch(() => null)
+  const ownedGroupIds = await listOwnedGroupIds(profile?.id).catch(() => new Set())
   const payload = await computeTodayCache(db, {
     profileId: profile?.id,
     isInvitedToEvent,
+    ownedGroupIds,
   })
   send({ type: 'event', event: 'widgetCache', data: payload })
   scheduleMorningDigest().catch(e => console.warn('morning digest refresh:', e.message))
@@ -2345,10 +2377,25 @@ async function resyncAll () {
   send({ type: 'event', event: 'synced', data: { groupId: null, ts: Date.now() } })
 }
 
-function isInvitedToEvent (event, profileId) {
+function isInvitedToEvent (event, profileId, ownedGroupIds) {
   if (!event.invitees || event.invitees.length === 0) return true
   if (event.creatorId === profileId) return true
-  return event.invitees.includes(profileId)
+  if (event.invitees.includes(profileId)) return true
+  // Owner bypass: a group owner has full visibility into their own group,
+  // independent of invitees[]. Without this, a mnemonic-restored owner whose
+  // restored profile.id differs from the legacy creatorId/invitees baked into
+  // pre-recovery events sees nothing on their own device. See TODO #86.
+  if (ownedGroupIds && ownedGroupIds.size && (event.groups ?? []).some(g => ownedGroupIds.has(g))) return true
+  return false
+}
+
+async function listOwnedGroupIds (profileId) {
+  const owned = new Set()
+  if (!profileId) return owned
+  for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    if (value?.ownerId === profileId) owned.add(value.id)
+  }
+  return owned
 }
 
 function makeApply (groupId) {
@@ -2511,9 +2558,14 @@ function makeApply (groupId) {
             }
           }
           // Invitee filter: skip notifications for uninvited events (mirrorToLocal already sent sync).
+          // Owner of this group bypasses the filter (see TODO #86).
           if (isRemote && val.type === 'event') {
             const profile = await getProfile()
-            if (!isInvitedToEvent(val.value, profile?.id)) continue
+            const localGroup = await db.get(NS.groups + groupId).catch(() => null)
+            const ownedSet = (profile?.id && localGroup?.value?.ownerId === profile.id)
+              ? new Set([groupId])
+              : null
+            if (!isInvitedToEvent(val.value, profile?.id, ownedSet)) continue
           }
           // RSVP response — notify the event creator only
           if (isRemote && val.type === 'rsvp') {
@@ -3201,6 +3253,11 @@ async function mirrorToLocal (type, key, value, groupId) {
       if (existing?.value && sameExceptUpdatedAt(existing.value, merged)) return
       await db.put(key, merged)
       emitSync(groupId, { groupChanged: true })
+      // Owner-bypass in widget filter depends on group.ownerId — when Autobase
+      // replay corrects ownerId from the invite-link placeholder to the
+      // authoritative mnemonic-derived id, the widget cache must rebuild so
+      // the restored owner's events appear.
+      if (existing?.value?.ownerId !== merged.ownerId) scheduleWidgetCacheRefresh()
     }
   } catch(e) {
     console.error('mirrorToLocal error:', e.message)
@@ -4281,6 +4338,9 @@ async function _doInit (dir, attempt = 0) {
     console.log('DB ready, groups rejoined:', groups.length)
     _dbReady = true
     _dbReadyResolve()
+    // Self-heal: drop any duplicate event keys (same id under different dates)
+    // left behind by out-of-order Autobase replay (see listEvents dedupe).
+    dedupeStaleEventKeys().catch(e => console.warn('event dedupe:', e.message))
     send({ type: 'event', event: 'ready' })
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
   } catch(e) {
