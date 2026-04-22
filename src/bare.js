@@ -216,6 +216,8 @@ async function handle (method, args) {
     case 'approveRejoin':    return approveRejoin(args[0], args[1])
     case 'denyRejoin':       return denyRejoin(args[0], args[1])
     case 'listPendingApprovals': return listPendingApprovals()
+    case 'transferOwnership': return transferOwnership(args[0], args[1])
+    case 'claimOwnership':   return claimOwnership(args[0])
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -240,6 +242,17 @@ const NS = {
 // will have linearized on every peer's Autobase, so the guard is no longer
 // load-bearing and the record is safe to drop.
 const TOMBSTONE_TTL_MS = 180 * 24 * 60 * 60 * 1000
+
+// Ownership-transfer: a non-owner can claim ownership only after the current
+// owner has gone this long without authoring an Autobase write. Drop to a
+// small number (e.g. 30e3) for manual E2E testing of the claim path.
+const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000
+
+// Upper bound on how many `promoteOwner` entries we retain on the group
+// record. Cap is defensive: a compromised or malicious client could otherwise
+// ping-pong promotions and grow every peer's group blob without limit. Oldest
+// entries are pruned first; UI shows most-recent-first anyway.
+const PROMOTION_LOG_MAX = 20
 
 async function getAvatar (hash) {
   if (!hash) return null
@@ -1071,9 +1084,11 @@ async function createGroup (name, metadata) {
     name: profile.name,
     avatar: profile.avatar ?? initials,
     publicKey: profile.publicKey,
+    writerKey,
   }
   if (profile.identityPublicKey) ownerMember.identityPublicKey = profile.identityPublicKey
 
+  const now = Date.now()
   const group = {
     id: groupId,
     name: (name || '').trim() || 'Group',
@@ -1084,8 +1099,11 @@ async function createGroup (name, metadata) {
     members: [ownerMember],
     groupKey,
     removedMembers: [],
-    joinedAt: Date.now(),
-    updatedAt: Date.now(),
+    joinedAt: now,
+    updatedAt: now,
+    lastOwnerActivityTs: now,
+    lastPromoteTs: 0,
+    promotionLog: [],
   }
 
   await putGroup(group)
@@ -1239,7 +1257,8 @@ async function _joinGroupImpl (group) {
           return
         }
         const initials = (p.name || '').trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
-        const myMember = { id: p.id, name: p.name, avatar: p.avatar ?? initials, publicKey: p.publicKey }
+        const selfWriterKey = b4a.toString(base.local.key, 'hex')
+        const myMember = { id: p.id, name: p.name, avatar: p.avatar ?? initials, publicKey: p.publicKey, writerKey: selfWriterKey }
         const updatedGroup = { id: g.id, groupKey: g.groupKey, ownerId: g.ownerId, members: [myMember], updatedAt: Date.now() }
         await appendGroupWithAvatarSplit(base, updatedGroup)
         await db.put('selfBroadcasted:' + groupId, { ts: Date.now() })
@@ -1254,6 +1273,34 @@ async function _joinGroupImpl (group) {
     // invoke directly in that case — this is the JS one-shot-init pattern.
     if (base.writable) doBroadcastSelf()
     else base.once('writable', doBroadcastSelf)
+  }
+
+  // Owner post-upgrade bootstrap: for groups created before the ownership-
+  // transfer feature landed, the owner's member record in the shared view
+  // carries no writerKey. Without it, the apply()-side owner-activity
+  // heartbeat can't tell which Autobase author is the owner, so
+  // lastOwnerActivityTs never bumps and non-owners eventually hit the
+  // inactivity gate on a still-active owner. Fix once, idempotently: stamp
+  // our writerKey onto the owner's member record via an authoritative
+  // group-put. Skip when the view already has it.
+  if (isOwner) {
+    const stampOwnerWriterKey = async () => {
+      try {
+        const ownerWriterKey = b4a.toString(base.local.key, 'hex')
+        const g = await getGroup(group.id)
+        if (!g) return
+        const ownerM = (g.members ?? []).find(m => m.id === profile?.id)
+        if (ownerM?.writerKey === ownerWriterKey) return
+        const updatedMembers = (g.members ?? []).map(m =>
+          m.id === profile?.id ? { ...m, writerKey: ownerWriterKey } : m
+        )
+        const updated = { ...g, members: updatedMembers, updatedAt: Date.now() }
+        await appendGroupWithAvatarSplit(base, updated)
+        console.log('[OWNER_WRITERKEY_STAMP] stamped writerKey on', group.id)
+      } catch (e) { console.warn('[OWNER_WRITERKEY_STAMP]', e?.message) }
+    }
+    if (base.writable) stampOwnerWriterKey()
+    else base.once('writable', stampOwnerWriterKey)
   }
 
   // Register onAppend for this base so replication triggers apply() even if the
@@ -2150,6 +2197,53 @@ async function denyRejoin (groupId, identityPublicKey) {
   return { ok: true }
 }
 
+// Ownership transfer — append a promoteOwner op. Both entry points (owner
+// hand-off and non-owner inactivity claim) share the same op shape; the real
+// security boundary lives in apply() so a tampered client can't bypass it.
+async function transferOwnership (groupId, targetProfileId) {
+  const profile = await getProfile()
+  if (!profile?.id) throw new Error('transferOwnership: no profile')
+  const group = await getGroup(groupId)
+  if (!group) throw new Error('transferOwnership: group not found')
+  if (group.ownerId !== profile.id) throw new Error('transferOwnership: not the owner')
+  if (!targetProfileId) throw new Error('transferOwnership: missing target')
+  if (!(group.members ?? []).some(m => m.id === targetProfileId)) {
+    throw new Error('transferOwnership: target is not a member')
+  }
+  const base = bases.get(groupId)
+  if (!base) throw new Error('transferOwnership: group base not open')
+  await base.append({
+    promoteOwner: targetProfileId,
+    promotedBy: profile.id,
+    ts: Date.now(),
+  })
+  return { ok: true }
+}
+
+async function claimOwnership (groupId) {
+  const profile = await getProfile()
+  if (!profile?.id) throw new Error('claimOwnership: no profile')
+  const group = await getGroup(groupId)
+  if (!group) throw new Error('claimOwnership: group not found')
+  if (group.ownerId === profile.id) throw new Error('claimOwnership: already owner')
+  if (!(group.members ?? []).some(m => m.id === profile.id)) {
+    throw new Error('claimOwnership: not a member')
+  }
+  const lastActivity = group.lastOwnerActivityTs ?? group.updatedAt ?? 0
+  const elapsed = Date.now() - lastActivity
+  if (elapsed <= CLAIM_OWNERSHIP_INACTIVITY_MS) {
+    throw new Error('claimOwnership: owner still active (elapsed=' + elapsed + 'ms)')
+  }
+  const base = bases.get(groupId)
+  if (!base) throw new Error('claimOwnership: group base not open')
+  await base.append({
+    promoteOwner: profile.id,
+    promotedBy: profile.id,
+    ts: Date.now(),
+  })
+  return { ok: true }
+}
+
 // Joiner-side: list groupIds for which the owner has queued our rejoin. Used
 // by the UI to show a "waiting for approval" banner on the affected group.
 async function listPendingApprovals () {
@@ -2458,6 +2552,88 @@ function makeApply (groupId) {
       // Detect remote writes via node.from.key
       const nodeWriterKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
       const isRemote = localKey && nodeWriterKey && nodeWriterKey !== localKey
+
+      // Ownership transfer — update group.ownerId. Two paths converge here:
+      //   (a) current owner promotes any member (always accepted),
+      //   (b) non-owner claims ownership after 30d+ of owner inactivity.
+      // Enforcement lives at apply() so a client that bypasses the UI and
+      // appends a premature claim is rejected by every peer, not just the
+      // promoter's own device.
+      if (val.promoteOwner) {
+        try {
+          const gKey = NS.groups + groupId
+          const gNode = await view.get(gKey).catch(() => null)
+          if (!gNode?.value) { console.warn('[PROMOTE] no group record'); continue }
+          const g = gNode.value
+          const promoter = val.promotedBy
+          const target = val.promoteOwner
+          const promoterMember = (g.members ?? []).find(m => m.id === promoter)
+          const targetMember = (g.members ?? []).find(m => m.id === target)
+          if (!promoterMember || !targetMember) {
+            console.warn('[PROMOTE] rejected — promoter or target not a member', { promoter, target })
+            continue
+          }
+          const opTs = val.ts || Date.now()
+          if (opTs <= (g.lastPromoteTs ?? 0)) {
+            console.warn('[PROMOTE] rejected — LWW loses vs lastPromoteTs', opTs, g.lastPromoteTs)
+            continue
+          }
+          const promoterIsOwner = promoter === g.ownerId
+          // Fallback to group.updatedAt for legacy groups that predate this field.
+          const lastActivity = g.lastOwnerActivityTs ?? g.updatedAt ?? 0
+          const inactivityOk = (opTs - lastActivity) > CLAIM_OWNERSHIP_INACTIVITY_MS
+          if (!promoterIsOwner && !inactivityOk) {
+            console.warn('[PROMOTE] rejected — non-owner claim without sufficient inactivity',
+              { elapsedMs: opTs - lastActivity, requiredMs: CLAIM_OWNERSHIP_INACTIVITY_MS })
+            continue
+          }
+          const fromOwnerId = g.ownerId
+          const nextLog = [
+            ...(g.promotionLog ?? []),
+            { from: fromOwnerId, to: target, by: promoter, ts: opTs },
+          ].slice(-PROMOTION_LOG_MAX)
+          const updated = {
+            ...g,
+            ownerId: target,
+            lastOwnerActivityTs: opTs,
+            lastPromoteTs: opTs,
+            promotionLog: nextLog,
+            updatedAt: opTs,
+          }
+          await view.put(gKey, updated)
+          await mirrorToLocal('group', gKey, updated, groupId)
+          // Notify every member about the ownership change (cheap, high-value
+          // for transparency — matches the admin-role-change pattern above).
+          if (isRemote && fromOwnerId !== target) {
+            try {
+              const profile = await getProfile().catch(() => null)
+              const byName = promoterMember.nickname || promoterMember.name || 'Someone'
+              const toName = targetMember.nickname || targetMember.name || 'a member'
+              const groupName = updated.name || 'a group'
+              let title
+              if (profile?.id === target) {
+                title = 'You are now the owner of ' + groupName
+              } else if (profile?.id === fromOwnerId) {
+                title = (promoterIsOwner ? 'Transferred ownership' : (byName + ' claimed ownership'))
+                  + ' of ' + groupName
+              } else {
+                title = toName + ' is now the owner of ' + groupName
+              }
+              send({ type: 'event', event: 'syncNotify', data: {
+                title,
+                body: promoterIsOwner
+                  ? byName + ' transferred ownership to ' + toName
+                  : byName + ' claimed ownership after inactivity',
+                tab: 'groups',
+              }})
+            } catch (e) { console.warn('[PROMOTE] notify error:', e.message) }
+          }
+          emitSync(groupId, { groupChanged: true })
+        } catch (e) {
+          console.error('[PROMOTE] apply error:', e.message)
+        }
+        continue
+      }
 
       // Write to the shared Autobase view
       if (val.op === 'put') {
@@ -2910,6 +3086,38 @@ function makeApply (groupId) {
         }
         emitSync(val.groupId, { groupChanged: true })
       }
+
+      // Owner-activity heartbeat: if this op was authored by the writerKey
+      // stored on the current owner's member record, refresh the group's
+      // lastOwnerActivityTs. The value is consulted by the non-owner claim
+      // path; "activity" is deliberately Autobase-writes only (no protomux
+      // or connection heartbeats), so a truly absent owner's clock decays.
+      // Skip for promoteOwner ops (we already set lastOwnerActivityTs above)
+      // and for addWriter/migration ops (already continued above before here).
+      try {
+        if (nodeWriterKey) {
+          const gKey = NS.groups + groupId
+          const gNode = await view.get(gKey).catch(() => null)
+          const g = gNode?.value
+          if (g && g.ownerId) {
+            const ownerMember = (g.members ?? []).find(m => m.id === g.ownerId)
+            if (ownerMember?.writerKey && ownerMember.writerKey === nodeWriterKey) {
+              const now = Date.now()
+              // Coarse throttle — no need to re-write on every op in a burst.
+              if (now - (g.lastOwnerActivityTs ?? 0) > 60 * 1000) {
+                const bumped = { ...g, lastOwnerActivityTs: now }
+                await view.put(gKey, bumped)
+                // Mirror so non-owner peers see fresh value when computing
+                // the claim gate. Doesn't touch updatedAt, so the mirror's
+                // sameExceptUpdatedAt check still writes (lastOwnerActivityTs
+                // differs) but nothing about the visible group state
+                // changed — emitSync below is informational.
+                await mirrorToLocal('group', gKey, bumped, groupId)
+              }
+            }
+          }
+        }
+      } catch (e) { /* best-effort */ }
     }
   }
 }
@@ -4050,7 +4258,17 @@ async function _doInit (dir, attempt = 0) {
                     } else {
                       keeperIdx = idxById
                     }
-                    const keeper = { ...activeMembers[keeperIdx], id: parsed_memberId, identityPublicKey: verifiedIdentityHex }
+                    const keeper = {
+                      ...activeMembers[keeperIdx],
+                      id: parsed_memberId,
+                      identityPublicKey: verifiedIdentityHex,
+                      // Stamp the announcer's fresh writerKey so the owner-activity
+                      // heartbeat (apply()) matches this writer against ownerMember.writerKey
+                      // after a restore — otherwise the member record stays bound to
+                      // the owner's pre-wipe writerKey and their activity stops resetting
+                      // the claim clock.
+                      writerKey: parsed.writerKey,
+                    }
                     const drop = new Set(matches)
                     drop.add(keeperIdx)
                     const updatedMembers = [
