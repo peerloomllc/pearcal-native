@@ -542,6 +542,8 @@ export default function App ({ db, notifs, sync }) {
   const closeInfoSheetRef = useRef(null)
   const [scopeSheet, setScopeSheet] = useState(null) // null | { ev }
   const closeScopeSheetRef = useRef(null)
+  const [deleteScopeSheet, setDeleteScopeSheet] = useState(null) // null | { ev, isCreator }
+  const closeDeleteScopeSheetRef = useRef(null)
   const closeEventModalRef = useRef(null)
   const closeGroupSettingsRef = useRef(null)
   const closeFullGridRef = useRef(null)
@@ -902,6 +904,7 @@ export default function App ({ db, notifs, sync }) {
       if (closeInfoSheetRef.current?.()) return
       if (closeConfirmSheetRef.current?.()) return
       if (closeScopeSheetRef.current?.()) return
+      if (closeDeleteScopeSheetRef.current?.()) return
       if (closeEventModalRef.current?.()) return
       if (closeFullGridRef.current?.()) return
       if (closeNewGroupSheetRef.current?.()) return
@@ -1701,6 +1704,43 @@ export default function App ({ db, notifs, sync }) {
             closeRef={closeScopeSheetRef} />
         )}
 
+        {deleteScopeSheet && (
+          <DeleteScopeSheet th={th}
+            onChoose={scope => {
+              const { ev, isCreator } = deleteScopeSheet
+              setDeleteScopeSheet(null)
+              if (scope === 'one') {
+                if (isCreator) {
+                  setConfirmSheet({
+                    title: 'Delete Event?',
+                    message: 'This event will be permanently deleted for everyone. This cannot be undone.',
+                    icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                    confirmLabel: 'Delete',
+                    dangerous: true,
+                    onConfirm: () => deleteEvent(ev.id),
+                  })
+                } else {
+                  deleteEvent(ev.id)
+                }
+              } else {
+                if (isCreator) {
+                  setConfirmSheet({
+                    title: 'Delete All in Series?',
+                    message: 'All events in this series will be permanently deleted for everyone. This cannot be undone.',
+                    icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
+                    confirmLabel: 'Delete All',
+                    dangerous: true,
+                    onConfirm: () => deleteEventSeries(ev.recurrenceId),
+                  })
+                } else {
+                  deleteEventSeries(ev.recurrenceId)
+                }
+              }
+            }}
+            onDismiss={() => setDeleteScopeSheet(null)}
+            closeRef={closeDeleteScopeSheetRef} />
+        )}
+
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
@@ -1748,6 +1788,9 @@ export default function App ({ db, notifs, sync }) {
                   dangerous: true,
                   onConfirm: () => deleteEventSeries(req.ev.recurrenceId),
                 })
+              } else if (req.type === 'deleteScope') {
+                setModal(null)
+                setDeleteScopeSheet({ ev: req.ev, isCreator: !!req.isCreator })
               }
             }}
           />
@@ -4193,6 +4236,57 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                   </div>
                 </div>
               )}
+              {(modal.mode === 'create' || !ev.recurrenceId) && (
+                <>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Recurring</span>
+                    <Toggle val={!!ev.recurrence && ev.recurrence !== 'none'} accent={th.accent}
+                      onChange={v => {
+                        if (v) {
+                          set('recurrence', 'daily')
+                          if (!ev.recurrenceEnd && ev.date) {
+                            const [y,m,d] = ev.date.split('-').map(Number)
+                            const end = new Date(y+1, m-1, d)
+                            const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
+                            set('recurrenceEnd', fmt(end))
+                          }
+                        } else {
+                          set('recurrence', 'none')
+                        }
+                      }} />
+                  </div>
+                  {ev.recurrence && ev.recurrence !== 'none' && (
+                    <>
+                      <div><Label th={th}>Frequency</Label>
+                        <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
+                          onChange={e => {
+                            const val = e.target.value
+                            set('recurrence', val)
+                            if (val === 'monthly-nth' && ev.date) {
+                              const d = new Date(ev.date + 'T12:00:00')
+                              const weekday = d.getDay()
+                              let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                              while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                              set('recurrenceNth', nth)
+                              set('recurrenceWeekday', weekday)
+                            }
+                          }}>
+                          <option value="daily">Daily</option>
+                          <option value="weekly">Weekly</option>
+                          <option value="biweekly">Every 2 weeks</option>
+                          <option value="monthly">Monthly (same date)</option>
+                          <option value="monthly-nth">Monthly (same weekday)</option>
+                          <option value="yearly">Yearly</option>
+                        </select>
+                      </div>
+                      <div><Label th={th}>Repeat until</Label>
+                        <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
+                          onChange={e => set('recurrenceEnd', e.target.value)} />
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -4395,45 +4489,6 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
             <div style={{ maxHeight: moreOpen ? '1200px' : '0px', overflow:'hidden',
               transition:'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)' }}>
               <div style={{ display:'flex', flexDirection:'column', gap:14, paddingTop:12 }}>
-                {/* Repeat */}
-                {(modal.mode === 'create' || !ev.recurrenceId) && (
-                  <div><Label th={th}>Repeat</Label>
-                    <select style={{ ...inp, appearance:'none' }} value={ev.recurrence ?? 'none'}
-                      onChange={e => {
-                        const val = e.target.value
-                        set('recurrence', val)
-                        if (val === 'monthly-nth' && ev.date) {
-                          const d = new Date(ev.date + 'T12:00:00')
-                          const weekday = d.getDay()
-                          let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
-                          while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
-                          set('recurrenceNth', nth)
-                          set('recurrenceWeekday', weekday)
-                        }
-                        if (val !== 'none' && !ev.recurrenceEnd) {
-                          const [y,m,d] = ev.date.split('-').map(Number)
-                          const end = new Date(y+1, m-1, d)
-                          const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
-                          set('recurrenceEnd', fmt(end))
-                        }
-                      }}>
-                      <option value="none">Does not repeat</option>
-                      <option value="daily">Daily</option>
-                      <option value="weekly">Weekly</option>
-                      <option value="biweekly">Every 2 weeks</option>
-                      <option value="monthly">Monthly (same date)</option>
-                      <option value="monthly-nth">Monthly (same weekday)</option>
-                      <option value="yearly">Yearly</option>
-                    </select>
-                  </div>
-                )}
-                {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && (
-                  <div><Label th={th}>Repeat until</Label>
-                    <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
-                      onChange={e => set('recurrenceEnd', e.target.value)} />
-                  </div>
-                )}
-
                 {/* Request RSVP */}
                 {ev.groups && ev.groups.length > 0 && isEventCreator && (
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12 }}>
@@ -4583,22 +4638,26 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
 
           {modal.mode === 'edit' && (() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+            const label = isCreator ? 'Delete' : 'Remove for Me'
+            const onClick = () => {
+              if (ev.recurrenceId) {
+                bsCloseRef.current?.()
+                onRequestConfirm({ type: 'deleteScope', ev, isCreator })
+              } else if (isCreator) {
+                bsCloseRef.current?.()
+                onRequestConfirm({ type: 'deleteEvent', ev })
+              } else {
+                onDelete(ev.id)
+              }
+            }
             return (
               <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:8 }}>
-                <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteEvent', ev })) : onDelete(ev.id)}
+                <button onClick={onClick}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
                     padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-                  {isCreator ? 'Delete' : 'Remove for Me'}
+                  {label}
                 </button>
-                {ev.recurrenceId && (
-                  <button onClick={() => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: 'deleteSeries', ev })) : onDeleteSeries?.(ev.recurrenceId)}
-                    style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
-                      padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
-                      fontFamily:FONT, cursor:'pointer', width:'100%' }}>
-                    {isCreator ? 'Delete All in Series' : 'Remove All in Series'}
-                  </button>
-                )}
               </div>
             )
           })()}
@@ -5751,6 +5810,46 @@ function ScopeSheet ({ th, ev, onSave, onDismiss, closeRef }) {
             style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
               background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
             This & Future
+          </button>
+        </div>
+        <button onClick={() => bsCloseRef.current?.()}
+          style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
+            fontFamily:FONT, background:'transparent', color:'var(--color-text)',
+            fontSize:14, fontWeight:300, cursor:'pointer', marginBottom:8 }}>
+          Cancel
+        </button>
+      </div>
+    </BottomSheet>
+  )
+}
+
+// ─── Delete Scope Sheet (recurring delete) ────────────────────────────────────
+function DeleteScopeSheet ({ th, onChoose, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+  return (
+    <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+        <div style={{ marginBottom:4 }}><Trash size={28} weight="thin" color="var(--color-destructive)" /></div>
+        <div style={{ fontWeight:300, fontSize:17, ...th.text }}>Delete recurring event</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>
+          Delete just this event, or the entire series?
+        </div>
+        <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onChoose('one'), 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+              background:'var(--color-destructive)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+            This Event
+          </button>
+          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onChoose('all'), 280) }}
+            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+              background:'var(--color-destructive)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+            Entire Series
           </button>
         </div>
         <button onClick={() => bsCloseRef.current?.()}
