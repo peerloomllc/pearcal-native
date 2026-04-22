@@ -30,19 +30,22 @@ function normalize (value) {
   }
 }
 
-async function readDayEvents (db, date, { profileId, isInvitedToEvent, nowHHMM }) {
+async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM }) {
   const gt = 'events:' + date + ':'
   const lt = 'events:' + date + ':\xff'
-  const out = []
+  // Dedupe by id keeping highest updatedAt — see listEvents in bare.js for why.
+  const byId = new Map()
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (value.isShadow) continue
-    if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId)) continue
+    if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
     if (nowHHMM && !value.allDay) {
       const cutoff = value.end || value.start
       if (cutoff && cutoff < nowHHMM) continue
     }
-    out.push(normalize(value))
+    const prev = byId.get(value.id)
+    if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
+  const out = [...byId.values()].map(normalize)
   out.sort((a, b) => {
     if (a.allDay && !b.allDay) return -1
     if (!a.allDay && b.allDay) return 1
@@ -68,15 +71,15 @@ function buildSlots (events) {
   return slots
 }
 
-async function computeTodayCache (db, { profileId, isInvitedToEvent } = {}) {
+async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds } = {}) {
   const date = todayDateString()
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
-  const events = await readDayEvents(db, date, { profileId, isInvitedToEvent, nowHHMM })
+  const events = await readDayEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
   const slots = buildSlots(events)
   let tomorrowFirst = null
   if (events.length === 0) {
-    const tomorrow = await readDayEvents(db, tomorrowDateString(), { profileId, isInvitedToEvent })
+    const tomorrow = await readDayEvents(db, tomorrowDateString(), { profileId, isInvitedToEvent, ownedGroupIds })
     if (tomorrow.length > 0) tomorrowFirst = tomorrow[0]
   }
   return { date, generatedAt: Date.now(), events, slots, tomorrowFirst }
