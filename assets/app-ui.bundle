@@ -17061,17 +17061,17 @@
     const deleteEvent = (0, import_react2.useCallback)(async (id) => {
       const ev2 = events.find((e58) => e58.id === id);
       if (!ev2) return;
-      const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
+      const myId = profile?.id;
+      const isCreator = ev2.creatorId && myId && ev2.creatorId === myId;
       if (db2) {
         if (isCreator) {
           await db2.deleteEvent(ev2.date, id);
           await notifs2?.cancelForEvent(id);
           for (const gid of ev2.groups ?? []) {
-            await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", "", ev2.title ?? "").catch(() => {
+            await sync2?.deleteEvent(gid, id, ev2.date, profile?.name ?? "Someone", myId ?? "", "", ev2.title ?? "").catch(() => {
             });
           }
         }
-        const myId = profile?.id;
         if (myId) {
           const myShadows = events.filter((e58) => e58.isShadow && e58.sourceEventId === id && e58.creatorId === myId);
           for (const sh of myShadows) {
@@ -17088,25 +17088,38 @@
           await notifs2?.cancelForEvent(id);
         }
       }
-      setEvents((prev) => prev.filter((e58) => e58.id !== id));
+      setEvents((prev) => prev.filter((e58) => e58.id !== id && !(e58.isShadow && e58.sourceEventId === id && e58.creatorId === myId)));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
     const deleteEventSeries = (0, import_react2.useCallback)(async (recurrenceId) => {
       if (!recurrenceId || !db2) return;
       await db2.deleteEventSeries(recurrenceId).catch(() => {
       });
-      const seriesEvents = events.filter((e58) => e58.recurrenceId === recurrenceId);
+      const myId = profile?.id;
+      const seriesEvents = events.filter((e58) => !e58.isShadow && e58.recurrenceId === recurrenceId);
+      const seriesIds = new Set(seriesEvents.map((e58) => e58.id));
       for (const ev2 of seriesEvents) {
         await notifs2?.cancelForEvent(ev2.id);
-        const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
+        const isCreator = ev2.creatorId && myId && ev2.creatorId === myId;
         if (isCreator) {
           for (const gid of ev2.groups ?? []) {
-            await sync2?.deleteEvent(gid, ev2.id, ev2.date, profile?.name ?? "Someone", profile?.id ?? "", ev2.recurrenceId ?? "", ev2.title ?? "").catch(() => {
+            await sync2?.deleteEvent(gid, ev2.id, ev2.date, profile?.name ?? "Someone", myId ?? "", ev2.recurrenceId ?? "", ev2.title ?? "").catch(() => {
             });
           }
         }
       }
-      setEvents((prev) => prev.filter((e58) => e58.recurrenceId !== recurrenceId));
+      if (myId) {
+        const myShadows = events.filter((e58) => e58.isShadow && e58.creatorId === myId && seriesIds.has(e58.sourceEventId));
+        for (const sh of myShadows) {
+          const gid = (sh.groups ?? [])[0];
+          if (!gid) continue;
+          await db2.deleteEvent(sh.date, sh.id).catch(() => {
+          });
+          await sync2?.deleteEvent(gid, sh.id, sh.date, profile?.name ?? "Someone", myId).catch(() => {
+          });
+        }
+      }
+      setEvents((prev) => prev.filter((e58) => e58.recurrenceId !== recurrenceId && !(e58.isShadow && e58.creatorId === myId && seriesIds.has(e58.sourceEventId))));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
     (0, import_react2.useEffect)(() => {
@@ -17148,7 +17161,7 @@
         }
         if (!src) {
           const srcGid = sh.sourceGroupId;
-          if (!srcGid || !myGroupIds.has(srcGid)) continue;
+          if (srcGid && !myGroupIds.has(srcGid)) continue;
           db2.deleteEvent(sh.date, sh.id).catch(() => {
           });
           sync2.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {

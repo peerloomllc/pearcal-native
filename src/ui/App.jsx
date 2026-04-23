@@ -1095,19 +1095,19 @@ export default function App ({ db, notifs, sync }) {
   const deleteEvent = useCallback(async id => {
     const ev = events.find(e => e.id === id)
     if (!ev) return
-    const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+    const myId = profile?.id
+    const isCreator = ev.creatorId && myId && ev.creatorId === myId
     if (db) {
       if (isCreator) {
         // Creator: delete for everyone via Autobase broadcast
         await db.deleteEvent(ev.date, id)
         await notifs?.cancelForEvent(id)
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', '', ev.title ?? '').catch(() => {})
+          await sync?.deleteEvent(gid, id, ev.date, profile?.name ?? 'Someone', myId ?? '', '', ev.title ?? '').catch(() => {})
         }
       }
       // Always clear my own forwards. Other forwarders will cascade on their
       // own clients via the orphaned-shadow effect.
-      const myId = profile?.id
       if (myId) {
         const myShadows = events.filter(e =>
           e.isShadow && e.sourceEventId === id && e.creatorId === myId)
@@ -1124,24 +1124,41 @@ export default function App ({ db, notifs, sync }) {
         await notifs?.cancelForEvent(id)
       }
     }
-    setEvents(prev => prev.filter(e => e.id !== id))
+    setEvents(prev => prev.filter(e =>
+      e.id !== id &&
+      !(e.isShadow && e.sourceEventId === id && e.creatorId === myId)))
     setModal(null)
   }, [db, notifs, sync, events, profile])
 
   const deleteEventSeries = useCallback(async recurrenceId => {
     if (!recurrenceId || !db) return
     await db.deleteEventSeries(recurrenceId).catch(() => {})
-    const seriesEvents = events.filter(e => e.recurrenceId === recurrenceId)
+    const myId = profile?.id
+    const seriesEvents = events.filter(e => !e.isShadow && e.recurrenceId === recurrenceId)
+    const seriesIds = new Set(seriesEvents.map(e => e.id))
     for (const ev of seriesEvents) {
       await notifs?.cancelForEvent(ev.id)
-      const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
+      const isCreator = ev.creatorId && myId && ev.creatorId === myId
       if (isCreator) {
         for (const gid of ev.groups ?? []) {
-          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', profile?.id ?? '', ev.recurrenceId ?? '', ev.title ?? '').catch(() => {})
+          await sync?.deleteEvent(gid, ev.id, ev.date, profile?.name ?? 'Someone', myId ?? '', ev.recurrenceId ?? '', ev.title ?? '').catch(() => {})
         }
       }
     }
-    setEvents(prev => prev.filter(e => e.recurrenceId !== recurrenceId))
+    // Clear my own forwards for every occurrence in the series.
+    if (myId) {
+      const myShadows = events.filter(e =>
+        e.isShadow && e.creatorId === myId && seriesIds.has(e.sourceEventId))
+      for (const sh of myShadows) {
+        const gid = (sh.groups ?? [])[0]
+        if (!gid) continue
+        await db.deleteEvent(sh.date, sh.id).catch(() => {})
+        await sync?.deleteEvent(gid, sh.id, sh.date, profile?.name ?? 'Someone', myId).catch(() => {})
+      }
+    }
+    setEvents(prev => prev.filter(e =>
+      e.recurrenceId !== recurrenceId &&
+      !(e.isShadow && e.creatorId === myId && seriesIds.has(e.sourceEventId))))
     setModal(null)
   }, [db, notifs, sync, events, profile])
 
@@ -1190,11 +1207,14 @@ export default function App ({ db, notifs, sync }) {
         continue
       }
       if (!src) {
-        // Cascade-delete only when we actually belong to the source group —
+        // Cascade-delete when the source is definitively gone. Personal events
+        // (sourceGroupId === '') have no group replication to wait on — the
+        // forwarder is the source of truth, so missing locally means deleted.
+        // Group events: wait until we actually belong to the source group,
         // otherwise the source is just unreplicated (e.g. after mnemonic
-        // restore, before we've rejoined the source group), not deleted.
+        // restore, before we've rejoined the source group).
         const srcGid = sh.sourceGroupId
-        if (!srcGid || !myGroupIds.has(srcGid)) continue
+        if (srcGid && !myGroupIds.has(srcGid)) continue
         db.deleteEvent(sh.date, sh.id).catch(() => {})
         sync.deleteEvent(gid, sh.id, sh.date, myName, myId).catch(() => {})
         continue
