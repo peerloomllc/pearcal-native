@@ -3183,22 +3183,31 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           days.push(todayStr)
           days.sort((a,b) => a.localeCompare(b))
         }
-        return days.map(date => (
-          <div key={date} data-date={date} style={{ marginBottom:20 }}>
-            <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
-              marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
-              {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
-                { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
-            </div>
-            {seen.get(date).map((ev, i) => (
-              <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
-                <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
-                  use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal} groups={groups}
-                  onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+        return (
+          <>
+            {days.map(date => (
+              <div key={date} data-date={date} style={{ marginBottom:20 }}>
+                <div style={{ fontSize:12, fontWeight:400, color:th.muted, letterSpacing:'0.05em',
+                  marginBottom:8, paddingBottom:4, borderBottom:'1px solid ' + th.border }}>
+                  {date === todayStr ? 'TODAY' : new Date(date + 'T12:00:00').toLocaleDateString('en-US',
+                    { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
+                </div>
+                {seen.get(date).map((ev, i) => (
+                  <div key={ev.id} style={{ animation: `pearFadeUp 150ms var(--easing) ${i * 30}ms both` }}>
+                    <EventCard ev={ev} th={th} isPast={date < todayStr} myRsvpStatus={myRsvps[ev.id]} myProfileId={myProfileId}
+                      use24h={use24h} dayIndex={ev._dayIndex} dayTotal={ev._dayTotal} groups={groups}
+                      onClick={() => setModal({ mode:'edit', event:{ ...ev } })} />
+                  </div>
+                ))}
               </div>
             ))}
-          </div>
-        ))
+            {/* Scroll sentinel: ensures scrollToDate(today) can always push today
+                to the top even when little future content follows. Without it,
+                short lists clamp scrollTop short and leave past events visible
+                above today. 100vh is plenty for any realistic viewport. */}
+            <div aria-hidden="true" style={{ height:'100vh' }} />
+          </>
+        )
       })()}
       </div>
 

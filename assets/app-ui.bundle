@@ -19708,35 +19708,38 @@
               days.push(todayStr2);
               days.sort((a38, b) => a38.localeCompare(b));
             }
-            return days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
-                fontSize: 12,
-                fontWeight: 400,
-                color: th.muted,
-                letterSpacing: "0.05em",
-                marginBottom: 8,
-                paddingBottom: 4,
-                borderBottom: "1px solid " + th.border
-              }, children: date === todayStr2 ? "TODAY" : (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString(
-                "en-US",
-                { weekday: "long", month: "short", day: "numeric" }
-              ).toUpperCase() }),
-              seen.get(date).map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                EventCard,
-                {
-                  ev: ev2,
-                  th,
-                  isPast: date < todayStr2,
-                  myRsvpStatus: myRsvps[ev2.id],
-                  myProfileId,
-                  use24h,
-                  dayIndex: ev2._dayIndex,
-                  dayTotal: ev2._dayTotal,
-                  groups,
-                  onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
-                }
-              ) }, ev2.id))
-            ] }, date));
+            return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+              days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  fontSize: 12,
+                  fontWeight: 400,
+                  color: th.muted,
+                  letterSpacing: "0.05em",
+                  marginBottom: 8,
+                  paddingBottom: 4,
+                  borderBottom: "1px solid " + th.border
+                }, children: date === todayStr2 ? "TODAY" : (/* @__PURE__ */ new Date(date + "T12:00:00")).toLocaleDateString(
+                  "en-US",
+                  { weekday: "long", month: "short", day: "numeric" }
+                ).toUpperCase() }),
+                seen.get(date).map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  EventCard,
+                  {
+                    ev: ev2,
+                    th,
+                    isPast: date < todayStr2,
+                    myRsvpStatus: myRsvps[ev2.id],
+                    myProfileId,
+                    use24h,
+                    dayIndex: ev2._dayIndex,
+                    dayTotal: ev2._dayTotal,
+                    groups,
+                    onClick: () => setModal({ mode: "edit", event: { ...ev2 } })
+                  }
+                ) }, ev2.id))
+              ] }, date)),
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { "aria-hidden": "true", style: { height: "100vh" } })
+            ] });
           })()
         ] }),
         (() => {
