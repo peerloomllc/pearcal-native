@@ -551,11 +551,6 @@ export default function App ({ db, notifs, sync }) {
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
   const [blindPeerKey,   setBlindPeerKey]   = useState(null)
   const [syncingGroups,  setSyncingGroups]  = useState(() => new Set())
-  const [lastSyncedAt,   setLastSyncedAt]   = useState(() => {
-    try { return JSON.parse(localStorage.getItem('pearcal:lastSyncedAt') ?? '{}') } catch { return {} }
-  })
-  const [pullState,      setPullState]      = useState({ distance: 0, active: false })
-  const pullStateRef = useRef({ startY: 0, pulling: false, distance: 0 })
 
   const th = themes()
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -709,14 +704,8 @@ export default function App ({ db, notifs, sync }) {
     }
     function onSynced (d) {
       const gid = d?.groupId
-      const ts  = d?.ts ?? Date.now()
       if (gid) {
         setSyncingGroups(prev => { const s = new Set(prev); s.delete(gid); return s })
-        setLastSyncedAt(prev => {
-          const next = { ...prev, [gid]: ts }
-          try { localStorage.setItem('pearcal:lastSyncedAt', JSON.stringify(next)) } catch {}
-          return next
-        })
       } else {
         setSyncingGroups(new Set())
       }
@@ -812,67 +801,6 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])
-
-  // Pull-to-refresh gesture: triggers db.resyncAll() when the user drags
-  // downward past a threshold while at the top of any scroll container.
-  // Scoped to the calendar tab to avoid false triggers in settings sheets.
-  useEffect(() => {
-    if (!db) return
-    if (tab !== 'calendar') return
-    const THRESHOLD = 80
-    const CAP       = 140
-
-    function findScroller (el) {
-      let cur = el
-      while (cur && cur !== document.body) {
-        const style = getComputedStyle(cur)
-        if (/auto|scroll/.test(style.overflowY) && cur.scrollHeight > cur.clientHeight) return cur
-        cur = cur.parentElement
-      }
-      return null
-    }
-
-    function onStart (e) {
-      const t = e.touches?.[0]
-      if (!t) return
-      const scroller = findScroller(e.target)
-      const top = scroller?.scrollTop ?? 0
-      pullStateRef.current = { startY: t.clientY, pulling: top <= 0, distance: 0 }
-    }
-    function onMove (e) {
-      const s = pullStateRef.current
-      if (!s.pulling) return
-      const t = e.touches?.[0]
-      if (!t) return
-      const dy = t.clientY - s.startY
-      if (dy <= 0) {
-        s.pulling = false; s.distance = 0
-        setPullState({ distance: 0, active: false })
-        return
-      }
-      s.distance = Math.min(dy, CAP)
-      setPullState({ distance: s.distance, active: true })
-    }
-    function onEnd () {
-      const s = pullStateRef.current
-      if (s.pulling && s.distance > THRESHOLD) {
-        db.resyncAll?.().catch(() => {})
-      }
-      s.pulling = false; s.distance = 0
-      setPullState({ distance: 0, active: false })
-    }
-
-    window.addEventListener('touchstart',  onStart, { passive: true })
-    window.addEventListener('touchmove',   onMove,  { passive: true })
-    window.addEventListener('touchend',    onEnd,   { passive: true })
-    window.addEventListener('touchcancel', onEnd,   { passive: true })
-    return () => {
-      window.removeEventListener('touchstart',  onStart)
-      window.removeEventListener('touchmove',   onMove)
-      window.removeEventListener('touchend',    onEnd)
-      window.removeEventListener('touchcancel', onEnd)
-    }
-  }, [db, tab])
 
   // Screenshot mode: drive tab/date/modal from preconfigured scene
   const _scene = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
@@ -1598,25 +1526,6 @@ export default function App ({ db, notifs, sync }) {
               <Spinner size={12} /> Syncing…
             </div>
           )}
-          {pullState.active && syncingGroups.size === 0 && (() => {
-            const pct    = Math.min(1, pullState.distance / 80)
-            const ready  = pullState.distance > 80
-            return (
-              <div style={{ position:'fixed', top:`calc(var(--safe-area-top) + ${4 + pullState.distance * 0.25}px)`,
-                left:'50%', transform:'translateX(-50%)',
-                background:th.card?.background ?? 'var(--color-card)',
-                border:`1px solid ${th.border}`,
-                borderRadius:'var(--radius-lg)',
-                padding:'6px 12px', fontSize:12, fontWeight:300, zIndex:400,
-                opacity: pct, display:'flex', alignItems:'center', gap:8,
-                pointerEvents:'none', ...th.text }}>
-                <span style={{ display:'inline-block',
-                  transform:`rotate(${ready ? 180 : 0}deg)`,
-                  transition:'transform 120ms var(--easing)' }}>↓</span>
-                {ready ? 'Release to sync' : 'Pull to sync'}
-              </div>
-            )
-          })()}
           {tab === 'groups' && (
             <GroupsTab th={th} groups={groups} profile={profile} sync={sync} db={db} readyGroupKeys={readyGroupKeys}
               pendingApprovalGroups={pendingApprovalGroups}
@@ -1840,8 +1749,6 @@ export default function App ({ db, notifs, sync }) {
           <GroupSettingsModal th={th} group={groups.find(g => g.id === settingsGroup.id) ?? settingsGroup} me={profile} db={db} sync={sync}
             totalGroupsCount={groups.length}
             pendingApproval={pendingApprovalGroups.has(settingsGroup.id)}
-            isSyncing={syncingGroups.has(settingsGroup.id)}
-            lastSyncedAt={lastSyncedAt[settingsGroup.id] ?? null}
             onMemberLeft={async (gid, uid) => sync?.memberLeft(gid, uid).catch(() => {})}
             onClose={() => setSettingsGroup(null)}
             onUpdate={updateGroup} onDelete={deleteGroup}
@@ -4994,7 +4901,7 @@ function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, clo
 }
 
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
-function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pendingApproval = false, isSyncing, lastSyncedAt, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
+function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pendingApproval = false, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
   useEffect(() => {
     if (closeRef) {
@@ -5306,32 +5213,6 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
               ))}
             </div>
           </div>}
-
-          {/* Sync — visible to all members */}
-          {isMember && (
-            <div>
-              {section('SYNC')}
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <button onClick={() => { db?.resyncGroup(g.id).catch(() => {}) }}
-                  disabled={isSyncing}
-                  style={{ ...th.pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300,
-                    opacity: isSyncing ? 0.6 : 1, display:'flex', alignItems:'center', gap:6 }}>
-                  {isSyncing ? <><Spinner size={12} /> Syncing…</> : 'Sync now'}
-                </button>
-                <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>
-                  {isSyncing
-                    ? 'Fetching from peers…'
-                    : lastSyncedAt
-                      ? 'Last synced ' + formatRelativeTime(lastSyncedAt)
-                      : 'Not synced yet'}
-                </div>
-              </div>
-              <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:6, lineHeight:1.4 }}>
-                Forces peer discovery and pulls every writer's core to its tip.
-                Only shows data from peers currently reachable.
-              </div>
-            </div>
-          )}
 
           {/* My Nickname — visible to all members */}
           <div>
