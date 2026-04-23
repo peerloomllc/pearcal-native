@@ -16478,6 +16478,8 @@
     const closeInfoSheetRef = (0, import_react2.useRef)(null);
     const [scopeSheet, setScopeSheet] = (0, import_react2.useState)(null);
     const closeScopeSheetRef = (0, import_react2.useRef)(null);
+    const [deleteScopeSheet, setDeleteScopeSheet] = (0, import_react2.useState)(null);
+    const closeDeleteScopeSheetRef = (0, import_react2.useRef)(null);
     const closeEventModalRef = (0, import_react2.useRef)(null);
     const closeGroupSettingsRef = (0, import_react2.useRef)(null);
     const closeFullGridRef = (0, import_react2.useRef)(null);
@@ -16860,6 +16862,7 @@
         if (closeInfoSheetRef.current?.()) return;
         if (closeConfirmSheetRef.current?.()) return;
         if (closeScopeSheetRef.current?.()) return;
+        if (closeDeleteScopeSheetRef.current?.()) return;
         if (closeEventModalRef.current?.()) return;
         if (closeFullGridRef.current?.()) return;
         if (closeNewGroupSheetRef.current?.()) return;
@@ -17806,6 +17809,45 @@
           closeRef: closeScopeSheetRef
         }
       ),
+      deleteScopeSheet && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        DeleteScopeSheet,
+        {
+          th,
+          onChoose: (scope) => {
+            const { ev: ev2, isCreator } = deleteScopeSheet;
+            setDeleteScopeSheet(null);
+            if (scope === "one") {
+              if (isCreator) {
+                setConfirmSheet({
+                  title: "Delete Event?",
+                  message: "This event will be permanently deleted for everyone. This cannot be undone.",
+                  icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
+                  confirmLabel: "Delete",
+                  dangerous: true,
+                  onConfirm: () => deleteEvent(ev2.id)
+                });
+              } else {
+                deleteEvent(ev2.id);
+              }
+            } else {
+              if (isCreator) {
+                setConfirmSheet({
+                  title: "Delete All in Series?",
+                  message: "All events in this series will be permanently deleted for everyone. This cannot be undone.",
+                  icon: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
+                  confirmLabel: "Delete All",
+                  dangerous: true,
+                  onConfirm: () => deleteEventSeries(ev2.recurrenceId)
+                });
+              } else {
+                deleteEventSeries(ev2.recurrenceId);
+              }
+            }
+          },
+          onDismiss: () => setDeleteScopeSheet(null),
+          closeRef: closeDeleteScopeSheetRef
+        }
+      ),
       showOnboarding && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
         OnboardingModal,
         {
@@ -17882,6 +17924,9 @@
                 dangerous: true,
                 onConfirm: () => deleteEventSeries(req.ev.recurrenceId)
               });
+            } else if (req.type === "deleteScope") {
+              setModal(null);
+              setDeleteScopeSheet({ ev: req.ev, isCreator: !!req.isCreator });
             }
           }
         }
@@ -21231,6 +21276,79 @@
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "End" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { type: "time", style: inp, value: ev2.end, onChange: (e58) => set("end", e58.target.value) })
                 ] })
+              ] }),
+              (modal.mode === "create" || !ev2.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Recurring" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                    Toggle,
+                    {
+                      val: !!ev2.recurrence && ev2.recurrence !== "none",
+                      accent: th.accent,
+                      onChange: (v) => {
+                        if (v) {
+                          set("recurrence", "daily");
+                          if (!ev2.recurrenceEnd && ev2.date) {
+                            const [y, m3, d] = ev2.date.split("-").map(Number);
+                            const end = new Date(y + 1, m3 - 1, d);
+                            const fmt = (dt) => String(dt.getFullYear()) + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+                            set("recurrenceEnd", fmt(end));
+                          }
+                        } else {
+                          set("recurrence", "none");
+                        }
+                      }
+                    }
+                  )
+                ] }),
+                ev2.recurrence && ev2.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Frequency" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+                      "select",
+                      {
+                        style: { ...inp, appearance: "none" },
+                        value: ev2.recurrence,
+                        onChange: (e58) => {
+                          const val = e58.target.value;
+                          set("recurrence", val);
+                          if (val === "monthly-nth" && ev2.date) {
+                            const d = /* @__PURE__ */ new Date(ev2.date + "T12:00:00");
+                            const weekday = d.getDay();
+                            let nth = 0;
+                            const tmp = new Date(d.getFullYear(), d.getMonth(), 1);
+                            while (tmp <= d) {
+                              if (tmp.getDay() === weekday) nth++;
+                              tmp.setDate(tmp.getDate() + 1);
+                            }
+                            set("recurrenceNth", nth);
+                            set("recurrenceWeekday", weekday);
+                          }
+                        },
+                        children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "daily", children: "Daily" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "weekly", children: "Weekly" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "biweekly", children: "Every 2 weeks" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly", children: "Monthly (same date)" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly-nth", children: "Monthly (same weekday)" }),
+                          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "yearly", children: "Yearly" })
+                        ]
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        type: "date",
+                        style: inp,
+                        value: ev2.recurrenceEnd ?? "",
+                        onChange: (e58) => set("recurrenceEnd", e58.target.value)
+                      }
+                    )
+                  ] })
+                ] })
               ] })
             ] })
           ] }),
@@ -21639,59 +21757,6 @@
               overflow: "hidden",
               transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
             }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 14, paddingTop: 12 }, children: [
-              (modal.mode === "create" || !ev2.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
-                  "select",
-                  {
-                    style: { ...inp, appearance: "none" },
-                    value: ev2.recurrence ?? "none",
-                    onChange: (e58) => {
-                      const val = e58.target.value;
-                      set("recurrence", val);
-                      if (val === "monthly-nth" && ev2.date) {
-                        const d = /* @__PURE__ */ new Date(ev2.date + "T12:00:00");
-                        const weekday = d.getDay();
-                        let nth = 0;
-                        const tmp = new Date(d.getFullYear(), d.getMonth(), 1);
-                        while (tmp <= d) {
-                          if (tmp.getDay() === weekday) nth++;
-                          tmp.setDate(tmp.getDate() + 1);
-                        }
-                        set("recurrenceNth", nth);
-                        set("recurrenceWeekday", weekday);
-                      }
-                      if (val !== "none" && !ev2.recurrenceEnd) {
-                        const [y, m3, d] = ev2.date.split("-").map(Number);
-                        const end = new Date(y + 1, m3 - 1, d);
-                        const fmt = (dt) => String(dt.getFullYear()) + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
-                        set("recurrenceEnd", fmt(end));
-                      }
-                    },
-                    children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "none", children: "Does not repeat" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "daily", children: "Daily" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "weekly", children: "Weekly" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "biweekly", children: "Every 2 weeks" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly", children: "Monthly (same date)" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "monthly-nth", children: "Monthly (same weekday)" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("option", { value: "yearly", children: "Yearly" })
-                    ]
-                  }
-                )
-              ] }),
-              (modal.mode === "create" || !ev2.recurrenceId) && ev2.recurrence && ev2.recurrence !== "none" && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Repeat until" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-                  "input",
-                  {
-                    type: "date",
-                    style: inp,
-                    value: ev2.recurrenceEnd ?? "",
-                    onChange: (e58) => set("recurrenceEnd", e58.target.value)
-                  }
-                )
-              ] }),
               ev2.groups && ev2.groups.length > 0 && isEventCreator && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Label, { th, children: "Request RSVP" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -21899,46 +21964,37 @@
       ) }),
       modal.mode === "edit" && (() => {
         const isCreator = ev2.creatorId && profile?.id && ev2.creatorId === profile.id;
-        return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteEvent", ev: ev2 })) : onDelete(ev2.id),
-              style: {
-                background: "transparent",
-                border: `1px solid #D45F7A`,
-                borderRadius: 12,
-                padding: "11px",
-                color: "#D45F7A",
-                fontSize: 14,
-                fontWeight: 300,
-                fontFamily: FONT,
-                cursor: "pointer",
-                width: "100%"
-              },
-              children: isCreator ? "Delete" : "Remove for Me"
-            }
-          ),
-          ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: () => isCreator ? (bsCloseRef.current?.(), onRequestConfirm({ type: "deleteSeries", ev: ev2 })) : onDeleteSeries?.(ev2.recurrenceId),
-              style: {
-                background: "transparent",
-                border: `1px solid #D45F7A`,
-                borderRadius: 12,
-                padding: "11px",
-                color: "#D45F7A",
-                fontSize: 14,
-                fontWeight: 300,
-                fontFamily: FONT,
-                cursor: "pointer",
-                width: "100%"
-              },
-              children: isCreator ? "Delete All in Series" : "Remove All in Series"
-            }
-          )
-        ] });
+        const label = isCreator ? "Delete" : "Remove for Me";
+        const onClick = () => {
+          if (ev2.recurrenceId) {
+            bsCloseRef.current?.();
+            onRequestConfirm({ type: "deleteScope", ev: ev2, isCreator });
+          } else if (isCreator) {
+            bsCloseRef.current?.();
+            onRequestConfirm({ type: "deleteEvent", ev: ev2 });
+          } else {
+            onDelete(ev2.id);
+          }
+        };
+        return /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick,
+            style: {
+              background: "transparent",
+              border: `1px solid #D45F7A`,
+              borderRadius: 12,
+              padding: "11px",
+              color: "#D45F7A",
+              fontSize: 14,
+              fontWeight: 300,
+              fontFamily: FONT,
+              cursor: "pointer",
+              width: "100%"
+            },
+            children: label
+          }
+        ) });
       })()
     ] });
   }
@@ -23617,6 +23673,91 @@ ${link}`;
               cursor: "pointer"
             },
             children: "This & Future"
+          }
+        )
+      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        "button",
+        {
+          onClick: () => bsCloseRef.current?.(),
+          style: {
+            width: "100%",
+            padding: "12px",
+            borderRadius: 12,
+            border: `1px solid var(--color-border)`,
+            fontFamily: FONT,
+            background: "transparent",
+            color: "var(--color-text)",
+            fontSize: 14,
+            fontWeight: 300,
+            cursor: "pointer",
+            marginBottom: 8
+          },
+          children: "Cancel"
+        }
+      )
+    ] }) });
+  }
+  function DeleteScopeSheet({ th, onChoose, onDismiss, closeRef }) {
+    const bsCloseRef = (0, import_react2.useRef)(null);
+    (0, import_react2.useEffect)(() => {
+      if (closeRef) {
+        closeRef.current = () => {
+          bsCloseRef.current?.();
+          return true;
+        };
+        return () => {
+          closeRef.current = null;
+        };
+      }
+    }, []);
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(BottomSheet, { th, onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n8, { size: 28, weight: "thin", color: "var(--color-destructive)" }) }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontWeight: 300, fontSize: 17, ...th.text }, children: "Delete recurring event" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, fontWeight: 300 }, children: "Delete just this event, or the entire series?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10, width: "100%", marginTop: 8 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              bsCloseRef.current?.();
+              setTimeout(() => onChoose("one"), 280);
+            },
+            style: {
+              flex: 1,
+              padding: "12px",
+              borderRadius: 12,
+              border: "none",
+              fontFamily: FONT,
+              background: "var(--color-destructive)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 300,
+              cursor: "pointer"
+            },
+            children: "This Event"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              bsCloseRef.current?.();
+              setTimeout(() => onChoose("all"), 280);
+            },
+            style: {
+              flex: 1,
+              padding: "12px",
+              borderRadius: 12,
+              border: "none",
+              fontFamily: FONT,
+              background: "var(--color-destructive)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 300,
+              cursor: "pointer"
+            },
+            children: "Entire Series"
           }
         )
       ] }),
