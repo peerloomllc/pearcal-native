@@ -641,19 +641,25 @@ async function deleteEvent (date, id) {
   await db.del('reminders:' + id).catch(() => {})
   await db.del(NS.privateNotes + id).catch(() => {})
   await _deleteAllRsvps(id).catch(() => {})
+  // Tombstone guards against mirror-replay resurrection. localDeleteEvent
+  // already writes one for non-creator deletes; this path covers creator
+  // deletes and shadow deletes where the del op never passes through the
+  // remote-apply branch that writes the tombstone downstream.
+  await db.put(NS.deleted + id, { date, ts: Date.now() }).catch(() => {})
   scheduleWidgetCacheRefresh()
 }
 
 async function deleteEventSeries (recurrenceId) {
   const toDelete = []
   for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
-    if (value.recurrenceId === recurrenceId) toDelete.push({ key, id: value.id })
+    if (value.recurrenceId === recurrenceId) toDelete.push({ key, id: value.id, date: value.date })
   }
-  for (const { key, id } of toDelete) {
+  for (const { key, id, date } of toDelete) {
     await db.del(key)
     await db.del('reminders:' + id).catch(() => {})
     await db.del(NS.privateNotes + id).catch(() => {})
     await _deleteAllRsvps(id).catch(() => {})
+    await db.put(NS.deleted + id, { date, ts: Date.now() }).catch(() => {})
   }
   scheduleWidgetCacheRefresh()
 }
@@ -3037,10 +3043,10 @@ function makeApply (groupId) {
                 notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, eventTitle: val.eventTitle })
               }
             }
-            // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire
-            if (!isShadowKey) {
-              await db.put(NS.deleted + eventId, { ts: Date.now() }).catch(() => {})
-            }
+            // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire.
+            // Applies to shadows too — without it, a peer receiving the shadow delete op on initial
+            // sync replay has no guard against a later re-put resurrecting the shadow.
+            await db.put(NS.deleted + eventId, { ts: Date.now() }).catch(() => {})
           }
         }
       } else if (val.op === 'reinviteMember') {
