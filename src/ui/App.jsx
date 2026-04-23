@@ -4773,7 +4773,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, pendingAppr
               <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
                 padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
                 <div style={{ fontSize:18, lineHeight:1 }}>⏳</div>
-                <div style={{ flex:1, fontSize:12, color:th.text, fontWeight:300, lineHeight:1.4 }}>
+                <div style={{ flex:1, fontSize:12, ...th.text, fontWeight:300, lineHeight:1.4 }}>
                   <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
                   <div style={{ color:th.muted }}>
                     The owner must approve your return before you'll see the group's members and events.
@@ -5013,7 +5013,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
             <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:12,
               padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
               <div style={{ fontSize:20, lineHeight:1 }}>⏳</div>
-              <div style={{ flex:1, fontSize:13, color:th.text, fontWeight:300, lineHeight:1.45 }}>
+              <div style={{ flex:1, fontSize:13, ...th.text, fontWeight:300, lineHeight:1.45 }}>
                 <div style={{ fontWeight:400, marginBottom:3 }}>Waiting for owner approval</div>
                 <div style={{ color:th.muted }}>
                   The group owner is reviewing your recovery-phrase match. You'll see
