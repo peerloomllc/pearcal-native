@@ -400,6 +400,19 @@ function isShadowHidden (e, allEvents, myId) {
   return allEvents.some(x => !x.isShadow && x.id === e.sourceEventId)
 }
 
+// Agenda inclusion: Day-tab dayEvents and Month-tab cards share this rule.
+// Hide group events whose invitees[] excludes me (I can still see the dot on
+// the calendar grid — this only narrows the agenda list). Shadows with no
+// invitees stay visible as busy-time indicators for non-forwarders; the
+// forwarder's own duplicate shadow is separately hidden by isShadowHidden
+// when the source event is locally present.
+function isInAgenda (e, myId) {
+  if (!e.invitees || e.invitees.length === 0) return true
+  if (e.creatorId === myId) return true
+  if (e.invitees.includes(myId)) return true
+  return false
+}
+
 function shadowCreatorName (e, groups) {
   if (!e.isShadow) return null
   for (const g of groups ?? []) {
@@ -2351,8 +2364,14 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
   const dayEvents = useMemo(() => {
     let evs = eventsOnDate(selectedDate)
     if (filterGroupIds.size > 0) evs = evs.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
+    evs = evs.filter(e => isInAgenda(e, myProfileId))
+    // Hour-grid/Day view: hide shadows I didn't forward — other peers' busy-time
+    // forwards clutter my own hourly schedule. Matches the widget rule in
+    // src/widget-cache.js (widget drops all shadows). My own shadows are
+    // already suppressed by isShadowHidden when the source is local.
+    evs = evs.filter(e => !e.isShadow || e.creatorId === myProfileId)
     return evs
-  }, [selectedDate, eventsOnDate, filterGroupIds])
+  }, [selectedDate, eventsOnDate, filterGroupIds, myProfileId])
   const allDayEvents = dayEvents.filter(e => e.allDay)
   const timedEvents = dayEvents.filter(e => !e.allDay && e.start)
 
@@ -3137,7 +3156,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
         const days = []
         const filteredEvents = (filterGroupIds.size > 0
           ? events.filter(e => (e.groups ?? []).some(gid => filterGroupIds.has(gid)))
-          : events).filter(e => !isShadowHidden(e, events, myProfileId))
+          : events).filter(e => !isShadowHidden(e, events, myProfileId) && isInAgenda(e, myProfileId))
         filteredEvents
           .filter(e => (e.endDate || e.date) >= cutoffStr)
           .sort((a,b) => a.date.localeCompare(b.date))
