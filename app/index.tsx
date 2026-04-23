@@ -178,6 +178,19 @@ function notifId (eventId: string): number {
   return Math.abs(h)
 }
 
+// Format a "HH:mm" 24-hour time string as 12-hour with am/pm (e.g. "9:30am").
+// Mirrors the bare-side formatTime helper — keeps notification copy consistent
+// across the scheduler (RN) and sync-change notifications (bare).
+function formatTime12h (t: string | undefined): string {
+  if (!t) return ''
+  const [hStr, mStr] = t.split(':')
+  const h = parseInt(hStr, 10)
+  if (isNaN(h)) return t
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return h12 + ':' + (mStr ?? '00') + ampm
+}
+
 const MORNING_DIGEST_BASE = 900000
 const MORNING_DIGEST_SLOTS = 3
 
@@ -284,7 +297,7 @@ async function handleNotification (msg: any, webViewRef: any) {
           const label = OPTION_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
           const body = ev.allDay
             ? 'All day · ' + label
-            : label + ' · ' + ev.start + '–' + ev.end
+            : label + ' · ' + formatTime12h(ev.start) + '–' + formatTime12h(ev.end)
           try {
             await PearCalNotifications?.schedule?.({
               id:      base + i,
@@ -309,7 +322,7 @@ async function handleNotification (msg: any, webViewRef: any) {
               await PearCalNotifications?.schedule?.({
                 id:      base + 3,
                 title:   ev.title + ' is starting now',
-                body:    ev.start + ' to ' + ev.end,
+                body:    formatTime12h(ev.start) + ' to ' + formatTime12h(ev.end),
                 fireAt:  startFireAt,
                 eventId: ev.id,
                 tab:     'calendar',
