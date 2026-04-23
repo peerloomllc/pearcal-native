@@ -16325,6 +16325,12 @@
     if (!e58.isShadow) return false;
     return allEvents.some((x) => !x.isShadow && x.id === e58.sourceEventId);
   }
+  function isInAgenda(e58, myId) {
+    if (!e58.invitees || e58.invitees.length === 0) return true;
+    if (e58.creatorId === myId) return true;
+    if (e58.invitees.includes(myId)) return true;
+    return false;
+  }
   function shadowCreatorName(e58, groups) {
     if (!e58.isShadow) return null;
     for (const g of groups ?? []) {
@@ -18567,8 +18573,10 @@
     const dayEvents = (0, import_react2.useMemo)(() => {
       let evs = eventsOnDate(selectedDate);
       if (filterGroupIds.size > 0) evs = evs.filter((e58) => (e58.groups ?? []).some((gid) => filterGroupIds.has(gid)));
+      evs = evs.filter((e58) => isInAgenda(e58, myProfileId));
+      evs = evs.filter((e58) => !e58.isShadow || e58.creatorId === myProfileId);
       return evs;
-    }, [selectedDate, eventsOnDate, filterGroupIds]);
+    }, [selectedDate, eventsOnDate, filterGroupIds, myProfileId]);
     const allDayEvents = dayEvents.filter((e58) => e58.allDay);
     const timedEvents = dayEvents.filter((e58) => !e58.allDay && e58.start);
     const timeToY = (t7) => {
@@ -19669,7 +19677,7 @@
             const cutoffStr = cutoff.toISOString().slice(0, 10);
             const seen = /* @__PURE__ */ new Map();
             const days = [];
-            const filteredEvents = (filterGroupIds.size > 0 ? events.filter((e58) => (e58.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events).filter((e58) => !isShadowHidden(e58, events, myProfileId));
+            const filteredEvents = (filterGroupIds.size > 0 ? events.filter((e58) => (e58.groups ?? []).some((gid) => filterGroupIds.has(gid))) : events).filter((e58) => !isShadowHidden(e58, events, myProfileId) && isInAgenda(e58, myProfileId));
             filteredEvents.filter((e58) => (e58.endDate || e58.date) >= cutoffStr).sort((a38, b) => a38.date.localeCompare(b.date)).forEach((e58) => {
               const endDate = e58.endDate && e58.endDate > e58.date ? e58.endDate : e58.date;
               if (endDate === e58.date) {
