@@ -237,6 +237,19 @@ const NS = {
   deleted: 'deleted:',
 }
 
+// Extract the event id from an "events:{date}:{eventId}" key. Cannot use
+// split(':').pop() because shadow ids contain colons (e.g.
+// "shadow:src:fwd:gid"), which would return the last colon segment ("gid")
+// instead of the full shadow id. Skips the "events:" prefix and the
+// "YYYY-MM-DD:" date segment.
+function eventIdFromKey (key) {
+  const first = key.indexOf(':')
+  if (first < 0) return key
+  const second = key.indexOf(':', first + 1)
+  if (second < 0) return key.slice(first + 1)
+  return key.slice(second + 1)
+}
+
 // Tombstones (`deleted:{eventId}`) guard against sync-replay resurrection and
 // duplicate delete notifications. After this window the originating delete op
 // will have linearized on every peer's Autobase, so the guard is no longer
@@ -1308,12 +1321,6 @@ async function _joinGroupImpl (group) {
     if (base.writable) stampOwnerWriterKey()
     else base.once('writable', stampOwnerWriterKey)
   }
-
-  // Register onAppend for this base so replication triggers apply() even if the
-  // peer connection predates joinGroup (e.g. rejoin after voluntary leave).
-  // The onopen handler only covers bases that existed when the connection opened.
-  const onLateAppend = () => base.update().catch(e => console.warn('[REPL] late-join update error:', e.message))
-  base.on('append', onLateAppend)
 
   // Announce our writer key to any already-connected peers
   const writerKey = b4a.toString(base.local.key, 'hex')
@@ -2389,7 +2396,7 @@ async function resyncGroup (groupId) {
       if (!value) continue
       if (key.startsWith('events:')) {
         // Respect local delete tombstone — never resurrect user-deleted events
-        const eventId = key.split(':').pop()
+        const eventId = eventIdFromKey(key)
         const tombstone = await db.get(NS.deleted + eventId).catch(() => null)
         if (tombstone) continue
         const existing = await db.get(key).catch(() => null)
@@ -3016,7 +3023,7 @@ function makeApply (groupId) {
           send({ type: 'event', event: 'groupDeleted', data: groupId })
         } else {
           const delDelta = val.type === 'event'
-            ? { removedIds: [val.key.split(':').pop()] }
+            ? { removedIds: [eventIdFromKey(val.key)] }
             : val.type === 'rsvp'
               ? { rsvpsChanged: true }
               : val.type === 'group' || val.type === 'groupMembers'
@@ -3024,7 +3031,7 @@ function makeApply (groupId) {
                 : { fullReload: true }
           emitSync(groupId, delDelta)
           if (isRemote && val.type === 'event') {
-            const eventId = val.key.split(':').pop()
+            const eventId = eventIdFromKey(val.key)
             // Cancel any scheduled notification for this deleted event
             send({ type: 'event', event: 'cancelNotification', data: eventId })
             // Shadow (busy-time) deletes are silent — mirror the put side
@@ -3816,8 +3823,44 @@ async function reclaimStorage () {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+// Periodic safety-net tick to force re-linearisation on every active base.
+// Autobase has its own per-writer core.on('append') hook, but we've observed
+// member-side apply() lag where delete ops don't propagate until the app is
+// force-closed. This tick bounds worst-case lag to ~15s.
+//
+// Per-tick work:
+//   1. core.update() on every active writer core — re-requests tip length
+//      from peers so lazy-pull doesn't leave us behind on missed appends.
+//   2. base.update() — re-linearises whatever new blocks landed, firing apply().
+let _realtimeSyncTimer = null
+const REALTIME_SYNC_INTERVAL_MS = 15_000
+async function runRealtimeSyncTick () {
+  for (const [groupId, base] of bases) {
+    try {
+      const writers = base.activeWriters || base.writers || []
+      for (const w of writers) {
+        const core = w?.core
+        if (core && typeof core.update === 'function') {
+          await core.update().catch(() => {})
+        }
+      }
+      await base.update()
+    } catch (e) { console.warn('[RT-TICK] group', groupId, 'error:', e?.message) }
+  }
+}
+function startRealtimeSyncTick () {
+  if (_realtimeSyncTimer) return
+  _realtimeSyncTimer = setInterval(() => {
+    runRealtimeSyncTick().catch(() => {})
+  }, REALTIME_SYNC_INTERVAL_MS)
+}
+function stopRealtimeSyncTick () {
+  if (_realtimeSyncTimer) { clearInterval(_realtimeSyncTimer); _realtimeSyncTimer = null }
+}
+
 async function shutdown () {
   try {
+    stopRealtimeSyncTick()
     if (blind) { blind.close?.(); blind = null }
     if (swarm) { await swarm.destroy(); swarm = null }
     if (store) { await store.close(); store = null }
@@ -3895,13 +3938,10 @@ async function _doInit (dir, attempt = 0) {
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
         async onopen () {
-          // Reactively call base.update() when remote blocks arrive
-          // so apply() processes new events without needing a force-restart
-          for (const [groupId, base] of bases) {
-            const onAppend = () => base.update().catch(e => console.warn('[REPL] update error:', e.message))
-            base.on('append', onAppend)
-            stream.once('close', () => base.off('append', onAppend))
-            // Process any blocks that replicated before onopen fired (race fix for late joiners)
+          // Process any blocks that replicated before onopen fired (race fix for late joiners).
+          // Live updates are handled by Autobase's internal core.on('append') hook plus the
+          // periodic startRealtimeSyncTick() safety net.
+          for (const [, base] of bases) {
             base.update().catch(e => console.warn('[REPL] initial update error:', e.message))
           }
 
@@ -4567,6 +4607,7 @@ async function _doInit (dir, attempt = 0) {
     dedupeStaleEventKeys().catch(e => console.warn('event dedupe:', e.message))
     send({ type: 'event', event: 'ready' })
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
+    startRealtimeSyncTick()
   } catch(e) {
     console.error('Init failed:', e.message)
     if (e.message && e.message.includes('lock') && attempt < 20) {
