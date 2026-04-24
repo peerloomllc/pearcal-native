@@ -539,6 +539,21 @@ async function getOrCreateWriterProof (groupId, writerKey) {
   return proof
 }
 
+// Multi-device self-authorship check (TODO #11 Phase 4). Returns true iff the
+// given `nodeWriterKey` belongs to any device of MY identity — meaning the
+// op authored by that writer is a self-initiated action, not a remote peer's.
+// Callers suppress their own notifications when this returns true.
+//
+// Uses the `writerIdentity:{groupId}:{writerKey}` index populated by every
+// verified writer-announce, so a paired-sibling device's writerKey resolves
+// to the shared identity within a few seconds of first connection.
+async function isSelfAuthoredOp (groupId, nodeWriterKey) {
+  if (!_identity || !nodeWriterKey) return false
+  const myIdentityHex = b4a.toString(_identity.identityPublicKey, 'hex')
+  const wi = await db.get('writerIdentity:' + groupId + ':' + nodeWriterKey).catch(() => null)
+  return wi?.value?.identityPublicKey === myIdentityHex
+}
+
 // Build a writer-announce payload Buffer. If identity is available, attaches
 // identityPublicKey + proof so the receiver can bind this writerKey to the
 // identity (and recognise wipe+rejoin of an existing member in Phase 2).
@@ -1332,6 +1347,22 @@ async function _joinGroupImpl (group) {
   if (isOwner) {
     const stampOwnerWriterKey = async () => {
       try {
+        // Multi-device guard (TODO #11 Phase 4 regression fix). On a secondary
+        // device paired from an existing primary, `isOwner` is true because the
+        // group's ownerId matches our identity-derived profile.id — but the
+        // primary is the active owner writer, not us. Stamping here would
+        // append {members: [self-only], updatedAt: now} to the group's
+        // Autobase; the apply() LWW rule then treats it as authoritative
+        // (owner-id present in incoming members), dropping every other member
+        // including the primary's entry. The owner-activity heartbeat from PR
+        // #129 already matches any device of the owner's identity, so the
+        // stamp isn't needed for a paired sibling. `claimOwnership` handles
+        // the "primary permanently gone" case separately.
+        const pairMeta = await db.get('personalMeta:bootstrap').catch(() => null)
+        if (pairMeta?.value?.adoptedFromPair) {
+          console.log('[OWNER_WRITERKEY_STAMP] skipping — paired-sibling device:', group.id)
+          return
+        }
         const ownerWriterKey = b4a.toString(base.local.key, 'hex')
         const g = await getGroup(group.id)
         if (!g) return
@@ -1432,6 +1463,10 @@ function makePersonalApply () {
           await db.del(val.key).catch(() => {})
           await db.del('reminders:' + eid).catch(() => {})
           await db.del(NS.privateNotes + eid).catch(() => {})
+          // Emit sync so sibling-device UIs refresh in real-time. Without
+          // this the personal-base del replicates to local DB but the calendar
+          // state keeps the stale event until the app reopens.
+          emitSync(null, { removedIds: [eid] })
         }
         scheduleWidgetCacheRefresh()
         continue
@@ -1465,11 +1500,15 @@ function makePersonalApply () {
       if (val.op === 'put' && val.type === 'groupMembership' && val.key && val.value) {
         await view.put(val.key, val.value)
         await db.put(val.key, val.value).catch(() => {})
+        // Full reload — a sibling joined a new group; UI's group list should refresh.
+        emitSync(null, { fullReload: true })
         continue
       }
       if (val.op === 'del' && val.type === 'groupMembership' && val.key) {
         await view.del(val.key)
         await db.del(val.key).catch(() => {})
+        // Full reload — a sibling left a group; UI's group list should refresh.
+        emitSync(null, { fullReload: true })
         continue
       }
     }
@@ -3621,6 +3660,11 @@ function makeApply (groupId) {
           if (isRemote && val.type === 'event') {
             // Shadow (busy-time) events carry no invitation/commitment — silent
             if (val.value.isShadow) continue
+            // Multi-device: suppress notifications for ops authored by any
+            // sibling device of MY identity (TODO #11 Phase 4). Without this,
+            // creating an event on one paired device fires a notification on
+            // every other paired device.
+            if (await isSelfAuthoredOp(groupId, nodeWriterKey)) continue
             // Skip notification if user locally deleted this event
             const notifTombstone = await db.get(NS.deleted + val.value.id).catch(() => null)
             if (notifTombstone) continue
@@ -3762,8 +3806,11 @@ function makeApply (groupId) {
             send({ type: 'event', event: 'cancelNotification', data: eventId })
             // Shadow (busy-time) deletes are silent — mirror the put side
             const isShadowKey = val.key.includes(':shadow:')
+            // Multi-device: suppress notifications for ops authored by any
+            // sibling device of MY identity (TODO #11 Phase 4).
+            const selfAuthoredDel = await isSelfAuthoredOp(groupId, nodeWriterKey)
             const delTombstone = await db.get(NS.deleted + eventId).catch(() => null)
-            if (!delTombstone && !isShadowKey && !recentDeleteNotifs.has(eventId)) {
+            if (!delTombstone && !isShadowKey && !selfAuthoredDel && !recentDeleteNotifs.has(eventId)) {
               recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
