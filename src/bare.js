@@ -226,6 +226,10 @@ async function handle (method, args) {
     case 'claimOwnership':   return claimOwnership(args[0])
     case 'enablePersonalSync':   return enablePersonalSync()
     case 'getPersonalSyncStatus': return getPersonalSyncStatus()
+    case 'startPairing':      return startPairing()
+    case 'cancelPairing':     return cancelPairing()
+    case 'consumePairLink':   return consumePairLink(args[0])
+    case 'getPairingStatus':  return getPairingStatus()
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -1641,6 +1645,369 @@ async function closePersonalBase () {
   if (personalBase) {
     try { await personalBase.close() } catch (e) { console.warn('[personal] close error:', e.message) }
     personalBase = null
+  }
+}
+
+// ── Device-pair protocol (TODO #11 Phase 4, PR #B) ───────────────────────────
+// Two-device onboarding under a single identity. Primary device generates a
+// transient Hyperswarm topic + one-shot handshake token, displays the URL as a
+// QR / shareable text (UI in PR #C). Secondary device redeems the URL via
+// consumePairLink, handshakes over the `pearcal/device-pair` Protomux channel,
+// receives the mnemonic + personalBaseKey + group list in one round-trip, then
+// sends its personal-base writerKey back so the primary can addWriter it.
+//
+// Per-group writerKeys stay on the writer-announce path (bare.js:~4243) — the
+// primary can't pre-grant them from the pair handshake because corestore
+// namespaces mint a distinct local writer key per group / per device.
+//
+// Single-use: handshake is consumed on first valid hello. 15-min expiry.
+const PAIR_EXPIRY_MS    = 15 * 60 * 1000
+const PAIR_CHANNEL_PROTO = 'pearcal/device-pair'
+const PAIR_CHANNEL_ID    = Buffer.from('pearcal-device-pair-v1')
+let _pairSession = null
+
+function _hex32 () {
+  const b = b4a.alloc(32); sodium.randombytes_buf(b); return b4a.toString(b, 'hex')
+}
+
+function _clearPairSession () {
+  if (!_pairSession) return
+  if (_pairSession.expiryTimer) clearTimeout(_pairSession.expiryTimer)
+  const topic = _pairSession.topicBuf
+  _pairSession = null
+  if (topic && swarm) swarm.leave(topic).catch(() => {})
+}
+
+function _emitPair (event, data) {
+  send({ type: 'event', event, data })
+}
+
+// Primary: mint topic+handshake, join the transient swarm, return the URL for
+// the UI to encode as QR / share sheet (UI layer not in PR #B). Must be called
+// after enablePersonalSync — the secondary needs a personalBaseKey to receive.
+async function startPairing () {
+  if (_pairSession) {
+    if (_pairSession.role === 'primary') return _pairSessionSnapshot()
+    throw new Error('startPairing: another pair session in progress (role=' + _pairSession.role + ')')
+  }
+  if (!swarm) throw new Error('startPairing: swarm not ready')
+  await ensureIdentity()
+  const personalMeta = await db.get('personalMeta:bootstrap').catch(() => null)
+  if (!personalMeta?.value?.key) {
+    throw new Error('startPairing: personal sync not enabled (call enablePersonalSync first)')
+  }
+  const topicHex     = _hex32()
+  const handshakeHex = _hex32()
+  const identityHex  = b4a.toString(_identity.identityPublicKey, 'hex')
+  const expiresAt    = Date.now() + PAIR_EXPIRY_MS
+  const topicBuf     = b4a.from(topicHex, 'hex')
+
+  _pairSession = {
+    role: 'primary',
+    topicHex, handshakeHex, identityHex, expiresAt, topicBuf,
+    personalBaseKey: personalMeta.value.key,
+    expiryTimer: setTimeout(() => {
+      if (_pairSession?.handshakeHex === handshakeHex) {
+        console.log('[pair] session expired')
+        _emitPair('pairingExpired', { handshake: handshakeHex })
+        _clearPairSession()
+      }
+    }, PAIR_EXPIRY_MS),
+  }
+
+  try { swarm.join(topicBuf, { server: true, client: true }) }
+  catch (e) {
+    _clearPairSession()
+    throw e
+  }
+  _emitPair('pairingStarted', _pairSessionSnapshot())
+  return _pairSessionSnapshot()
+}
+
+function _pairSessionSnapshot () {
+  if (!_pairSession) return { active: false }
+  const { role, topicHex, handshakeHex, identityHex, expiresAt } = _pairSession
+  const { buildPairLink } = require('./invite.js')
+  const url = role === 'primary'
+    ? buildPairLink({ topic: topicHex, handshake: handshakeHex, identity: identityHex, expiresMs: expiresAt })
+    : null
+  return { active: true, role, url, expiresAt }
+}
+
+async function cancelPairing () {
+  if (!_pairSession) return { active: false }
+  const snap = { active: false, role: _pairSession.role }
+  _clearPairSession()
+  return snap
+}
+
+function getPairingStatus () { return _pairSessionSnapshot() }
+
+// Secondary: called with the raw `pearcal://pair` URL. Validates, joins the
+// pair swarm topic, and waits for the primary's `granted` reply to install the
+// mnemonic + open the personal base. Returns when `complete` arrives from the
+// primary (pair fully done) or rejects on expiry / mismatch / verify failure.
+async function consumePairLink (url) {
+  if (_pairSession) throw new Error('consumePairLink: another pair session in progress')
+  if (!swarm) throw new Error('consumePairLink: swarm not ready')
+  const { parsePairLink } = require('./invite.js')
+  const parsed = parsePairLink(url)
+  if (!parsed.ok) throw new Error('consumePairLink: ' + parsed.error)
+  const { topic, handshake, identity, expiresMs } = parsed
+  if (Date.now() >= expiresMs) throw new Error('consumePairLink: link expired')
+
+  const topicBuf = b4a.from(topic, 'hex')
+  const challengeHex = _hex32()
+  const completionPromise = new Promise((resolve, reject) => {
+    _pairSession = {
+      role: 'secondary',
+      topicHex: topic, handshakeHex: handshake, identityHex: identity,
+      expiresAt: expiresMs, topicBuf, challengeHex,
+      groupsReceived: null,
+      resolve, reject,
+      expiryTimer: setTimeout(() => {
+        if (_pairSession?.handshakeHex === handshake) {
+          const err = new Error('pair_expired')
+          _emitPair('pairingFailed', { reason: 'expired', handshake })
+          reject(err)
+          _clearPairSession()
+        }
+      }, Math.max(0, expiresMs - Date.now())),
+    }
+  })
+
+  try { swarm.join(topicBuf, { server: true, client: true }) }
+  catch (e) {
+    _clearPairSession()
+    throw e
+  }
+  _emitPair('pairingStarted', _pairSessionSnapshot())
+  return completionPromise
+}
+
+// Primary: handle hello from secondary. Verifies handshake, signs the
+// secondary's challenge with our identityKeyPair so the secondary can verify
+// we're the expected identity, and replies with the mnemonic + personal base
+// key + group list in one message.
+async function _handlePairHello (parsed, replySend) {
+  if (_pairSession?.role !== 'primary') return
+  if (parsed.handshake !== _pairSession.handshakeHex) {
+    console.warn('[pair] hello with wrong handshake, dropping')
+    return
+  }
+  if (Date.now() >= _pairSession.expiresAt) {
+    _emitPair('pairingExpired', { handshake: _pairSession.handshakeHex })
+    _clearPairSession()
+    return
+  }
+  if (_pairSession.handshakeConsumed) {
+    console.warn('[pair] handshake already consumed, dropping duplicate hello')
+    return
+  }
+  _pairSession.handshakeConsumed = true
+
+  try {
+    const mnemonic = await nativeRequest('getMnemonic')
+    if (!mnemonic) throw new Error('no mnemonic on primary')
+
+    await ensureIdentity()
+    const challengeBuf = b4a.from(parsed.challenge, 'hex')
+    const sig = b4a.alloc(sodium.crypto_sign_BYTES)
+    sodium.crypto_sign_detached(sig, challengeBuf, _identity.identityKeyPair.secretKey)
+
+    const myProfile = await getProfile().catch(() => null)
+    const myIdentityHex = b4a.toString(_identity.identityPublicKey, 'hex')
+    const groups = []
+    for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + 'ÿ' })) {
+      if (!value?.id || !value?.groupKey) continue
+      // Only share groups the primary actually belongs to (skip migrated or
+      // forgotten groups). Conservative: require the primary's identity or
+      // profile.id to appear in members[].
+      const members = value.members ?? []
+      const mine = members.some(m =>
+        (m.identityPublicKey && m.identityPublicKey === myIdentityHex)
+        || (myProfile?.id && m.id === myProfile.id)
+      )
+      if (!mine) continue
+      groups.push({
+        id:        value.id,
+        name:      value.name,
+        groupKey:  value.groupKey,
+        ownerId:   value.ownerId,
+        color:     value.color,
+        emoji:     value.emoji,
+        icon:      value.icon,
+        joinedAt:  value.joinedAt ?? Date.now(),
+      })
+    }
+
+    const granted = {
+      type: 'granted',
+      mnemonic,
+      personalBaseKey: _pairSession.personalBaseKey,
+      identitySignature: b4a.toString(sig, 'hex'),
+      identityPublicKey: myIdentityHex,
+      groups,
+    }
+    replySend(granted)
+    console.log('[pair] granted sent: groups=' + groups.length)
+  } catch (e) {
+    console.error('[pair] hello handler error:', e.message)
+    _emitPair('pairingFailed', { reason: 'primary_grant_error', message: e.message })
+    _clearPairSession()
+  }
+}
+
+// Secondary: handle granted from primary. Verifies the identity signature,
+// persists the mnemonic, re-derives identity, seeds personalMeta:bootstrap,
+// opens the personal base, and replies with this device's personal writer key.
+async function _handlePairGranted (parsed, replySend) {
+  if (_pairSession?.role !== 'secondary') return
+  if (_pairSession.granted) return
+  if (Date.now() >= _pairSession.expiresAt) {
+    const err = new Error('pair_expired')
+    _pairSession.reject?.(err)
+    _emitPair('pairingFailed', { reason: 'expired' })
+    _clearPairSession()
+    return
+  }
+  try {
+    if (parsed.identityPublicKey !== _pairSession.identityHex) {
+      throw new Error('identity mismatch vs URL')
+    }
+    const sig = b4a.from(parsed.identitySignature, 'hex')
+    const challenge = b4a.from(_pairSession.challengeHex, 'hex')
+    const pk = b4a.from(_pairSession.identityHex, 'hex')
+    if (sig.length !== sodium.crypto_sign_BYTES || pk.length !== sodium.crypto_sign_PUBLICKEYBYTES) {
+      throw new Error('signature shape')
+    }
+    if (!sodium.crypto_sign_verify_detached(sig, challenge, pk)) {
+      throw new Error('signature verify failed')
+    }
+
+    // Persist mnemonic + re-derive identity so profile.id matches across devices.
+    await nativeRequest('setMnemonic', [parsed.mnemonic])
+    _identity = null
+    _writerProofs.clear()
+    await ensureIdentity()
+    const idHex  = b4a.toString(_identity.identityPublicKey, 'hex')
+    const newId  = deriveProfileIdFromIdentity(_identity.identityPublicKey)
+    const existing = await db.get(NS.profile).catch(() => null)
+    if (existing?.value) {
+      // Mirror the restoreMnemonic guard: refuse if local groups exist under
+      // a different id — would orphan invitee/RSVP references. Fresh pair
+      // (canonical flow) has no groups so this passes.
+      let hasGroups = false
+      for await (const _ of db.createReadStream({ gt: NS.groups, lt: NS.groups + 'ÿ', limit: 1 })) {
+        hasGroups = true; break
+      }
+      if (hasGroups && existing.value.id !== newId) {
+        throw new Error('local groups exist under a different id; wipe before pairing')
+      }
+      await db.put(NS.profile, {
+        ...existing.value,
+        id: newId,
+        identityPublicKey: idHex,
+        updatedAt: Date.now(),
+      })
+    }
+
+    // Seed personal-base bootstrap to the primary's key, mark migration done
+    // (no data to migrate — secondary is fresh), open the base, join the swarm.
+    await db.put('personalMeta:bootstrap', {
+      key: parsed.personalBaseKey,
+      createdAt: Date.now(),
+      adoptedFromPair: true,
+    })
+    await db.put('personalMeta:migrated', { ts: Date.now(), counts: { events: 0, reminders: 0, notes: 0, groups: 0 }, skipped: 'secondary_pair' })
+    await ensurePersonalBase()
+    if (!personalBase) throw new Error('personal base did not open')
+
+    const newDeviceKey = b4a.toString(personalBase.local.key, 'hex')
+    _pairSession.granted = true
+    _pairSession.groupsReceived = parsed.groups ?? []
+    replySend({ type: 'personalWriter', newDeviceKey })
+    console.log('[pair] granted processed; personalWriter sent')
+  } catch (e) {
+    console.error('[pair] granted handler error:', e.message)
+    _pairSession?.reject?.(e)
+    _emitPair('pairingFailed', { reason: 'secondary_grant_error', message: e.message })
+    _clearPairSession()
+  }
+}
+
+// Primary: handle secondary's personalWriter. Grants addWriter on the personal
+// base and sends complete. Group addWriters flow via the existing
+// writer-announce admission path once the secondary joins each group's swarm.
+async function _handlePairPersonalWriter (parsed, replySend) {
+  if (_pairSession?.role !== 'primary') return
+  if (!_pairSession.handshakeConsumed) return
+  const newDeviceKey = parsed.newDeviceKey
+  if (!/^[0-9a-f]{64}$/i.test(newDeviceKey ?? '')) {
+    console.warn('[pair] personalWriter: invalid newDeviceKey')
+    return
+  }
+  try {
+    if (!personalBase) {
+      const opened = await ensurePersonalBase()
+      if (!opened) throw new Error('personal base not open on primary')
+    }
+    if (!personalBase.writable) throw new Error('personal base not writable on primary')
+    await personalBase.append({ addWriter: newDeviceKey })
+    console.log('[pair] addWriter on personal base:', newDeviceKey.slice(0, 16) + '…')
+    replySend({ type: 'complete' })
+    _emitPair('pairingCompleted', { role: 'primary' })
+    _clearPairSession()
+  } catch (e) {
+    console.error('[pair] personalWriter handler error:', e.message)
+    replySend({ type: 'error', reason: 'primary_addwriter_error', message: e.message })
+    _emitPair('pairingFailed', { reason: 'primary_addwriter_error', message: e.message })
+    _clearPairSession()
+  }
+}
+
+// Secondary: handle complete from primary. Persist group records + kick off
+// joinGroup for each so Hyperswarm topics come online and writer-announce
+// admission grants addWriter per group.
+async function _handlePairComplete () {
+  if (_pairSession?.role !== 'secondary') return
+  const groups = _pairSession.groupsReceived ?? []
+  const resolve = _pairSession.resolve
+  try {
+    for (const g of groups) {
+      const existing = await getGroup(g.id).catch(() => null)
+      if (existing) continue
+      const profile = await getProfile().catch(() => null)
+      const selfMember = profile ? {
+        id: profile.id,
+        name: profile.name,
+        avatar: profile.avatar ?? '?',
+        publicKey: profile.publicKey,
+        ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+      } : null
+      const seed = {
+        id:       g.id,
+        name:     g.name,
+        color:    g.color,
+        emoji:    g.emoji,
+        icon:     g.icon,
+        ownerId:  g.ownerId,
+        groupKey: g.groupKey,
+        members:  selfMember ? [selfMember] : [],
+        joinedAt: g.joinedAt ?? Date.now(),
+      }
+      await db.put(NS.groups + g.id, seed).catch(() => {})
+      await db.put('joinedAt:' + g.id, { ts: seed.joinedAt }).catch(() => {})
+      joinGroup(seed).catch(e => console.warn('[pair] secondary joinGroup error for', g.id, e.message))
+    }
+    _emitPair('pairingCompleted', { role: 'secondary', groups: groups.length })
+    resolve?.({ ok: true, groups: groups.length })
+  } catch (e) {
+    console.error('[pair] complete handler error:', e.message)
+    _emitPair('pairingFailed', { reason: 'secondary_complete_error', message: e.message })
+    _pairSession?.reject?.(e)
+  } finally {
+    _clearPairSession()
   }
 }
 
@@ -4672,6 +5039,49 @@ async function _doInit (dir, attempt = 0) {
       })
 
       channel.open()
+
+      // ── Device-pair channel (TODO #11 Phase 4) ─────────────────────────────
+      // Opened on every connection but gated on _pairSession. Idle on peers
+      // unrelated to pairing. Pre-existing connections (e.g. a shared group)
+      // don't participate — the canonical flow pairs a fresh install against a
+      // primary that has no prior swarm connection to the secondary.
+      const pairChannel = mux.createChannel({
+        protocol: PAIR_CHANNEL_PROTO,
+        id: PAIR_CHANNEL_ID,
+        async onopen () {
+          try {
+            if (_pairSession?.role === 'secondary' && !_pairSession.granted) {
+              pairMsg.send(Buffer.from(JSON.stringify({
+                type: 'hello',
+                handshake: _pairSession.handshakeHex,
+                challenge: _pairSession.challengeHex,
+              })))
+            }
+          } catch (e) { console.warn('[pair] onopen error:', e.message) }
+        },
+        onclose () {}
+      })
+
+      const pairMsg = pairChannel ? pairChannel.addMessage({
+        onmessage: async function (buf) {
+          try {
+            const parsed = JSON.parse(buf.toString())
+            const replySend = (m) => { try { pairMsg.send(Buffer.from(JSON.stringify(m))) } catch(e) { console.warn('[pair] reply send error:', e.message) } }
+            if (parsed.type === 'hello')               await _handlePairHello(parsed, replySend)
+            else if (parsed.type === 'granted')        await _handlePairGranted(parsed, replySend)
+            else if (parsed.type === 'personalWriter') await _handlePairPersonalWriter(parsed, replySend)
+            else if (parsed.type === 'complete')       await _handlePairComplete()
+            else if (parsed.type === 'error') {
+              console.warn('[pair] peer error:', parsed.reason, parsed.message)
+              _emitPair('pairingFailed', { reason: parsed.reason ?? 'peer_error', message: parsed.message })
+              if (_pairSession?.role === 'secondary') _pairSession.reject?.(new Error(parsed.message ?? parsed.reason ?? 'peer_error'))
+              _clearPairSession()
+            }
+          } catch (e) { console.error('[pair] onmessage error:', e.message) }
+        }
+      }) : null
+
+      if (pairChannel) pairChannel.open()
 
     })
 

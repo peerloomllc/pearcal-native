@@ -27,6 +27,12 @@ const SCHEME   = 'https://peerloomllc.com'
 const MAX_NAME = 64    // chars
 const KEY_LEN  = 64    // hex chars (32-byte public key)
 
+// Device-pair URLs (TODO #11 Phase 4). Custom scheme — MUST NOT be HTTPS,
+// since the handshake response transfers the user's mnemonic and the URL
+// should never touch peerloomllc.com's logs. Fifteen-minute hard expiry.
+const PAIR_SCHEME  = 'pearcal://pair'
+const PAIR_HEX_32  = 64   // hex chars for 32-byte topic / handshake / identity
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -254,4 +260,69 @@ function _defaultColor (groupId) {
 /** Generate initials from a display name. */
 function _initials (name = '') {
   return name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 2) || '?'
+}
+
+// ─── Device-pair URLs (TODO #11 Phase 4) ──────────────────────────────────────
+
+/**
+ * Build a `pearcal://pair` URL that a secondary device redeems to join the
+ * primary's identity. Embeds the pairing-topic key, a one-shot handshake
+ * token, the primary's identityPublicKey (so the secondary can verify the
+ * peer it connects to is the expected identity), and a hard expiry.
+ *
+ * @param {object} params
+ * @param {string} params.topic       32-byte topic as hex (64 chars)
+ * @param {string} params.handshake   32-byte one-shot token as hex (64 chars)
+ * @param {string} params.identity    primary identityPublicKey as hex (64 chars)
+ * @param {number} params.expiresMs   unix-ms absolute expiry timestamp
+ */
+export function buildPairLink ({ topic, handshake, identity, expiresMs }) {
+  const params = new URLSearchParams({
+    topic, handshake, identity, expires: String(expiresMs),
+  })
+  return `${PAIR_SCHEME}?${params.toString()}`
+}
+
+/**
+ * Parse and validate a `pearcal://pair` URL. Also accepts the
+ * `pear://pearcal/pair` legacy shape so future clients that need to pipe
+ * the URL through the existing `pear://` Android intent filter still work.
+ *
+ * Returns `{ ok: true, topic, handshake, identity, expiresMs }` or
+ * `{ ok: false, error }`. Does NOT check `expiresMs` against wall-clock —
+ * the caller decides how strict to be about stale links.
+ */
+export function parsePairLink (url) {
+  if (typeof url !== 'string') return { ok: false, error: 'invalid_url' }
+  const normalised = url.replace(/^pear:\/\/pearcal\/pair/, 'pearcal://pair')
+  let u
+  try { u = new URL(normalised) } catch { return { ok: false, error: 'malformed_url' } }
+  if (u.protocol !== 'pearcal:' || u.host !== 'pair') {
+    return { ok: false, error: 'wrong_scheme' }
+  }
+  const topic     = u.searchParams.get('topic')
+  const handshake = u.searchParams.get('handshake')
+  const identity  = u.searchParams.get('identity')
+  const expiresS  = u.searchParams.get('expires')
+  if (!topic || !handshake || !identity || !expiresS) {
+    return { ok: false, error: 'missing_params' }
+  }
+  if (!_isHex(topic, PAIR_HEX_32))     return { ok: false, error: 'invalid_topic' }
+  if (!_isHex(handshake, PAIR_HEX_32)) return { ok: false, error: 'invalid_handshake' }
+  if (!_isHex(identity, PAIR_HEX_32))  return { ok: false, error: 'invalid_identity' }
+  const expiresMs = Number(expiresS)
+  if (!Number.isFinite(expiresMs) || expiresMs <= 0) {
+    return { ok: false, error: 'invalid_expires' }
+  }
+  return { ok: true, topic, handshake, identity, expiresMs }
+}
+
+/** Cheap discriminator used by the RN shell's deep-link router. */
+export function isPairLink (url) {
+  return typeof url === 'string'
+    && (url.startsWith('pearcal://pair') || url.startsWith('pear://pearcal/pair'))
+}
+
+function _isHex (s, len) {
+  return typeof s === 'string' && s.length === len && /^[0-9a-f]+$/i.test(s)
 }
