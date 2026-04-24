@@ -407,9 +407,20 @@ async function getProfile () {
 
 async function updateProfile (updates) {
   const current = await getProfile()
-  await db.put(NS.profile, { ...current, ...updates, updatedAt: Date.now() })
+  const updatedAt = Date.now()
+  const next = { ...current, ...updates, updatedAt }
+  await db.put(NS.profile, next)
   if ('digestEnabled' in updates || 'digestHour' in updates || 'digestMinute' in updates) {
     scheduleMorningDigest().catch(e => console.warn('morning digest reschedule:', e.message))
+  }
+  // Identity-scoped fields (name/avatar) sync across paired devices via
+  // personal base. No-op when personal base is closed or not writable.
+  if ('name' in updates || 'avatar' in updates) {
+    personalBaseAppendIdentityProfile({
+      name: next.name,
+      avatar: next.avatar,
+      updatedAt,
+    }).catch(() => {})
   }
 }
 
@@ -1494,6 +1505,29 @@ function makePersonalApply () {
         continue
       }
 
+      // Identity-scoped profile fields (name, avatar). LWW by updatedAt —
+      // merges into local NS.profile so the UI reflects sibling edits. Writer
+      // keypair (publicKey/secretKey) and per-device settings are untouched.
+      if (val.op === 'put' && val.type === 'identityProfile' && val.key && val.value) {
+        const prev = await view.get(val.key).catch(() => null)
+        const prevTs = prev?.value?.updatedAt ?? 0
+        const incomingTs = val.value?.updatedAt ?? 0
+        if (incomingTs < prevTs) continue
+        await view.put(val.key, val.value)
+        const existing = (await db.get(NS.profile).catch(() => null))?.value ?? {}
+        const existingTs = existing.updatedAt ?? 0
+        if (incomingTs >= existingTs) {
+          await db.put(NS.profile, {
+            ...existing,
+            name: val.value.name ?? existing.name ?? '',
+            avatar: val.value.avatar ?? existing.avatar ?? '',
+            updatedAt: incomingTs,
+          })
+          send({ type: 'event', event: 'profileChanged', data: null })
+        }
+        continue
+      }
+
       // Group membership records for multi-device discovery (Phase 5). Records
       // which groups this identity is in so a paired secondary can iterate
       // them on boot. Stored under `personalGroups:{groupId}` in local DB.
@@ -1533,6 +1567,9 @@ async function ensurePersonalBase () {
     personalBase = base
     await joinPersonalSwarm()
     console.log('[personal] opened base', bootstrapHex.slice(0, 16) + '…', 'writable=' + base.writable)
+    // Backfill identity-scoped profile record for installs that enabled
+    // personal sync before the identityProfile keyspace existed. Idempotent.
+    seedIdentityProfileIfNeeded().catch(e => console.warn('[personal] identityProfile seed:', e.message))
     return base
   } catch (e) {
     console.error('[personal] open failed:', e.message)
@@ -1626,8 +1663,40 @@ async function migratePersonalData () {
     await personalBase.append({ op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, joinedAt: value.joinedAt ?? Date.now() } })
     groupCount++
   }
+  // Identity-scoped profile fields (name, avatar). Seed once so a sibling
+  // paired later sees the current identity display even before the user edits.
+  await seedIdentityProfileIfNeeded()
   await db.put('personalMeta:migrated', { ts: Date.now(), counts: { events: eventCount, reminders: reminderCount, notes: noteCount, groups: groupCount } })
   console.log('[personal] migration complete:', { eventCount, reminderCount, noteCount, groupCount })
+}
+
+// Additive, idempotent seed of the identity-scoped profile record. Runs every
+// boot once personalBase is open. Guarded by personalMeta:identityProfileSeeded
+// so installs that migrated pre-Task-2 still seed once. Skips if a sibling has
+// already replicated an identityProfile into the view.
+async function seedIdentityProfileIfNeeded () {
+  if (!personalBase?.writable) return
+  const already = await db.get('personalMeta:identityProfileSeeded').catch(() => null)
+  if (already?.value) return
+  // If a sibling device already authored an identityProfile, don't overwrite.
+  const viewExisting = await personalBase.view.get('identityProfile').catch(() => null)
+  if (viewExisting?.value) {
+    await db.put('personalMeta:identityProfileSeeded', { ts: Date.now() })
+    return
+  }
+  const prof = (await db.get(NS.profile).catch(() => null))?.value
+  const name = prof?.name ?? ''
+  const avatar = prof?.avatar ?? ''
+  if (!name && !avatar) {
+    // Nothing meaningful to seed yet — leave the flag unset so the next
+    // updateProfile pass can be the first write (marks seeded implicitly).
+    return
+  }
+  await personalBaseAppendIdentityProfile({
+    name, avatar,
+    updatedAt: prof?.updatedAt ?? prof?.createdAt ?? Date.now(),
+  })
+  await db.put('personalMeta:identityProfileSeeded', { ts: Date.now() })
 }
 
 // Append helpers — each no-ops if personal base isn't open or isn't writable.
@@ -1678,6 +1747,18 @@ async function personalBaseRemoveGroup (groupId) {
   if (!personalBase?.writable) return
   try { await personalBase.append({ op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
   catch (e) { console.warn('[personal] del group failed:', e.message) }
+}
+
+// Replicate identity-scoped profile fields (name, avatar) to sibling devices.
+// Writer keypair stays per-device; only display fields sync.
+async function personalBaseAppendIdentityProfile ({ name, avatar, updatedAt }) {
+  if (!personalBase?.writable) return
+  try {
+    await personalBase.append({
+      op: 'put', type: 'identityProfile', key: 'identityProfile',
+      value: { name: name ?? '', avatar: avatar ?? '', updatedAt: updatedAt ?? Date.now() }
+    })
+  } catch (e) { console.warn('[personal] append identityProfile failed:', e.message) }
 }
 
 async function closePersonalBase () {

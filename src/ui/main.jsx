@@ -45,6 +45,7 @@ window.addEventListener('pear:pairingStarted',   e => emitter.emit('pairingStart
 window.addEventListener('pear:pairingCompleted', e => emitter.emit('pairingCompleted', e.detail))
 window.addEventListener('pear:pairingFailed',    e => emitter.emit('pairingFailed', e.detail))
 window.addEventListener('pear:pairingExpired',   e => emitter.emit('pairingExpired', e.detail))
+window.addEventListener('pear:profileChanged',   e => emitter.emit('profileChanged', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
