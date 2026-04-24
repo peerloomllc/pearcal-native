@@ -14399,8 +14399,15 @@
       });
     }
     const profile = await db2.getProfile();
-    const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey, ...nickname ? { nickname } : {} };
-    const inviterMember = { id: inviterKey, name: "Inviter", avatar: "?", publicKey: inviterKey };
+    const myMember = {
+      id: profile.id,
+      name: profile.name,
+      avatar: profile.avatar ?? _initials(profile.name),
+      publicKey: profile.publicKey,
+      ...profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {},
+      ...nickname ? { nickname } : {}
+    };
+    const inviterMember = { id: inviterKey, name: "Inviter", avatar: "?" };
     const group = {
       id: groupId,
       name: groupName,
@@ -14434,22 +14441,22 @@
     onJoined?.(group);
     return { ok: true, group };
   }
-  function buildReinviteLink(group, myPublicKey) {
+  function buildReinviteLink(group, myIdentityId) {
     const params = new URLSearchParams({
       group: btoa(group.id),
       name: group.name,
       key: (group.groupKey ?? group.id).slice(0, KEY_LEN),
-      inviter: myPublicKey,
+      inviter: myIdentityId,
       reinvite: "1"
     });
     return `${SCHEME}/join?${params.toString()}`;
   }
-  function buildInviteLink(group, myPublicKey) {
+  function buildInviteLink(group, myIdentityId) {
     const params = new URLSearchParams({
       group: btoa(group.id),
       name: group.name,
       key: (group.groupKey ?? group.id).slice(0, KEY_LEN),
-      inviter: myPublicKey
+      inviter: myIdentityId
     });
     return `${SCHEME}/join?${params.toString()}`;
   }
@@ -22173,7 +22180,7 @@
       if (!readyGroupKeys.has(g.id)) return;
       const fresh = db2 ? await db2.getGroup(g.id).catch(() => null) : null;
       const src = fresh ?? g;
-      const link = buildInviteLink(src, profile?.publicKey ?? "unknown");
+      const link = buildInviteLink(src, profile?.id ?? "unknown");
       navigator.clipboard?.writeText(link);
       setCopiedId(g.id);
       setTimeout(() => setCopiedId(null), 2e3);
@@ -22323,7 +22330,7 @@
   }
   function InviteOptionsModal({ th, group, profile, sync: sync2, onQrGroup, onClose, closeRef }) {
     const bsCloseRef = (0, import_react2.useRef)(null);
-    const link = buildInviteLink(group, profile?.publicKey ?? "unknown");
+    const link = buildInviteLink(group, profile?.id ?? "unknown");
     const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:
 
 ${link}`;
@@ -22587,7 +22594,7 @@ ${link}`;
               "button",
               {
                 onClick: () => {
-                  const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? "unknown");
+                  const link = window.__pearBuildReinviteLink?.(g, me?.id ?? "unknown");
                   if (!link) return;
                   if (sync2) sync2.nativeShare(`Join ${g.name} on PearCal`, link);
                   else navigator.clipboard?.writeText(link);
@@ -22709,7 +22716,7 @@ ${link}`;
                     pendingInvites: [...g.pendingInvites ?? [], memberRecord]
                   };
                   setG(updated);
-                  const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? "unknown");
+                  const link = window.__pearBuildReinviteLink?.(g, me?.id ?? "unknown");
                   if (!link) return;
                   if (sync2) sync2.nativeShare(`Join ${g.name} on PearCal`, link);
                   else navigator.clipboard?.writeText(link);
