@@ -72,6 +72,12 @@ const bases = new Map()   // groupId → Autobase
 // against its OLD base become local no-ops so late writers can't create ghost
 // state. Populated on joinGroup (from view) and on marker apply (live).
 const migratedGroups = new Set()
+
+// Personal (multi-device) Autobase — TODO #11 Phase 3. One per user, shared
+// across a user's devices. Stays null for single-device users who never enable
+// multi-device (most installs today). Created/opened by ensurePersonalBase()
+// when personalMeta:bootstrap is set in local DB.
+let personalBase = null
 let buf = ''
 let _dbReady = false
 let _dbReadyResolve = null
@@ -218,6 +224,8 @@ async function handle (method, args) {
     case 'listPendingApprovals': return listPendingApprovals()
     case 'transferOwnership': return transferOwnership(args[0], args[1])
     case 'claimOwnership':   return claimOwnership(args[0])
+    case 'enablePersonalSync':   return enablePersonalSync()
+    case 'getPersonalSyncStatus': return getPersonalSyncStatus()
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -377,8 +385,15 @@ async function getPrivateNote (eventId) {
 }
 
 async function putPrivateNote (eventId, text) {
-  if (!text) await db.del(NS.privateNotes + eventId).catch(() => {})
-  else await db.put(NS.privateNotes + eventId, { text, updatedAt: Date.now() })
+  if (!text) {
+    await db.del(NS.privateNotes + eventId).catch(() => {})
+    // Empty text = delete. The helper turns null into a del op.
+    await personalBaseAppendNote(eventId, null).catch(() => {})
+  } else {
+    const value = { text, updatedAt: Date.now() }
+    await db.put(NS.privateNotes + eventId, value)
+    await personalBaseAppendNote(eventId, value).catch(() => {})
+  }
 }
 
 async function getProfile () {
@@ -643,8 +658,12 @@ async function dedupeStaleEventKeys () {
 
 async function putEvent (event) {
   const { privateNote, ...rest } = event
-  await db.put(NS.events + event.date + ':' + event.id, { ...rest, updatedAt: Date.now() })
+  const toStore = { ...rest, updatedAt: Date.now() }
+  await db.put(NS.events + event.date + ':' + event.id, toStore)
   if (privateNote !== undefined) await putPrivateNote(event.id, privateNote)
+  // Mirror to personal base if this is a personal-scope event (no groups) and
+  // multi-device is enabled. No-op otherwise.
+  await personalBaseAppendEvent(toStore).catch(() => {})
   scheduleWidgetCacheRefresh()
   return event
 }
@@ -659,6 +678,7 @@ async function deleteEvent (date, id) {
   // deletes and shadow deletes where the del op never passes through the
   // remote-apply branch that writes the tombstone downstream.
   await db.put(NS.deleted + id, { date, ts: Date.now() }).catch(() => {})
+  await personalBaseDeleteEvent(date, id).catch(() => {})
   scheduleWidgetCacheRefresh()
 }
 
@@ -673,6 +693,7 @@ async function deleteEventSeries (recurrenceId) {
     await db.del(NS.privateNotes + id).catch(() => {})
     await _deleteAllRsvps(id).catch(() => {})
     await db.put(NS.deleted + id, { date, ts: Date.now() }).catch(() => {})
+    await personalBaseDeleteEvent(date, id).catch(() => {})
   }
   scheduleWidgetCacheRefresh()
 }
@@ -856,6 +877,7 @@ async function getReminders (eventId) {
 
 async function putReminders (eventId, reminders) {
   await db.put('reminders:' + eventId, reminders)
+  await personalBaseAppendReminders(eventId, reminders).catch(() => {})
 }
 
 async function localDeleteEvent (date, id) {
@@ -1340,6 +1362,10 @@ async function _joinGroupImpl (group) {
 
   // Register with blind peer so cores stay available when app is closed
   if (blind) blind.addAutobaseBackground(base)
+
+  // Multi-device membership log: record that this identity is in this group
+  // so sibling devices discover it via the personal base (Phase 5).
+  await personalBaseAddGroup(group).catch(() => {})
 }
 
 async function leaveGroup (groupId) {
@@ -1352,6 +1378,269 @@ async function leaveGroup (groupId) {
   // Clean up knownWriter keys so members can rejoin cleanly after group recreation
   for await (const { key } of db.createReadStream({ gt: 'knownWriter:' + groupId + ':', lt: 'knownWriter:' + groupId + ':ÿ' })) {
     await db.del(key).catch(() => {})
+  }
+  // Personal-base mirror: if multi-device is on, drop this group from the
+  // personal base's group-membership log so sibling devices also leave.
+  await personalBaseRemoveGroup(groupId).catch(() => {})
+}
+
+// ── Personal Autobase (multi-device identity, TODO #11 Phase 3) ──────────────
+// One per user, shared across devices. Keyspaces in the view mirror the
+// personal-scope slice of local DB: events without groups, deleted tombstones,
+// reminders, private notes, plus group-membership records so new devices
+// discover which groups this identity is in.
+//
+// Creation is LAZY — single-device installs never pay the ~2-4× append-
+// amplification cost. Callers who write personal-scope data (putEvent,
+// putReminders, putPrivateNote, joinGroup, leaveGroup) funnel through the
+// personalBase*() helpers below, which no-op when personalBase is null.
+//
+// Bootstrap strategy for PR #A: first device's base key is random and stored
+// under personalMeta:bootstrap. Siblings receive the key via pairing (PR #C).
+// Follow-up: switch to deterministic bootstrap via `_identity.profileDiscoveryKeyPair`
+// so mnemonic-alone restore can open the same base without a live peer (Fork A,
+// full form). Locking that in needs the pairing UX and isn't forced by PR #A.
+
+function makePersonalApply () {
+  return async function apply (nodes, view, host) {
+    for (const node of nodes) {
+      const val = node.value
+      if (!val) continue
+
+      if (val.addWriter) {
+        const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
+        if (!blocked) {
+          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        }
+        continue
+      }
+
+      if (val.op === 'put' && val.type === 'event' && val.key && val.value) {
+        await view.put(val.key, val.value)
+        await mirrorToLocal('event', val.key, val.value, null)
+        continue
+      }
+      if (val.op === 'del' && val.type === 'event' && val.key) {
+        await view.del(val.key)
+        const eid = eventIdFromKey(val.key)
+        if (eid) {
+          await db.put(NS.deleted + eid, { ts: Date.now() }).catch(() => {})
+          await db.del(val.key).catch(() => {})
+          await db.del('reminders:' + eid).catch(() => {})
+          await db.del(NS.privateNotes + eid).catch(() => {})
+        }
+        scheduleWidgetCacheRefresh()
+        continue
+      }
+
+      if (val.op === 'put' && val.type === 'reminders' && val.key) {
+        await view.put(val.key, val.value)
+        await db.put(val.key, val.value).catch(() => {})
+        continue
+      }
+      if (val.op === 'del' && val.type === 'reminders' && val.key) {
+        await view.del(val.key)
+        await db.del(val.key).catch(() => {})
+        continue
+      }
+
+      if (val.op === 'put' && val.type === 'note' && val.key) {
+        await view.put(val.key, val.value)
+        await db.put(val.key, val.value).catch(() => {})
+        continue
+      }
+      if (val.op === 'del' && val.type === 'note' && val.key) {
+        await view.del(val.key)
+        await db.del(val.key).catch(() => {})
+        continue
+      }
+
+      // Group membership records for multi-device discovery (Phase 5). Records
+      // which groups this identity is in so a paired secondary can iterate
+      // them on boot. Stored under `personalGroups:{groupId}` in local DB.
+      if (val.op === 'put' && val.type === 'groupMembership' && val.key && val.value) {
+        await view.put(val.key, val.value)
+        await db.put(val.key, val.value).catch(() => {})
+        continue
+      }
+      if (val.op === 'del' && val.type === 'groupMembership' && val.key) {
+        await view.del(val.key)
+        await db.del(val.key).catch(() => {})
+        continue
+      }
+    }
+  }
+}
+
+async function ensurePersonalBase () {
+  if (personalBase) return personalBase
+  if (!store || !db) return null
+  const meta = await db.get('personalMeta:bootstrap').catch(() => null)
+  if (!meta?.value?.key) return null
+  const bootstrapHex = meta.value.key
+  try {
+    const personalStore = store.namespace('personal')
+    const base = new Autobase(personalStore, b4a.from(bootstrapHex, 'hex'), {
+      valueEncoding: 'json',
+      open: (s) => new Hyperbee(s.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json' }),
+      apply: makePersonalApply(),
+      ackInterval: 1000,
+    })
+    await base.ready()
+    personalBase = base
+    await joinPersonalSwarm()
+    console.log('[personal] opened base', bootstrapHex.slice(0, 16) + '…', 'writable=' + base.writable)
+    return base
+  } catch (e) {
+    console.error('[personal] open failed:', e.message)
+    return null
+  }
+}
+
+// IPC: user-initiated. Creates the personal base on first enable, runs the
+// one-time migration of existing personal-scope data, and joins the swarm.
+// Idempotent — second call is a no-op.
+async function enablePersonalSync () {
+  if (personalBase) return { enabled: true, writable: personalBase.writable, bootstrap: b4a.toString(personalBase.key, 'hex') }
+  const existing = await db.get('personalMeta:bootstrap').catch(() => null)
+  if (existing?.value?.key) {
+    await ensurePersonalBase()
+    return { enabled: true, writable: !!personalBase?.writable, bootstrap: existing.value.key }
+  }
+  // First-time enable on this install: mint a fresh Autobase.
+  const personalStore = store.namespace('personal')
+  const base = new Autobase(personalStore, null, {
+    valueEncoding: 'json',
+    open: (s) => new Hyperbee(s.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json' }),
+    apply: makePersonalApply(),
+    ackInterval: 1000,
+  })
+  await base.ready()
+  const bootstrapHex = b4a.toString(base.key, 'hex')
+  await db.put('personalMeta:bootstrap', { key: bootstrapHex, createdAt: Date.now() })
+  personalBase = base
+  await joinPersonalSwarm()
+  await migratePersonalData().catch(e => console.warn('[personal] migration error:', e.message))
+  console.log('[personal] created base', bootstrapHex.slice(0, 16) + '…')
+  return { enabled: true, writable: base.writable, bootstrap: bootstrapHex }
+}
+
+async function getPersonalSyncStatus () {
+  const meta = await db.get('personalMeta:bootstrap').catch(() => null)
+  if (!meta?.value?.key) return { enabled: false }
+  return {
+    enabled: true,
+    writable: !!personalBase?.writable,
+    bootstrap: meta.value.key,
+    migrated: !!(await db.get('personalMeta:migrated').catch(() => null))?.value,
+  }
+}
+
+async function joinPersonalSwarm () {
+  if (!personalBase || !swarm) return
+  const keyHex = b4a.toString(personalBase.key, 'hex')
+  const topic = b4a.from(keyHex.slice(0, 64).padEnd(64, '0'), 'hex')
+  swarm.join(topic, { server: true, client: true })
+  console.log('[personal] joined swarm topic', keyHex.slice(0, 16) + '…')
+}
+
+// Stream existing personal-scope records into the newly-created Autobase so
+// siblings paired later see everything the user had before going multi-device.
+// Idempotent — guarded by personalMeta:migrated. Skips events that live in any
+// group (those are already in a group Autobase, not the personal base's scope).
+async function migratePersonalData () {
+  if (!personalBase || !personalBase.writable) return
+  const already = await db.get('personalMeta:migrated').catch(() => null)
+  if (already?.value) return
+  let eventCount = 0, reminderCount = 0, noteCount = 0, groupCount = 0
+  // Events
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (value?.groups && value.groups.length > 0) continue
+    if (value?.isShadow) continue
+    await personalBase.append({ op: 'put', type: 'event', key, value })
+    eventCount++
+  }
+  // Deleted tombstones — each becomes a 'del event' op keyed by the tombstoned id
+  for await (const { key, value } of db.createReadStream({ gt: NS.deleted, lt: NS.deleted + '\xff' })) {
+    const eid = key.slice(NS.deleted.length)
+    const date = value?.date
+    if (!eid || !date) continue
+    await personalBase.append({ op: 'del', type: 'event', key: NS.events + date + ':' + eid })
+  }
+  // Reminders
+  for await (const { key, value } of db.createReadStream({ gt: 'reminders:', lt: 'reminders:\xff' })) {
+    await personalBase.append({ op: 'put', type: 'reminders', key, value })
+    reminderCount++
+  }
+  // Private notes
+  for await (const { key, value } of db.createReadStream({ gt: NS.privateNotes, lt: NS.privateNotes + '\xff' })) {
+    await personalBase.append({ op: 'put', type: 'note', key, value })
+    noteCount++
+  }
+  // Group membership (one entry per group the user is currently in)
+  for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    if (!value?.id || !value?.groupKey) continue
+    await personalBase.append({ op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, joinedAt: value.joinedAt ?? Date.now() } })
+    groupCount++
+  }
+  await db.put('personalMeta:migrated', { ts: Date.now(), counts: { events: eventCount, reminders: reminderCount, notes: noteCount, groups: groupCount } })
+  console.log('[personal] migration complete:', { eventCount, reminderCount, noteCount, groupCount })
+}
+
+// Append helpers — each no-ops if personal base isn't open or isn't writable.
+// Callers (putEvent, putReminders, etc.) invoke these alongside their local DB
+// write; the apply function mirrors back to local DB on other devices.
+
+async function personalBaseAppendEvent (event) {
+  if (!personalBase?.writable) return
+  if (event.groups && event.groups.length > 0) return // group-scope, not personal
+  const key = NS.events + event.date + ':' + event.id
+  try { await personalBase.append({ op: 'put', type: 'event', key, value: event }) }
+  catch (e) { console.warn('[personal] append event failed:', e.message) }
+}
+
+async function personalBaseDeleteEvent (date, eventId) {
+  if (!personalBase?.writable) return
+  const key = NS.events + date + ':' + eventId
+  try { await personalBase.append({ op: 'del', type: 'event', key }) }
+  catch (e) { console.warn('[personal] del event failed:', e.message) }
+}
+
+async function personalBaseAppendReminders (eventId, value) {
+  if (!personalBase?.writable) return
+  try { await personalBase.append({ op: 'put', type: 'reminders', key: 'reminders:' + eventId, value }) }
+  catch (e) { console.warn('[personal] append reminders failed:', e.message) }
+}
+
+async function personalBaseAppendNote (eventId, value) {
+  if (!personalBase?.writable) return
+  const key = NS.privateNotes + eventId
+  const op = value == null
+    ? { op: 'del', type: 'note', key }
+    : { op: 'put', type: 'note', key, value }
+  try { await personalBase.append(op) }
+  catch (e) { console.warn('[personal] append/del note failed:', e.message) }
+}
+
+async function personalBaseAddGroup (group) {
+  if (!personalBase?.writable) return
+  if (!group?.id || !group?.groupKey) return
+  const key = 'personalGroups:' + group.id
+  const value = { groupId: group.id, groupKey: group.groupKey, joinedAt: group.joinedAt ?? Date.now() }
+  try { await personalBase.append({ op: 'put', type: 'groupMembership', key, value }) }
+  catch (e) { console.warn('[personal] append group failed:', e.message) }
+}
+
+async function personalBaseRemoveGroup (groupId) {
+  if (!personalBase?.writable) return
+  try { await personalBase.append({ op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
+  catch (e) { console.warn('[personal] del group failed:', e.message) }
+}
+
+async function closePersonalBase () {
+  if (personalBase) {
+    try { await personalBase.close() } catch (e) { console.warn('[personal] close error:', e.message) }
+    personalBase = null
   }
 }
 
@@ -3876,6 +4165,7 @@ function stopRealtimeSyncTick () {
 async function shutdown () {
   try {
     stopRealtimeSyncTick()
+    await closePersonalBase()
     if (blind) { blind.close?.(); blind = null }
     if (swarm) { await swarm.destroy(); swarm = null }
     if (store) { await store.close(); store = null }
@@ -4620,6 +4910,10 @@ async function _doInit (dir, attempt = 0) {
     // Self-heal: drop any duplicate event keys (same id under different dates)
     // left behind by out-of-order Autobase replay (see listEvents dedupe).
     dedupeStaleEventKeys().catch(e => console.warn('event dedupe:', e.message))
+    // Reopen the personal Autobase if the user previously enabled multi-device
+    // (personalMeta:bootstrap present). No-op otherwise — single-device installs
+    // never pay the setup cost.
+    ensurePersonalBase().catch(e => console.warn('[personal] ensure error:', e.message))
     send({ type: 'event', event: 'ready' })
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
