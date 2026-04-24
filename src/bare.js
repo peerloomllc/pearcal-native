@@ -1666,6 +1666,37 @@ const PAIR_CHANNEL_PROTO = 'pearcal/device-pair'
 const PAIR_CHANNEL_ID    = Buffer.from('pearcal-device-pair-v1')
 let _pairSession = null
 
+// Pair URL helpers inlined here so bare.js can build/parse without requiring
+// src/invite.js — that file uses ES `export` syntax for the UI side and can't
+// be loaded via CommonJS `require()` from the bare runtime.
+function _buildPairLink ({ topic, handshake, identity, expiresMs }) {
+  return 'pearcal://pair?topic=' + topic
+    + '&handshake=' + handshake
+    + '&identity=' + identity
+    + '&expires=' + expiresMs
+}
+function _parsePairLink (url) {
+  if (typeof url !== 'string') return { ok: false, error: 'invalid_url' }
+  const normalised = url.replace(/^pear:\/\/pearcal\/pair/, 'pearcal://pair')
+  const m = normalised.match(/^pearcal:\/\/pair\?(.*)$/)
+  if (!m) return { ok: false, error: 'wrong_scheme' }
+  const params = {}
+  for (const pair of m[1].split('&')) {
+    const eq = pair.indexOf('=')
+    if (eq < 0) continue
+    params[decodeURIComponent(pair.slice(0, eq))] = decodeURIComponent(pair.slice(eq + 1))
+  }
+  const { topic, handshake, identity, expires } = params
+  if (!topic || !handshake || !identity || !expires) return { ok: false, error: 'missing_params' }
+  const hex64 = /^[0-9a-f]{64}$/i
+  if (!hex64.test(topic))     return { ok: false, error: 'invalid_topic' }
+  if (!hex64.test(handshake)) return { ok: false, error: 'invalid_handshake' }
+  if (!hex64.test(identity))  return { ok: false, error: 'invalid_identity' }
+  const expiresMs = Number(expires)
+  if (!Number.isFinite(expiresMs) || expiresMs <= 0) return { ok: false, error: 'invalid_expires' }
+  return { ok: true, topic, handshake, identity, expiresMs }
+}
+
 function _hex32 () {
   const b = b4a.alloc(32); sodium.randombytes_buf(b); return b4a.toString(b, 'hex')
 }
@@ -1727,9 +1758,8 @@ async function startPairing () {
 function _pairSessionSnapshot () {
   if (!_pairSession) return { active: false }
   const { role, topicHex, handshakeHex, identityHex, expiresAt } = _pairSession
-  const { buildPairLink } = require('./invite.js')
   const url = role === 'primary'
-    ? buildPairLink({ topic: topicHex, handshake: handshakeHex, identity: identityHex, expiresMs: expiresAt })
+    ? _buildPairLink({ topic: topicHex, handshake: handshakeHex, identity: identityHex, expiresMs: expiresAt })
     : null
   return { active: true, role, url, expiresAt }
 }
@@ -1750,8 +1780,7 @@ function getPairingStatus () { return _pairSessionSnapshot() }
 async function consumePairLink (url) {
   if (_pairSession) throw new Error('consumePairLink: another pair session in progress')
   if (!swarm) throw new Error('consumePairLink: swarm not ready')
-  const { parsePairLink } = require('./invite.js')
-  const parsed = parsePairLink(url)
+  const parsed = _parsePairLink(url)
   if (!parsed.ok) throw new Error('consumePairLink: ' + parsed.error)
   const { topic, handshake, identity, expiresMs } = parsed
   if (Date.now() >= expiresMs) throw new Error('consumePairLink: link expired')
@@ -1926,6 +1955,13 @@ async function _handlePairGranted (parsed, replySend) {
     const newDeviceKey = b4a.toString(personalBase.local.key, 'hex')
     _pairSession.granted = true
     _pairSession.groupsReceived = parsed.groups ?? []
+    // Persist the group list so a crash between `granted` and `complete` leaves
+    // the secondary with enough data to recover on next boot via
+    // resumePendingPair(). Cleared in _handlePairComplete.
+    await db.put('personalMeta:pendingGroups', {
+      groups: _pairSession.groupsReceived,
+      ts: Date.now(),
+    }).catch(() => {})
     replySend({ type: 'personalWriter', newDeviceKey })
     console.log('[pair] granted processed; personalWriter sent')
   } catch (e) {
@@ -1966,6 +2002,43 @@ async function _handlePairPersonalWriter (parsed, replySend) {
   }
 }
 
+// Shared: seed local group records + start joinGroup for each entry in a
+// pair `granted` payload's groups[]. Used by both _handlePairComplete (normal
+// path) and resumePendingPair (post-crash boot). Idempotent — skips groups
+// already present in local DB.
+async function _seedGroupsFromPair (groups) {
+  if (!Array.isArray(groups) || groups.length === 0) return 0
+  let newCount = 0
+  const profile = await getProfile().catch(() => null)
+  const selfMember = profile ? {
+    id: profile.id,
+    name: profile.name,
+    avatar: profile.avatar ?? '?',
+    publicKey: profile.publicKey,
+    ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+  } : null
+  for (const g of groups) {
+    const existing = await getGroup(g.id).catch(() => null)
+    if (existing) continue
+    const seed = {
+      id:       g.id,
+      name:     g.name,
+      color:    g.color,
+      emoji:    g.emoji,
+      icon:     g.icon,
+      ownerId:  g.ownerId,
+      groupKey: g.groupKey,
+      members:  selfMember ? [selfMember] : [],
+      joinedAt: g.joinedAt ?? Date.now(),
+    }
+    await db.put(NS.groups + g.id, seed).catch(() => {})
+    await db.put('joinedAt:' + g.id, { ts: seed.joinedAt }).catch(() => {})
+    joinGroup(seed).catch(e => console.warn('[pair] seedGroups joinGroup error for', g.id, e.message))
+    newCount++
+  }
+  return newCount
+}
+
 // Secondary: handle complete from primary. Persist group records + kick off
 // joinGroup for each so Hyperswarm topics come online and writer-announce
 // admission grants addWriter per group.
@@ -1974,40 +2047,36 @@ async function _handlePairComplete () {
   const groups = _pairSession.groupsReceived ?? []
   const resolve = _pairSession.resolve
   try {
-    for (const g of groups) {
-      const existing = await getGroup(g.id).catch(() => null)
-      if (existing) continue
-      const profile = await getProfile().catch(() => null)
-      const selfMember = profile ? {
-        id: profile.id,
-        name: profile.name,
-        avatar: profile.avatar ?? '?',
-        publicKey: profile.publicKey,
-        ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
-      } : null
-      const seed = {
-        id:       g.id,
-        name:     g.name,
-        color:    g.color,
-        emoji:    g.emoji,
-        icon:     g.icon,
-        ownerId:  g.ownerId,
-        groupKey: g.groupKey,
-        members:  selfMember ? [selfMember] : [],
-        joinedAt: g.joinedAt ?? Date.now(),
-      }
-      await db.put(NS.groups + g.id, seed).catch(() => {})
-      await db.put('joinedAt:' + g.id, { ts: seed.joinedAt }).catch(() => {})
-      joinGroup(seed).catch(e => console.warn('[pair] secondary joinGroup error for', g.id, e.message))
-    }
-    _emitPair('pairingCompleted', { role: 'secondary', groups: groups.length })
-    resolve?.({ ok: true, groups: groups.length })
+    const newCount = await _seedGroupsFromPair(groups)
+    await db.del('personalMeta:pendingGroups').catch(() => {})
+    _emitPair('pairingCompleted', { role: 'secondary', groups: newCount })
+    resolve?.({ ok: true, groups: newCount })
   } catch (e) {
     console.error('[pair] complete handler error:', e.message)
     _emitPair('pairingFailed', { reason: 'secondary_complete_error', message: e.message })
     _pairSession?.reject?.(e)
   } finally {
     _clearPairSession()
+  }
+}
+
+// Boot-time recovery: if a pair handshake persisted pendingGroups but never
+// received `complete` (crash, force-kill, network blip between steps 3 and 4),
+// replay the group seeding + joinGroup fan-out now. Safe on every boot — the
+// key is cleared on success, and _seedGroupsFromPair is idempotent so even a
+// partially-processed pendingGroups list converges.
+async function resumePendingPair () {
+  const pending = await db.get('personalMeta:pendingGroups').catch(() => null)
+  if (!pending?.value?.groups) return
+  const groups = pending.value.groups
+  console.log('[pair] resuming pending pair — groups=' + groups.length)
+  try {
+    const newCount = await _seedGroupsFromPair(groups)
+    await db.del('personalMeta:pendingGroups').catch(() => {})
+    _emitPair('pairingCompleted', { role: 'secondary', resumed: true, groups: newCount })
+  } catch (e) {
+    console.error('[pair] resume error:', e.message)
+    // Leave pendingGroups in place so the next boot tries again.
   }
 }
 
@@ -5322,8 +5391,11 @@ async function _doInit (dir, attempt = 0) {
     dedupeStaleEventKeys().catch(e => console.warn('event dedupe:', e.message))
     // Reopen the personal Autobase if the user previously enabled multi-device
     // (personalMeta:bootstrap present). No-op otherwise — single-device installs
-    // never pay the setup cost.
-    ensurePersonalBase().catch(e => console.warn('[personal] ensure error:', e.message))
+    // never pay the setup cost. Chained resumePendingPair() recovers from a
+    // crash between the pair handshake's granted→complete steps.
+    ensurePersonalBase()
+      .then(() => resumePendingPair())
+      .catch(e => console.warn('[personal] ensure/resume error:', e.message))
     send({ type: 'event', event: 'ready' })
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
