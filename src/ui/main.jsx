@@ -41,6 +41,10 @@ window.addEventListener('pear:synced', e => emitter.emit('synced', e.detail))
 window.addEventListener('pear:pendingRejoin', e => emitter.emit('pendingRejoin', e.detail))
 window.addEventListener('pear:pendingApproval', e => emitter.emit('pendingApproval', e.detail))
 window.addEventListener('pear:pendingApprovalCleared', e => emitter.emit('pendingApprovalCleared', e.detail))
+window.addEventListener('pear:pairingStarted',   e => emitter.emit('pairingStarted', e.detail))
+window.addEventListener('pear:pairingCompleted', e => emitter.emit('pairingCompleted', e.detail))
+window.addEventListener('pear:pairingFailed',    e => emitter.emit('pairingFailed', e.detail))
+window.addEventListener('pear:pairingExpired',   e => emitter.emit('pairingExpired', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -83,6 +87,12 @@ const db = {
   approveRejoin:      (gid, ipk) => window.__pearDB.call('approveRejoin', gid, ipk),
   denyRejoin:         (gid, ipk) => window.__pearDB.call('denyRejoin', gid, ipk),
   listPendingApprovals: ()  => window.__pearDB.call('listPendingApprovals'),
+  enablePersonalSync:   ()  => window.__pearDB.call('enablePersonalSync'),
+  getPersonalSyncStatus: () => window.__pearDB.call('getPersonalSyncStatus'),
+  startPairing:         ()  => window.__pearDB.call('startPairing'),
+  cancelPairing:        ()  => window.__pearDB.call('cancelPairing'),
+  consumePairLink:      (url) => window.__pearDB.call('consumePairLink', url),
+  getPairingStatus:     ()  => window.__pearDB.call('getPairingStatus'),
 }
 
 const notifs = {

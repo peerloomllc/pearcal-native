@@ -16467,6 +16467,8 @@
     }, [groups]);
     const [onboardStep, setOnboardStep] = (0, import_react2.useState)(0);
     const showOnboarding = ready && !profile?.onboardingComplete;
+    const qrScanModeRef = (0, import_react2.useRef)(null);
+    const closeOnboardSubModeRef = (0, import_react2.useRef)(null);
     const [showDonationReminder, setShowDonationReminder] = (0, import_react2.useState)(false);
     const tabHistoryRef = (0, import_react2.useRef)([]);
     const tabRef = (0, import_react2.useRef)("calendar");
@@ -16783,6 +16785,7 @@
     (0, import_react2.useEffect)(() => {
       backHandlerRef.current = () => {
         if (showOnboarding) {
+          if (closeOnboardSubModeRef.current?.()) return;
           if (onboardStep > 0) {
             setOnboardStep((s10) => s10 - 1);
             return;
@@ -16829,7 +16832,16 @@
     }, [sync2]);
     (0, import_react2.useEffect)(() => {
       function onQrScanResult(url) {
-        if (url && db2 && sync2) openPendingJoin(url);
+        if (!url || !db2 || !sync2) return;
+        const mode = qrScanModeRef.current;
+        qrScanModeRef.current = null;
+        if (mode === "pair") {
+          db2.consumePairLink(url).catch((e58) => {
+            console.warn("[pair] consumePairLink error:", e58?.message);
+          });
+          return;
+        }
+        openPendingJoin(url);
       }
       emitter.on("qrScanResult", onQrScanResult);
       function onCameraResult(base64) {
@@ -17779,6 +17791,8 @@
           onUpdateProfile: updateProfile,
           db: db2,
           sync: sync2,
+          qrScanModeRef,
+          closeOnboardSubModeRef,
           onComplete: async () => {
             await db2.updateProfile({ onboardingComplete: true });
             const p3 = await db2.getProfile();
@@ -19917,7 +19931,7 @@
       )
     ] }) });
   }
-  function OnboardingModal({ th, step, setStep, profile, onUpdateProfile, db: db2, sync: sync2, onComplete }) {
+  function OnboardingModal({ th, step, setStep, profile, onUpdateProfile, db: db2, sync: sync2, qrScanModeRef, closeOnboardSubModeRef, onComplete }) {
     const [name, setName] = (0, import_react2.useState)(profile?.name ?? "");
     const [saving, setSaving] = (0, import_react2.useState)(false);
     const [photoSaving, setPhotoSaving] = (0, import_react2.useState)(false);
@@ -19929,6 +19943,81 @@
     const [restorePhrase, setRestorePhrase] = (0, import_react2.useState)("");
     const [restoring, setRestoring] = (0, import_react2.useState)(false);
     const [restoreError, setRestoreError] = (0, import_react2.useState)("");
+    const [pairInput, setPairInput] = (0, import_react2.useState)("");
+    (0, import_react2.useEffect)(() => {
+      if (!closeOnboardSubModeRef) return;
+      closeOnboardSubModeRef.current = () => {
+        if (restoreMode === "pair-waiting") return true;
+        if (restoreMode === "pair" || restoreMode === "manual") {
+          setRestoreMode("menu");
+          setRestoreError("");
+          setPairInput("");
+          return true;
+        }
+        if (restoreMode === "menu") {
+          setRestoreMode(null);
+          setRestoreError("");
+          return true;
+        }
+        return false;
+      };
+      return () => {
+        if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null;
+      };
+    }, [restoreMode, closeOnboardSubModeRef]);
+    (0, import_react2.useEffect)(() => {
+      function onPairingStarted(data) {
+        if (!data || data.role !== "secondary") return;
+        setRestoreMode("pair-waiting");
+        setRestoreError("");
+      }
+      function onPairingCompleted(data) {
+        if (!data || data.role !== "secondary") return;
+        setRestoreMode(null);
+        setRestoreError("");
+        setSlideDir(1);
+        setStep(2);
+      }
+      function onPairingFailed(data) {
+        const msg = data?.reason === "expired" ? "Pairing link expired. Ask the other device to generate a new one." : data?.message || data?.reason || "Pairing failed. Try again.";
+        setRestoreMode("pair");
+        setRestoreError(msg);
+      }
+      emitter.on("pairingStarted", onPairingStarted);
+      emitter.on("pairingCompleted", onPairingCompleted);
+      emitter.on("pairingFailed", onPairingFailed);
+      emitter.on("pairingExpired", onPairingFailed);
+      return () => {
+        emitter.off("pairingStarted", onPairingStarted);
+        emitter.off("pairingCompleted", onPairingCompleted);
+        emitter.off("pairingFailed", onPairingFailed);
+        emitter.off("pairingExpired", onPairingFailed);
+      };
+    }, [setStep]);
+    async function startPairScan() {
+      setRestoreError("");
+      if (qrScanModeRef) qrScanModeRef.current = "pair";
+      try {
+        await sync2?.qrScan?.();
+      } catch (e58) {
+        qrScanModeRef.current = null;
+        setRestoreError(e58?.message || "Unable to open camera");
+      }
+    }
+    async function submitPairPaste() {
+      const url = pairInput.trim();
+      if (!url) {
+        setRestoreError("Paste a pearcal://pair link");
+        return;
+      }
+      setRestoreError("");
+      try {
+        await db2.consumePairLink(url);
+      } catch (e58) {
+        setRestoreMode("pair");
+        setRestoreError(e58?.message || "Invalid pairing link");
+      }
+    }
     (0, import_react2.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
@@ -20102,6 +20191,17 @@
           "button",
           {
             onClick: () => {
+              setRestoreMode("pair");
+              setRestoreError("");
+            },
+            style: { ...th.pillBtn, padding: "12px 24px", fontSize: 15, fontWeight: 300, minWidth: 260 },
+            children: "Pair with another device"
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
               setRestoreMode("manual");
               setRestoreError("");
             },
@@ -20130,7 +20230,87 @@
             children: "Back"
           }
         )
-      ] }, "0-menu") : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
+      ] }, "0-menu") : restoreMode === "pair" || restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Pair with another device" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 300, lineHeight: "1.6" }, children: "On your other device, open PearCal \u2192 Profile \u2192 Devices \u2192 Add a device, then scan or paste the pairing code here." }),
+        restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", padding: "8px 0" }, children: "Connecting to your other device\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: startPairScan,
+              style: { ...th.pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, minWidth: 220 },
+              children: "Scan QR code"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300, marginTop: 4 }, children: "or paste the link" }),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "textarea",
+            {
+              value: pairInput,
+              onChange: (e58) => {
+                setPairInput(e58.target.value);
+                setRestoreError("");
+              },
+              placeholder: "pearcal://pair?topic=\u2026",
+              rows: 2,
+              style: {
+                background: th.inputBg,
+                border: `1px solid ${th.border}`,
+                borderRadius: 10,
+                padding: "10px 12px",
+                color: th.text.color,
+                fontSize: 13,
+                fontWeight: 300,
+                fontFamily: "monospace",
+                width: "100%",
+                boxSizing: "border-box",
+                outline: "none",
+                resize: "none",
+                lineHeight: "1.4"
+              }
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "button",
+            {
+              onClick: submitPairPaste,
+              disabled: !pairInput.trim(),
+              style: {
+                ...th.pillBtn,
+                padding: "10px 30px",
+                fontSize: 14,
+                fontWeight: 300,
+                opacity: !pairInput.trim() ? 0.4 : 1
+              },
+              children: "Pair"
+            }
+          )
+        ] }),
+        restoreError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+          "button",
+          {
+            onClick: () => {
+              setRestoreMode("menu");
+              setRestoreError("");
+              setPairInput("");
+            },
+            disabled: restoreMode === "pair-waiting",
+            style: {
+              background: "none",
+              border: "none",
+              color: th.muted,
+              fontFamily: FONT,
+              fontSize: 13,
+              fontWeight: 300,
+              cursor: "pointer",
+              padding: 4,
+              opacity: restoreMode === "pair-waiting" ? 0.4 : 1
+            },
+            children: "Back"
+          }
+        )
+      ] }, "0-pair") : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PearIcon, { size: 56 }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 0 } }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome to PearCal" }),
@@ -20421,6 +20601,134 @@
         transition: "width 0.2s, background 0.2s"
       } }, i2)) })
     ] });
+  }
+  function PairingHostModal({ th, data, error, onRegenerate, onCancel }) {
+    const canvasRef = (0, import_react2.useRef)(null);
+    const [qrError, setQrError] = (0, import_react2.useState)(null);
+    const link = data?.url;
+    (0, import_react2.useEffect)(() => {
+      if (!canvasRef.current || !link) return;
+      try {
+        import_qrcode.default.toCanvas(canvasRef.current, link, { width: 240, margin: 2 }, (err) => {
+          if (err) setQrError(err.message);
+        });
+      } catch (e58) {
+        setQrError(e58.message);
+      }
+    }, [link]);
+    const copyLink = () => {
+      if (!link) return;
+      try {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        window.__pearSync?.haptic("light");
+      } catch {
+      }
+    };
+    const isCompleted = data?.status === "completed";
+    const isExpired = data?.expired === true;
+    return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+      "div",
+      {
+        style: {
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 9999,
+          background: "rgba(0,0,0,0.55)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center"
+        },
+        onClick: isCompleted ? void 0 : onCancel,
+        children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+          "div",
+          {
+            style: {
+              ...th.card,
+              borderRadius: 16,
+              padding: 24,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 14,
+              width: 300
+            },
+            onClick: (e58) => e58.stopPropagation(),
+            children: [
+              /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 16, fontWeight: 400, ...th.text }, children: isCompleted ? "Device paired" : "Add a device" }),
+              isCompleted ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300, textAlign: "center", padding: "20px 0" }, children: "The other device is now linked to your identity." }) : isExpired ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: th.muted, fontWeight: 300, textAlign: "center", lineHeight: 1.5 }, children: "This pairing link expired. Generate a new one and scan it within 15 minutes." }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: onRegenerate,
+                    style: { ...th.pillBtn, width: "100%", padding: "10px", fontSize: 14, fontWeight: 300 },
+                    children: "Generate new link"
+                  }
+                )
+              ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, color: th.muted, fontWeight: 300, textAlign: "center", maxWidth: 260 }, children: [
+                  "On the other device, open PearCal and tap ",
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("b", { children: "I already use PearCal \u2192 Pair with another device" }),
+                  "."
+                ] }),
+                qrError ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 11, color: "red" }, children: [
+                  "QR error: ",
+                  qrError
+                ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("canvas", { ref: canvasRef, style: { borderRadius: 8 } }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                  fontSize: 10,
+                  color: th.muted,
+                  fontWeight: 300,
+                  textAlign: "center",
+                  wordBreak: "break-all",
+                  fontFamily: "monospace",
+                  maxWidth: 260,
+                  lineHeight: 1.4
+                }, children: link }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                  "button",
+                  {
+                    onClick: copyLink,
+                    style: { ...th.pillBtn, padding: "8px 20px", fontSize: 12, fontWeight: 300 },
+                    children: "Copy link"
+                  }
+                )
+              ] }),
+              error && !isCompleted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 260 }, children: error }),
+              !isCompleted && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "button",
+                {
+                  onClick: onCancel,
+                  style: {
+                    background: "none",
+                    border: `1px solid ${th.border}`,
+                    color: th.muted,
+                    fontFamily: FONT,
+                    padding: "8px 20px",
+                    fontSize: 13,
+                    fontWeight: 300,
+                    cursor: "pointer",
+                    borderRadius: 8,
+                    width: "100%"
+                  },
+                  children: "Cancel"
+                }
+              )
+            ]
+          }
+        )
+      }
+    );
   }
   function QRModal({ th, link, onClose }) {
     const canvasRef = (0, import_react2.useRef)(null);
@@ -24314,6 +24622,9 @@ ${link}`;
     const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
     const [mnemonicReveal, setMnemonicReveal] = (0, import_react2.useState)(null);
     const [mnemonicBusy, setMnemonicBusy] = (0, import_react2.useState)(false);
+    const [pairHost, setPairHost] = (0, import_react2.useState)(null);
+    const [pairHostBusy, setPairHostBusy] = (0, import_react2.useState)(false);
+    const [pairHostError, setPairHostError] = (0, import_react2.useState)(null);
     const [mnemonicCopied, setMnemonicCopied] = (0, import_react2.useState)(false);
     (0, import_react2.useEffect)(() => {
       let cancelled = false;
@@ -24394,6 +24705,51 @@ ${link}`;
     }
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const publicKey = profile?.publicKey ?? "\u2014";
+    (0, import_react2.useEffect)(() => {
+      if (!pairHost || pairHost.status === "completed") return;
+      function onPairingCompleted(data) {
+        if (!data || data.role !== "primary") return;
+        setPairHost({ status: "completed" });
+        setPairHostError(null);
+        setTimeout(() => setPairHost(null), 1800);
+      }
+      function onPairingExpired() {
+        setPairHost((h2) => h2 && !h2.status ? { ...h2, expired: true } : h2);
+      }
+      function onPairingFailed(data) {
+        setPairHostError(data?.message || data?.reason || "Pairing failed");
+      }
+      emitter.on("pairingCompleted", onPairingCompleted);
+      emitter.on("pairingExpired", onPairingExpired);
+      emitter.on("pairingFailed", onPairingFailed);
+      return () => {
+        emitter.off("pairingCompleted", onPairingCompleted);
+        emitter.off("pairingExpired", onPairingExpired);
+        emitter.off("pairingFailed", onPairingFailed);
+      };
+    }, [pairHost]);
+    async function startDevicePairing() {
+      if (pairHostBusy) return;
+      setPairHostBusy(true);
+      setPairHostError(null);
+      try {
+        await db2.enablePersonalSync();
+        const res = await db2.startPairing();
+        if (!res?.url) throw new Error("Could not generate pairing link");
+        setPairHost({ url: res.url, expiresAt: res.expiresAt });
+      } catch (e58) {
+        setPairHostError(e58?.message || "Failed to start pairing");
+      }
+      setPairHostBusy(false);
+    }
+    async function cancelDevicePairing() {
+      try {
+        await db2.cancelPairing();
+      } catch {
+      }
+      setPairHost(null);
+      setPairHostError(null);
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "24px 20px" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 12, marginBottom: 28 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { position: "relative" }, children: [
@@ -24958,6 +25314,40 @@ ${link}`;
             /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 10, lineHeight: 1.4 }, children: "Keep these 12 words somewhere safe. Anyone with them can restore your identity and rejoin your groups." })
           ] }) })
         ] }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEVICES" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+            "button",
+            {
+              onClick: () => {
+                window.__pearSync?.haptic("light");
+                startDevicePairing();
+              },
+              disabled: pairHostBusy || !!pairHost,
+              style: {
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                width: "100%",
+                padding: "12px 14px",
+                borderRadius: 10,
+                cursor: "pointer",
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                fontFamily: FONT,
+                opacity: pairHostBusy || !!pairHost ? 0.5 : 1
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: pairHostBusy ? "Generating\u2026" : "Add a device" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Pair your phone, tablet, or desktop under the same identity" })
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 16, weight: "thin", color: "var(--color-muted)" })
+              ]
+            }
+          ),
+          pairHostError && !pairHost && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, marginTop: 8, textAlign: "center" }, children: pairHostError })
+        ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -25832,7 +26222,20 @@ ${link}`;
           ),
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Tap to copy" })
         ] }) })
-      ] })
+      ] }),
+      pairHost && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+        PairingHostModal,
+        {
+          th,
+          data: pairHost,
+          error: pairHostError,
+          onRegenerate: async () => {
+            await cancelDevicePairing();
+            startDevicePairing();
+          },
+          onCancel: cancelDevicePairing
+        }
+      )
     ] });
   }
 
@@ -26110,6 +26513,10 @@ ${link}`;
   window.addEventListener("pear:pendingRejoin", (e58) => emitter.emit("pendingRejoin", e58.detail));
   window.addEventListener("pear:pendingApproval", (e58) => emitter.emit("pendingApproval", e58.detail));
   window.addEventListener("pear:pendingApprovalCleared", (e58) => emitter.emit("pendingApprovalCleared", e58.detail));
+  window.addEventListener("pear:pairingStarted", (e58) => emitter.emit("pairingStarted", e58.detail));
+  window.addEventListener("pear:pairingCompleted", (e58) => emitter.emit("pairingCompleted", e58.detail));
+  window.addEventListener("pear:pairingFailed", (e58) => emitter.emit("pairingFailed", e58.detail));
+  window.addEventListener("pear:pairingExpired", (e58) => emitter.emit("pairingExpired", e58.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),
@@ -26150,7 +26557,13 @@ ${link}`;
     listPendingRejoins: () => window.__pearDB.call("listPendingRejoins"),
     approveRejoin: (gid, ipk) => window.__pearDB.call("approveRejoin", gid, ipk),
     denyRejoin: (gid, ipk) => window.__pearDB.call("denyRejoin", gid, ipk),
-    listPendingApprovals: () => window.__pearDB.call("listPendingApprovals")
+    listPendingApprovals: () => window.__pearDB.call("listPendingApprovals"),
+    enablePersonalSync: () => window.__pearDB.call("enablePersonalSync"),
+    getPersonalSyncStatus: () => window.__pearDB.call("getPersonalSyncStatus"),
+    startPairing: () => window.__pearDB.call("startPairing"),
+    cancelPairing: () => window.__pearDB.call("cancelPairing"),
+    consumePairLink: (url) => window.__pearDB.call("consumePairLink", url),
+    getPairingStatus: () => window.__pearDB.call("getPairingStatus")
   };
   var notifs = {
     scheduleForEvent: (ev2, reminders) => window.__pearDB.call("scheduleForEvent", ev2, reminders),

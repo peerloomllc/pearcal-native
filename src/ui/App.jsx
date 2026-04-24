@@ -535,6 +535,16 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => { groupsRef.current = groups }, [groups])
   const [onboardStep,   setOnboardStep]   = useState(0)
   const showOnboarding = ready && !profile?.onboardingComplete
+  // QR scan mode flag (TODO #11 Phase 4). Default is null → existing invite-join
+  // behavior. Setters from OnboardingModal / ProfileTab flip this to 'pair' before
+  // calling `sync.qrScan()`, and the global `qrScanResult` handler branches on it.
+  const qrScanModeRef = useRef(null)
+  // Onboarding sub-mode back handler. OnboardingModal sets this to a function
+  // that returns true if a restore sub-screen (menu / pair / manual) was popped,
+  // false if already at the Slide-0 root. The App-level back handler at :839
+  // calls it before the per-slide step decrement so back gesture unwinds the
+  // sub-screens first, same pattern as closeXxxSheetRef for bottom sheets.
+  const closeOnboardSubModeRef = useRef(null)
   const [showDonationReminder, setShowDonationReminder] = useState(false)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
@@ -834,8 +844,11 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => {
     backHandlerRef.current = () => {
       if (showOnboarding) {
+        // Slide 0 sub-screens (restore menu / pair / manual phrase) get first
+        // crack so back gesture unwinds them instead of noop-ing at step 0.
+        if (closeOnboardSubModeRef.current?.()) return
         if (onboardStep > 0) { setOnboardStep(s => s - 1); return }
-        return  // step 0 — do nothing, don't exit
+        return  // step 0 root — do nothing, don't exit
       }
       if (closeAboutSheetRef.current?.()) return
       if (qrGroup)      { setQrGroup(null);      return }
@@ -862,7 +875,20 @@ export default function App ({ db, notifs, sync }) {
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
     function onQrScanResult(url) {
-      if (url && db && sync) openPendingJoin(url)
+      if (!url || !db || !sync) return
+      const mode = qrScanModeRef.current
+      qrScanModeRef.current = null
+      if (mode === 'pair') {
+        // Pair-mode: URL must be pearcal://pair. Hand to bare worklet which
+        // verifies the handshake, installs the mnemonic + personal base, and
+        // emits pairingCompleted / pairingFailed. The OnboardingModal is the
+        // caller in this PR; it subscribes to those events to advance slides.
+        db.consumePairLink(url).catch(e => {
+          console.warn('[pair] consumePairLink error:', e?.message)
+        })
+        return
+      }
+      openPendingJoin(url)
     }
     emitter.on('qrScanResult', onQrScanResult)
     function onCameraResult (base64) {
@@ -1686,6 +1712,8 @@ export default function App ({ db, notifs, sync }) {
         {/* Modals */}
         {showOnboarding && <OnboardingModal th={th} step={onboardStep} setStep={setOnboardStep}
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
+          qrScanModeRef={qrScanModeRef}
+          closeOnboardSubModeRef={closeOnboardSubModeRef}
           onComplete={async () => { await db.updateProfile({ onboardingComplete: true }); const p = await db.getProfile(); setProfile(p) }} />}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
@@ -3297,7 +3325,7 @@ function DonationReminderModal ({ th, sync, onDonate, onDismiss }) {
   )
 }
 
-function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, onComplete }) {
+function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, sync, qrScanModeRef, closeOnboardSubModeRef, onComplete }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
@@ -3305,10 +3333,97 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
   const [backupStatus, setBackupStatus] = useState(null)
-  const [restoreMode, setRestoreMode] = useState(null) // null | 'menu' | 'manual'
+  const [restoreMode, setRestoreMode] = useState(null) // null | 'menu' | 'manual' | 'pair' | 'pair-waiting'
   const [restorePhrase, setRestorePhrase] = useState('')
   const [restoring, setRestoring] = useState(false)
   const [restoreError, setRestoreError] = useState('')
+  const [pairInput, setPairInput] = useState('')
+
+  // Expose a back-unwind hook so the App-level back handler pops restore
+  // sub-screens before falling through to step-decrement. Ordering matches the
+  // tap-Back button: 'pair-waiting' is intentionally unbackable (we're mid-
+  // handshake), 'pair' and 'manual' go back to 'menu', 'menu' goes to Slide-0
+  // root. Returns true iff it handled the back.
+  useEffect(() => {
+    if (!closeOnboardSubModeRef) return
+    closeOnboardSubModeRef.current = () => {
+      if (restoreMode === 'pair-waiting') return true  // swallow — mid-handshake
+      if (restoreMode === 'pair' || restoreMode === 'manual') {
+        setRestoreMode('menu'); setRestoreError(''); setPairInput('')
+        return true
+      }
+      if (restoreMode === 'menu') {
+        setRestoreMode(null); setRestoreError('')
+        return true
+      }
+      return false
+    }
+    return () => { if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null }
+  }, [restoreMode, closeOnboardSubModeRef])
+
+  // Secondary-side pair event listeners. pairingStarted (role: 'secondary')
+  // fires when consumePairLink has joined the pair swarm and is actively
+  // handshaking — that's the right moment to flip to 'pair-waiting'.
+  // pairingCompleted advances onboarding to name entry (mnemonic came from
+  // primary, name stays device-local). pairingFailed / pairingExpired returns
+  // user to the pair menu with an error.
+  useEffect(() => {
+    function onPairingStarted (data) {
+      if (!data || data.role !== 'secondary') return
+      setRestoreMode('pair-waiting')
+      setRestoreError('')
+    }
+    function onPairingCompleted (data) {
+      if (!data || data.role !== 'secondary') return
+      setRestoreMode(null)
+      setRestoreError('')
+      setSlideDir(1); setStep(2) // jump to name entry like cloud / manual restore
+    }
+    function onPairingFailed (data) {
+      const msg = (data?.reason === 'expired')
+        ? 'Pairing link expired. Ask the other device to generate a new one.'
+        : (data?.message || data?.reason || 'Pairing failed. Try again.')
+      setRestoreMode('pair')
+      setRestoreError(msg)
+    }
+    emitter.on('pairingStarted', onPairingStarted)
+    emitter.on('pairingCompleted', onPairingCompleted)
+    emitter.on('pairingFailed', onPairingFailed)
+    emitter.on('pairingExpired', onPairingFailed)
+    return () => {
+      emitter.off('pairingStarted', onPairingStarted)
+      emitter.off('pairingCompleted', onPairingCompleted)
+      emitter.off('pairingFailed', onPairingFailed)
+      emitter.off('pairingExpired', onPairingFailed)
+    }
+  }, [setStep])
+
+  // Fire the native scanner. We DON'T flip to 'pair-waiting' here — if the
+  // user backs out of the camera without scanning, no qrScanResult fires and
+  // the UI would be stuck. The transition to pair-waiting happens only when
+  // bare emits pairingStarted (secondary) above, after a valid URL is parsed.
+  async function startPairScan () {
+    setRestoreError('')
+    if (qrScanModeRef) qrScanModeRef.current = 'pair'
+    try { await sync?.qrScan?.() } catch (e) {
+      qrScanModeRef.current = null
+      setRestoreError(e?.message || 'Unable to open camera')
+    }
+  }
+
+  async function submitPairPaste () {
+    const url = pairInput.trim()
+    if (!url) { setRestoreError('Paste a pearcal://pair link'); return }
+    setRestoreError('')
+    try {
+      // pairingStarted listener flips UI to 'pair-waiting' once the swarm joins.
+      await db.consumePairLink(url)
+      // Success flows through pairingCompleted listener above.
+    } catch (e) {
+      setRestoreMode('pair')
+      setRestoreError(e?.message || 'Invalid pairing link')
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -3448,6 +3563,10 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
             {restoring ? 'Checking…' : `Restore from ${backupPlatformLabel}`}
           </button>
         )}
+        <button onClick={() => { setRestoreMode('pair'); setRestoreError('') }}
+          style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260 }}>
+          Pair with another device
+        </button>
         <button onClick={() => { setRestoreMode('manual'); setRestoreError('') }}
           style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260 }}>
           Enter recovery phrase
@@ -3460,6 +3579,50 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         <button onClick={() => { setRestoreMode(null); setRestoreError('') }}
           style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
             fontSize:13, fontWeight:300, cursor:'pointer', padding:4 }}>
+          Back
+        </button>
+      </div>
+    ) : restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
+      <div key="0-pair" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
+        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Pair with another device</div>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:300, lineHeight:'1.6' }}>
+          On your other device, open PearCal → Profile → Devices → Add a device, then scan or paste the pairing code here.
+        </div>
+        {restoreMode === 'pair-waiting' ? (
+          <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', padding:'8px 0' }}>
+            Connecting to your other device…
+          </div>
+        ) : (
+          <>
+            <button onClick={startPairScan}
+              style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, minWidth:220 }}>
+              Scan QR code
+            </button>
+            <div style={{ fontSize:12, color:th.muted, fontWeight:300, marginTop:4 }}>or paste the link</div>
+            <textarea value={pairInput} onChange={e => { setPairInput(e.target.value); setRestoreError('') }}
+              placeholder="pearcal://pair?topic=…"
+              rows={2}
+              style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
+                padding:'10px 12px', color:th.text.color, fontSize:13, fontWeight:300,
+                fontFamily:'monospace', width:'100%', boxSizing:'border-box', outline:'none',
+                resize:'none', lineHeight:'1.4' }} />
+            <button onClick={submitPairPaste} disabled={!pairInput.trim()}
+              style={{ ...th.pillBtn, padding:'10px 30px', fontSize:14, fontWeight:300,
+                opacity: !pairInput.trim() ? 0.4 : 1 }}>
+              Pair
+            </button>
+          </>
+        )}
+        {restoreError && (
+          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
+            {restoreError}
+          </div>
+        )}
+        <button onClick={() => { setRestoreMode('menu'); setRestoreError(''); setPairInput('') }}
+          disabled={restoreMode === 'pair-waiting'}
+          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
+            fontSize:13, fontWeight:300, cursor:'pointer', padding:4,
+            opacity: restoreMode === 'pair-waiting' ? 0.4 : 1 }}>
           Back
         </button>
       </div>
@@ -3632,6 +3795,94 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
             background: i === step ? th.accent : th.border,
             transition:'width 0.2s, background 0.2s' }} />
         ))}
+      </div>
+    </div>
+  )
+}
+
+// TODO #11 Phase 4 — primary-side pairing modal. Shows the QR + pasteable URL
+// + a countdown. `data` shape tracks the pair lifecycle:
+//   { url, expiresAt }              - active, waiting for secondary
+//   { url, expiresAt, expired: true } - 15-min timer fired, needs regenerate
+//   { status: 'completed' }          - success flash before auto-dismiss
+function PairingHostModal ({ th, data, error, onRegenerate, onCancel }) {
+  const canvasRef = useRef(null)
+  const [qrError, setQrError] = useState(null)
+  const link = data?.url
+  useEffect(() => {
+    if (!canvasRef.current || !link) return
+    try {
+      QRCode.toCanvas(canvasRef.current, link, { width: 240, margin: 2 }, (err) => {
+        if (err) setQrError(err.message)
+      })
+    } catch(e) { setQrError(e.message) }
+  }, [link])
+  const copyLink = () => {
+    if (!link) return
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = link; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      document.execCommand('copy'); document.body.removeChild(ta)
+      window.__pearSync?.haptic('light')
+    } catch {}
+  }
+  const isCompleted = data?.status === 'completed'
+  const isExpired   = data?.expired === true
+  return (
+    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:9999,
+      background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
+      onClick={isCompleted ? undefined : onCancel}>
+      <div style={{ ...th.card, borderRadius:16, padding:24, display:'flex',
+        flexDirection:'column', alignItems:'center', gap:14, width:300 }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ fontSize:16, fontWeight:400, ...th.text }}>
+          {isCompleted ? 'Device paired' : 'Add a device'}
+        </div>
+        {isCompleted ? (
+          <div style={{ fontSize:13, color:th.muted, fontWeight:300, textAlign:'center', padding:'20px 0' }}>
+            The other device is now linked to your identity.
+          </div>
+        ) : isExpired ? (
+          <>
+            <div style={{ fontSize:13, color:th.muted, fontWeight:300, textAlign:'center', lineHeight:1.5 }}>
+              This pairing link expired. Generate a new one and scan it within 15 minutes.
+            </div>
+            <button onClick={onRegenerate}
+              style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300 }}>
+              Generate new link
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize:12, color:th.muted, fontWeight:300, textAlign:'center', maxWidth:260 }}>
+              On the other device, open PearCal and tap <b>I already use PearCal → Pair with another device</b>.
+            </div>
+            {qrError
+              ? <div style={{ fontSize:11, color:'red' }}>QR error: {qrError}</div>
+              : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
+            <div style={{ fontSize:10, color:th.muted, fontWeight:300, textAlign:'center',
+              wordBreak:'break-all', fontFamily:'monospace', maxWidth:260, lineHeight:1.4 }}>{link}</div>
+            <button onClick={copyLink}
+              style={{ ...th.pillBtn, padding:'8px 20px', fontSize:12, fontWeight:300 }}>
+              Copy link
+            </button>
+          </>
+        )}
+        {error && !isCompleted && (
+          <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:260 }}>
+            {error}
+          </div>
+        )}
+        {!isCompleted && (
+          <button onClick={onCancel}
+            style={{ background:'none', border:`1px solid ${th.border}`,
+              color:th.muted, fontFamily:FONT, padding:'8px 20px',
+              fontSize:13, fontWeight:300, cursor:'pointer', borderRadius:8,
+              width:'100%' }}>
+            Cancel
+          </button>
+        )}
       </div>
     </div>
   )
@@ -6223,6 +6474,9 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [backupStatus,     setBackupStatus]     = useState(null)
   const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
   const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
+  const [pairHost,         setPairHost]         = useState(null) // null | { url, expiresAt } | { url, expiresAt, expired: true } | { status: 'completed' }
+  const [pairHostBusy,     setPairHostBusy]     = useState(false)
+  const [pairHostError,    setPairHostError]    = useState(null)
   const [mnemonicCopied,   setMnemonicCopied]   = useState(false)
 
   useEffect(() => {
@@ -6309,6 +6563,55 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
 
   const hasPhoto = profile?.avatar?.startsWith?.('data:')
   const publicKey = profile?.publicKey ?? '—'
+
+  // Primary-side pair event listeners. Active while pairHost is non-null (modal
+  // is shown). pairingCompleted auto-dismisses with a success flash; expired
+  // transitions the modal into a "tap to regenerate" state without closing it.
+  useEffect(() => {
+    if (!pairHost || pairHost.status === 'completed') return
+    function onPairingCompleted (data) {
+      if (!data || data.role !== 'primary') return
+      setPairHost({ status: 'completed' })
+      setPairHostError(null)
+      setTimeout(() => setPairHost(null), 1800)
+    }
+    function onPairingExpired () {
+      setPairHost(h => h && !h.status ? { ...h, expired: true } : h)
+    }
+    function onPairingFailed (data) {
+      setPairHostError(data?.message || data?.reason || 'Pairing failed')
+    }
+    emitter.on('pairingCompleted', onPairingCompleted)
+    emitter.on('pairingExpired', onPairingExpired)
+    emitter.on('pairingFailed', onPairingFailed)
+    return () => {
+      emitter.off('pairingCompleted', onPairingCompleted)
+      emitter.off('pairingExpired', onPairingExpired)
+      emitter.off('pairingFailed', onPairingFailed)
+    }
+  }, [pairHost])
+
+  async function startDevicePairing () {
+    if (pairHostBusy) return
+    setPairHostBusy(true)
+    setPairHostError(null)
+    try {
+      // startPairing in bare.js requires personalMeta:bootstrap — enable on demand.
+      await db.enablePersonalSync()
+      const res = await db.startPairing()
+      if (!res?.url) throw new Error('Could not generate pairing link')
+      setPairHost({ url: res.url, expiresAt: res.expiresAt })
+    } catch (e) {
+      setPairHostError(e?.message || 'Failed to start pairing')
+    }
+    setPairHostBusy(false)
+  }
+
+  async function cancelDevicePairing () {
+    try { await db.cancelPairing() } catch {}
+    setPairHost(null)
+    setPairHostError(null)
+  }
 
   return (
     <div style={{ padding:'24px 20px' }}>
@@ -6694,6 +6997,36 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 Keep these 12 words somewhere safe. Anyone with them can restore your
                 identity and rejoin your groups.
               </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Devices (TODO #11 Phase 4) */}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        DEVICES
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'0 16px 14px' }}>
+          <button onClick={() => { window.__pearSync?.haptic('light'); startDevicePairing() }}
+            disabled={pairHostBusy || !!pairHost}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+              padding:'12px 14px', borderRadius:10, cursor:'pointer',
+              border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+              opacity: (pairHostBusy || !!pairHost) ? 0.5 : 1 }}>
+            <div style={{ flex:1, textAlign:'left' }}>
+              <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+                {pairHostBusy ? 'Generating…' : 'Add a device'}
+              </div>
+              <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+                Pair your phone, tablet, or desktop under the same identity
+              </div>
+            </div>
+            <CaretRight size={16} weight="thin" color="var(--color-muted)" />
+          </button>
+          {pairHostError && !pairHost && (
+            <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, marginTop:8, textAlign:'center' }}>
+              {pairHostError}
             </div>
           )}
         </div>
@@ -7254,6 +7587,12 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       </div>
 
       </div>
+
+      {pairHost && (
+        <PairingHostModal th={th} data={pairHost} error={pairHostError}
+          onRegenerate={async () => { await cancelDevicePairing(); startDevicePairing() }}
+          onCancel={cancelDevicePairing} />
+      )}
     </div>
   )
 }
