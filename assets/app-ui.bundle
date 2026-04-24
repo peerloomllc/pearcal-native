@@ -19708,6 +19708,13 @@
               days.push(todayStr2);
               days.sort((a38, b) => a38.localeCompare(b));
             }
+            for (const list of seen.values()) {
+              list.sort((a38, b) => {
+                if (a38.allDay && !b.allDay) return -1;
+                if (!a38.allDay && b.allDay) return 1;
+                return (a38.start || "").localeCompare(b.start || "");
+              });
+            }
             return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
               days.map((date) => /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { "data-date": date, style: { marginBottom: 20 }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {

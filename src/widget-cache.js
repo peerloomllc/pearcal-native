@@ -71,7 +71,7 @@ function buildSlots (events) {
   return slots
 }
 
-async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds } = {}) {
+async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds, use24h } = {}) {
   const date = todayDateString()
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
@@ -82,7 +82,7 @@ async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupI
     const tomorrow = await readDayEvents(db, tomorrowDateString(), { profileId, isInvitedToEvent, ownedGroupIds })
     if (tomorrow.length > 0) tomorrowFirst = tomorrow[0]
   }
-  return { date, generatedAt: Date.now(), events, slots, tomorrowFirst }
+  return { date, generatedAt: Date.now(), events, slots, tomorrowFirst, use24h: use24h ?? null }
 }
 
 module.exports = { computeTodayCache, todayDateString }

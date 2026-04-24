@@ -19,6 +19,7 @@ struct CachedPayload: Codable {
   let events: [CachedEvent]
   let slots: [[Int]]?
   let tomorrowFirst: CachedEvent?
+  let use24h: Bool?
 }
 
 // MARK: - Theme
@@ -71,16 +72,25 @@ struct PearCalProvider: TimelineProvider {
 
 // MARK: - Helpers
 
-// Format an "HH:mm" 24-hour string as "h:mm a" in the user's locale. Returns
-// the input unchanged if parsing fails.
-private func prettyTime(_ hhmm: String?) -> String {
+// Format an "HH:mm" 24-hour string as either 12- or 24-hour time. When
+// `use24h` is nil, defers to the user's iOS 12/24-hour preference via the
+// locale-aware "jmm" template. When set, uses a fixed en_US_POSIX format so
+// the system-wide "24-Hour Time" toggle can't override the app's preference
+// (Apple QA1480 — fixed `dateFormat` strings get rewritten by user settings
+// unless the locale is pinned).
+private func prettyTime(_ hhmm: String?, use24h: Bool?) -> String {
   guard let hhmm = hhmm, !hhmm.isEmpty else { return "" }
   let parser = DateFormatter()
   parser.dateFormat = "HH:mm"
   parser.locale = Locale(identifier: "en_US_POSIX")
   guard let d = parser.date(from: hhmm) else { return hhmm }
   let out = DateFormatter()
-  out.dateFormat = "h:mm a"
+  if let use24h = use24h {
+    out.dateFormat = use24h ? "HH:mm" : "h:mm a"
+    out.locale = Locale(identifier: "en_US_POSIX")
+  } else {
+    out.setLocalizedDateFormatFromTemplate("jmm")
+  }
   return out.string(from: d)
 }
 
@@ -94,9 +104,9 @@ private func swatch(_ hex: String?) -> Color {
                blue: Double(n & 0xFF) / 255.0)
 }
 
-private func eventTimeLabel(_ ev: CachedEvent) -> String {
+private func eventTimeLabel(_ ev: CachedEvent, use24h: Bool?) -> String {
   if ev.allDay { return "All day" }
-  return prettyTime(ev.start)
+  return prettyTime(ev.start, use24h: use24h)
 }
 
 private func minutesFromHHMM(_ s: String?) -> Int? {
@@ -176,7 +186,7 @@ struct SmallView: View {
       VStack(alignment: .leading, spacing: 2) {
         Text(ev.title).font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text).lineLimit(2)
         if showTime {
-          Text(eventTimeLabel(ev)).font(.caption2).foregroundColor(Theme.accent)
+          Text(eventTimeLabel(ev, use24h: entry.payload?.use24h)).font(.caption2).foregroundColor(Theme.accent)
         }
       }
     }
@@ -255,7 +265,7 @@ struct MediumView: View {
         RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color)).frame(width: 3, height: 20)
         Text(ev.title).font(.system(size: 13, weight: .medium)).foregroundColor(tColor).lineLimit(1)
         Spacer()
-        Text(eventTimeLabel(ev)).font(.caption2).foregroundColor(timeColor)
+        Text(eventTimeLabel(ev, use24h: entry.payload?.use24h)).font(.caption2).foregroundColor(timeColor)
       }
       if hasLoc, let loc = ev.location {
         Text(loc)
@@ -280,7 +290,7 @@ struct MediumView: View {
       RoundedRectangle(cornerRadius: 2).fill(swatch(b.color)).frame(width: 3, height: 20).padding(.leading, 2)
       Text(b.title).font(.system(size: 13, weight: .medium)).foregroundColor(bColor).lineLimit(1)
       Spacer()
-      Text(eventTimeLabel(a)).font(.caption2).foregroundColor(timeColor)
+      Text(eventTimeLabel(a, use24h: entry.payload?.use24h)).font(.caption2).foregroundColor(timeColor)
     }
   }
 }
