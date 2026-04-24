@@ -648,6 +648,29 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
+      // Device-pair events (TODO #11 Phase 4). Forward to WebView so the
+      // OnboardingModal + ProfileTab listeners react to pair lifecycle.
+      onEvent('pairingStarted', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pairingStarted",' + JSON.stringify(data) + ');true;'
+        )
+      })
+      onEvent('pairingCompleted', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pairingCompleted",' + JSON.stringify(data) + ');true;'
+        )
+      })
+      onEvent('pairingFailed', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pairingFailed",' + JSON.stringify(data) + ');true;'
+        )
+      })
+      onEvent('pairingExpired', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("pairingExpired",' + JSON.stringify(data) + ');true;'
+        )
+      })
+
       onEvent('scheduleMorningDigest', async (items: any) => {
         try {
           for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {
