@@ -70,8 +70,20 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
 
   // 3. Build a local group record and persist it
   const profile = await db.getProfile()
-  const myMember = { id: profile.id, name: profile.name, avatar: profile.avatar ?? _initials(profile.name), publicKey: profile.publicKey, ...(nickname ? { nickname } : {}) }
-  const inviterMember = { id: inviterKey, name: 'Inviter', avatar: '?', publicKey: inviterKey }
+  const myMember = {
+    id: profile.id, name: profile.name,
+    avatar: profile.avatar ?? _initials(profile.name),
+    publicKey: profile.publicKey,
+    ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+    ...(nickname ? { nickname } : {}),
+  }
+  // `inviterKey` is the inviter's profile.id (identity-derived). Old invite
+  // links (pre-v1.0.23) carry the inviter's writerKey instead; in both shapes
+  // the string is 64 hex chars so we can't distinguish at parse time. Either
+  // way, the owner's Autobase record arrives on first replication and
+  // authoritatively overrides this placeholder — see the non-authoritative
+  // preserve rule in bare.js apply()/mirrorToLocal (landed in PR #116).
+  const inviterMember = { id: inviterKey, name: 'Inviter', avatar: '?' }
 
   const group = {
     id:        groupId,
@@ -127,26 +139,29 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
  * Generate an invite link for a group.
  *
  * @param {object} group
- * @param {string} myPublicKey  — hex public key of the inviting user
+ * @param {string} myIdentityId  — inviter's `profile.id` (identity-derived,
+ *                                 stable across devices). Pre-v1.0.23 links
+ *                                 carried `profile.publicKey` (writer key);
+ *                                 the joiner side accepts both shapes.
  * @returns {string}
  */
-export function buildReinviteLink (group, myPublicKey) {
+export function buildReinviteLink (group, myIdentityId) {
   const params = new URLSearchParams({
     group:   btoa(group.id),
     name:    group.name,
     key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
-    inviter: myPublicKey,
+    inviter: myIdentityId,
     reinvite: '1',
   })
   return `${SCHEME}/join?${params.toString()}`
 }
 
-export function buildInviteLink (group, myPublicKey) {
+export function buildInviteLink (group, myIdentityId) {
   const params = new URLSearchParams({
     group:   btoa(group.id),
     name:    group.name,
     key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
-    inviter: myPublicKey,
+    inviter: myIdentityId,
   })
   return `${SCHEME}/join?${params.toString()}`
 }

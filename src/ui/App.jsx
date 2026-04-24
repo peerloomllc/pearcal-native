@@ -4771,7 +4771,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, pendingAppr
     // Always fetch fresh from DB to get the real Autobase key, not the placeholder
     const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
     const src = fresh ?? g
-    const link = buildInviteLink(src, profile?.publicKey ?? 'unknown')
+    const link = buildInviteLink(src, profile?.id ?? 'unknown')
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -4891,7 +4891,7 @@ function GroupsTab ({ th, groups, profile, sync, db, readyGroupKeys, pendingAppr
 // ─── Invite Options Modal ──────────────────────────────────────────────────────
 function InviteOptionsModal ({ th, group, profile, sync, onQrGroup, onClose, closeRef }) {
   const bsCloseRef = useRef(null)
-  const link = buildInviteLink(group, profile?.publicKey ?? 'unknown')
+  const link = buildInviteLink(group, profile?.id ?? 'unknown')
   const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:\n\n${link}`
 
   useEffect(() => {
@@ -5096,7 +5096,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>Invite sent</div>
                     </div>
                     <button onClick={() => {
-                        const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
+                        const link = window.__pearBuildReinviteLink?.(g, me?.id ?? 'unknown')
                         if (!link) return
                         if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
                         else navigator.clipboard?.writeText(link)
@@ -5172,7 +5172,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                           removedMembers: (g.removedMembers ?? []).filter(x => x.id !== m.id),
                           pendingInvites: [...(g.pendingInvites ?? []), memberRecord] }
                         setG(updated)
-                        const link = window.__pearBuildReinviteLink?.(g, me?.publicKey ?? 'unknown')
+                        const link = window.__pearBuildReinviteLink?.(g, me?.id ?? 'unknown')
                         if (!link) return
                         if (sync) sync.nativeShare(`Join ${g.name} on PearCal`, link)
                         else navigator.clipboard?.writeText(link)
@@ -5679,7 +5679,7 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
   function handleShare () {
     setLeaving(true)
     setTimeout(() => onDismiss(), 150)
-    sync?.nativeShare('Join ' + group.name + ' on PearCal', buildInviteLink(group, me?.publicKey ?? 'unknown'))
+    sync?.nativeShare('Join ' + group.name + ' on PearCal', buildInviteLink(group, me?.id ?? 'unknown'))
   }
 
   const ready = readyGroupKeys.has(group.id)
