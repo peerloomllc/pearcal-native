@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.text.format.DateFormat
 import android.view.View
 import android.widget.RemoteViews
 import com.pearcal.R
@@ -169,6 +170,11 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             if (!file.exists()) return WidgetCache(emptyList(), emptyList(), null)
             return try {
                 val json = JSONObject(file.readText())
+                val use24h: Boolean = when {
+                    json.isNull("use24h") -> DateFormat.is24HourFormat(context)
+                    json.has("use24h") -> json.optBoolean("use24h", DateFormat.is24HourFormat(context))
+                    else -> DateFormat.is24HourFormat(context)
+                }
                 val arr = json.optJSONArray("events")
                 val list = ArrayList<EventRow>(arr?.length() ?: 0)
                 if (arr != null) {
@@ -179,7 +185,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         val start = o.optString("start", "")
                         val end = o.optString("end", "")
                         val location = if (o.isNull("location")) null else o.optString("location", "").ifEmpty { null }
-                        val timeLabel = if (allDay || start.isEmpty()) "All day" else prettyTime(start)
+                        val timeLabel = if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
                         val color = parseColor(o.optString("color", ""))
                         list.add(EventRow(
                             timeLabel, title, location, color, allDay,
@@ -200,27 +206,28 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                     for (i in list.indices) slotList.add(listOf(i))
                 }
                 val tomorrow = json.optJSONObject("tomorrowFirst")
-                val preview = if (tomorrow != null) formatTomorrowPreview(tomorrow) else null
+                val preview = if (tomorrow != null) formatTomorrowPreview(tomorrow, use24h) else null
                 WidgetCache(list, slotList, preview)
             } catch (e: Exception) {
                 WidgetCache(emptyList(), emptyList(), null)
             }
         }
 
-        private fun formatTomorrowPreview(o: JSONObject): String {
+        private fun formatTomorrowPreview(o: JSONObject, use24h: Boolean): String {
             val title = o.optString("title", "").ifEmpty { "(Untitled)" }
             val allDay = o.optBoolean("allDay", false)
             val start = o.optString("start", "")
-            val timeStr = if (allDay || start.isEmpty()) "All day" else start
+            val timeStr = if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
             return "Tomorrow · $timeStr  $title"
         }
 
-        private fun prettyTime(hhmm: String): String {
+        private fun prettyTime(hhmm: String, use24h: Boolean): String {
             if (hhmm.isEmpty() || !hhmm.contains(":")) return hhmm
             return try {
                 val parser = SimpleDateFormat("HH:mm", Locale.US)
                 val d = parser.parse(hhmm) ?: return hhmm
-                SimpleDateFormat("h:mm a", Locale.getDefault()).format(d)
+                val pattern = if (use24h) "HH:mm" else "h:mm a"
+                SimpleDateFormat(pattern, Locale.US).format(d)
             } catch (e: Exception) { hhmm }
         }
 

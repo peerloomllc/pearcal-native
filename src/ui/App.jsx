@@ -3183,6 +3183,13 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           days.push(todayStr)
           days.sort((a,b) => a.localeCompare(b))
         }
+        for (const list of seen.values()) {
+          list.sort((a, b) => {
+            if (a.allDay && !b.allDay) return -1
+            if (!a.allDay && b.allDay) return 1
+            return (a.start || '').localeCompare(b.start || '')
+          })
+        }
         return (
           <>
             {days.map(date => (
