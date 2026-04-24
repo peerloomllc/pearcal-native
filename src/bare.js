@@ -3101,13 +3101,20 @@ function makeApply (groupId) {
         emitSync(val.groupId, { groupChanged: true })
       }
 
-      // Owner-activity heartbeat: if this op was authored by the writerKey
-      // stored on the current owner's member record, refresh the group's
+      // Owner-activity heartbeat: if this op was authored by any device
+      // belonging to the current owner's identity, refresh the group's
       // lastOwnerActivityTs. The value is consulted by the non-owner claim
       // path; "activity" is deliberately Autobase-writes only (no protomux
       // or connection heartbeats), so a truly absent owner's clock decays.
       // Skip for promoteOwner ops (we already set lastOwnerActivityTs above)
       // and for addWriter/migration ops (already continued above before here).
+      //
+      // Multi-device (TODO #11): an owner may have several writerKeys, one
+      // per paired device. Fast path matches ownerMember.writerKey (the first
+      // device's key, stamped at createGroup). Identity path resolves the
+      // node's writerKey via writerIdentity:{groupId}:{writerKey} — populated
+      // by every verified writer-announce (bare.js:~4113) — and matches any
+      // writer whose identity equals ownerMember.identityPublicKey.
       try {
         if (nodeWriterKey) {
           const gKey = NS.groups + groupId
@@ -3115,7 +3122,14 @@ function makeApply (groupId) {
           const g = gNode?.value
           if (g && g.ownerId) {
             const ownerMember = (g.members ?? []).find(m => m.id === g.ownerId)
-            if (ownerMember?.writerKey && ownerMember.writerKey === nodeWriterKey) {
+            let isOwnerActivity = !!(ownerMember?.writerKey && ownerMember.writerKey === nodeWriterKey)
+            if (!isOwnerActivity && ownerMember?.identityPublicKey) {
+              const wi = await db.get('writerIdentity:' + groupId + ':' + nodeWriterKey).catch(() => null)
+              if (wi?.value?.identityPublicKey === ownerMember.identityPublicKey) {
+                isOwnerActivity = true
+              }
+            }
+            if (isOwnerActivity) {
               const now = Date.now()
               // Coarse throttle — no need to re-write on every op in a burst.
               if (now - (g.lastOwnerActivityTs ?? 0) > 60 * 1000) {
