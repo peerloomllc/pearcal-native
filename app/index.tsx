@@ -424,11 +424,19 @@ export default function Root () {
     return () => clearInterval(interval)
   }, [dbReady])
 
-  // Inject pending invite link when WebView, DB, and WebView DOM are all ready
+  // Inject pending invite link when WebView, DB, and WebView DOM are all ready.
+  // Device-pair URLs (pearcal://pair?...) bypass the WebView and go straight to
+  // the bare worklet — pairing is backend-only in PR #B (no UI surface yet).
   useEffect(() => {
     if (pendingInvite && dbReady && webViewReady && webViewRef.current) {
       const url = pendingInvite
       setPendingInvite(null)
+      if (url.startsWith('pearcal://pair') || url.startsWith('pear://pearcal/pair')) {
+        const bareId = _nextId++
+        _pending.set(bareId, () => {})
+        sendToWorklet({ method: 'consumePairLink', args: [url], id: bareId })
+        return
+      }
       webViewRef.current?.injectJavaScript(
         `if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } true;`
       )
