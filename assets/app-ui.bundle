@@ -16748,6 +16748,14 @@
       }
       emitter.on("pendingApproval", onPendingApproval);
       emitter.on("pendingApprovalCleared", onPendingApprovalCleared);
+      async function onProfileChanged() {
+        try {
+          const fresh = await db2.getProfile();
+          if (fresh) setProfile(fresh);
+        } catch {
+        }
+      }
+      emitter.on("profileChanged", onProfileChanged);
       return () => {
         emitter.off("sync", onSync);
         emitter.off("syncing", onSyncing);
@@ -16762,6 +16770,7 @@
         emitter.off("groupKeyUpdated", onGroupKeyUpdated);
         emitter.off("pendingApproval", onPendingApproval);
         emitter.off("pendingApprovalCleared", onPendingApprovalCleared);
+        emitter.off("profileChanged", onProfileChanged);
       };
     }, [db2]);
     (0, import_react2.useEffect)(() => {
@@ -24705,6 +24714,7 @@ ${link}`;
     }
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const publicKey = profile?.publicKey ?? "\u2014";
+    const identityId = profile?.id ?? "\u2014";
     (0, import_react2.useEffect)(() => {
       if (!pairHost || pairHost.status === "completed") return;
       function onPairingCompleted(data) {
@@ -26195,6 +26205,41 @@ ${link}`;
           textAlign: "center",
           marginTop: 16,
           marginBottom: 8
+        }, children: "IDENTITY ID" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", textAlign: "center" }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+            "div",
+            {
+              onClick: () => {
+                navigator.clipboard?.writeText(identityId);
+                window.__pearSync?.haptic("light");
+              },
+              style: {
+                fontSize: 10,
+                color: th.muted,
+                fontWeight: 300,
+                wordBreak: "break-all",
+                fontFamily: "monospace",
+                lineHeight: 1.5,
+                cursor: "pointer",
+                padding: "8px 12px",
+                background: th.inputBg,
+                borderRadius: 8,
+                border: `1px solid ${th.border}`
+              },
+              children: identityId
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Same on all your paired devices \u2014 tap to copy" })
+        ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+          fontSize: 11,
+          fontWeight: 300,
+          color: th.muted,
+          letterSpacing: "0.08em",
+          textAlign: "center",
+          marginTop: 16,
+          marginBottom: 8
         }, children: "PUBLIC KEY" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", textAlign: "center" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -26220,7 +26265,7 @@ ${link}`;
               children: publicKey
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Tap to copy" })
+          /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Unique per device \u2014 tap to copy" })
         ] }) })
       ] }),
       pairHost && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
@@ -26517,6 +26562,7 @@ ${link}`;
   window.addEventListener("pear:pairingCompleted", (e58) => emitter.emit("pairingCompleted", e58.detail));
   window.addEventListener("pear:pairingFailed", (e58) => emitter.emit("pairingFailed", e58.detail));
   window.addEventListener("pear:pairingExpired", (e58) => emitter.emit("pairingExpired", e58.detail));
+  window.addEventListener("pear:profileChanged", (e58) => emitter.emit("profileChanged", e58.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),

@@ -671,6 +671,14 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
+      // Identity-scoped profile sync (TODO #11 follow-up). Fires when a
+      // sibling device edits name/avatar so the UI re-reads profile state.
+      onEvent('profileChanged', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("profileChanged",' + JSON.stringify(data ?? null) + ');true;'
+        )
+      })
+
       onEvent('scheduleMorningDigest', async (items: any) => {
         try {
           for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {

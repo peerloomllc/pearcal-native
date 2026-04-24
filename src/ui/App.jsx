@@ -807,6 +807,16 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('pendingApproval', onPendingApproval)
     emitter.on('pendingApprovalCleared', onPendingApprovalCleared)
+
+    // Sibling device edited name/avatar — re-read profile so the UI updates.
+    // Group member records sync separately through the per-group Autobase.
+    async function onProfileChanged () {
+      try {
+        const fresh = await db.getProfile()
+        if (fresh) setProfile(fresh)
+      } catch { /* non-fatal */ }
+    }
+    emitter.on('profileChanged', onProfileChanged)
     return () => {
       emitter.off('sync', onSync)
       emitter.off('syncing', onSyncing)
@@ -821,6 +831,7 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
       emitter.off('pendingApproval', onPendingApproval)
       emitter.off('pendingApprovalCleared', onPendingApprovalCleared)
+      emitter.off('profileChanged', onProfileChanged)
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])
@@ -6563,6 +6574,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
 
   const hasPhoto = profile?.avatar?.startsWith?.('data:')
   const publicKey = profile?.publicKey ?? '—'
+  const identityId = profile?.id ?? '—'
 
   // Primary-side pair event listeners. Active while pairHost is non-null (modal
   // is shown). pairingCompleted auto-dismisses with a success flash; expired
@@ -7569,7 +7581,26 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         </div>
 
-      {/* Public Key */}
+      {/* Identity ID — shared across paired devices */}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em',
+        textAlign:'center', marginTop:16, marginBottom:8 }}>
+        IDENTITY ID
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', textAlign:'center' }}>
+          <div onClick={() => { navigator.clipboard?.writeText(identityId); window.__pearSync?.haptic('light') }}
+            style={{ fontSize:10, color:th.muted, fontWeight:300, wordBreak:'break-all',
+              fontFamily:'monospace', lineHeight:1.5, cursor:'pointer', padding:'8px 12px',
+              background:th.inputBg, borderRadius:8, border:`1px solid ${th.border}` }}>
+            {identityId}
+          </div>
+          <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:6 }}>
+            Same on all your paired devices — tap to copy
+          </div>
+        </div>
+      </div>
+
+      {/* Public Key — per-device writer key */}
       <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em',
         textAlign:'center', marginTop:16, marginBottom:8 }}>
         PUBLIC KEY
@@ -7582,7 +7613,9 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
               background:th.inputBg, borderRadius:8, border:`1px solid ${th.border}` }}>
             {publicKey}
           </div>
-          <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:6 }}>Tap to copy</div>
+          <div style={{ fontSize:10, color:th.muted, fontWeight:300, marginTop:6 }}>
+            Unique per device — tap to copy
+          </div>
         </div>
       </div>
 
