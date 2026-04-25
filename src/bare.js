@@ -1534,6 +1534,44 @@ function makePersonalApply () {
       if (val.op === 'put' && val.type === 'groupMembership' && val.key && val.value) {
         await view.put(val.key, val.value)
         await db.put(val.key, val.value).catch(() => {})
+        // Auto-open the group's Autobase on this device if we don't already
+        // have it, so the sibling join propagates as a real "this device is
+        // now in that group" — not just a local DB pointer. Idempotent:
+        // joinGroup short-circuits when the base is already open, and the
+        // local seed is skipped if a group record already exists.
+        const groupId  = val.value.groupId
+        const groupKey = val.value.groupKey
+        if (groupId && groupKey && !bases.has(groupId)) {
+          const existingGroup = await db.get(NS.groups + groupId).catch(() => null)
+          if (!existingGroup?.value) {
+            const profile = await getProfile().catch(() => null)
+            const selfMember = profile ? {
+              id: profile.id,
+              name: profile.name,
+              avatar: profile.avatar ?? '?',
+              publicKey: profile.publicKey,
+              ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+            } : null
+            const seed = {
+              id:       groupId,
+              name:     val.value.name,
+              color:    val.value.color,
+              emoji:    val.value.emoji,
+              icon:     val.value.icon,
+              ownerId:  val.value.ownerId,
+              groupKey,
+              members:  selfMember ? [selfMember] : [],
+              joinedAt: val.value.joinedAt ?? Date.now(),
+            }
+            await db.put(NS.groups + groupId, seed).catch(() => {})
+            await db.put('joinedAt:' + groupId, { ts: seed.joinedAt }).catch(() => {})
+          }
+          const localGroup = (await db.get(NS.groups + groupId).catch(() => null))?.value
+          if (localGroup) {
+            joinGroup(localGroup).catch(e =>
+              console.warn('[personal] auto-joinGroup error for', groupId, e.message))
+          }
+        }
         // Full reload — a sibling joined a new group; UI's group list should refresh.
         emitSync(null, { fullReload: true })
         continue
@@ -1738,7 +1776,19 @@ async function personalBaseAddGroup (group) {
   if (!personalBase?.writable) return
   if (!group?.id || !group?.groupKey) return
   const key = 'personalGroups:' + group.id
-  const value = { groupId: group.id, groupKey: group.groupKey, joinedAt: group.joinedAt ?? Date.now() }
+  // Carry enough metadata for sibling devices to seed a placeholder group
+  // record + auto-open the Autobase. Once the group's view replicates,
+  // mirrorToLocal overwrites these placeholder fields with canonical values.
+  const value = {
+    groupId:  group.id,
+    groupKey: group.groupKey,
+    name:     group.name,
+    color:    group.color,
+    emoji:    group.emoji,
+    icon:     group.icon,
+    ownerId:  group.ownerId,
+    joinedAt: group.joinedAt ?? Date.now(),
+  }
   try { await personalBase.append({ op: 'put', type: 'groupMembership', key, value }) }
   catch (e) { console.warn('[personal] append group failed:', e.message) }
 }
