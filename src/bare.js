@@ -1505,9 +1505,15 @@ function makePersonalApply () {
         continue
       }
 
-      // Identity-scoped profile fields (name, avatar). LWW by updatedAt —
-      // merges into local NS.profile so the UI reflects sibling edits. Writer
-      // keypair (publicKey/secretKey) and per-device settings are untouched.
+      // Identity-scoped profile fields (name, avatar). LWW between siblings is
+      // enforced at the view level — incoming op is rejected only if its
+      // updatedAt is older than the view's known record. Don't gate on local
+      // profile.updatedAt: that timestamp is multi-purpose (settings edits,
+      // _handlePairGranted's identity rewrite) and unrelated to identity-field
+      // edit history. Comparing against it caused freshly-paired secondaries
+      // to silently reject the primary's identityProfile because pair-grant
+      // had just bumped local profile.updatedAt past the primary's older
+      // name-set timestamp.
       if (val.op === 'put' && val.type === 'identityProfile' && val.key && val.value) {
         const prev = await view.get(val.key).catch(() => null)
         const prevTs = prev?.value?.updatedAt ?? 0
@@ -1515,16 +1521,12 @@ function makePersonalApply () {
         if (incomingTs < prevTs) continue
         await view.put(val.key, val.value)
         const existing = (await db.get(NS.profile).catch(() => null))?.value ?? {}
-        const existingTs = existing.updatedAt ?? 0
-        if (incomingTs >= existingTs) {
-          await db.put(NS.profile, {
-            ...existing,
-            name: val.value.name ?? existing.name ?? '',
-            avatar: val.value.avatar ?? existing.avatar ?? '',
-            updatedAt: incomingTs,
-          })
-          send({ type: 'event', event: 'profileChanged', data: null })
-        }
+        await db.put(NS.profile, {
+          ...existing,
+          name: val.value.name ?? existing.name ?? '',
+          avatar: val.value.avatar ?? existing.avatar ?? '',
+        })
+        send({ type: 'event', event: 'profileChanged', data: null })
         continue
       }
 

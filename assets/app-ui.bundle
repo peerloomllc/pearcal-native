@@ -19985,7 +19985,7 @@
         setRestoreMode(null);
         setRestoreError("");
         setSlideDir(1);
-        setStep(2);
+        setStep(4);
       }
       function onPairingFailed(data) {
         const msg = data?.reason === "expired" ? "Pairing link expired. Ask the other device to generate a new one." : data?.message || data?.reason || "Pairing failed. Try again.";
