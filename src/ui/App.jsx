@@ -3388,7 +3388,11 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
       if (!data || data.role !== 'secondary') return
       setRestoreMode(null)
       setRestoreError('')
-      setSlideDir(1); setStep(2) // jump to name entry like cloud / manual restore
+      // Skip name + photo slides — both sync from the primary device via the
+      // identityProfile keyspace (PR #134) within seconds of personal-base
+      // open. Land on slide 4 ("Groups & Invites") which is informational for
+      // a freshly-paired secondary, then "Let's go" finishes onboarding.
+      setSlideDir(1); setStep(4)
     }
     function onPairingFailed (data) {
       const msg = (data?.reason === 'expired')
