@@ -7278,6 +7278,13 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                     Sweeping now could mistakenly purge their data. Open the group in the app first, then retry.
                   </div>
                 )}
+                {sweepReport.personalWithoutBase && (
+                  <div style={{ fontSize:12, fontWeight:300, color:'#d04', background:'rgba(221,0,68,0.08)',
+                    border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14 }}>
+                    ⚠ Multi-device sync is configured but the personal data store hasn't loaded yet.
+                    Sweeping now could mistakenly purge sibling-device data. Reopen the app and retry.
+                  </div>
+                )}
                 <div style={{ display:'flex', gap:10 }}>
                   <button onClick={() => setSweepReport(null)} disabled={sweepBusy}
                     style={{ flex:1, padding:'10px 16px', borderRadius:8, border:`1px solid ${th.border}`,
@@ -7287,6 +7294,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                   </button>
                   <button onClick={async () => {
                     if (sweepReport.liveWithoutBase?.length > 0) return
+                    if (sweepReport.personalWithoutBase) return
                     window.__pearSync?.haptic('medium')
                     setSweepBusy(true)
                     try {
@@ -7297,11 +7305,11 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                     } finally {
                       setSweepBusy(false)
                     }
-                  }} disabled={sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0}
+                  }} disabled={sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase}
                     style={{ flex:1, padding:'10px 16px', borderRadius:8, border:'none',
                       background: th.accent, color:'#fff', fontFamily:FONT, fontSize:13, fontWeight:400,
                       cursor: sweepBusy ? 'wait' : 'pointer',
-                      opacity: (sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0) ? 0.5 : 1 }}>
+                      opacity: (sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase) ? 0.5 : 1 }}>
                     {sweepBusy ? 'Sweeping…' : sweepReport.orphans === 0 ? 'Nothing to sweep' : 'Purge'}
                   </button>
                 </div>
