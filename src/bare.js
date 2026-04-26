@@ -1006,6 +1006,11 @@ async function reinviteMember (groupId, memberId) {
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
   }
+  // Phase 5: clear identity-level block locally for immediate UI parity with
+  // the Autobase apply branch.
+  if (memberRecord?.identityPublicKey) {
+    await db.del('blockedIdentity:' + groupId + ':' + memberRecord.identityPublicKey).catch(() => {})
+  }
   // Append dedicated Autobase op so all devices process the reinvite deterministically
   // (the local-only group update above would lose LWW against the removal record)
   await syncReinviteMember(groupId, memberId)
@@ -2664,6 +2669,7 @@ async function purgeMigratedGroup (oldGroupId, opts = {}) {
   const rangePrefixes = [
     'knownWriter:' + oldGroupId + ':',
     'blockedWriter:' + oldGroupId + ':',
+    'blockedIdentity:' + oldGroupId + ':',
     NS.members + oldGroupId + ':',
     'pendingLeave:' + oldGroupId + ':',
   ]
@@ -3134,6 +3140,17 @@ async function approveRejoin (groupId, identityPublicKey) {
   if (base) await appendGroupWithAvatarSplit(base, updated).catch(() => {})
   await db.del('pendingRejoin:' + groupId + ':' + identityPublicKey).catch(() => {})
   await db.del('deniedRejoin:' + groupId + ':' + identityPublicKey).catch(() => {})
+  // Phase 5: clear the identity-level block AND every per-writer block bound
+  // to this identity, so all of the rejoiner's devices regain admission.
+  await db.del('blockedIdentity:' + groupId + ':' + identityPublicKey).catch(() => {})
+  for await (const { value: wiVal, key: wiKey } of db.createReadStream({
+    gt: 'writerIdentity:' + groupId + ':',
+    lt: 'writerIdentity:' + groupId + ':\xff',
+  })) {
+    if (wiVal?.identityPublicKey !== identityPublicKey) continue
+    const wk = wiKey.slice(('writerIdentity:' + groupId + ':').length)
+    await db.del('blockedWriter:' + groupId + ':' + wk).catch(() => {})
+  }
   if (pending.writerKey) {
     await db.del('blockedWriter:' + groupId + ':' + pending.writerKey).catch(() => {})
     const alreadyGranted = await db.get('knownWriter:' + groupId + ':' + pending.writerKey).catch(() => null)
@@ -3468,9 +3485,20 @@ function makeApply (groupId) {
         if (migratedGroups.has(groupId)) continue
         // Check if this writer was blocked by the owner — if so skip granting access
         const writerBlocked = await db.get('blockedWriter:' + groupId + ':' + val.addWriter).catch(() => null)
-        if (!writerBlocked) {
-          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        if (writerBlocked) continue
+        // Multi-device kick (Phase 5): if we know which identity owns this
+        // writerKey via writer-announce, refuse if that identity is blocked.
+        // Race window: addWriter may arrive before writer-announce, in which
+        // case we admit; the writer-announce branch below back-fills
+        // blockedWriter if the identity turns out to be blocked, so future
+        // addWriter ops for the same writerKey are denied even though this
+        // op slipped through.
+        const wi = await db.get('writerIdentity:' + groupId + ':' + val.addWriter).catch(() => null)
+        if (wi?.value?.identityPublicKey) {
+          const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + wi.value.identityPublicKey).catch(() => null)
+          if (idBlocked) continue
         }
+        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
         continue
       }
 
@@ -3682,6 +3710,35 @@ function makeApply (groupId) {
           await view.put(val.key, viewValue)
           // Always mirror so local DB has latest invitees list — listEvents filters at read time.
           await mirrorToLocal(val.type, val.key, viewValue, groupId)
+          // Phase 5: identity-level kick mirror. For every removed member with
+          // a known identity (skip the owner defensively), set a blockedIdentity
+          // entry, and backfill blockedWriter for any of their already-known
+          // writer keys via the writerIdentity index. Idempotent — safe on every
+          // group-put. Approving a rejoin clears these in approveRejoin.
+          if (val.type === 'group' && viewValue?.removedMembers?.length) {
+            const ownerId = viewValue.ownerId
+            for (const rm of viewValue.removedMembers) {
+              const idHex = rm?.identityPublicKey
+              if (!idHex) continue
+              if (rm.id && rm.id === ownerId) continue
+              await db.put('blockedIdentity:' + groupId + ':' + idHex, {
+                memberId: rm.id ?? null,
+                ts: Date.now(),
+              }).catch(() => {})
+              for await (const { value: wiVal, key: wiKey } of db.createReadStream({
+                gt: 'writerIdentity:' + groupId + ':',
+                lt: 'writerIdentity:' + groupId + ':\xff',
+              })) {
+                if (wiVal?.identityPublicKey !== idHex) continue
+                const wk = wiKey.slice(('writerIdentity:' + groupId + ':').length)
+                await db.put('blockedWriter:' + groupId + ':' + wk, {
+                  memberId: rm.id ?? wiVal.memberId ?? null,
+                  identityPublicKey: idHex,
+                  ts: Date.now(),
+                }).catch(() => {})
+              }
+            }
+          }
           // Joiner-side: clear the "waiting for approval" flag if the owner's
           // latest authoritative group record now includes us as an active member.
           if (val.type === 'group' && viewValue.members) {
@@ -4037,12 +4094,19 @@ function makeApply (groupId) {
               await db.del('knownWriter:' + val.groupId + ':' + writerHex).catch(() => {})
             }
           }
+          // Phase 5: clear the identity-level block so paired siblings of the
+          // reinvited member regain admission too.
+          const idHex = memberRecord?.identityPublicKey
+          if (idHex) {
+            await db.del('blockedIdentity:' + val.groupId + ':' + idHex).catch(() => {})
+          }
         }
         emitSync(val.groupId, { groupChanged: true })
       } else if (val.op === 'purgeMember') {
         const gKey = NS.groups + val.groupId
         const gNode = await view.get(gKey)
         if (gNode?.value) {
+          const purgedRemoved = (gNode.value.removedMembers ?? []).find(m => (m.id ?? m) === val.memberId)
           const updated = {
             ...gNode.value,
             members: (gNode.value.members ?? []).filter(m => m.id !== val.memberId),
@@ -4053,6 +4117,21 @@ function makeApply (groupId) {
           await db.del(NS.members + val.groupId + ':' + val.memberId).catch(() => {})
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
+          // Phase 5: forget the identity block + per-writer blocks tied to it.
+          // Purge means the kick is being undone — let every device of this
+          // identity rejoin cleanly via the normal admission path.
+          const idHex = purgedRemoved?.identityPublicKey
+          if (idHex) {
+            await db.del('blockedIdentity:' + val.groupId + ':' + idHex).catch(() => {})
+            for await (const { value: wiVal, key: wiKey } of db.createReadStream({
+              gt: 'writerIdentity:' + val.groupId + ':',
+              lt: 'writerIdentity:' + val.groupId + ':\xff',
+            })) {
+              if (wiVal?.identityPublicKey !== idHex) continue
+              const wk = wiKey.slice(('writerIdentity:' + val.groupId + ':').length)
+              await db.del('blockedWriter:' + val.groupId + ':' + wk).catch(() => {})
+            }
+          }
         }
         emitSync(val.groupId, { groupChanged: true })
       }
@@ -5086,6 +5165,19 @@ async function _doInit (dir, attempt = 0) {
                   memberId: parsed.memberId ?? null,
                   ts: Date.now(),
                 }).catch(() => {})
+                // Phase 5: if this identity has been kicked, block the
+                // freshly-announced writerKey so any incoming addWriter op for
+                // it dies at the apply gate even if the apply-time
+                // writerIdentity lookup races ahead of this binding write.
+                const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + verifiedIdentityHex).catch(() => null)
+                if (idBlocked) {
+                  await db.put('blockedWriter:' + groupId + ':' + writerKey, {
+                    memberId: parsed.memberId ?? null,
+                    identityPublicKey: verifiedIdentityHex,
+                    ts: Date.now(),
+                  }).catch(() => {})
+                  console.log('[identity] writer-announce from blocked identity, blocking writerKey', writerKey.slice(0, 12) + '…')
+                }
               } catch (e) {
                 console.warn('[identity] verify threw for group', groupId, e.message)
                 return
