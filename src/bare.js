@@ -1510,9 +1510,15 @@ function makePersonalApply () {
         continue
       }
 
-      // Identity-scoped profile fields (name, avatar). LWW by updatedAt —
-      // merges into local NS.profile so the UI reflects sibling edits. Writer
-      // keypair (publicKey/secretKey) and per-device settings are untouched.
+      // Identity-scoped profile fields (name, avatar). LWW between siblings is
+      // enforced at the view level — incoming op is rejected only if its
+      // updatedAt is older than the view's known record. Don't gate on local
+      // profile.updatedAt: that timestamp is multi-purpose (settings edits,
+      // _handlePairGranted's identity rewrite) and unrelated to identity-field
+      // edit history. Comparing against it caused freshly-paired secondaries
+      // to silently reject the primary's identityProfile because pair-grant
+      // had just bumped local profile.updatedAt past the primary's older
+      // name-set timestamp.
       if (val.op === 'put' && val.type === 'identityProfile' && val.key && val.value) {
         const prev = await view.get(val.key).catch(() => null)
         const prevTs = prev?.value?.updatedAt ?? 0
@@ -1520,16 +1526,12 @@ function makePersonalApply () {
         if (incomingTs < prevTs) continue
         await view.put(val.key, val.value)
         const existing = (await db.get(NS.profile).catch(() => null))?.value ?? {}
-        const existingTs = existing.updatedAt ?? 0
-        if (incomingTs >= existingTs) {
-          await db.put(NS.profile, {
-            ...existing,
-            name: val.value.name ?? existing.name ?? '',
-            avatar: val.value.avatar ?? existing.avatar ?? '',
-            updatedAt: incomingTs,
-          })
-          send({ type: 'event', event: 'profileChanged', data: null })
-        }
+        await db.put(NS.profile, {
+          ...existing,
+          name: val.value.name ?? existing.name ?? '',
+          avatar: val.value.avatar ?? existing.avatar ?? '',
+        })
+        send({ type: 'event', event: 'profileChanged', data: null })
         continue
       }
 
@@ -1539,6 +1541,48 @@ function makePersonalApply () {
       if (val.op === 'put' && val.type === 'groupMembership' && val.key && val.value) {
         await view.put(val.key, val.value)
         await db.put(val.key, val.value).catch(() => {})
+        // Auto-open the group's Autobase on this device if we don't already
+        // have it, so the sibling join propagates as a real "this device is
+        // now in that group" — not just a local DB pointer. Idempotent:
+        // joinGroup short-circuits when the base is already open, and the
+        // local seed is skipped if a group record already exists.
+        const groupId  = val.value.groupId
+        const groupKey = val.value.groupKey
+        // Skip if this device was previously kicked from this group — a stale
+        // sibling pointer should not resurrect a ghost group locally.
+        const blocked = groupId ? await db.get('blockedFromGroup:' + groupId).catch(() => null) : null
+        if (blocked?.value) continue
+        if (groupId && groupKey && !bases.has(groupId)) {
+          const existingGroup = await db.get(NS.groups + groupId).catch(() => null)
+          if (!existingGroup?.value) {
+            const profile = await getProfile().catch(() => null)
+            const selfMember = profile ? {
+              id: profile.id,
+              name: profile.name,
+              avatar: profile.avatar ?? '?',
+              publicKey: profile.publicKey,
+              ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+            } : null
+            const seed = {
+              id:       groupId,
+              name:     val.value.name,
+              color:    val.value.color,
+              emoji:    val.value.emoji,
+              icon:     val.value.icon,
+              ownerId:  val.value.ownerId,
+              groupKey,
+              members:  selfMember ? [selfMember] : [],
+              joinedAt: val.value.joinedAt ?? Date.now(),
+            }
+            await db.put(NS.groups + groupId, seed).catch(() => {})
+            await db.put('joinedAt:' + groupId, { ts: seed.joinedAt }).catch(() => {})
+          }
+          const localGroup = (await db.get(NS.groups + groupId).catch(() => null))?.value
+          if (localGroup) {
+            joinGroup(localGroup).catch(e =>
+              console.warn('[personal] auto-joinGroup error for', groupId, e.message))
+          }
+        }
         // Full reload — a sibling joined a new group; UI's group list should refresh.
         emitSync(null, { fullReload: true })
         continue
@@ -1546,6 +1590,25 @@ function makePersonalApply () {
       if (val.op === 'del' && val.type === 'groupMembership' && val.key) {
         await view.del(val.key)
         await db.del(val.key).catch(() => {})
+        // If this device locally has the group AND its identity is in the
+        // removedMembers list, the sibling that authored this del was telling
+        // us the group is no longer ours. Leave + delete locally so ghost
+        // groups don't keep showing in the UI. We only act on kicked-state —
+        // a sibling who voluntarily left a group they joined separately
+        // shouldn't force us to leave a group we joined independently.
+        const groupId = val.key.slice('personalGroups:'.length)
+        if (groupId) {
+          const localGroup = (await db.get(NS.groups + groupId).catch(() => null))?.value
+          const profile = await getProfile().catch(() => null)
+          const selfId = profile?.id
+          const inRemoved = selfId && (localGroup?.removedMembers ?? []).some(m => (m.id ?? m) === selfId)
+          if (localGroup && inRemoved) {
+            await db.put('blockedFromGroup:' + groupId, { ts: Date.now() }).catch(() => {})
+            await deleteGroup(groupId).catch(() => {})
+            await leaveGroup(groupId).catch(() => {})
+            send({ type: 'event', event: 'groupDeleted', data: groupId })
+          }
+        }
         // Full reload — a sibling left a group; UI's group list should refresh.
         emitSync(null, { fullReload: true })
         continue
@@ -1575,6 +1638,11 @@ async function ensurePersonalBase () {
     // Backfill identity-scoped profile record for installs that enabled
     // personal sync before the identityProfile keyspace existed. Idempotent.
     seedIdentityProfileIfNeeded().catch(e => console.warn('[personal] identityProfile seed:', e.message))
+    // Drop personal-base groupMembership entries pointing at groups this device
+    // was kicked from or has locally deleted. Without this sweep, kicks that
+    // landed before the live self-kick path existed (or during sync replay)
+    // leave stale pointers that paired siblings auto-join into ghost groups.
+    cleanupStalePersonalGroups().catch(e => console.warn('[personal] cleanup sweep:', e.message))
     return base
   } catch (e) {
     console.error('[personal] open failed:', e.message)
@@ -1743,7 +1811,19 @@ async function personalBaseAddGroup (group) {
   if (!personalBase?.writable) return
   if (!group?.id || !group?.groupKey) return
   const key = 'personalGroups:' + group.id
-  const value = { groupId: group.id, groupKey: group.groupKey, joinedAt: group.joinedAt ?? Date.now() }
+  // Carry enough metadata for sibling devices to seed a placeholder group
+  // record + auto-open the Autobase. Once the group's view replicates,
+  // mirrorToLocal overwrites these placeholder fields with canonical values.
+  const value = {
+    groupId:  group.id,
+    groupKey: group.groupKey,
+    name:     group.name,
+    color:    group.color,
+    emoji:    group.emoji,
+    icon:     group.icon,
+    ownerId:  group.ownerId,
+    joinedAt: group.joinedAt ?? Date.now(),
+  }
   try { await personalBase.append({ op: 'put', type: 'groupMembership', key, value }) }
   catch (e) { console.warn('[personal] append group failed:', e.message) }
 }
@@ -1752,6 +1832,29 @@ async function personalBaseRemoveGroup (groupId) {
   if (!personalBase?.writable) return
   try { await personalBase.append({ op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
   catch (e) { console.warn('[personal] del group failed:', e.message) }
+}
+
+// Drop stale personalGroups pointers (groups this device was kicked from or
+// has locally deleted) so paired siblings don't auto-join into ghost groups.
+// Runs on every personal-base open; only acts when this device is writable, so
+// the entry is appended via this device's writer key. Idempotent — re-running
+// is cheap because the iteration short-circuits when nothing matches.
+async function cleanupStalePersonalGroups () {
+  if (!personalBase?.writable) return
+  let dropped = 0
+  for await (const { value } of personalBase.view.createReadStream({
+    gt: 'personalGroups:', lt: 'personalGroups:\xff'
+  })) {
+    const groupId = value?.groupId
+    if (!groupId) continue
+    const blocked = await db.get('blockedFromGroup:' + groupId).catch(() => null)
+    const localGroup = await db.get(NS.groups + groupId).catch(() => null)
+    if (blocked?.value || !localGroup?.value) {
+      await personalBaseRemoveGroup(groupId)
+      dropped++
+    }
+  }
+  if (dropped) console.log('[personal] cleanup swept', dropped, 'stale personalGroups')
 }
 
 // Replicate identity-scoped profile fields (name, avatar) to sibling devices.
