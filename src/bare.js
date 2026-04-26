@@ -78,6 +78,9 @@ const migratedGroups = new Set()
 // multi-device (most installs today). Created/opened by ensurePersonalBase()
 // when personalMeta:bootstrap is set in local DB.
 let personalBase = null
+// Platform string ('ios' | 'android' | …) supplied by the RN shell on init.
+// Used to seed deviceMeta:{writerKey}.platform for the linked-devices list.
+let _platform = null
 let buf = ''
 let _dbReady = false
 let _dbReadyResolve = null
@@ -124,7 +127,7 @@ BareKit.IPC.on('data', chunk => {
         }
         continue
       }
-      if (msg.method === 'init') init(msg.dataDir)
+      if (msg.method === 'init') init(msg.dataDir, { platform: msg.platform })
       else dispatch(msg.method, msg.args ?? [], msg.id)
     } catch(e) { console.error('IPC parse error:', e.message) }
   }
@@ -202,6 +205,8 @@ async function handle (method, args) {
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
+    case 'listLinkedDevices': return listLinkedDevices()
+    case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'rekeyGroup':       return rekeyGroup(args[0])
     case 'commitRekey':      return commitRekey(args[0])
     case 'purgeMigratedGroup':    return purgeMigratedGroup(args[0], args[1] ?? {})
@@ -1535,6 +1540,34 @@ function makePersonalApply () {
         continue
       }
 
+      // Per-device metadata for the linked-devices list (TODO #95). Each device
+      // self-writes its own row keyed by writer key. Authoritative gate uses
+      // node.from.key (the Autobase-attested authoring writer) — value.writerKey
+      // is just data and could be lied about; node.from.key cannot. LWW by
+      // updatedAt against the LOCAL DB mirror.
+      // Skips view.put on purpose: writing to the linearized view triggers
+      // Autobase's truncate-vs-prologue crash on already-paired secondaries
+      // when the view rebase rolls back across deviceMeta blocks. Cross-device
+      // sync still works because apply runs on every peer for every writer's
+      // ops, so each peer's db.put converges independently.
+      // Op shape: { op: 'put', type: 'deviceMeta', key: 'deviceMeta:{writerKey}',
+      //   value: { writerKey, nickname, platform, pairedAt, updatedAt } }
+      if (val.op === 'put' && val.type === 'deviceMeta' && val.key && val.value) {
+        const rowWriter = val.value.writerKey
+        const fromKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
+        // Only the device whose writerKey === Autobase-attested author may put
+        // its row. Reject when fromKey is missing or differs.
+        if (!rowWriter || !fromKey || rowWriter !== fromKey) continue
+        if (val.key !== 'deviceMeta:' + rowWriter) continue
+        const prevDb = (await db.get(val.key).catch(() => null))?.value
+        const prevTs = prevDb?.updatedAt ?? 0
+        const incomingTs = val.value?.updatedAt ?? 0
+        if (incomingTs < prevTs) continue
+        await db.put(val.key, val.value).catch(() => {})
+        send({ type: 'event', event: 'linkedDevicesChanged', data: null })
+        continue
+      }
+
       // Group membership records for multi-device discovery (Phase 5). Records
       // which groups this identity is in so a paired secondary can iterate
       // them on boot. Stored under `personalGroups:{groupId}` in local DB.
@@ -1631,6 +1664,12 @@ async function ensurePersonalBase () {
       apply: makePersonalApply(),
       ackInterval: 1000,
     })
+    // Without an 'error' listener Autobase calls crashSoon() on internal
+    // failures (e.g., Hypercore "Truncation breaks prologue" during drain),
+    // killing the bare runtime. The listener turns those into recoverable
+    // events: the base closes itself, the runtime stays alive, the user
+    // keeps their app session.
+    base.on('error', e => console.error('[personal] base error:', e?.message))
     await base.ready()
     personalBase = base
     await joinPersonalSwarm()
@@ -1638,6 +1677,11 @@ async function ensurePersonalBase () {
     // Backfill identity-scoped profile record for installs that enabled
     // personal sync before the identityProfile keyspace existed. Idempotent.
     seedIdentityProfileIfNeeded().catch(e => console.warn('[personal] identityProfile seed:', e.message))
+    // NB: deviceMeta seed (TODO #95) is NOT auto-fired on boot — appending a
+    // new block immediately after open triggers an Autobase truncate-vs-prologue
+    // crash on already-paired secondaries with un-indexed chain state. The row
+    // is created lazily via setDeviceNickname; until then listLinkedDevices
+    // injects a synthetic placeholder for the local writer.
     // Drop personal-base groupMembership entries pointing at groups this device
     // was kicked from or has locally deleted. Without this sweep, kicks that
     // landed before the live self-kick path existed (or during sync replay)
@@ -1668,6 +1712,7 @@ async function enablePersonalSync () {
     apply: makePersonalApply(),
     ackInterval: 1000,
   })
+  base.on('error', e => console.error('[personal] base error:', e?.message))
   await base.ready()
   const bootstrapHex = b4a.toString(base.key, 'hex')
   await db.put('personalMeta:bootstrap', { key: bootstrapHex, createdAt: Date.now() })
@@ -1867,6 +1912,74 @@ async function personalBaseAppendIdentityProfile ({ name, avatar, updatedAt }) {
       value: { name: name ?? '', avatar: avatar ?? '', updatedAt: updatedAt ?? Date.now() }
     })
   } catch (e) { console.warn('[personal] append identityProfile failed:', e.message) }
+}
+
+// Per-device row in the linked-devices list (TODO #95). Self-write only:
+// caller is always writing for the local writer key. Apply gate enforces this
+// even if a misbehaving peer tries to write someone else's row.
+async function personalBaseAppendDeviceMeta (patch) {
+  if (!personalBase?.writable) return
+  const writerKey = b4a.toString(personalBase.local.key, 'hex')
+  const key = 'deviceMeta:' + writerKey
+  const prev = (await db.get(key).catch(() => null))?.value ?? null
+  const value = {
+    writerKey,
+    nickname: typeof patch?.nickname === 'string' ? patch.nickname : (prev?.nickname ?? ''),
+    platform: patch?.platform ?? prev?.platform ?? _platform ?? '',
+    pairedAt: prev?.pairedAt ?? patch?.pairedAt ?? Date.now(),
+    updatedAt: Date.now(),
+  }
+  try {
+    await personalBase.append({ op: 'put', type: 'deviceMeta', key, value })
+  } catch (e) { console.warn('[personal] append deviceMeta failed:', e.message) }
+}
+
+// IPC: list every paired device known on this install. Reads the local-DB
+// mirror (populated by the apply branch). When the local writer has no row
+// yet — common on already-paired secondaries that haven't named themselves —
+// inject a synthetic placeholder so the UI always shows "This device".
+async function listLinkedDevices () {
+  if (!db) return []
+  const localKey = personalBase?.local?.key ? b4a.toString(personalBase.local.key, 'hex') : null
+  const out = []
+  let sawLocal = false
+  for await (const { value } of db.createReadStream({ gt: 'deviceMeta:', lt: 'deviceMeta:ÿ' })) {
+    if (!value || !value.writerKey) continue
+    const isThisDevice = !!localKey && value.writerKey === localKey
+    if (isThisDevice) sawLocal = true
+    out.push({
+      writerKey: value.writerKey,
+      nickname: value.nickname ?? '',
+      platform: value.platform ?? '',
+      pairedAt: value.pairedAt ?? null,
+      updatedAt: value.updatedAt ?? null,
+      isThisDevice,
+    })
+  }
+  if (localKey && !sawLocal) {
+    out.push({
+      writerKey: localKey,
+      nickname: '',
+      platform: _platform ?? '',
+      pairedAt: null,
+      updatedAt: null,
+      isThisDevice: true,
+      synthetic: true,
+    })
+  }
+  out.sort((a, b) => (a.pairedAt ?? 0) - (b.pairedAt ?? 0))
+  return out
+}
+
+// IPC: rename the local device. Trims whitespace, caps at 32 chars, allows
+// empty (revert to platform-default label in the UI). Only ever writes the
+// local writer's row — a benign shim against UI bugs; the apply gate is the
+// real authority.
+async function setDeviceNickname (nickname) {
+  if (!personalBase?.writable) throw new Error('personal base not writable')
+  const trimmed = typeof nickname === 'string' ? nickname.trim().slice(0, 32) : ''
+  await personalBaseAppendDeviceMeta({ nickname: trimmed })
+  return { nickname: trimmed }
 }
 
 async function closePersonalBase () {
@@ -4957,7 +5070,10 @@ async function shutdown () {
 }
 
 let _initPromise = null
-async function init (dir, attempt = 0) {
+async function init (dir, opts = {}, attempt = 0) {
+  // Backwards-compat: older RN shells may pass attempt as the second arg.
+  if (typeof opts === 'number') { attempt = opts; opts = {} }
+  if (opts && typeof opts.platform === 'string') _platform = opts.platform
   // Prevent concurrent init calls — wait for any in-progress init to finish
   if (_initPromise && attempt === 0) {
     console.log('Init already in progress, waiting...')
