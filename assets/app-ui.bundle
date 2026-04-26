@@ -24635,6 +24635,10 @@ ${link}`;
     const [pairHostBusy, setPairHostBusy] = (0, import_react2.useState)(false);
     const [pairHostError, setPairHostError] = (0, import_react2.useState)(null);
     const [mnemonicCopied, setMnemonicCopied] = (0, import_react2.useState)(false);
+    const [linkedDevices, setLinkedDevices] = (0, import_react2.useState)([]);
+    const [renamingKey, setRenamingKey] = (0, import_react2.useState)(null);
+    const [renameDraft, setRenameDraft] = (0, import_react2.useState)("");
+    const [renameSaving, setRenameSaving] = (0, import_react2.useState)(false);
     (0, import_react2.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
@@ -24751,6 +24755,71 @@ ${link}`;
         setPairHostError(e58?.message || "Failed to start pairing");
       }
       setPairHostBusy(false);
+    }
+    (0, import_react2.useEffect)(() => {
+      let cancelled = false;
+      async function refresh() {
+        try {
+          const list = await db2.listLinkedDevices();
+          if (!cancelled) setLinkedDevices(Array.isArray(list) ? list : []);
+        } catch (e58) {
+          if (!cancelled) setLinkedDevices([]);
+        }
+      }
+      refresh();
+      function onChanged() {
+        refresh();
+      }
+      function onPairingCompleted() {
+        refresh();
+      }
+      emitter.on("linkedDevicesChanged", onChanged);
+      emitter.on("pairingCompleted", onPairingCompleted);
+      return () => {
+        cancelled = true;
+        emitter.off("linkedDevicesChanged", onChanged);
+        emitter.off("pairingCompleted", onPairingCompleted);
+      };
+    }, [db2]);
+    function deviceDefaultLabel(d) {
+      if (d.isThisDevice) return "This device";
+      const p3 = (d.platform ?? "").toLowerCase();
+      if (p3 === "ios") return "iOS device";
+      if (p3 === "android") return "Android device";
+      if (p3 === "macos") return "macOS device";
+      if (p3 === "windows") return "Windows device";
+      return "Device";
+    }
+    function devicePlatformLabel(d) {
+      const p3 = (d.platform ?? "").toLowerCase();
+      if (p3 === "ios") return "iOS";
+      if (p3 === "android") return "Android";
+      if (p3 === "macos") return "macOS";
+      if (p3 === "windows") return "Windows";
+      return p3 ? p3[0].toUpperCase() + p3.slice(1) : "Unknown";
+    }
+    function startRenameDevice(d) {
+      if (!d.isThisDevice) return;
+      setRenameDraft(d.nickname ?? "");
+      setRenamingKey(d.writerKey);
+    }
+    function cancelRenameDevice() {
+      setRenamingKey(null);
+      setRenameDraft("");
+    }
+    async function saveRenameDevice() {
+      if (renameSaving) return;
+      setRenameSaving(true);
+      try {
+        const trimmed = (renameDraft ?? "").trim().slice(0, 32);
+        const res = await db2.setDeviceNickname(trimmed);
+        setLinkedDevices((list) => list.map((d) => d.isThisDevice ? { ...d, nickname: res?.nickname ?? trimmed } : d));
+        setRenamingKey(null);
+        setRenameDraft("");
+      } catch (e58) {
+        console.error("setDeviceNickname failed", e58);
+      }
+      setRenameSaving(false);
     }
     async function cancelDevicePairing() {
       try {
@@ -25356,7 +25425,128 @@ ${link}`;
               ]
             }
           ),
-          pairHostError && !pairHost && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, marginTop: 8, textAlign: "center" }, children: pairHostError })
+          pairHostError && !pairHost && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, marginTop: 8, textAlign: "center" }, children: pairHostError }),
+          linkedDevices.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }, children: [
+            linkedDevices.map((d) => {
+              const isRenaming = renamingKey === d.writerKey;
+              const label = d.nickname && d.nickname.trim() || deviceDefaultLabel(d);
+              const subtitle = devicePlatformLabel(d) + (d.isThisDevice && d.nickname ? " \xB7 this device" : "");
+              return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                "div",
+                {
+                  onClick: () => {
+                    if (!isRenaming && d.isThisDevice) {
+                      window.__pearSync?.haptic("light");
+                      startRenameDevice(d);
+                    }
+                  },
+                  style: {
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${th.border}`,
+                    background: "transparent",
+                    cursor: d.isThisDevice && !isRenaming ? "pointer" : "default"
+                  },
+                  children: isRenaming ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "input",
+                      {
+                        autoFocus: true,
+                        type: "text",
+                        value: renameDraft,
+                        maxLength: 32,
+                        onChange: (e58) => setRenameDraft(e58.target.value),
+                        onKeyDown: (e58) => {
+                          if (e58.key === "Enter") {
+                            e58.preventDefault();
+                            saveRenameDevice();
+                          }
+                          if (e58.key === "Escape") {
+                            e58.preventDefault();
+                            cancelRenameDevice();
+                          }
+                        },
+                        placeholder: deviceDefaultLabel(d),
+                        style: {
+                          fontSize: 14,
+                          fontWeight: 300,
+                          fontFamily: FONT,
+                          background: "transparent",
+                          border: `1px solid ${th.border}`,
+                          borderRadius: 8,
+                          padding: "8px 10px",
+                          color: th.text.color,
+                          outline: "none"
+                        }
+                      }
+                    ),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "flex-end", gap: 8 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: (e58) => {
+                            e58.stopPropagation();
+                            cancelRenameDevice();
+                          },
+                          disabled: renameSaving,
+                          style: {
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            fontFamily: FONT,
+                            border: `1px solid ${th.border}`,
+                            background: "transparent",
+                            color: th.muted,
+                            cursor: "pointer"
+                          },
+                          children: "Cancel"
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: (e58) => {
+                            e58.stopPropagation();
+                            saveRenameDevice();
+                          },
+                          disabled: renameSaving,
+                          style: {
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            fontFamily: FONT,
+                            border: `1px solid var(--color-accent)`,
+                            background: "transparent",
+                            color: "var(--color-accent)",
+                            cursor: "pointer",
+                            opacity: renameSaving ? 0.5 : 1
+                          },
+                          children: renameSaving ? "Saving\u2026" : "Save"
+                        }
+                      )
+                    ] })
+                  ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                        fontSize: 14,
+                        fontWeight: 300,
+                        ...th.text,
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis"
+                      }, children: label }),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, marginTop: 2 }, children: subtitle })
+                    ] }),
+                    d.isThisDevice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 14, weight: "thin", color: "var(--color-muted)" })
+                  ] })
+                },
+                d.writerKey
+              );
+            }),
+            /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2, lineHeight: 1.4 }, children: "Tap your device to rename it." })
+          ] })
         ] }) }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }, children: [
@@ -26574,6 +26764,7 @@ ${link}`;
   window.addEventListener("pear:pairingFailed", (e58) => emitter.emit("pairingFailed", e58.detail));
   window.addEventListener("pear:pairingExpired", (e58) => emitter.emit("pairingExpired", e58.detail));
   window.addEventListener("pear:profileChanged", (e58) => emitter.emit("profileChanged", e58.detail));
+  window.addEventListener("pear:linkedDevicesChanged", (e58) => emitter.emit("linkedDevicesChanged", e58.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),
@@ -26620,7 +26811,9 @@ ${link}`;
     startPairing: () => window.__pearDB.call("startPairing"),
     cancelPairing: () => window.__pearDB.call("cancelPairing"),
     consumePairLink: (url) => window.__pearDB.call("consumePairLink", url),
-    getPairingStatus: () => window.__pearDB.call("getPairingStatus")
+    getPairingStatus: () => window.__pearDB.call("getPairingStatus"),
+    listLinkedDevices: () => window.__pearDB.call("listLinkedDevices"),
+    setDeviceNickname: (n17) => window.__pearDB.call("setDeviceNickname", n17)
   };
   var notifs = {
     scheduleForEvent: (ev2, reminders) => window.__pearDB.call("scheduleForEvent", ev2, reminders),

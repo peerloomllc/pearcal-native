@@ -6493,6 +6493,10 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [pairHostBusy,     setPairHostBusy]     = useState(false)
   const [pairHostError,    setPairHostError]    = useState(null)
   const [mnemonicCopied,   setMnemonicCopied]   = useState(false)
+  const [linkedDevices,    setLinkedDevices]    = useState([])
+  const [renamingKey,      setRenamingKey]      = useState(null)
+  const [renameDraft,      setRenameDraft]      = useState('')
+  const [renameSaving,     setRenameSaving]     = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -6621,6 +6625,81 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       setPairHostError(e?.message || 'Failed to start pairing')
     }
     setPairHostBusy(false)
+  }
+
+  // Linked devices list (TODO #95). Loads on mount + refreshes on the
+  // linkedDevicesChanged event (fires when any device's deviceMeta row is
+  // added or renamed, locally or on a sibling).
+  useEffect(() => {
+    let cancelled = false
+    async function refresh () {
+      try {
+        const list = await db.listLinkedDevices()
+        if (!cancelled) setLinkedDevices(Array.isArray(list) ? list : [])
+      } catch (e) {
+        if (!cancelled) setLinkedDevices([])
+      }
+    }
+    refresh()
+    function onChanged () { refresh() }
+    function onPairingCompleted () { refresh() }
+    emitter.on('linkedDevicesChanged', onChanged)
+    emitter.on('pairingCompleted', onPairingCompleted)
+    return () => {
+      cancelled = true
+      emitter.off('linkedDevicesChanged', onChanged)
+      emitter.off('pairingCompleted', onPairingCompleted)
+    }
+  }, [db])
+
+  function deviceDefaultLabel (d) {
+    if (d.isThisDevice) return 'This device'
+    const p = (d.platform ?? '').toLowerCase()
+    if (p === 'ios')     return 'iOS device'
+    if (p === 'android') return 'Android device'
+    if (p === 'macos')   return 'macOS device'
+    if (p === 'windows') return 'Windows device'
+    return 'Device'
+  }
+
+  function devicePlatformLabel (d) {
+    const p = (d.platform ?? '').toLowerCase()
+    if (p === 'ios')     return 'iOS'
+    if (p === 'android') return 'Android'
+    if (p === 'macos')   return 'macOS'
+    if (p === 'windows') return 'Windows'
+    return p ? p[0].toUpperCase() + p.slice(1) : 'Unknown'
+  }
+
+  function startRenameDevice (d) {
+    if (!d.isThisDevice) return
+    setRenameDraft(d.nickname ?? '')
+    setRenamingKey(d.writerKey)
+  }
+
+  function cancelRenameDevice () {
+    setRenamingKey(null)
+    setRenameDraft('')
+  }
+
+  async function saveRenameDevice () {
+    if (renameSaving) return
+    setRenameSaving(true)
+    try {
+      const trimmed = (renameDraft ?? '').trim().slice(0, 32)
+      const res = await db.setDeviceNickname(trimmed)
+      // Optimistic local update so the row reflects immediately even before
+      // the apply branch fires the event back.
+      setLinkedDevices(list => list.map(d => d.isThisDevice
+        ? { ...d, nickname: res?.nickname ?? trimmed }
+        : d))
+      setRenamingKey(null)
+      setRenameDraft('')
+    } catch (e) {
+      // Surface failure quietly; the row stays in rename mode so the user can retry.
+      console.error('setDeviceNickname failed', e)
+    }
+    setRenameSaving(false)
   }
 
   async function cancelDevicePairing () {
@@ -7043,6 +7122,72 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           {pairHostError && !pairHost && (
             <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, marginTop:8, textAlign:'center' }}>
               {pairHostError}
+            </div>
+          )}
+          {linkedDevices.length > 0 && (
+            <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
+              {linkedDevices.map(d => {
+                const isRenaming = renamingKey === d.writerKey
+                const label = (d.nickname && d.nickname.trim()) || deviceDefaultLabel(d)
+                const subtitle = devicePlatformLabel(d) + (d.isThisDevice && d.nickname ? ' · this device' : '')
+                return (
+                  <div key={d.writerKey}
+                    onClick={() => { if (!isRenaming && d.isThisDevice) { window.__pearSync?.haptic('light'); startRenameDevice(d) } }}
+                    style={{ padding:'12px 14px', borderRadius:10,
+                      border:`1px solid ${th.border}`, background:'transparent',
+                      cursor: d.isThisDevice && !isRenaming ? 'pointer' : 'default' }}>
+                    {isRenaming ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <input autoFocus type="text" value={renameDraft} maxLength={32}
+                          onChange={e => setRenameDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter')  { e.preventDefault(); saveRenameDevice() }
+                            if (e.key === 'Escape') { e.preventDefault(); cancelRenameDevice() }
+                          }}
+                          placeholder={deviceDefaultLabel(d)}
+                          style={{ fontSize:14, fontWeight:300, fontFamily:FONT,
+                            background:'transparent', border:`1px solid ${th.border}`,
+                            borderRadius:8, padding:'8px 10px', color:th.text.color, outline:'none' }} />
+                        <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                          <button onClick={e => { e.stopPropagation(); cancelRenameDevice() }}
+                            disabled={renameSaving}
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                              fontFamily:FONT, border:`1px solid ${th.border}`, background:'transparent',
+                              color:th.muted, cursor:'pointer' }}>
+                            Cancel
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); saveRenameDevice() }}
+                            disabled={renameSaving}
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                              fontFamily:FONT, border:`1px solid var(--color-accent)`, background:'transparent',
+                              color:'var(--color-accent)', cursor:'pointer',
+                              opacity: renameSaving ? 0.5 : 1 }}>
+                            {renameSaving ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:14, fontWeight:300, ...th.text,
+                            whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {label}
+                          </div>
+                          <div style={{ fontSize:11, fontWeight:300, color:th.muted, marginTop:2 }}>
+                            {subtitle}
+                          </div>
+                        </div>
+                        {d.isThisDevice && (
+                          <CaretRight size={14} weight="thin" color="var(--color-muted)" />
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+              <div style={{ fontSize:11, color:th.muted, marginTop:2, lineHeight:1.4 }}>
+                Tap your device to rename it.
+              </div>
             </div>
           )}
         </div>

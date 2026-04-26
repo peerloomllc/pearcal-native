@@ -46,6 +46,7 @@ window.addEventListener('pear:pairingCompleted', e => emitter.emit('pairingCompl
 window.addEventListener('pear:pairingFailed',    e => emitter.emit('pairingFailed', e.detail))
 window.addEventListener('pear:pairingExpired',   e => emitter.emit('pairingExpired', e.detail))
 window.addEventListener('pear:profileChanged',   e => emitter.emit('profileChanged', e.detail))
+window.addEventListener('pear:linkedDevicesChanged', e => emitter.emit('linkedDevicesChanged', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -94,6 +95,8 @@ const db = {
   cancelPairing:        ()  => window.__pearDB.call('cancelPairing'),
   consumePairLink:      (url) => window.__pearDB.call('consumePairLink', url),
   getPairingStatus:     ()  => window.__pearDB.call('getPairingStatus'),
+  listLinkedDevices:    ()  => window.__pearDB.call('listLinkedDevices'),
+  setDeviceNickname:    (n) => window.__pearDB.call('setDeviceNickname', n),
 }
 
 const notifs = {

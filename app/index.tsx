@@ -545,7 +545,7 @@ export default function Root () {
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
       if (_workletStarted && _worklet) {
-        sendToWorklet({ method: 'init', dataDir })
+        sendToWorklet({ method: 'init', dataDir, platform: Platform.OS })
         return
       }
       _workletStarted = true
@@ -571,7 +571,7 @@ export default function Root () {
         }
       })
 
-      onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir }))
+      onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir, platform: Platform.OS }))
       onEvent('widgetCache', (payload: any) => {
         const mod = (NativeModules as any).WidgetCache
         if (mod?.writeCache) mod.writeCache(JSON.stringify(payload)).catch?.(() => {})
@@ -676,6 +676,15 @@ webViewRef.current?.injectJavaScript(
       onEvent('profileChanged', (data: any) => {
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("profileChanged",' + JSON.stringify(data ?? null) + ');true;'
+        )
+      })
+
+      // Linked-devices list change (TODO #95). Fires when any device's
+      // deviceMeta row is added or renamed so the Profile → DEVICES list
+      // refreshes.
+      onEvent('linkedDevicesChanged', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("linkedDevicesChanged",' + JSON.stringify(data ?? null) + ');true;'
         )
       })
 
