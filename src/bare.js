@@ -1543,6 +1543,10 @@ function makePersonalApply () {
         // local seed is skipped if a group record already exists.
         const groupId  = val.value.groupId
         const groupKey = val.value.groupKey
+        // Skip if this device was previously kicked from this group — a stale
+        // sibling pointer should not resurrect a ghost group locally.
+        const blocked = groupId ? await db.get('blockedFromGroup:' + groupId).catch(() => null) : null
+        if (blocked?.value) continue
         if (groupId && groupKey && !bases.has(groupId)) {
           const existingGroup = await db.get(NS.groups + groupId).catch(() => null)
           if (!existingGroup?.value) {
@@ -1581,6 +1585,25 @@ function makePersonalApply () {
       if (val.op === 'del' && val.type === 'groupMembership' && val.key) {
         await view.del(val.key)
         await db.del(val.key).catch(() => {})
+        // If this device locally has the group AND its identity is in the
+        // removedMembers list, the sibling that authored this del was telling
+        // us the group is no longer ours. Leave + delete locally so ghost
+        // groups don't keep showing in the UI. We only act on kicked-state —
+        // a sibling who voluntarily left a group they joined separately
+        // shouldn't force us to leave a group we joined independently.
+        const groupId = val.key.slice('personalGroups:'.length)
+        if (groupId) {
+          const localGroup = (await db.get(NS.groups + groupId).catch(() => null))?.value
+          const profile = await getProfile().catch(() => null)
+          const selfId = profile?.id
+          const inRemoved = selfId && (localGroup?.removedMembers ?? []).some(m => (m.id ?? m) === selfId)
+          if (localGroup && inRemoved) {
+            await db.put('blockedFromGroup:' + groupId, { ts: Date.now() }).catch(() => {})
+            await deleteGroup(groupId).catch(() => {})
+            await leaveGroup(groupId).catch(() => {})
+            send({ type: 'event', event: 'groupDeleted', data: groupId })
+          }
+        }
         // Full reload — a sibling left a group; UI's group list should refresh.
         emitSync(null, { fullReload: true })
         continue
@@ -1610,6 +1633,11 @@ async function ensurePersonalBase () {
     // Backfill identity-scoped profile record for installs that enabled
     // personal sync before the identityProfile keyspace existed. Idempotent.
     seedIdentityProfileIfNeeded().catch(e => console.warn('[personal] identityProfile seed:', e.message))
+    // Drop personal-base groupMembership entries pointing at groups this device
+    // was kicked from or has locally deleted. Without this sweep, kicks that
+    // landed before the live self-kick path existed (or during sync replay)
+    // leave stale pointers that paired siblings auto-join into ghost groups.
+    cleanupStalePersonalGroups().catch(e => console.warn('[personal] cleanup sweep:', e.message))
     return base
   } catch (e) {
     console.error('[personal] open failed:', e.message)
@@ -1799,6 +1827,29 @@ async function personalBaseRemoveGroup (groupId) {
   if (!personalBase?.writable) return
   try { await personalBase.append({ op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
   catch (e) { console.warn('[personal] del group failed:', e.message) }
+}
+
+// Drop stale personalGroups pointers (groups this device was kicked from or
+// has locally deleted) so paired siblings don't auto-join into ghost groups.
+// Runs on every personal-base open; only acts when this device is writable, so
+// the entry is appended via this device's writer key. Idempotent — re-running
+// is cheap because the iteration short-circuits when nothing matches.
+async function cleanupStalePersonalGroups () {
+  if (!personalBase?.writable) return
+  let dropped = 0
+  for await (const { value } of personalBase.view.createReadStream({
+    gt: 'personalGroups:', lt: 'personalGroups:\xff'
+  })) {
+    const groupId = value?.groupId
+    if (!groupId) continue
+    const blocked = await db.get('blockedFromGroup:' + groupId).catch(() => null)
+    const localGroup = await db.get(NS.groups + groupId).catch(() => null)
+    if (blocked?.value || !localGroup?.value) {
+      await personalBaseRemoveGroup(groupId)
+      dropped++
+    }
+  }
+  if (dropped) console.log('[personal] cleanup swept', dropped, 'stale personalGroups')
 }
 
 // Replicate identity-scoped profile fields (name, avatar) to sibling devices.
