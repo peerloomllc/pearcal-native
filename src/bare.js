@@ -2803,6 +2803,29 @@ async function auditStorage (opts = {}) {
     } catch (e) { console.warn('[AUDIT] knownWriter for', g.id, e.message) }
   }
 
+  // Personal Autobase reachability — multi-device installs (TODO #11). Without
+  // this loop the personal base's cores (bootstrap, this device's writer,
+  // every paired sibling's writer, view) appear as orphans and a confirmed
+  // sweep would destroy personal events, identityProfile, and groupMembership
+  // pointers — plus break the multi-device link by deleting the local writer.
+  if (personalBase) {
+    const tag = 'personal'
+    try {
+      addDk(personalBase.local?.discoveryKey, tag)
+      if (personalBase.key) addDk(hpc.discoveryKey(personalBase.key), tag)
+      if (personalBase.bootstrap) addDk(hpc.discoveryKey(personalBase.bootstrap), tag)
+      for (const w of (personalBase.activeWriters || personalBase.writers || [])) addDk(w?.core?.discoveryKey, tag)
+      addDk(personalBase.system?.core?.discoveryKey, tag)
+      addDk(personalBase.core?.discoveryKey, tag)
+      addDk(personalBase.view?.feed?.discoveryKey, tag)
+      addDk(personalBase.view?.core?.discoveryKey, tag)
+    } catch (e) { console.warn('[AUDIT] personal base dks:', e.message) }
+    try {
+      const nsBuf = store.namespace('personal').ns
+      for await (const dk of store.list(nsBuf)) addDk(dk, tag)
+    } catch (e) { console.warn('[AUDIT] personal namespace list:', e.message) }
+  }
+
   const storeStorage = store.storage
   const allCores = []
   for await (const { discoveryKey, core } of storeStorage.createCoreStream()) {
@@ -2846,10 +2869,17 @@ async function auditStorage (opts = {}) {
     .filter(g => !g.migratedTo && !bases.has(g.id))
     .map(g => g.id)
 
+  // Same shape, for the personal Autobase: if multi-device sync is enabled
+  // (`personalMeta:bootstrap` set) but the personal base isn't open, refuse
+  // to purge — its cores would otherwise be misclassified as orphans.
+  const personalMeta = await db.get('personalMeta:bootstrap').catch(() => null)
+  const personalConfigured = !!personalMeta?.value?.key
+  const personalWithoutBase = personalConfigured && !personalBase
+
   let purged = 0
   let dataRangesCleared = 0
   const purgeErrors = []
-  if (purge && liveWithoutBase.length) {
+  if (purge && (liveWithoutBase.length || personalWithoutBase)) {
     return {
       totalCores: allCores.length,
       reachableCount: reachable.size,
@@ -2858,6 +2888,7 @@ async function auditStorage (opts = {}) {
       orphanBytes,
       orphanList: orphans.slice(0, 50),
       liveWithoutBase,
+      personalWithoutBase,
       purged: 0,
       purgeErrors: [],
       reclaim: null,
@@ -2902,6 +2933,7 @@ async function auditStorage (opts = {}) {
     orphanList: orphans.slice(0, 50), // cap for IPC payload
     sampleReachable: allCores.filter(c => c.reach).slice(0, 5),
     liveWithoutBase,
+    personalWithoutBase,
     purged,
     dataRangesCleared,
     purgeErrors: purgeErrors.slice(0, 5),

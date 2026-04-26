@@ -25728,6 +25728,16 @@ ${link}`;
                       sweepReport.liveWithoutBase.join(", "),
                       "). Sweeping now could mistakenly purge their data. Open the group in the app first, then retry."
                     ] }),
+                    sweepReport.personalWithoutBase && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
+                      fontSize: 12,
+                      fontWeight: 300,
+                      color: "#d04",
+                      background: "rgba(221,0,68,0.08)",
+                      border: "1px solid rgba(221,0,68,0.3)",
+                      borderRadius: 8,
+                      padding: "10px 12px",
+                      marginBottom: 14
+                    }, children: "\u26A0 Multi-device sync is configured but the personal data store hasn't loaded yet. Sweeping now could mistakenly purge sibling-device data. Reopen the app and retry." }),
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                         "button",
@@ -25755,6 +25765,7 @@ ${link}`;
                         {
                           onClick: async () => {
                             if (sweepReport.liveWithoutBase?.length > 0) return;
+                            if (sweepReport.personalWithoutBase) return;
                             window.__pearSync?.haptic("medium");
                             setSweepBusy(true);
                             try {
@@ -25766,7 +25777,7 @@ ${link}`;
                               setSweepBusy(false);
                             }
                           },
-                          disabled: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0,
+                          disabled: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase,
                           style: {
                             flex: 1,
                             padding: "10px 16px",
@@ -25778,7 +25789,7 @@ ${link}`;
                             fontSize: 13,
                             fontWeight: 400,
                             cursor: sweepBusy ? "wait" : "pointer",
-                            opacity: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 ? 0.5 : 1
+                            opacity: sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase ? 0.5 : 1
                           },
                           children: sweepBusy ? "Sweeping\u2026" : sweepReport.orphans === 0 ? "Nothing to sweep" : "Purge"
                         }
