@@ -83,3 +83,9 @@ release_notes.md
 /pearcal-src.zip
 /pearcal-v1.0.13.aab
 metadata/ios/screenshots/
+
+# Pear desktop build artifacts
+/desktop/app-ui-desktop.mjs
+/desktop/bare-desktop.bundle
+/desktop/node_modules/
+/desktop/.pear/

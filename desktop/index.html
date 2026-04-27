@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PearCal</title>
+  <style>
+    html, body, #root { margin: 0; padding: 0; height: 100%; background: #0f172a; }
+    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!--
+    All renderer code stays inline in this file by necessity: external
+    <script src="./x.js" type="module"> in Pear's renderer is wrapped through
+    node-bare-bundle as CJS, which kills top-level await and crashes the renderer.
+    See feedback_pear_renderer_inline_modules.md memory.
+  -->
+
+  <!-- Phase 1 IPC bridge: spawns a bare worker, frames JSON-newline messages,
+       installs window.__pearDB / __pearResponse / __pearEvent so the existing
+       src/ui/main.jsx + App.jsx work unchanged. -->
+  <script>
+    const pipe = Pear.worker.run('./bare-worker.js')
+
+    const _pending = new Map()
+    let _nextId = 1
+    let _buf = ''
+    const _decoder = new TextDecoder('utf-8')
+
+    pipe.on('data', (chunk) => {
+      _buf += _decoder.decode(chunk, { stream: true })
+      let i
+      while ((i = _buf.indexOf('\n')) >= 0) {
+        const line = _buf.slice(0, i); _buf = _buf.slice(i + 1)
+        if (!line) continue
+        let msg
+        try { msg = JSON.parse(line) } catch (e) { console.error('[desktop] bad pipe frame:', e, line); continue }
+        if (msg.event) {
+          window.dispatchEvent(new CustomEvent('pear:' + msg.event, { detail: msg.data }))
+        } else if (typeof msg.id === 'number') {
+          const r = _pending.get(msg.id)
+          if (r) { _pending.delete(msg.id); r(msg) }
+        }
+      }
+    })
+    pipe.on('error', (e) => console.error('[desktop] worker pipe error:', e.message))
+    pipe.on('close', () => console.warn('[desktop] worker pipe closed'))
+
+    const _encoder = new TextEncoder()
+    function send (obj) { pipe.write(_encoder.encode(JSON.stringify(obj) + '\n')) }
+
+    window.__pearDB = {
+      call (method, ...args) {
+        return new Promise((resolve, reject) => {
+          const id = _nextId++
+          _pending.set(id, msg => {
+            if (msg.error) reject(new Error(msg.error))
+            else resolve(msg.result)
+          })
+          send({ id, method, args })
+        })
+      }
+    }
+    window.__pearResponse = (msg) => {
+      const r = _pending.get(msg.id)
+      if (r) { _pending.delete(msg.id); r(msg) }
+    }
+    window.__pearEvent = (event, data) => {
+      window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
+    }
+  </script>
+
+  <!-- Inline module: top-level await is valid here. Loads the React UI bundle. -->
+  <script type="module">
+    try {
+      await import('./app-ui-desktop.mjs')
+      console.log('[desktop] UI bundle loaded')
+    } catch (e) {
+      console.error('[desktop] UI bundle import failed:', e)
+      const root = document.getElementById('root')
+      if (root) root.innerHTML = '<div style="padding:16px;font-family:monospace;color:#f87171">UI bundle failed to load:<br>' + (e?.message ?? e) + '</div>'
+    }
+  </script>
+</body>
+</html>

@@ -3,30 +3,34 @@ import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
 import { installFixtures } from './screenshot-fixtures.js'
 
-// IPC bridge
-let _nextId = 1
-const _pending = new Map()
+// IPC bridge — installed only if a host hasn't already wired one.
+// Desktop pre-sets __pearDB inline in index.html to talk over a Pear worker pipe;
+// mobile lands here and uses ReactNativeWebView.postMessage.
+if (!window.__pearDB) {
+  let _nextId = 1
+  const _pending = new Map()
 
-window.__pearDB = {
-  call (method, ...args) {
-    return new Promise((resolve, reject) => {
-      const id = _nextId++
-      _pending.set(id, msg => {
-        if (msg.error) reject(new Error(msg.error))
-        else resolve(msg.result)
+  window.__pearDB = {
+    call (method, ...args) {
+      return new Promise((resolve, reject) => {
+        const id = _nextId++
+        _pending.set(id, msg => {
+          if (msg.error) reject(new Error(msg.error))
+          else resolve(msg.result)
+        })
+        window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args }))
       })
-      window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args }))
-    })
+    }
   }
-}
 
-window.__pearResponse = function (msg) {
-  const resolve = _pending.get(msg.id)
-  if (resolve) { _pending.delete(msg.id); resolve(msg) }
-}
+  window.__pearResponse = function (msg) {
+    const resolve = _pending.get(msg.id)
+    if (resolve) { _pending.delete(msg.id); resolve(msg) }
+  }
 
-window.__pearEvent = function (event, data) {
-  window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
+  window.__pearEvent = function (event, data) {
+    window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
+  }
 }
 
 // Bridge CustomEvents → emitter so App.jsx sync/groupKeyUpdated handlers fire
