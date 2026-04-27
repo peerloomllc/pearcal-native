@@ -24498,6 +24498,8 @@ ${link}`;
     const [renamingKey, setRenamingKey] = (0, import_react2.useState)(null);
     const [renameDraft, setRenameDraft] = (0, import_react2.useState)("");
     const [renameSaving, setRenameSaving] = (0, import_react2.useState)(false);
+    const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react2.useState)(null);
+    const [removingKey, setRemovingKey] = (0, import_react2.useState)(null);
     (0, import_react2.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
@@ -24631,6 +24633,9 @@ ${link}`;
       }
       function onPairingCompleted() {
         refresh();
+        setTimeout(() => {
+          if (!cancelled) refresh();
+        }, 500);
       }
       emitter.on("linkedDevicesChanged", onChanged);
       emitter.on("pairingCompleted", onPairingCompleted);
@@ -24679,6 +24684,18 @@ ${link}`;
         console.error("setDeviceNickname failed", e58);
       }
       setRenameSaving(false);
+    }
+    async function confirmRemoveDevice(writerKey) {
+      if (!writerKey || removingKey) return;
+      setRemovingKey(writerKey);
+      try {
+        await db2.removeDeviceFromList(writerKey);
+        setLinkedDevices((list) => list.filter((d) => d.writerKey !== writerKey));
+      } catch (e58) {
+        console.error("removeDeviceFromList failed", e58);
+      }
+      setRemovingKey(null);
+      setRemoveConfirmKey(null);
     }
     async function cancelDevicePairing() {
       try {
@@ -25265,22 +25282,22 @@ ${link}`;
               style: {
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
+                gap: 12,
                 width: "100%",
                 padding: "12px 14px",
                 borderRadius: 10,
                 cursor: "pointer",
-                border: `1px solid ${th.border}`,
+                border: `1px solid var(--color-accent)`,
                 background: "transparent",
                 fontFamily: FONT,
                 opacity: pairHostBusy || !!pairHost ? 0.5 : 1
               },
               children: [
+                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n5, { size: 18, weight: "thin", color: "var(--color-accent)" }),
                 /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: pairHostBusy ? "Generating\u2026" : "Add a device" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 400, color: "var(--color-accent)" }, children: pairHostBusy ? "Generating\u2026" : "Add a device" }),
                   /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Pair your phone, tablet, or desktop under the same identity" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 16, weight: "thin", color: "var(--color-muted)" })
+                ] })
               ]
             }
           ),
@@ -25288,24 +25305,28 @@ ${link}`;
           linkedDevices.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }, children: [
             linkedDevices.map((d) => {
               const isRenaming = renamingKey === d.writerKey;
+              const isConfirmingRemove = removeConfirmKey === d.writerKey;
+              const isRemoving = removingKey === d.writerKey;
               const label = d.nickname && d.nickname.trim() || deviceDefaultLabel(d);
-              const subtitle = devicePlatformLabel(d) + (d.isThisDevice && d.nickname ? " \xB7 this device" : "");
+              const subtitle = devicePlatformLabel(d) + (d.isThisDevice ? " \xB7 this device" : "");
+              const cardStyle = {
+                padding: "12px 14px",
+                borderRadius: 10,
+                border: `1px solid ${th.border}`,
+                background: "transparent",
+                cursor: d.isThisDevice && !isRenaming ? "pointer" : "default",
+                ...d.isThisDevice ? { borderLeft: "3px solid var(--color-accent)", paddingLeft: 12 } : {}
+              };
               return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                 "div",
                 {
                   onClick: () => {
-                    if (!isRenaming && d.isThisDevice) {
+                    if (!isRenaming && !isConfirmingRemove && d.isThisDevice) {
                       window.__pearSync?.haptic("light");
                       startRenameDevice(d);
                     }
                   },
-                  style: {
-                    padding: "12px 14px",
-                    borderRadius: 10,
-                    border: `1px solid ${th.border}`,
-                    background: "transparent",
-                    cursor: d.isThisDevice && !isRenaming ? "pointer" : "default"
-                  },
+                  style: cardStyle,
                   children: isRenaming ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
                       "input",
@@ -25386,6 +25407,59 @@ ${link}`;
                         }
                       )
                     ] })
+                  ] }) : isConfirmingRemove ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, lineHeight: 1.5, textAlign: "center" }, children: [
+                      "Remove ",
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { ...th.text, fontWeight: 400 }, children: label }),
+                      " from your devices list?"
+                    ] }),
+                    /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", justifyContent: "center", gap: 8 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: (e58) => {
+                            e58.stopPropagation();
+                            setRemoveConfirmKey(null);
+                          },
+                          disabled: isRemoving,
+                          style: {
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            fontFamily: FONT,
+                            border: `1px solid ${th.border}`,
+                            background: "transparent",
+                            color: th.muted,
+                            cursor: "pointer"
+                          },
+                          children: "Cancel"
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                        "button",
+                        {
+                          onClick: (e58) => {
+                            e58.stopPropagation();
+                            confirmRemoveDevice(d.writerKey);
+                          },
+                          disabled: isRemoving,
+                          style: {
+                            padding: "6px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 300,
+                            fontFamily: FONT,
+                            border: `1px solid var(--color-destructive)`,
+                            background: "transparent",
+                            color: "var(--color-destructive)",
+                            cursor: "pointer",
+                            opacity: isRemoving ? 0.5 : 1
+                          },
+                          children: isRemoving ? "Removing\u2026" : "Remove"
+                        }
+                      )
+                    ] })
                   ] }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
                     /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: {
@@ -25398,7 +25472,28 @@ ${link}`;
                       }, children: label }),
                       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, marginTop: 2 }, children: subtitle })
                     ] }),
-                    d.isThisDevice && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 14, weight: "thin", color: "var(--color-muted)" })
+                    d.isThisDevice ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)(s4, { size: 14, weight: "thin", color: "var(--color-muted)" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
+                      "button",
+                      {
+                        onClick: (e58) => {
+                          e58.stopPropagation();
+                          window.__pearSync?.haptic("light");
+                          setRemoveConfirmKey(d.writerKey);
+                        },
+                        "aria-label": "Remove device",
+                        style: {
+                          background: "transparent",
+                          border: "none",
+                          padding: 6,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          color: th.muted,
+                          fontFamily: FONT
+                        },
+                        children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n12, { size: 16, weight: "thin" })
+                      }
+                    )
                   ] })
                 },
                 d.writerKey
@@ -26648,7 +26743,8 @@ ${link}`;
     consumePairLink: (url) => window.__pearDB.call("consumePairLink", url),
     getPairingStatus: () => window.__pearDB.call("getPairingStatus"),
     listLinkedDevices: () => window.__pearDB.call("listLinkedDevices"),
-    setDeviceNickname: (n17) => window.__pearDB.call("setDeviceNickname", n17)
+    setDeviceNickname: (n17) => window.__pearDB.call("setDeviceNickname", n17),
+    removeDeviceFromList: (k) => window.__pearDB.call("removeDeviceFromList", k)
   };
   var notifs = {
     scheduleForEvent: (ev2, reminders) => window.__pearDB.call("scheduleForEvent", ev2, reminders),

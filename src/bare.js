@@ -207,6 +207,7 @@ async function handle (method, args) {
     case 'removeBlindPeerKey': return removeBlindPeerKey()
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
+    case 'removeDeviceFromList': return removeDeviceFromList(args[0])
     case 'rekeyGroup':       return rekeyGroup(args[0])
     case 'commitRekey':      return commitRekey(args[0])
     case 'purgeMigratedGroup':    return purgeMigratedGroup(args[0], args[1] ?? {})
@@ -1574,6 +1575,35 @@ function makePersonalApply () {
         const incomingTs = val.value?.updatedAt ?? 0
         if (incomingTs < prevTs) continue
         await db.put(val.key, val.value).catch(() => {})
+        // A fresh deviceMeta put unmutes the device — covers a removed device
+        // coming back online (factory-reset return, user rename after remove).
+        await db.del('deviceMetaHidden:' + rowWriter).catch(() => {})
+        send({ type: 'event', event: 'linkedDevicesChanged', data: null })
+        continue
+      }
+      // Cosmetic remove via removeDeviceFromList (proposal 2026-04-27). Any
+      // paired writer can author this — paired devices are trust-equivalent.
+      // Drops the local row AND stamps deviceMetaHidden:{key} so the
+      // synthesise-from-activeWriters path in listLinkedDevices doesn't
+      // resurrect a placeholder. Cleared automatically when a fresh put
+      // arrives for the same writer (above).
+      if (val.op === 'del' && val.type === 'deviceMeta' && val.key) {
+        const writerKey = val.key.slice('deviceMeta:'.length)
+        if (!writerKey) continue
+        // Each device must always see itself in the list. If a sibling
+        // authored a remove for OUR writer (e.g., the user "removed" this
+        // device on another paired device, then this one came back online),
+        // ignore the mute locally — they remove us from THEIR view but our
+        // self row stays. Renaming on this device re-puts the row, which
+        // clears the hidden marker on siblings via the put branch above.
+        const localKey = personalBase?.local?.key
+          ? b4a.toString(personalBase.local.key, 'hex') : null
+        if (writerKey === localKey) {
+          send({ type: 'event', event: 'linkedDevicesChanged', data: null })
+          continue
+        }
+        await db.del(val.key).catch(() => {})
+        await db.put('deviceMetaHidden:' + writerKey, { ts: Date.now() }).catch(() => {})
         send({ type: 'event', event: 'linkedDevicesChanged', data: null })
         continue
       }
@@ -1705,6 +1735,13 @@ async function ensurePersonalBase () {
     // landed before the live self-kick path existed (or during sync replay)
     // leave stale pointers that paired siblings auto-join into ghost groups.
     cleanupStalePersonalGroups().catch(e => console.warn('[personal] cleanup sweep:', e.message))
+    // Self-heal any stale `deviceMetaHidden:{localKey}` marker — local writer
+    // is never hidden in our model. Could exist on installs where a sibling's
+    // remove was applied before the apply-skip-self fix landed.
+    try {
+      const localKey = base?.local?.key ? b4a.toString(base.local.key, 'hex') : null
+      if (localKey) await db.del('deviceMetaHidden:' + localKey).catch(() => {})
+    } catch (e) { console.warn('[personal] self-heal hidden marker:', e.message) }
     return base
   } catch (e) {
     console.error('[personal] open failed:', e.message)
@@ -1964,28 +2001,91 @@ async function personalBaseAppendDeviceMeta (patch) {
 }
 
 // IPC: list every paired device known on this install. Reads the local-DB
-// mirror (populated by the apply branch). When the local writer has no row
-// yet — common on already-paired secondaries that haven't named themselves —
-// inject a synthetic placeholder so the UI always shows "This device".
+// mirror (populated by the apply branch), then synthesises placeholder rows
+// for any personal-base writer without a deviceMeta entry yet — covers the
+// just-paired secondary that hasn't called setDeviceNickname (per DECISIONS
+// 2026-04-26 the boot-seed was dropped to dodge an Autobase truncate bug).
+// Skips writers whose deviceMetaHidden:{key} marker is set (cosmetic remove
+// via removeDeviceFromList — see proposal 2026-04-27-devices-list-ux.md).
 async function listLinkedDevices () {
   if (!db) return []
   const localKey = personalBase?.local?.key ? b4a.toString(personalBase.local.key, 'hex') : null
+  const seen = new Set()
   const out = []
-  let sawLocal = false
+
+  async function isHidden (writerKey) {
+    // Local writer is never hidden — defensive guard against a stale marker
+    // landing on this device (e.g., from a sibling's remove that this device
+    // applied before the apply-skip-self fix). Also the apply branch refuses
+    // to write a hidden marker for the local writer, so this is belt-and-
+    // suspenders.
+    if (localKey && writerKey === localKey) return false
+    const m = await db.get('deviceMetaHidden:' + writerKey).catch(() => null)
+    return !!m?.value
+  }
+
   for await (const { value } of db.createReadStream({ gt: 'deviceMeta:', lt: 'deviceMeta:ÿ' })) {
     if (!value || !value.writerKey) continue
-    const isThisDevice = !!localKey && value.writerKey === localKey
-    if (isThisDevice) sawLocal = true
+    if (await isHidden(value.writerKey)) continue
+    seen.add(value.writerKey)
     out.push({
       writerKey: value.writerKey,
       nickname: value.nickname ?? '',
       platform: value.platform ?? '',
       pairedAt: value.pairedAt ?? null,
       updatedAt: value.updatedAt ?? null,
-      isThisDevice,
+      isThisDevice: !!localKey && value.writerKey === localKey,
     })
   }
-  if (localKey && !sawLocal) {
+
+  // Synthesise rows from pairedWriter:{key} markers — written by the primary
+  // when it grants addWriter during pairing. Authoritative on the primary
+  // immediately at handshake time, regardless of whether the secondary's
+  // hypercore has connected yet. Other devices receive the new writer via
+  // the activeWriters fallback below as Autobase replicates the addWriter op.
+  for await (const { key, value } of db.createReadStream({ gt: 'pairedWriter:', lt: 'pairedWriter:ÿ' })) {
+    const keyHex = key.slice('pairedWriter:'.length)
+    if (!keyHex || seen.has(keyHex)) continue
+    if (await isHidden(keyHex)) continue
+    seen.add(keyHex)
+    out.push({
+      writerKey: keyHex,
+      nickname: '',
+      platform: '',
+      pairedAt: value?.addedAt ?? null,
+      updatedAt: null,
+      isThisDevice: !!localKey && keyHex === localKey,
+      synthetic: true,
+    })
+  }
+
+  // Synthesise rows for active writers that haven't authored a deviceMeta yet
+  // (and weren't covered by the pairedWriter loop above). Catches sibling
+  // devices on installs that paired before the pairedWriter marker existed,
+  // and on already-paired siblings where the new writer arrives via the
+  // addWriter op replication rather than a local pair handshake.
+  const writers = personalBase?.activeWriters || personalBase?.writers || []
+  for (const w of writers) {
+    const k = w?.core?.key
+    if (!k) continue
+    const keyHex = b4a.toString(k, 'hex')
+    if (seen.has(keyHex)) continue
+    if (await isHidden(keyHex)) continue
+    seen.add(keyHex)
+    out.push({
+      writerKey: keyHex,
+      nickname: '',
+      platform: '',
+      pairedAt: null,
+      updatedAt: null,
+      isThisDevice: !!localKey && keyHex === localKey,
+      synthetic: true,
+    })
+  }
+
+  // Belt-and-suspenders: if personalBase isn't open yet (rare boot race) but
+  // we have a local writer key, ensure the UI still shows "This device".
+  if (localKey && !seen.has(localKey) && !(await isHidden(localKey))) {
     out.push({
       writerKey: localKey,
       nickname: '',
@@ -1996,8 +2096,35 @@ async function listLinkedDevices () {
       synthetic: true,
     })
   }
-  out.sort((a, b) => (a.pairedAt ?? 0) - (b.pairedAt ?? 0))
+
+  // This device first; remaining devices oldest-paired first (synthetics with
+  // null pairedAt sort to the start of the remaining list, then real rows).
+  out.sort((a, b) => {
+    if (a.isThisDevice && !b.isThisDevice) return -1
+    if (!a.isThisDevice && b.isThisDevice) return 1
+    return (a.pairedAt ?? 0) - (b.pairedAt ?? 0)
+  })
   return out
+}
+
+// IPC: cosmetic removal of a paired device's row from every device's list.
+// Appends `{ op: 'del', type: 'deviceMeta' }` to the personal Autobase. Apply
+// removes the local row AND stamps `deviceMetaHidden:{key}` so the synthesise-
+// from-activeWriters path doesn't resurrect it. Self-remove blocked. Does NOT
+// revoke writer access — TODO #95 v2 covers true revocation.
+async function removeDeviceFromList (writerKey) {
+  if (!personalBase?.writable) return { ok: false, reason: 'not_writable' }
+  if (typeof writerKey !== 'string' || !/^[0-9a-f]{64}$/i.test(writerKey)) {
+    return { ok: false, reason: 'bad_writer_key' }
+  }
+  const localKey = personalBase?.local?.key ? b4a.toString(personalBase.local.key, 'hex') : null
+  if (writerKey === localKey) return { ok: false, reason: 'cannot_remove_self' }
+  try {
+    await personalBase.append({ op: 'del', type: 'deviceMeta', key: 'deviceMeta:' + writerKey })
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, reason: e.message }
+  }
 }
 
 // IPC: rename the local device. Trims whitespace, caps at 32 chars, allows
@@ -2370,8 +2497,15 @@ async function _handlePairPersonalWriter (parsed, replySend) {
     if (!personalBase.writable) throw new Error('personal base not writable on primary')
     await personalBase.append({ addWriter: newDeviceKey })
     console.log('[pair] addWriter on personal base:', newDeviceKey.slice(0, 16) + '…')
+    // Local marker so listLinkedDevices can synthesise the new device's row
+    // immediately, without waiting for the secondary's hypercore to open
+    // (personalBase.activeWriters only populates `w.core` once a peer with
+    // that writerKey actually connects — which can lag the addWriter append
+    // by an arbitrary amount on the primary side).
+    await db.put('pairedWriter:' + newDeviceKey, { addedAt: Date.now() }).catch(() => {})
     replySend({ type: 'complete' })
     _emitPair('pairingCompleted', { role: 'primary' })
+    send({ type: 'event', event: 'linkedDevicesChanged', data: null })
     _clearPairSession()
   } catch (e) {
     console.error('[pair] personalWriter handler error:', e.message)
