@@ -7562,32 +7562,40 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             </button>
           )
         })()}
-        <button onClick={async () => {
-          window.__pearSync?.haptic('light')
-          setSweepBusy(true)
-          setSweepResult(null)
-          try {
-            const r = await sync.auditStorage({ purge: false })
-            setSweepReport(r)
-          } catch (e) {
-            setSweepReport({ error: e.message, orphans: 0, orphanBytes: 0, totalCores: 0, reachableCount: 0, groupCount: 0 })
-          } finally {
-            setSweepBusy(false)
-          }
-        }} disabled={sweepBusy}
-          style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
-            padding:'12px 14px', borderRadius:10, cursor: sweepBusy ? 'wait' : 'pointer',
-            border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
-            opacity: sweepBusy ? 0.6 : 1 }}>
-          <div style={{ flex:1, textAlign:'left' }}>
-            <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
-              {sweepBusy && !sweepReport ? 'Scanning…' : 'Sweep Orphaned Data'}
+        {/* Sweep Orphaned Data hidden — see PR #143. Reports of post-sweep
+            "can't join new groups" failures (devices required reinstall).
+            Root cause not yet identified; re-enable once auditStorage's
+            reachability traversal and purgeOrphanDataRanges' live-dp set
+            are hardened against blind-peer-mirrored / transitively-dependent
+            cores. */}
+        {false && (
+          <button onClick={async () => {
+            window.__pearSync?.haptic('light')
+            setSweepBusy(true)
+            setSweepResult(null)
+            try {
+              const r = await sync.auditStorage({ purge: false })
+              setSweepReport(r)
+            } catch (e) {
+              setSweepReport({ error: e.message, orphans: 0, orphanBytes: 0, totalCores: 0, reachableCount: 0, groupCount: 0 })
+            } finally {
+              setSweepBusy(false)
+            }
+          }} disabled={sweepBusy}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+              padding:'12px 14px', borderRadius:10, cursor: sweepBusy ? 'wait' : 'pointer',
+              border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+              opacity: sweepBusy ? 0.6 : 1 }}>
+            <div style={{ flex:1, textAlign:'left' }}>
+              <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+                {sweepBusy && !sweepReport ? 'Scanning…' : 'Sweep Orphaned Data'}
+              </div>
+              <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
+                Purge cores from deleted / left groups (shows report first)
+              </div>
             </div>
-            <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
-              Purge cores from deleted / left groups (shows report first)
-            </div>
-          </div>
-        </button>
+          </button>
+        )}
         {reclaimResult?.analyze && (
           <div style={{ fontSize:12, fontWeight:300, color:th.muted, textAlign:'center', padding:'4px 0' }}>
             {reclaimResult.analyze.pct}% reclaimable — tap Reclaim below to continue
