@@ -19,7 +19,12 @@ const {
   readMarker: readMigrationMarker,
 } = require('./lib/migration.js')
 
-const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
+// Mobile shells inject `BareKit.IPC` (a duplex over the worklet bridge).
+// Pear's bare worker exposes the same shape via `Pear.worker.pipe()`. Pick once
+// at module load — both paths use the JSON-newline envelope identically.
+const _isDesktopPear = typeof BareKit === 'undefined' && typeof Pear !== 'undefined'
+const ipc = _isDesktopPear ? Pear.worker.pipe() : BareKit.IPC
+const send = (msg) => ipc.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
 // Per-groupId debounce so clustered apply()/mirror emits (one peer reconnect
 // can linearise dozens of blocks) collapse into a single UI refetch instead
@@ -110,7 +115,7 @@ function nativeRequest (method, args = []) {
   })
 }
 
-BareKit.IPC.on('data', chunk => {
+ipc.on('data', chunk => {
   buf += chunk.toString()
   const lines = buf.split('\n')
   buf = lines.pop()
