@@ -7412,6 +7412,10 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                   They sit in <span style={{ fontFamily:'monospace' }}>pearcal/store</span> and aren't
                   freed by the normal Reclaim flow. Purging them is permanent.
                 </div>
+                <div style={{ fontSize:12, fontWeight:400, color:'#d04', background:'rgba(221,0,68,0.08)',
+                  border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14, lineHeight:1.5 }}>
+                  ⚠ Reports of sync breakage after sweeping. Some devices have been unable to join new groups afterward, requiring a reinstall. Cause under investigation. Only proceed if you understand the risk and have backups or can rebuild your data.
+                </div>
                 <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:14 }}>
                   Total cores on disk: {sweepReport.totalCores} · reachable: {sweepReport.reachableCount} · groups tracked: {sweepReport.groupCount}
                 </div>

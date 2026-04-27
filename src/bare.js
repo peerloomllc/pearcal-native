@@ -1155,6 +1155,11 @@ async function createGroup (name, metadata) {
     apply: makeApply(groupId),
     ackInterval: 1000,
   })
+  // Without an 'error' listener Autobase calls crashSoon() on internal
+  // failures (e.g., Hypercore "Truncation breaks prologue" during drain),
+  // killing the bare runtime. The listener turns those into recoverable
+  // events so the runtime stays alive and other groups keep working.
+  base.on('error', e => console.error('[group] base error (createGroup):', groupId, e?.message))
   await base.ready()
   const groupKey = b4a.toString(base.key, 'hex')
   const writerKey = b4a.toString(base.local.key, 'hex')
@@ -1245,6 +1250,11 @@ async function _joinGroupImpl (group) {
     apply: makeApply(group.id),
     ackInterval: 1000,
   })
+  // Without an 'error' listener Autobase calls crashSoon() on internal
+  // failures (e.g., Hypercore "Truncation breaks prologue" during drain),
+  // killing the bare runtime. The listener turns those into recoverable
+  // events so the runtime stays alive and other groups keep working.
+  base.on('error', e => console.error('[group] base error (joinGroup):', group.id, e?.message))
   await base.ready()
 
   // Detect a pre-existing migration marker so we can immediately gate further
