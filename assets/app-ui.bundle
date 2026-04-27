@@ -26155,42 +26155,7 @@ ${link}`;
               }
             );
           })(),
-          /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-            "button",
-            {
-              onClick: async () => {
-                window.__pearSync?.haptic("light");
-                setSweepBusy(true);
-                setSweepResult(null);
-                try {
-                  const r10 = await sync2.auditStorage({ purge: false });
-                  setSweepReport(r10);
-                } catch (e58) {
-                  setSweepReport({ error: e58.message, orphans: 0, orphanBytes: 0, totalCores: 0, reachableCount: 0, groupCount: 0 });
-                } finally {
-                  setSweepBusy(false);
-                }
-              },
-              disabled: sweepBusy,
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                padding: "12px 14px",
-                borderRadius: 10,
-                cursor: sweepBusy ? "wait" : "pointer",
-                border: `1px solid ${th.border}`,
-                background: "transparent",
-                fontFamily: FONT,
-                opacity: sweepBusy ? 0.6 : 1
-              },
-              children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: sweepBusy && !sweepReport ? "Scanning\u2026" : "Sweep Orphaned Data" }),
-                /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "Purge cores from deleted / left groups (shows report first)" })
-              ] })
-            }
-          ),
+          false,
           reclaimResult?.analyze && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: th.muted, textAlign: "center", padding: "4px 0" }, children: [
             reclaimResult.analyze.pct,
             "% reclaimable \u2014 tap Reclaim below to continue"
