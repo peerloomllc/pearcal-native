@@ -1620,6 +1620,14 @@ function makePersonalApply () {
             await db.put(NS.groups + groupId, seed).catch(() => {})
             await db.put('joinedAt:' + groupId, { ts: seed.joinedAt }).catch(() => {})
           }
+          // Stamp "ever-seen" marker AFTER ensuring local group is seeded.
+          // cleanupStalePersonalGroups gates on this marker so a freshly-paired
+          // secondary mid-replication doesn't sweep personalGroups entries
+          // before the group autobases have arrived. Marker present ⇒ this
+          // device has had the group locally at least once; safe to delete the
+          // personalGroups entry on a future cleanup if the local group later
+          // disappears (user-initiated leave, kick).
+          await db.put('personalSeenGroup:' + groupId, { ts: Date.now() }).catch(() => {})
           const localGroup = (await db.get(NS.groups + groupId).catch(() => null))?.value
           if (localGroup) {
             joinGroup(localGroup).catch(e =>
@@ -1902,9 +1910,20 @@ async function cleanupStalePersonalGroups () {
   })) {
     const groupId = value?.groupId
     if (!groupId) continue
-    const blocked = await db.get('blockedFromGroup:' + groupId).catch(() => null)
-    const localGroup = await db.get(NS.groups + groupId).catch(() => null)
-    if (blocked?.value || !localGroup?.value) {
+    const blocked    = await db.get('blockedFromGroup:'  + groupId).catch(() => null)
+    const localGroup = await db.get(NS.groups            + groupId).catch(() => null)
+    const seen       = await db.get('personalSeenGroup:' + groupId).catch(() => null)
+
+    // Definitely-stale: this device was explicitly kicked from the group.
+    // Probably-locally-deleted: we previously had the group locally (marker
+    // stamped by personal-base apply) and now don't. Without the marker we
+    // MUST NOT delete — a freshly-paired secondary mid-replication would see
+    // personalGroups entries arrive ahead of the group autobases, and a naive
+    // "no local group" check would sweep every entry, replicating del ops to
+    // siblings and orphaning the entire identity from every group.
+    const definitelyStale       = !!blocked?.value
+    const probablyLocallyDeleted = !!seen?.value && !localGroup?.value
+    if (definitelyStale || probablyLocallyDeleted) {
       await personalBaseRemoveGroup(groupId)
       dropped++
     }
@@ -2301,7 +2320,16 @@ async function _handlePairGranted (parsed, replySend) {
     })
     await db.put('personalMeta:migrated', { ts: Date.now(), counts: { events: 0, reminders: 0, notes: 0, groups: 0 }, skipped: 'secondary_pair' })
     await ensurePersonalBase()
-    if (!personalBase) throw new Error('personal base did not open')
+    if (!personalBase) {
+      // Roll back persisted bootstrap so the secondary doesn't boot into a
+      // half-paired state on next launch (bootstrap set, base read-only because
+      // primary never granted addWriter — every user write would silently
+      // no-op via the personalBase*Append* writable guards). User can cleanly
+      // retry pair after the rollback.
+      await db.del('personalMeta:bootstrap').catch(() => {})
+      await db.del('personalMeta:migrated').catch(() => {})
+      throw new Error('personal base did not open')
+    }
 
     const newDeviceKey = b4a.toString(personalBase.local.key, 'hex')
     _pairSession.granted = true

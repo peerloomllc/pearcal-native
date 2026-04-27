@@ -19956,6 +19956,8 @@
       closeOnboardSubModeRef.current = () => {
         if (restoreMode === "pair-waiting") return true;
         if (restoreMode === "pair") {
+          db2.cancelPairing?.().catch(() => {
+          });
           setRestoreMode(null);
           setRestoreError("");
           setPairInput("");
@@ -19966,7 +19968,7 @@
       return () => {
         if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null;
       };
-    }, [restoreMode, closeOnboardSubModeRef]);
+    }, [restoreMode, closeOnboardSubModeRef, db2]);
     (0, import_react2.useEffect)(() => {
       function onPairingStarted(data) {
         if (!data || data.role !== "secondary") return;
@@ -20136,6 +20138,8 @@
           "button",
           {
             onClick: () => {
+              db2.cancelPairing?.().catch(() => {
+              });
               setRestoreMode(null);
               setRestoreError("");
               setPairInput("");

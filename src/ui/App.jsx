@@ -3356,13 +3356,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
     closeOnboardSubModeRef.current = () => {
       if (restoreMode === 'pair-waiting') return true  // swallow — mid-handshake
       if (restoreMode === 'pair') {
+        db.cancelPairing?.().catch(() => {})
         setRestoreMode(null); setRestoreError(''); setPairInput('')
         return true
       }
       return false
     }
     return () => { if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null }
-  }, [restoreMode, closeOnboardSubModeRef])
+  }, [restoreMode, closeOnboardSubModeRef, db])
 
   // Secondary-side pair event listeners. pairingStarted (role: 'secondary')
   // fires when consumePairLink has joined the pair swarm and is actively
@@ -3521,7 +3522,14 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
             {restoreError}
           </div>
         )}
-        <button onClick={() => { setRestoreMode(null); setRestoreError(''); setPairInput('') }}
+        <button onClick={() => {
+            // Release the bare-side swarm topic immediately instead of waiting
+            // for the 15-min link expiry. Without this, backing out and then
+            // consuming a different link errors with "another pair session in
+            // progress" until the timer fires.
+            db.cancelPairing?.().catch(() => {})
+            setRestoreMode(null); setRestoreError(''); setPairInput('')
+          }}
           disabled={restoreMode === 'pair-waiting'}
           style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
             fontSize:13, fontWeight:300, cursor:'pointer', padding:4,
