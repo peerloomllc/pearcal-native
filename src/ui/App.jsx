@@ -6393,6 +6393,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
   const [renamingKey,      setRenamingKey]      = useState(null)
   const [renameDraft,      setRenameDraft]      = useState('')
   const [renameSaving,     setRenameSaving]     = useState(false)
+  const [removeConfirmKey, setRemoveConfirmKey] = useState(null)
+  const [removingKey,      setRemovingKey]      = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -6538,7 +6540,14 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
     }
     refresh()
     function onChanged () { refresh() }
-    function onPairingCompleted () { refresh() }
+    function onPairingCompleted () {
+      refresh()
+      // Defensive retry: personalBase.activeWriters may take an event-loop
+      // tick to reflect the new writer even after the bare-side base.update()
+      // call. A delayed second refresh ensures the synthesised row appears
+      // reliably when network or apply timing varies.
+      setTimeout(() => { if (!cancelled) refresh() }, 500)
+    }
     emitter.on('linkedDevicesChanged', onChanged)
     emitter.on('pairingCompleted', onPairingCompleted)
     return () => {
@@ -6596,6 +6605,20 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       console.error('setDeviceNickname failed', e)
     }
     setRenameSaving(false)
+  }
+
+  async function confirmRemoveDevice (writerKey) {
+    if (!writerKey || removingKey) return
+    setRemovingKey(writerKey)
+    try {
+      await db.removeDeviceFromList(writerKey)
+      // Optimistic local prune; apply event will follow and reconcile.
+      setLinkedDevices(list => list.filter(d => d.writerKey !== writerKey))
+    } catch (e) {
+      console.error('removeDeviceFromList failed', e)
+    }
+    setRemovingKey(null)
+    setRemoveConfirmKey(null)
   }
 
   async function cancelDevicePairing () {
@@ -7001,19 +7024,19 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         <div style={{ padding:'0 16px 14px' }}>
           <button onClick={() => { window.__pearSync?.haptic('light'); startDevicePairing() }}
             disabled={pairHostBusy || !!pairHost}
-            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+            style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
               padding:'12px 14px', borderRadius:10, cursor:'pointer',
-              border:`1px solid ${th.border}`, background:'transparent', fontFamily:FONT,
+              border:`1px solid var(--color-accent)`, background:'transparent', fontFamily:FONT,
               opacity: (pairHostBusy || !!pairHost) ? 0.5 : 1 }}>
+            <Plus size={18} weight="thin" color="var(--color-accent)" />
             <div style={{ flex:1, textAlign:'left' }}>
-              <div style={{ fontSize:14, fontWeight:300, ...th.text }}>
+              <div style={{ fontSize:14, fontWeight:400, color:'var(--color-accent)' }}>
                 {pairHostBusy ? 'Generating…' : 'Add a device'}
               </div>
               <div style={{ fontSize:11, fontWeight:300, color:th.muted }}>
                 Pair your phone, tablet, or desktop under the same identity
               </div>
             </div>
-            <CaretRight size={16} weight="thin" color="var(--color-muted)" />
           </button>
           {pairHostError && !pairHost && (
             <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, marginTop:8, textAlign:'center' }}>
@@ -7023,15 +7046,23 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           {linkedDevices.length > 0 && (
             <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
               {linkedDevices.map(d => {
-                const isRenaming = renamingKey === d.writerKey
+                const isRenaming = renamingKey       === d.writerKey
+                const isConfirmingRemove = removeConfirmKey === d.writerKey
+                const isRemoving = removingKey       === d.writerKey
                 const label = (d.nickname && d.nickname.trim()) || deviceDefaultLabel(d)
-                const subtitle = devicePlatformLabel(d) + (d.isThisDevice && d.nickname ? ' · this device' : '')
+                const subtitle = devicePlatformLabel(d) + (d.isThisDevice ? ' · this device' : '')
+                const cardStyle = {
+                  padding:'12px 14px', borderRadius:10,
+                  border:`1px solid ${th.border}`, background:'transparent',
+                  cursor: d.isThisDevice && !isRenaming ? 'pointer' : 'default',
+                  ...(d.isThisDevice
+                    ? { borderLeft: '3px solid var(--color-accent)', paddingLeft: 12 }
+                    : {}),
+                }
                 return (
                   <div key={d.writerKey}
-                    onClick={() => { if (!isRenaming && d.isThisDevice) { window.__pearSync?.haptic('light'); startRenameDevice(d) } }}
-                    style={{ padding:'12px 14px', borderRadius:10,
-                      border:`1px solid ${th.border}`, background:'transparent',
-                      cursor: d.isThisDevice && !isRenaming ? 'pointer' : 'default' }}>
+                    onClick={() => { if (!isRenaming && !isConfirmingRemove && d.isThisDevice) { window.__pearSync?.haptic('light'); startRenameDevice(d) } }}
+                    style={cardStyle}>
                     {isRenaming ? (
                       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                         <input autoFocus type="text" value={renameDraft} maxLength={32}
@@ -7062,6 +7093,29 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                           </button>
                         </div>
                       </div>
+                    ) : isConfirmingRemove ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <div style={{ fontSize:13, fontWeight:300, color:th.muted, lineHeight:1.5, textAlign:'center' }}>
+                          Remove <span style={{ ...th.text, fontWeight:400 }}>{label}</span> from your devices list?
+                        </div>
+                        <div style={{ display:'flex', justifyContent:'center', gap:8 }}>
+                          <button onClick={e => { e.stopPropagation(); setRemoveConfirmKey(null) }}
+                            disabled={isRemoving}
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                              fontFamily:FONT, border:`1px solid ${th.border}`, background:'transparent',
+                              color:th.muted, cursor:'pointer' }}>
+                            Cancel
+                          </button>
+                          <button onClick={e => { e.stopPropagation(); confirmRemoveDevice(d.writerKey) }}
+                            disabled={isRemoving}
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                              fontFamily:FONT, border:`1px solid var(--color-destructive)`, background:'transparent',
+                              color:'var(--color-destructive)', cursor:'pointer',
+                              opacity: isRemoving ? 0.5 : 1 }}>
+                            {isRemoving ? 'Removing…' : 'Remove'}
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
@@ -7073,8 +7127,16 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                             {subtitle}
                           </div>
                         </div>
-                        {d.isThisDevice && (
+                        {d.isThisDevice ? (
                           <CaretRight size={14} weight="thin" color="var(--color-muted)" />
+                        ) : (
+                          <button onClick={e => { e.stopPropagation(); window.__pearSync?.haptic('light'); setRemoveConfirmKey(d.writerKey) }}
+                            aria-label="Remove device"
+                            style={{ background:'transparent', border:'none', padding:6,
+                              cursor:'pointer', display:'flex', alignItems:'center',
+                              color:th.muted, fontFamily:FONT }}>
+                            <X size={16} weight="thin" />
+                          </button>
                         )}
                       </div>
                     )}

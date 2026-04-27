@@ -97,6 +97,7 @@ const db = {
   getPairingStatus:     ()  => window.__pearDB.call('getPairingStatus'),
   listLinkedDevices:    ()  => window.__pearDB.call('listLinkedDevices'),
   setDeviceNickname:    (n) => window.__pearDB.call('setDeviceNickname', n),
+  removeDeviceFromList: (k) => window.__pearDB.call('removeDeviceFromList', k),
 }
 
 const notifs = {
