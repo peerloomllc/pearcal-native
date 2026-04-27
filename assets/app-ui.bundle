@@ -19949,23 +19949,16 @@
     const [slideDir, setSlideDir] = (0, import_react2.useState)(1);
     const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
     const [restoreMode, setRestoreMode] = (0, import_react2.useState)(null);
-    const [restorePhrase, setRestorePhrase] = (0, import_react2.useState)("");
-    const [restoring, setRestoring] = (0, import_react2.useState)(false);
     const [restoreError, setRestoreError] = (0, import_react2.useState)("");
     const [pairInput, setPairInput] = (0, import_react2.useState)("");
     (0, import_react2.useEffect)(() => {
       if (!closeOnboardSubModeRef) return;
       closeOnboardSubModeRef.current = () => {
         if (restoreMode === "pair-waiting") return true;
-        if (restoreMode === "pair" || restoreMode === "manual") {
-          setRestoreMode("menu");
-          setRestoreError("");
-          setPairInput("");
-          return true;
-        }
-        if (restoreMode === "menu") {
+        if (restoreMode === "pair") {
           setRestoreMode(null);
           setRestoreError("");
+          setPairInput("");
           return true;
         }
         return false;
@@ -20045,47 +20038,6 @@
     }, [db2, step]);
     const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
     const backupToastText = !backupStatus ? null : backupStatus.platformSynced && backupPlatformLabel ? `Recovery phrase saved to ${backupPlatformLabel}.` : backupStatus.enabled && backupPlatformLabel ? `Recovery phrase will sync to ${backupPlatformLabel}.` : "Recovery phrase saved on this device only \u2014 back up in Settings.";
-    async function tryCloudRestore() {
-      setRestoring(true);
-      setRestoreError("");
-      try {
-        const s10 = await db2.getBackupStatus();
-        if (s10?.local) {
-          setBackupStatus(s10);
-          setRestoreMode(null);
-          setSlideDir(1);
-          setStep(2);
-        } else {
-          setRestoreError(
-            s10?.platform ? `No backup found in ${s10.platform === "icloud" ? "iCloud Keychain" : "Google"}.` : "Cloud backup is not available on this device."
-          );
-        }
-      } catch (e58) {
-        setRestoreError(e58?.message || "Restore failed");
-      }
-      setRestoring(false);
-    }
-    async function submitManualRestore() {
-      const words = restorePhrase.trim().toLowerCase().split(/\s+/).filter(Boolean);
-      if (words.length !== 12) {
-        setRestoreError("Recovery phrase must be exactly 12 words.");
-        return;
-      }
-      setRestoring(true);
-      setRestoreError("");
-      try {
-        await db2.restoreMnemonic(words.join(" "));
-        setRestorePhrase("");
-        setRestoreMode(null);
-        const s10 = await db2.getBackupStatus();
-        setBackupStatus(s10);
-        setSlideDir(1);
-        setStep(2);
-      } catch (e58) {
-        setRestoreError(e58?.message || "Invalid recovery phrase.");
-      }
-      setRestoring(false);
-    }
     async function handlePhotoChange(e58) {
       const file = e58.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
@@ -20110,144 +20062,24 @@
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const dots = Array.from({ length: total }, (_, i2) => i2);
     const slides = [
-      // Slide 0 — Welcome (or restore sub-flow when restoreMode is set)
-      restoreMode === "manual" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Enter recovery phrase" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 300, lineHeight: "1.6" }, children: "Type or paste your 12-word recovery phrase to restore your identity." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "textarea",
-          {
-            value: restorePhrase,
-            onChange: (e58) => {
-              setRestorePhrase(e58.target.value);
-              setRestoreError("");
-            },
-            placeholder: "twelve words separated by spaces",
-            rows: 3,
-            style: {
-              background: th.inputBg,
-              border: `1px solid ${th.border}`,
-              borderRadius: 10,
-              padding: "12px 14px",
-              color: th.text.color,
-              fontSize: 15,
-              fontWeight: 300,
-              fontFamily: FONT,
-              width: "100%",
-              boxSizing: "border-box",
-              outline: "none",
-              resize: "none",
-              lineHeight: "1.5"
-            }
-          }
-        ),
-        restoreError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: submitManualRestore,
-            disabled: restoring || !restorePhrase.trim(),
-            style: {
-              ...th.pillBtn,
-              padding: "12px 40px",
-              fontSize: 16,
-              fontWeight: 300,
-              opacity: restoring || !restorePhrase.trim() ? 0.4 : 1
-            },
-            children: restoring ? "Restoring\u2026" : "Restore"
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: () => {
-              setRestoreMode("menu");
-              setRestoreError("");
-            },
-            style: {
-              background: "none",
-              border: "none",
-              color: th.muted,
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 300,
-              cursor: "pointer",
-              padding: 4
-            },
-            children: "Back"
-          }
-        )
-      ] }, "0-manual") : restoreMode === "menu" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome back" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290, lineHeight: "1.6" }, children: "How would you like to restore your identity?" }),
-        backupStatus?.platform && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: tryCloudRestore,
-            disabled: restoring,
-            style: {
-              ...th.pillBtn,
-              padding: "12px 24px",
-              fontSize: 15,
-              fontWeight: 300,
-              minWidth: 260,
-              opacity: restoring ? 0.5 : 1
-            },
-            children: restoring ? "Checking\u2026" : `Restore from ${backupPlatformLabel}`
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: () => {
-              setRestoreMode("pair");
-              setRestoreError("");
-            },
-            style: { ...th.pillBtn, padding: "12px 24px", fontSize: 15, fontWeight: 300, minWidth: 260 },
-            children: "Pair with another device"
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: () => {
-              setRestoreMode("manual");
-              setRestoreError("");
-            },
-            style: { ...th.pillBtn, padding: "12px 24px", fontSize: 15, fontWeight: 300, minWidth: 260 },
-            children: "Enter recovery phrase"
-          }
-        ),
-        restoreError && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
-          "button",
-          {
-            onClick: () => {
-              setRestoreMode(null);
-              setRestoreError("");
-            },
-            style: {
-              background: "none",
-              border: "none",
-              color: th.muted,
-              fontFamily: FONT,
-              fontSize: 13,
-              fontWeight: 300,
-              cursor: "pointer",
-              padding: 4
-            },
-            children: "Back"
-          }
-        )
-      ] }, "0-menu") : restoreMode === "pair" || restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
+      // Slide 0 — Welcome (or pair sub-flow when restoreMode is set)
+      restoreMode === "pair" || restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Pair with another device" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 300, lineHeight: "1.6" }, children: "On your other device, open PearCal \u2192 Profile \u2192 Devices \u2192 Add a device, then scan or paste the pairing code here." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290, lineHeight: "1.6" }, children: "On your other device, open PearCal \u2192 Profile \u2192 Devices \u2192 Add a device, then scan or paste the pairing code here." }),
         restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", padding: "8px 0" }, children: "Connecting to your other device\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(import_jsx_runtime.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
             "button",
             {
               onClick: startPairScan,
-              style: { ...th.pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, minWidth: 220 },
+              style: {
+                ...th.pillBtn,
+                padding: "12px 24px",
+                fontSize: 15,
+                fontWeight: 300,
+                width: "100%",
+                maxWidth: 260,
+                boxSizing: "border-box"
+              },
               children: "Scan QR code"
             }
           ),
@@ -20272,6 +20104,7 @@
                 fontWeight: 300,
                 fontFamily: "monospace",
                 width: "100%",
+                maxWidth: 260,
                 boxSizing: "border-box",
                 outline: "none",
                 resize: "none",
@@ -20286,9 +20119,12 @@
               disabled: !pairInput.trim(),
               style: {
                 ...th.pillBtn,
-                padding: "10px 30px",
-                fontSize: 14,
+                padding: "12px 24px",
+                fontSize: 15,
                 fontWeight: 300,
+                width: "100%",
+                maxWidth: 260,
+                boxSizing: "border-box",
                 opacity: !pairInput.trim() ? 0.4 : 1
               },
               children: "Pair"
@@ -20300,7 +20136,7 @@
           "button",
           {
             onClick: () => {
-              setRestoreMode("menu");
+              setRestoreMode(null);
               setRestoreError("");
               setPairInput("");
             },
@@ -20321,9 +20157,8 @@
         )
       ] }, "0-pair") : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(PearIcon, { size: 56 }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { marginBottom: 0 } }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 24, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome to PearCal" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 15, fontWeight: 300, color: th.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 280 }, children: "A private shared calendar that works without servers, accounts, or subscriptions." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Welcome to PearCal" }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "A private shared calendar that works without servers, accounts, or subscriptions." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
@@ -20338,7 +20173,7 @@
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
-            onClick: () => setRestoreMode("menu"),
+            onClick: () => setRestoreMode("pair"),
             style: {
               background: "none",
               border: "none",
@@ -20358,8 +20193,8 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n7, { size: 48, weight: "thin", color: "var(--color-accent)" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "No servers. No accounts." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", lineHeight: "1.7", maxWidth: 290 }, children: "PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server \u2014 it lives only on the devices you share it with." }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 280 }, children: "Share invite links or QR codes to connect with group members." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server \u2014 it lives only on the devices you share it with." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290 }, children: "Share invite links or QR codes to connect with group members." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
@@ -20376,7 +20211,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(n9, { size: 48, weight: "thin", color: "var(--color-accent)" }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "What's your name?" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 280 }, children: "This is how you'll appear to group members in shared groups." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290 }, children: "This is how you'll appear to group members in shared groups." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "input",
           {
@@ -20433,20 +20268,32 @@
           transition: "opacity 0.2s"
         }, children: hasPhoto ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("img", { src: profile.avatar, alt: "avatar", style: { width: "100%", height: "100%", objectFit: "cover" } }) : (profile?.name ?? "?").slice(0, 1).toUpperCase() }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 22, fontWeight: 400, ...th.text, textAlign: "center" }, children: "Add a photo" }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 280 }, children: "Optional \u2014 helps group members recognise you in shared groups." }),
+        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: th.muted, textAlign: "center", maxWidth: 290 }, children: "Optional \u2014 helps group members recognise you in shared groups." }),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)("input", { ref: fileRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: handlePhotoChange }),
-        /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { style: { display: "flex", gap: 10 }, children: /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
+        /* @__PURE__ */ (0, import_jsx_runtime.jsxs)(
           "button",
           {
             onClick: () => sync2?.takePhoto?.(),
             disabled: photoSaving,
-            style: { ...th.pillBtn, padding: "12px 20px", fontSize: 15, fontWeight: 300, display: "flex", alignItems: "center", gap: 6 },
+            style: {
+              ...th.pillBtn,
+              padding: "12px 20px",
+              fontSize: 15,
+              fontWeight: 300,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+              width: "100%",
+              maxWidth: 200,
+              boxSizing: "border-box"
+            },
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime.jsx)(I, { size: 18, weight: "thin" }),
               " Photo"
             ]
           }
-        ) }),
+        ),
         /* @__PURE__ */ (0, import_jsx_runtime.jsx)(
           "button",
           {
@@ -20454,8 +20301,16 @@
               setSlideDir(1);
               setStep(4);
             },
-            style: { ...th.pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300 },
-            children: hasPhoto ? "Continue" : "Skip for now"
+            style: {
+              ...th.pillBtn,
+              padding: "12px 20px",
+              fontSize: 15,
+              fontWeight: 300,
+              width: "100%",
+              maxWidth: 200,
+              boxSizing: "border-box"
+            },
+            children: hasPhoto ? "Continue" : "Skip"
           }
         )
       ] }, 3),
