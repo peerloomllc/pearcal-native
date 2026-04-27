@@ -3344,27 +3344,19 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
   const [backupStatus, setBackupStatus] = useState(null)
-  const [restoreMode, setRestoreMode] = useState(null) // null | 'menu' | 'manual' | 'pair' | 'pair-waiting'
-  const [restorePhrase, setRestorePhrase] = useState('')
-  const [restoring, setRestoring] = useState(false)
+  const [restoreMode, setRestoreMode] = useState(null) // null | 'pair' | 'pair-waiting'
   const [restoreError, setRestoreError] = useState('')
   const [pairInput, setPairInput] = useState('')
 
-  // Expose a back-unwind hook so the App-level back handler pops restore
-  // sub-screens before falling through to step-decrement. Ordering matches the
-  // tap-Back button: 'pair-waiting' is intentionally unbackable (we're mid-
-  // handshake), 'pair' and 'manual' go back to 'menu', 'menu' goes to Slide-0
-  // root. Returns true iff it handled the back.
+  // Expose a back-unwind hook so the App-level back handler pops the pair
+  // sub-screen before falling through to step-decrement. 'pair-waiting' is
+  // intentionally unbackable (we're mid-handshake). Returns true iff handled.
   useEffect(() => {
     if (!closeOnboardSubModeRef) return
     closeOnboardSubModeRef.current = () => {
       if (restoreMode === 'pair-waiting') return true  // swallow — mid-handshake
-      if (restoreMode === 'pair' || restoreMode === 'manual') {
-        setRestoreMode('menu'); setRestoreError(''); setPairInput('')
-        return true
-      }
-      if (restoreMode === 'menu') {
-        setRestoreMode(null); setRestoreError('')
+      if (restoreMode === 'pair') {
+        setRestoreMode(null); setRestoreError(''); setPairInput('')
         return true
       }
       return false
@@ -3466,51 +3458,6 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         ? `Recovery phrase will sync to ${backupPlatformLabel}.`
         : 'Recovery phrase saved on this device only — back up in Settings.'
 
-  async function tryCloudRestore () {
-    setRestoring(true); setRestoreError('')
-    try {
-      // getBackupStatus auto-triggers platform read on the native side via
-      // hasMnemonic/getMnemonic — if a mnemonic exists in cloud, it's already
-      // been pulled into local SecureStore and bare.js will pick it up on next
-      // ensureMnemonic. Check whether a mnemonic is now available.
-      const s = await db.getBackupStatus()
-      if (s?.local) {
-        setBackupStatus(s)
-        setRestoreMode(null)
-        setSlideDir(1); setStep(2) // jump to name entry — identity already restored
-      } else {
-        setRestoreError(
-          s?.platform
-            ? `No backup found in ${s.platform === 'icloud' ? 'iCloud Keychain' : 'Google'}.`
-            : 'Cloud backup is not available on this device.'
-        )
-      }
-    } catch (e) {
-      setRestoreError(e?.message || 'Restore failed')
-    }
-    setRestoring(false)
-  }
-
-  async function submitManualRestore () {
-    const words = restorePhrase.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    if (words.length !== 12) {
-      setRestoreError('Recovery phrase must be exactly 12 words.')
-      return
-    }
-    setRestoring(true); setRestoreError('')
-    try {
-      await db.restoreMnemonic(words.join(' '))
-      setRestorePhrase('')
-      setRestoreMode(null)
-      const s = await db.getBackupStatus()
-      setBackupStatus(s)
-      setSlideDir(1); setStep(2)
-    } catch (e) {
-      setRestoreError(e?.message || 'Invalid recovery phrase.')
-    }
-    setRestoring(false)
-  }
-
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
     if (!file || !file.type.startsWith('image/')) return
@@ -3535,72 +3482,11 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
   const dots = Array.from({ length: total }, (_, i) => i)
 
   const slides = [
-    // Slide 0 — Welcome (or restore sub-flow when restoreMode is set)
-    restoreMode === 'manual' ? (
-      <div key="0-manual" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
-        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Enter recovery phrase</div>
-        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:300, lineHeight:'1.6' }}>
-          Type or paste your 12-word recovery phrase to restore your identity.
-        </div>
-        <textarea value={restorePhrase} onChange={e => { setRestorePhrase(e.target.value); setRestoreError('') }}
-          placeholder="twelve words separated by spaces"
-          rows={3}
-          style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
-            padding:'12px 14px', color:th.text.color, fontSize:15, fontWeight:300,
-            fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none',
-            resize:'none', lineHeight:'1.5' }} />
-        {restoreError && (
-          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
-            {restoreError}
-          </div>
-        )}
-        <button onClick={submitManualRestore} disabled={restoring || !restorePhrase.trim()}
-          style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
-            opacity: (restoring || !restorePhrase.trim()) ? 0.4 : 1 }}>
-          {restoring ? 'Restoring…' : 'Restore'}
-        </button>
-        <button onClick={() => { setRestoreMode('menu'); setRestoreError('') }}
-          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
-            fontSize:13, fontWeight:300, cursor:'pointer', padding:4 }}>
-          Back
-        </button>
-      </div>
-    ) : restoreMode === 'menu' ? (
-      <div key="0-menu" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
-        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome back</div>
-        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
-          How would you like to restore your identity?
-        </div>
-        {backupStatus?.platform && (
-          <button onClick={tryCloudRestore} disabled={restoring}
-            style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260,
-              opacity: restoring ? 0.5 : 1 }}>
-            {restoring ? 'Checking…' : `Restore from ${backupPlatformLabel}`}
-          </button>
-        )}
-        <button onClick={() => { setRestoreMode('pair'); setRestoreError('') }}
-          style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260 }}>
-          Pair with another device
-        </button>
-        <button onClick={() => { setRestoreMode('manual'); setRestoreError('') }}
-          style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300, minWidth:260 }}>
-          Enter recovery phrase
-        </button>
-        {restoreError && (
-          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
-            {restoreError}
-          </div>
-        )}
-        <button onClick={() => { setRestoreMode(null); setRestoreError('') }}
-          style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
-            fontSize:13, fontWeight:300, cursor:'pointer', padding:4 }}>
-          Back
-        </button>
-      </div>
-    ) : restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
+    // Slide 0 — Welcome (or pair sub-flow when restoreMode is set)
+    restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
       <div key="0-pair" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
         <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Pair with another device</div>
-        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:300, lineHeight:'1.6' }}>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
           On your other device, open PearCal → Profile → Devices → Add a device, then scan or paste the pairing code here.
         </div>
         {restoreMode === 'pair-waiting' ? (
@@ -3610,7 +3496,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
         ) : (
           <>
             <button onClick={startPairScan}
-              style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, minWidth:220 }}>
+              style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300,
+                width:'100%', maxWidth:260, boxSizing:'border-box' }}>
               Scan QR code
             </button>
             <div style={{ fontSize:12, color:th.muted, fontWeight:300, marginTop:4 }}>or paste the link</div>
@@ -3619,10 +3506,11 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
               rows={2}
               style={{ background:th.inputBg, border:`1px solid ${th.border}`, borderRadius:10,
                 padding:'10px 12px', color:th.text.color, fontSize:13, fontWeight:300,
-                fontFamily:'monospace', width:'100%', boxSizing:'border-box', outline:'none',
-                resize:'none', lineHeight:'1.4' }} />
+                fontFamily:'monospace', width:'100%', maxWidth:260, boxSizing:'border-box',
+                outline:'none', resize:'none', lineHeight:'1.4' }} />
             <button onClick={submitPairPaste} disabled={!pairInput.trim()}
-              style={{ ...th.pillBtn, padding:'10px 30px', fontSize:14, fontWeight:300,
+              style={{ ...th.pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300,
+                width:'100%', maxWidth:260, boxSizing:'border-box',
                 opacity: !pairInput.trim() ? 0.4 : 1 }}>
               Pair
             </button>
@@ -3633,7 +3521,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
             {restoreError}
           </div>
         )}
-        <button onClick={() => { setRestoreMode('menu'); setRestoreError(''); setPairInput('') }}
+        <button onClick={() => { setRestoreMode(null); setRestoreError(''); setPairInput('') }}
           disabled={restoreMode === 'pair-waiting'}
           style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
             fontSize:13, fontWeight:300, cursor:'pointer', padding:4,
@@ -3644,16 +3532,15 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
     ) : (
       <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
         <PearIcon size={56} />
-        <div style={{ marginBottom: 0 }} />
-        <div style={{ fontSize:24, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
-        <div style={{ fontSize:15, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:280 }}>
+        <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Welcome to PearCal</div>
+        <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
           A private shared calendar that works without servers, accounts, or subscriptions.
         </div>
         <button onClick={() => { setSlideDir(1); setStep(1) }}
           style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
           Get Started
         </button>
-        <button onClick={() => setRestoreMode('menu')}
+        <button onClick={() => setRestoreMode('pair')}
           style={{ background:'none', border:'none', color:th.muted, fontFamily:FONT,
             fontSize:13, fontWeight:300, cursor:'pointer', padding:4, textDecoration:'underline' }}>
           I already use PearCal
@@ -3665,10 +3552,10 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
     <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <ShareNetwork size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>No servers. No accounts.</div>
-      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.7', maxWidth:290 }}>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
         PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
       </div>
-      <div style={{ fontSize:13, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+      <div style={{ fontSize:13, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290 }}>
         Share invite links or QR codes to connect with group members.
       </div>
       <button onClick={() => { setSlideDir(1); setStep(2) }}
@@ -3681,7 +3568,7 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
     <div key={2} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <User size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>What's your name?</div>
-      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290 }}>
         This is how you'll appear to group members in shared groups.
       </div>
       <input value={name} onChange={e => setName(e.target.value)}
@@ -3708,19 +3595,20 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
           : (profile?.name ?? '?').slice(0,1).toUpperCase()}
       </div>
       <div style={{ fontSize:22, fontWeight:400, ...th.text, textAlign:'center' }}>Add a photo</div>
-      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:280 }}>
+      <div style={{ fontSize:14, fontWeight:300, color:th.muted, textAlign:'center', maxWidth:290 }}>
         Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
-      <div style={{ display:'flex', gap:10 }}>
-        <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
-          style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300, display:'flex', alignItems:'center', gap:6 }}>
-          <Image size={18} weight="thin" /> Photo
-        </button>
-      </div>
+      <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
+        style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300,
+          display:'flex', alignItems:'center', justifyContent:'center', gap:6,
+          width:'100%', maxWidth:200, boxSizing:'border-box' }}>
+        <Image size={18} weight="thin" /> Photo
+      </button>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
-        style={{ ...th.pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300 }}>
-        {hasPhoto ? 'Continue' : 'Skip for now'}
+        style={{ ...th.pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300,
+          width:'100%', maxWidth:200, boxSizing:'border-box' }}>
+        {hasPhoto ? 'Continue' : 'Skip'}
       </button>
     </div>,
 
