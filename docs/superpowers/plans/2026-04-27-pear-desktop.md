@@ -23,7 +23,8 @@ Distribution: **GitHub Releases only**, signed-and-notarized macOS `.dmg`. Mac A
 | 1 — Pear app boots, calendar UI renders, real bare worker IPC over `Pear.worker.pipe` | ✅ Done 2026-04-27 |
 | 2 — `src/bare.js` running over the worker pipe | 🔶 in progress (blocker — see Phase 2) |
 | 3.1 — Renderer-side native module replacements (openURL, share, .ics, haptic, exitApp) | ✅ Done 2026-04-27 |
-| 3.2 — Notifications + deep-link receive (Pear.wakeups) | not started |
+| 3.2a — Deep-link receive (Pear.wakeups + Pear.config.link) | ✅ Done 2026-04-27 (full E2E pending Phase 4 appling) |
+| 3.2b — Notifications | not started |
 | 4 — Appling + GitHub release pipeline | not started |
 | 5 — Hardening + parity QA | not started |
 
@@ -333,20 +334,45 @@ switch — no IPC round trip, no worker dependency.
   (https, mailto, geo, lightning).
 - **Bare modules requiring native addons cannot be `dlopen`'d over `pear://` URLs in dev mode.** A worker entry doing `require('bare-subprocess')` fails with `MODULE_NOT_FOUND` (the resolver only sees `bare:` builtins for top-level imports), and a relative-path require like `require('./node_modules/bare-subprocess/index.js')` resolves the JS but then fails with `UNSUPPORTED_PROTOCOL: Unsupported protocol 'pear:' for addon`. Native addons require a real filesystem path for the dynamic linker. This kills any "shell out from the worker" plan in dev mode and is the same family of issue as the Phase 2.4 bundle-load blocker. Saved as memory `feedback_pear_native_addon_protocol.md`.
 
-### 3.2 — Notifications + deep-link receive (not started)
+### 3.2a — Deep-link receive ✅ DONE 2026-04-27
+
+`desktop/index.html` registers both Pear deep-link paths and routes them
+through the existing `window.__pearHandleInvite(url)` (set up by
+`src/ui/main.jsx`, with a built-in buffer for invites that arrive pre-mount):
+
+- **Cold launch** — `Pear.config.linkData || Pear.config.link` is read on
+  startup. Filtered through `_looksLikeInvite()` so the dev applink
+  (`file:///…/desktop`, which is what `Pear.config.link` defaults to in dev)
+  doesn't get treated as an invite.
+- **Warm receipt** — `Pear.wakeups((wakeup) => …)` is registered. Wakeup
+  shape isn't documented, so the handler defensively reads `wakeup.link ||
+  wakeup.linkData || wakeup.url`, also accepts a bare string.
+
+Verified in dev that injecting a fake `pearcal://join?…` URL through
+`__pearHandleInvite` correctly surfaces App.jsx's Join Group bottom sheet —
+i.e. the desktop→UI delivery path is intact.
+
+**Not verifiable in dev:** an actual `pearcal://` URL clicked from Safari /
+the OS won't reach Pear in dev mode. The OS scheme registration lives in
+the appling's Info.plist and only takes effect after Phase 4 packaging.
+Wiring is correct for that future state and a no-op until then.
+
+### 3.2b — Notifications (not started)
 
 | Mobile module | Planned desktop equivalent | Open issues |
 |---|---|---|
 | `NotificationsModule` | Web Notification API in renderer + `setTimeout` for scheduling | Renderer-only setTimeout loses state when the window closes. Background firing needs `Pear.tray` integration — design call: do we ship "fires only while app is open" as the v1 limitation, or wait for tray plumbing? |
-| `LinkModule` (`pearcal://` receive) | `Pear.config.linkData` for cold-launch + `Pear.wakeups(fn)` for warm | `Pear.config.linkData` confirmed (empty string when not link-launched); `Pear.wakeups` confirmed as a function. URL scheme registration happens in the appling's Info.plist (Phase 4). |
-| `CameraModule` / `QRScannerModule` | **skipped per scope** | Invite UX uses QR-render-only, paste, link click. |
+
+`CameraModule` / `QRScannerModule` remain **skipped per scope** — invite UX
+uses QR-render-only, paste, and link click.
 
 ### Verify gate
 - ✅ Click external link → opens in browser / mail app / wallet.
 - ✅ `.ics` export downloads via OS save manager.
 - ✅ Share-app / share-invite → text on clipboard.
-- ❌ Reminders fire as desktop notifications. (3.2)
-- ❌ `pearcal://...` from Safari opens / focuses the running PearCal desktop and triggers join. (3.2)
+- ✅ Injected `pearcal://join` → Join Group sheet (3.2a — full E2E pending Phase 4).
+- ❌ Reminders fire as desktop notifications. (3.2b)
+- ⏸ `pearcal://…` from Safari opens / focuses the running PearCal desktop and triggers join. (Wiring done — needs Phase 4 appling for the OS scheme registration.)
 
 ## Phase 4 — Appling packaging + GitHub release pipeline (1–2 days)
 

@@ -142,6 +142,54 @@
     window.__pearEvent = (event, data) => {
       window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
     }
+
+    // Phase 3.2: pearcal:// deep-link receive.
+    //
+    // Mobile registers pearcal:// via Android intent-filter + iOS URL types and
+    // routes through native LinkModule → RN → window.__pearHandleInvite. On
+    // desktop, Pear's runtime supplies two equivalent paths:
+    //   • Pear.config.link / linkData — URL the app was cold-launched with
+    //   • Pear.wakeups(fn)            — URL arrives while app is running
+    // Both feed window.__pearHandleInvite (set up in src/ui/main.jsx, with
+    // built-in buffering for invites that arrive pre-mount).
+    //
+    // In dev mode the OS doesn't register the pearcal:// scheme — that needs
+    // the appling's Info.plist (Phase 4). So neither path fires from a real
+    // link click here; the wiring is correct for staged builds and a no-op
+    // until then.
+    function _looksLikeInvite (url) {
+      if (typeof url !== 'string' || !url) return false
+      return url.startsWith('pearcal://') ||
+             url.startsWith('pear://pearcal/') ||
+             url.startsWith('https://peerloomllc.com/join')
+    }
+    function _deliverInvite (url) {
+      if (!_looksLikeInvite(url)) return
+      // main.jsx defines __pearHandleInvite before the React app mounts, but
+      // the UI bundle imports asynchronously after this script runs — retry
+      // until the buffer fn exists.
+      if (typeof window.__pearHandleInvite !== 'function') {
+        setTimeout(() => _deliverInvite(url), 50)
+        return
+      }
+      window.__pearHandleInvite(url)
+    }
+
+    const _coldLink = Pear.config?.linkData || Pear.config?.link
+    if (_coldLink) _deliverInvite(_coldLink)
+
+    if (typeof Pear.wakeups === 'function') {
+      try {
+        Pear.wakeups((wakeup) => {
+          const url = (typeof wakeup === 'string')
+            ? wakeup
+            : (wakeup?.link || wakeup?.linkData || wakeup?.url)
+          _deliverInvite(url)
+        })
+      } catch (e) {
+        console.error('[desktop] Pear.wakeups setup failed:', e?.message ?? e)
+      }
+    }
   </script>
 
   <!-- Inline module: top-level await is valid here. Loads the React UI bundle. -->
