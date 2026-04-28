@@ -78,18 +78,26 @@ function _cancelForEvent (eventId) {
 }
 
 function _scheduleForEvent (ev, reminders, getMainWindow) {
-  if (!ev || !ev.id) return
+  if (!ev || !ev.id) {
+    console.warn('[shell] scheduleForEvent: missing ev or ev.id — ignored')
+    return
+  }
   _cancelForEvent(ev.id)
   const handles = []
   const list = Array.isArray(reminders) ? reminders : []
+  console.log('[shell] scheduleForEvent: id=' + ev.id + ' date=' + ev.date + ' start=' + (ev.start ?? 'allDay') + ' reminders=' + JSON.stringify(list))
   for (let i = 0; i < Math.min(list.length, 3); i++) {
     const reminder = list[i]
     const fireAt = _calcReminderFireTime(ev, reminder)
-    if (!fireAt || fireAt <= Date.now()) continue
+    if (!fireAt || fireAt <= Date.now()) {
+      console.log('[shell]   reminder ' + reminder + ': fireAt=' + (fireAt ? new Date(fireAt).toISOString() : 'null') + ' is in past, skipped')
+      continue
+    }
     const label = REMINDER_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
     const body = ev.allDay
       ? 'All day · ' + label
       : label + ' · ' + _formatTime12h(ev.start) + '–' + _formatTime12h(ev.end)
+    console.log('[shell]   reminder ' + reminder + ': fireAt=' + new Date(fireAt).toISOString() + ' (+' + (fireAt - Date.now()) + 'ms)')
     handles.push(setTimeout(() => _fireNotification(ev.title, body, ev.id, getMainWindow), fireAt - Date.now()))
   }
   if (!ev.allDay && ev.start) {
@@ -98,10 +106,14 @@ function _scheduleForEvent (ev, reminders, getMainWindow) {
     const startFireAt = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
     if (startFireAt > Date.now()) {
       const body = _formatTime12h(ev.start) + ' to ' + _formatTime12h(ev.end)
+      console.log('[shell]   start-alarm: fireAt=' + new Date(startFireAt).toISOString() + ' (+' + (startFireAt - Date.now()) + 'ms)')
       handles.push(setTimeout(() => _fireNotification(ev.title + ' is starting now', body, ev.id, getMainWindow), startFireAt - Date.now()))
+    } else {
+      console.log('[shell]   start-alarm: fireAt=' + new Date(startFireAt).toISOString() + ' is in past, skipped')
     }
   }
   if (handles.length) _reminders.set(ev.id, handles)
+  console.log('[shell] scheduleForEvent: queued ' + handles.length + ' timer(s)')
 }
 
 // Returns true if `method` was handled here (and the optional result), false
