@@ -78,7 +78,7 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "identity": "Developer ID Application: Timothy Hudgins (G79ALD29NA)",
+      "identity": "22F9540D333EBFB4245EE11170F68A61E6E22689",
       "notarize": false
     },
     "linux": {

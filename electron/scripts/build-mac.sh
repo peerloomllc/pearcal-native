@@ -50,7 +50,7 @@ echo ">> Building signed .dmg on $MAC_HOST"
 # set -o pipefail so the chained tail doesn't swallow electron-builder's
 # non-zero exit code (same trap that bit the iOS build before).
 ssh "$MAC_HOST" '
-  set -o pipefail
+  set -euo pipefail
   export PATH="/opt/homebrew/bin:$PATH"
   export LANG=en_US.UTF-8
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain
@@ -60,23 +60,37 @@ ssh "$MAC_HOST" '
   [ -d node_modules ] || npm install --no-audit --no-fund
   # --mac without --arm64/--x64 builds for the current arch only; force a
   # universal-ish dual-arch dmg. electron-builder packs both into one .dmg.
-  ./node_modules/.bin/electron-builder --mac --arm64 --x64 --publish never 2>&1 | tail -40
+  ./node_modules/.bin/electron-builder --mac --arm64 --x64 --publish never 2>&1 | tail -60
+  # Explicitly verify the .dmg exists — guards against electron-builder
+  # exiting 0 with no artifact.
+  setopt nullglob 2>/dev/null || true
+  dmgs=(dist/*.dmg)
+  [ ${#dmgs[@]} -gt 0 ] || { echo "ERROR: electron-builder produced no .dmg"; exit 1; }
   ls -lh dist/*.dmg
 '
 
-echo ">> Notarizing the .dmg"
+echo ">> Notarizing the .dmg(s)"
+# Each electron-builder run produces TWO dmgs (one per arch); both need
+# independent notarization + staple. A new SSH session opens a fresh shell,
+# so the keychain unlock from the build step does NOT carry over — we have
+# to unlock again here.
 ssh "$MAC_HOST" '
-  set -o pipefail
+  set -euo pipefail
+  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain
   cd ~/peerloomllc/pearcal-native/electron
-  DMG=$(ls -t dist/*.dmg | head -1)
-  echo "Submitting $DMG to notarytool..."
-  xcrun notarytool submit "$DMG" \
-    --keychain-profile pearcal-notary \
-    --keychain ~/Library/Keychains/buildkey.keychain \
-    --wait
-  echo "Stapling notarization ticket..."
-  xcrun stapler staple "$DMG"
-  xcrun stapler validate "$DMG"
+  for DMG in dist/*.dmg; do
+    echo ">>> Submitting $DMG to notarytool..."
+    # notarytool requires the literal keychain file path including the -db
+    # suffix that the modern keychain format uses. The `security` command
+    # tolerates both forms, but notarytool does not.
+    xcrun notarytool submit "$DMG" \
+      --keychain-profile pearcal-notary \
+      --keychain ~/Library/Keychains/buildkey.keychain-db \
+      --wait
+    echo ">>> Stapling notarization ticket onto $DMG..."
+    xcrun stapler staple "$DMG"
+    xcrun stapler validate "$DMG"
+  done
 '
 
 echo ">> Pulling stapled .dmg back to electron/dist/"
