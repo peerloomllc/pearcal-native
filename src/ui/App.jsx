@@ -16,6 +16,15 @@ import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
 import { FONT_CSS } from './fonts.js'
 import {
+  parseIcs, generateIcs,
+  MAX_COLOR_SEGMENTS,
+  eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
+  stripeBackground, leftStripeStyle, dotBackground,
+  expandRecurring,
+  formatTime, formatRelativeTime, todayStr, dateStr,
+} from '../ui-shared/index.js'
+export { parseIcs, generateIcs } from '../ui-shared/index.js'
+import {
   CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
   Trash, SignOut, Repeat, Lock, Key,
@@ -38,140 +47,6 @@ class Emitter {
   emit (e, ...a) { (this._h[e] ?? []).forEach(fn => fn(...a)) }
 }
 export const emitter = new Emitter()
-
-// ─── ICS / iCalendar Parser ───────────────────────────────────────────────────
-
-function _icsUnescape (s) {
-  return s.replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\')
-}
-
-function _icsParseDate (s) {
-  // YYYYMMDD → YYYY-MM-DD
-  const d = s.slice(0, 8)
-  return d.slice(0,4) + '-' + d.slice(4,6) + '-' + d.slice(6,8)
-}
-
-function _icsParseDateTime (s) {
-  // YYYYMMDDTHHMMSS[Z]
-  return {
-    date: s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8),
-    time: s.slice(9,11) + ':' + s.slice(11,13),
-  }
-}
-
-export function parseIcs (text) {
-  // Unfold folded lines (continuation lines begin with space or tab)
-  const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '')
-  const lines = unfolded.split(/\r\n|\r|\n/)
-  const events = []
-  let inEvent = false
-  let cur = null
-
-  for (const raw of lines) {
-    if (raw.trim() === 'BEGIN:VEVENT') { inEvent = true; cur = {}; continue }
-    if (raw.trim() === 'END:VEVENT') {
-      inEvent = false
-      if (cur && cur.title && cur.date) events.push(cur)
-      cur = null
-      continue
-    }
-    if (!inEvent || !cur) continue
-
-    const colonIdx = raw.indexOf(':')
-    if (colonIdx < 0) continue
-    const keyPart = raw.slice(0, colonIdx)
-    const value   = raw.slice(colonIdx + 1)
-    const semiIdx = keyPart.indexOf(';')
-    const key     = semiIdx >= 0 ? keyPart.slice(0, semiIdx) : keyPart
-    const params  = semiIdx >= 0 ? keyPart.slice(semiIdx + 1) : ''
-
-    if (key === 'SUMMARY')     { cur.title    = _icsUnescape(value) }
-    else if (key === 'DESCRIPTION') { cur.desc = _icsUnescape(value) }
-    else if (key === 'LOCATION')    { cur.location = _icsUnescape(value) }
-    else if (key === 'URL')         { cur.meetingLink = _icsUnescape(value) }
-    else if (key === 'UID')         { cur.uid = value }
-    else if (key === 'X-PEARCAL-GROUPS') {
-      cur.groups = value.split(',').map(s => s.trim()).filter(Boolean)
-    }
-    else if (key === 'DTSTART') {
-      const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
-      if (allDay) {
-        cur.date   = _icsParseDate(value)
-        cur.allDay = true
-      } else {
-        const { date, time } = _icsParseDateTime(value)
-        cur.date   = date
-        cur.start  = time
-        cur.allDay = false
-      }
-    } else if (key === 'DTEND') {
-      const allDay = params.includes('VALUE=DATE') || /^\d{8}$/.test(value)
-      if (allDay) {
-        // DTEND is exclusive for DATE values — subtract one day to get inclusive end
-        const excl = _icsParseDate(value)
-        const d = new Date(excl + 'T12:00:00')
-        d.setDate(d.getDate() - 1)
-        const incl = d.toISOString().slice(0, 10)
-        if (incl !== cur.date) cur.endDate = incl
-      } else {
-        cur.end = _icsParseDateTime(value).time
-      }
-    }
-  }
-  return events
-}
-
-// ─── ICS Generator ───────────────────────────────────────────────────────────
-
-function _icsEscape (s) {
-  return String(s ?? '').replace(/\\/g, '\\\\').replace(/,/g, '\\,').replace(/;/g, '\\;').replace(/\n/g, '\\n')
-}
-
-function _icsDate (dateStr) {
-  return dateStr.replace(/-/g, '')
-}
-
-function _icsDateTime (dateStr, timeStr) {
-  // Returns YYYYMMDDTHHMMSS (local time, no Z — avoids TZ conversion issues)
-  return dateStr.replace(/-/g, '') + 'T' + timeStr.replace(/:/g, '') + '00'
-}
-
-export function generateIcs (events) {
-  const now = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z')
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//PeerLoom LLC//PearCal//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-  ]
-  for (const ev of events) {
-    lines.push('BEGIN:VEVENT')
-    lines.push('UID:' + ev.id + '@pearcal')
-    lines.push('DTSTAMP:' + now)
-    if (ev.allDay) {
-      lines.push('DTSTART;VALUE=DATE:' + _icsDate(ev.date))
-      const endDate = ev.endDate || ev.date
-      // DTEND is exclusive for all-day events
-      const d = new Date(endDate + 'T12:00:00')
-      d.setDate(d.getDate() + 1)
-      lines.push('DTEND;VALUE=DATE:' + d.toISOString().slice(0,10).replace(/-/g,''))
-    } else {
-      lines.push('DTSTART:' + _icsDateTime(ev.date, ev.start || '00:00'))
-      if (ev.end) lines.push('DTEND:' + _icsDateTime(ev.date, ev.end))
-    }
-    lines.push('SUMMARY:' + _icsEscape(ev.title))
-    if (ev.desc)     lines.push('DESCRIPTION:' + _icsEscape(ev.desc))
-    if (ev.location)    lines.push('LOCATION:' + _icsEscape(ev.location))
-    if (ev.meetingLink) lines.push('URL:' + _icsEscape(ev.meetingLink))
-    if (Array.isArray(ev.groups) && ev.groups.length) {
-      lines.push('X-PEARCAL-GROUPS:' + ev.groups.join(','))
-    }
-    lines.push('END:VEVENT')
-  }
-  lines.push('END:VCALENDAR')
-  return lines.join('\r\n')
-}
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
@@ -276,84 +151,6 @@ function extractURLs (text) {
   return [...new Set(text.match(re) ?? [])]
 }
 
-// Multi-group color helpers.
-// Events can belong to N groups; `ev.colors` is the per-group color array
-// derived at read time. We cap visible segments at 3 to avoid visual noise.
-const MAX_COLOR_SEGMENTS = 3
-function eventColors (ev) {
-  const cs = Array.isArray(ev?.colors) && ev.colors.length ? ev.colors : (ev?.color ? [ev.color] : [])
-  return cs.slice(0, MAX_COLOR_SEGMENTS)
-}
-
-// Per-member color palette. Two resolvers:
-//   memberColorFor(id)          — hash fallback, stable across devices but may
-//                                 collide (used for shadow events where we
-//                                 don't have a canonical member list to index).
-//   memberColorIndexed(g, id)   — sorted-index within a group's member list.
-//                                 Guaranteed-distinct up to palette length, so
-//                                 the common 2-member group never collides.
-const MEMBER_PALETTE = [
-  '#6C9BF5', '#7FB77E', '#E8A87C', '#C38D9E',
-  '#85CDCA', '#E27D60', '#B388EB', '#F0C987',
-  '#8DD7BF', '#F2A365', '#F7B2AD', '#90AFC5',
-]
-function memberColorFor (memberId) {
-  if (!memberId) return MEMBER_PALETTE[0]
-  let h = 0
-  for (let i = 0; i < memberId.length; i++) h = ((h << 5) - h + memberId.charCodeAt(i)) | 0
-  return MEMBER_PALETTE[Math.abs(h) % MEMBER_PALETTE.length]
-}
-function memberColorIndexed (group, memberId) {
-  if (!group || !Array.isArray(group.members) || !memberId) return memberColorFor(memberId)
-  const ids = group.members.map(m => m?.id).filter(Boolean).sort()
-  const idx = ids.indexOf(memberId)
-  if (idx < 0) return memberColorFor(memberId)
-  return MEMBER_PALETTE[idx % MEMBER_PALETTE.length]
-}
-function derivedEventColors (ev, groups) {
-  const cid = ev?.creatorId
-  const authored = cid && cid !== 'system' && cid !== 'unknown'
-  // Shadow events: author-color regardless of group count (collapses #56).
-  if (ev?.isShadow && authored) return [memberColorFor(cid)]
-  // Single-group case: distinct per-member color instead of the group color.
-  if (Array.isArray(groups) && groups.length === 1 && authored) {
-    return [memberColorIndexed(groups[0], cid)]
-  }
-  return eventColors(ev)
-}
-// Segmented vertical stripe as a CSS linear-gradient — used in place of a
-// solid borderLeft so 2–3 group colors are visible side-by-side.
-function stripeBackground (colors) {
-  if (!colors || colors.length === 0) return null
-  if (colors.length === 1) return colors[0]
-  const n = colors.length
-  const stops = colors.flatMap((c, i) => [`${c} ${(i / n) * 100}%`, `${c} ${((i + 1) / n) * 100}%`]).join(', ')
-  return `linear-gradient(to bottom, ${stops})`
-}
-// Style fragment that paints a left-edge stripe via backgroundImage, so we
-// can layer it on top of an existing backgroundColor (e.g. translucent tint).
-// Replaces `borderLeft: Npx solid X` while preserving card layout.
-function leftStripeStyle (colors, widthPx = 4) {
-  const bg = stripeBackground(colors)
-  if (!bg) return {}
-  return {
-    backgroundImage: bg.startsWith('linear-gradient') ? bg : `linear-gradient(${bg}, ${bg})`,
-    backgroundSize: `${widthPx}px 100%`,
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'left top',
-  }
-}
-// Dot background for day-grid indicators — single color when one group,
-// diagonal split for 2–3 groups so the multi-group case is legible at 6–8px.
-function dotBackground (colors) {
-  const cs = colors && colors.length ? colors.slice(0, MAX_COLOR_SEGMENTS) : null
-  if (!cs) return null
-  if (cs.length === 1) return cs[0]
-  const n = cs.length
-  const stops = cs.flatMap((c, i) => [`${c} ${(i / n) * 100}%`, `${c} ${((i + 1) / n) * 100}%`]).join(', ')
-  return `linear-gradient(135deg, ${stops})`
-}
-
 // Module-level camera consumer — whichever component most recently called takePhoto owns the next result
 const activeCameraConsumer = { current: null }
 
@@ -434,26 +231,6 @@ function SkeletonEventCard () {
       <SkeletonBar width="35%" height={10} />
     </div>
   )
-}
-
-function formatTime (t, use24h) {
-  if (!t) return ''
-  const [hStr, mStr] = t.split(':')
-  if (use24h) return hStr + ':' + mStr
-  const h = parseInt(hStr, 10)
-  const ampm = h >= 12 ? 'pm' : 'am'
-  const h12 = h % 12 === 0 ? 12 : h % 12
-  return h12 + ':' + mStr + ampm
-}
-
-function formatRelativeTime (ts) {
-  if (!ts) return ''
-  const diff = Date.now() - ts
-  if (diff < 0 || diff < 10_000)       return 'just now'
-  if (diff < 60_000)                    return Math.floor(diff / 1000)  + 's ago'
-  if (diff < 3_600_000)                 return Math.floor(diff / 60_000) + 'm ago'
-  if (diff < 86_400_000)                return Math.floor(diff / 3_600_000) + 'h ago'
-  return Math.floor(diff / 86_400_000) + 'd ago'
 }
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
@@ -1973,14 +1750,6 @@ export default function App ({ db, notifs, sync }) {
 }
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
-function todayStr () {
-  const t = new Date()
-  return dateStr(t.getFullYear(), t.getMonth(), t.getDate())
-}
-function dateStr (y, m, d) {
-  return `${y}-${String(m + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-}
-
 // ─── Shared sub-components ────────────────────────────────────────────────────
 function Label ({ th, children }) {
   return <div style={{ fontSize:12, fontWeight:300, color:th.muted, marginBottom:4, letterSpacing:'0.04em' }}>{children}</div>
@@ -3904,36 +3673,6 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
 }
 
 // ─── Event Modal ──────────────────────────────────────────────────────────────
-function expandRecurring (ev) {
-  if (!ev.recurrence || ev.recurrence === 'none' || !ev.recurrenceEnd) return [ev]
-  const fmt = d => String(d.getFullYear()) + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
-  const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d) }
-  const end = parse(ev.recurrenceEnd)
-  let cur = parse(ev.date)
-  if (cur > end) return [ev]
-  const recurrenceId = ev.id
-  const out = []
-  let i = 0
-  while (cur <= end && i < 500) {
-    out.push({ ...ev, id: i === 0 ? ev.id : ev.id + '_r' + i, date: fmt(cur), recurrenceId })
-    if (ev.recurrence === 'daily')         cur.setDate(cur.getDate() + 1)
-    else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7)
-    else if (ev.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
-    else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
-    else if (ev.recurrence === 'monthly-nth') {
-      cur.setDate(1); cur.setMonth(cur.getMonth() + 1)
-      const wd = ev.recurrenceWeekday ?? 0; const nth = ev.recurrenceNth ?? 1
-      let count = 0
-      while (true) {
-        if (cur.getDay() === wd) { count++; if (count === nth) break }
-        cur.setDate(cur.getDate() + 1)
-      }
-    }
-    else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + 1)
-    i++
-  }
-  return out
-}
 
 function RemindersEditor ({ th, reminders, setReminders }) {
   const FONT = 'Geist, system-ui, sans-serif'
