@@ -165,8 +165,16 @@ function deliverDeepLink (url) {
 
 function injectDeepLink (url) {
   const safe = JSON.stringify(url)
+  // Pair URLs must bypass the join-sheet flow and go straight to
+  // consumePairLink — mobile splits these in app/index.tsx:434-439, the
+  // electron path needs the same split or the OnboardingModal pair handshake
+  // never runs. Browser-clicked pearcal://pair URLs hit only this code path
+  // (the OnboardingModal paste flow calls db.consumePairLink directly and
+  // is unaffected).
+  const isPair = /^(pearcal:\/\/pair|pear:\/\/pearcal\/pair)/.test(url)
+  const fn = isPair ? '__pearHandlePair' : '__pearHandleInvite'
   mainWindow.webContents.executeJavaScript(
-    `if (window.__pearHandleInvite) window.__pearHandleInvite(${safe}); true;`
+    `if (window.${fn}) window.${fn}(${safe}); true;`
   ).catch(() => {})
 }
 

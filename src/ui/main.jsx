@@ -213,6 +213,18 @@ window.__pearDrainInvites = function() {
   return __pearInviteBuffer.splice(0)
 }
 
+// pearcal://pair URLs go straight to bare's consumePairLink, NOT through the
+// join-sheet flow — same split mobile does in app/index.tsx:434-439. The
+// renderer only sees them if the host injects this function (Electron does;
+// mobile bypasses it by calling consumePairLink on the worklet directly).
+// Bare buffers calls until init resolves, so this is safe at cold launch.
+window.__pearHandlePair = function(url) {
+  if (!url || !window.__pearDB) return
+  window.__pearDB.call('consumePairLink', url).catch(e => {
+    console.warn('[pair] consumePairLink failed:', e?.message ?? e)
+  })
+}
+
 const root = createRoot(document.getElementById('root'))
 const _screenshotScene = window.__PEARCAL_SCREENSHOT_SCENE
 if (_screenshotScene) {
