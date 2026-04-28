@@ -42,11 +42,12 @@ const REMINDER_LABELS = {
 }
 
 function _fireNotification (title, body, eventId, getMainWindow) {
-  // Logging here is intentional — on macOS notifications can fail silently
-  // if the user dismissed the auto-permission prompt at first launch (the
-  // app then never appears in System Settings → Notifications, so there's
-  // no UI to re-enable it). These prints surface the cause when the user
-  // launches from Terminal: `/Applications/PearCal.app/Contents/MacOS/PearCal`.
+  // Unconditional entry log — proves the timer fired and we got here. The
+  // remainder is silent on success (`new Notification(...).show()` doesn't
+  // print anything when the OS silences the toast), so the entry line is
+  // the only way to disambiguate "setTimeout never fired" from "fired but
+  // OS dropped it" purely from terminal output.
+  console.log('[shell] _fireNotification: id=' + eventId + ' title=' + JSON.stringify(title))
   if (!Notification.isSupported()) {
     console.warn('[shell] Notification.isSupported() returned false — OS-level notifications unavailable')
     return
@@ -62,6 +63,9 @@ function _fireNotification (title, body, eventId, getMainWindow) {
     })
     n.on('failed', (_e, error) => {
       console.error('[shell] notification "failed" event:', error)
+    })
+    n.on('show', () => {
+      console.log('[shell] _fireNotification: show event fired (OS accepted delivery)')
     })
     n.show()
   } catch (e) {
