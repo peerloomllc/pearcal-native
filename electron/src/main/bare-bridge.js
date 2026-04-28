@@ -12,10 +12,11 @@
 //     → shim.onBareOut line handler                     (here)
 //     → mainWindow.webContents.send('bare-event', msg)  (renderer's preload listens)
 
-const { ipcMain } = require('electron')
+const { ipcMain, app } = require('electron')
 const { dispatchNativeRequest } = require('./native-handlers')
+const { tryHandle: tryHandleShell } = require('./shell-handlers')
 
-function installBridge ({ shim, getMainWindow }) {
+function installBridge ({ shim, getMainWindow, requestQuit }) {
   const pendingCalls = new Map()  // id → { resolve, reject }
   let nextId = 1
   const bufferedEvents = []       // events emitted before renderer has loaded
@@ -81,11 +82,36 @@ function installBridge ({ shim, getMainWindow }) {
     }
   })
 
+  function sendToast (text) {
+    const win = getMainWindow()
+    if (win && !win.isDestroyed()) win.webContents.send('toast', text)
+  }
+
+  function fireRendererEvent (event, data) {
+    const win = getMainWindow()
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('bare-event', { type: 'event', event, data })
+    } else {
+      bufferedEvents.push({ type: 'event', event, data })
+    }
+  }
+
   ipcMain.handle('bare-call', async (_event, { method, args }) => {
+    // Some methods (openURL, share, .ics export, notifications, …) live
+    // here in main, not in bare — same shape as mobile's RN shell intercept
+    // in app/index.tsx:446-481. tryHandle short-circuits with handled:true
+    // when it owns the method.
+    const shellResult = await tryHandleShell(method, args, {
+      getMainWindow,
+      sendToast,
+      requestQuit,
+      fireRendererEvent
+    })
+    if (shellResult.handled) return shellResult.result
     return callBare(method, args)
   })
 
-  return { sendToBare, callBare, flushBufferedEvents }
+  return { sendToBare, callBare, flushBufferedEvents, fireRendererEvent }
 }
 
 module.exports = { installBridge }
