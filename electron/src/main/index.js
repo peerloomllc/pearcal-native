@@ -11,6 +11,7 @@ const path = require('path')
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require('electron')
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
+const { scheduleForEvent: scheduleForEventOnBoot } = require('./shell-handlers')
 
 // Single instance — the second invocation should focus the existing window
 // (and forward any pearcal:// URL it was launched with) instead of opening
@@ -55,7 +56,28 @@ app.whenReady().then(() => {
   // installs window.__pearHandleInvite.
   const cliUrl = process.argv.find(a => /^(pearcal:\/\/(join|pair)|pear:\/\/pearcal\/(join|pair))/.test(a))
   if (cliUrl) deliverDeepLink(cliUrl)
+
+  // Reminders are stored as setTimeout handles in shell-handlers' in-memory
+  // Map (see _reminders) and die with the process. Mobile's OS-managed
+  // alarms survive restart; we have to walk the bare DB on cold launch and
+  // re-schedule. callBare queues until bare init resolves, so this is safe
+  // to fire-and-forget here.
+  rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
 })
+
+async function rehydrateReminders () {
+  const events = await bridge.callBare('listEvents', [])
+  if (!Array.isArray(events) || events.length === 0) return
+  let scheduled = 0
+  for (const ev of events) {
+    if (!ev || !ev.id) continue
+    const reminders = await bridge.callBare('getReminders', [ev.id]).catch(() => null)
+    if (!Array.isArray(reminders) || reminders.length === 0) continue
+    scheduleForEventOnBoot(ev, reminders, () => mainWindow)
+    scheduled++
+  }
+  if (scheduled > 0) console.log('[main] rehydrated reminders for ' + scheduled + ' event(s)')
+}
 
 function createWindow () {
   mainWindow = new BrowserWindow({

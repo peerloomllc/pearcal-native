@@ -192,4 +192,14 @@ async function _saveBlob (parentWindow, defaultName, content) {
   }
 }
 
-module.exports = { tryHandle }
+// Cold-launch rehydration entry point. main/index.js walks the bare DB after
+// init and calls this per event with persisted reminders — without it, the
+// in-memory _reminders Map starts empty on every restart and previously
+// scheduled reminders silently never fire. (Mobile's AlarmManager /
+// UNNotificationCenter live in OS state and survive process restart for
+// free; setTimeout in the Electron main process does not.)
+function scheduleForEvent (ev, reminders, getMainWindow) {
+  _scheduleForEvent(ev, reminders, getMainWindow)
+}
+
+module.exports = { tryHandle, scheduleForEvent }
