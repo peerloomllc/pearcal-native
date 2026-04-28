@@ -184,51 +184,90 @@ Plus tray + close-to-tray:
 - `pearcal://join?…` clicked from a browser launches/focuses the desktop app
   and triggers join.
 
-## Phase E4 — Package via electron-builder
+## Phase E4 — Package via electron-builder (local builds, no CI)
 
-Goal: signed-and-notarized installers for macOS, Linux, Windows on a `desktop-v*` git tag push.
+Goal: signed-and-notarized installers for macOS, Linux, Windows produced by
+local build scripts. No GitHub Actions, no self-hosted runners. Mac signing
+stays gated by SSH-to-Mac-Mini, mirroring the iOS pattern already documented
+in CLAUDE.md.
 
 ### Tasks
-1. `electron/package.json` `build` section — copy PearGuard's shape, adjust
-   for cross-platform (it currently does Win only):
+
+1. `electron/package.json` `build` section — electron-builder config:
    - `mac`: `target: 'dmg'`, `category: 'public.app-category.productivity'`,
      `icon: build/icon.icns`, `entitlements: build/entitlements.mac.plist`,
-     `hardenedRuntime: true`, `notarize: true`.
+     `hardenedRuntime: true`, `notarize: { teamId: 'G79ALD29NA' }`.
    - `linux`: `target: ['AppImage', 'deb']`, `icon: build/icon.png`,
-     `category: 'Office'`.
+     `category: 'Office'`. (Linux .desktop file fixes the dev-mode icon
+     issue from E3 — installs the icon into `/usr/share/icons/hicolor/`.)
    - `win`: `target: 'nsis'`, `icon: build/icon.ico`.
-2. macOS signing/notarization config — point at the existing
-   `pearcal-notary` keychain profile and `Developer ID Application: G79ALD29NA`
-   identity (already provisioned in Phase 0).
-3. URL scheme registration — declare `pearcal://` in
-   `protocols: [{ name: 'PearCal', schemes: ['pearcal'] }]` so Mac
-   `Info.plist` and Win registry both register correctly.
-4. `app.setAsDefaultProtocolClient('pearcal')` in `main/index.js` for
-   runtime registration on Win/Linux.
-5. `app.on('open-url', (e, url) => …)` (macOS) and `app.on('second-instance', (e, argv) => …)` (Win/Linux — invite URL arrives via argv on a re-launch attempt) — both forward to the same `__pearHandleInvite` shim in the renderer.
-6. GitHub Actions workflow: tag push → matrix build (mac/linux/win) →
-   upload assets to GitHub Release. Mac job runs on the self-hosted Mac
-   Mini for signing+notarization access.
+2. URL scheme registration — declare in `protocols`:
+   `[{ name: 'PearCal', schemes: ['pearcal'] }]`. electron-builder writes
+   it into the Mac `Info.plist` (`CFBundleURLTypes`) and Win NSIS
+   installer registry. Linux uses the .desktop file's `MimeType=x-scheme-handler/pearcal;`.
+3. macOS signing/notarization — point at the existing `pearcal-notary`
+   keychain profile and `Developer ID Application: G79ALD29NA` identity
+   (already provisioned in Phase 0).
+4. Local build scripts in `electron/scripts/`:
+   - `build-linux.sh` — runs on this Fedora dev box. Produces `.AppImage`
+     and `.deb` for x86_64.
+   - `build-windows.sh` — *Future:* SSH into the Windows VM (same VM
+     PearGuard uses for its Win build pipeline) to run electron-builder
+     `--win` natively. For E4 itself we ship Linux + Mac; Win can land
+     in a follow-up.
+   - `build-mac.sh` — runs locally but executes electron-builder over
+     SSH against `Tims-Mac-mini.local`. Same shape as the iOS path:
+     `rsync` source up, unlock the `buildkey.keychain`, run
+     `electron-builder --mac --arm64 --x64`, `rsync` the signed `.dmg`
+     back to `/tmp/`. Mac entitlements + notarytool keychain profile
+     come from Phase 0.
+5. Output lands in `electron/dist/` (gitignored — already added in E1).
+   Uploading to GitHub Releases stays a manual `gh release create
+   desktop-v1.0.0 dist/*.{dmg,AppImage,deb}` step or skip GitHub
+   entirely.
 
 ### Verify gate
-- `git tag desktop-v1.0.0 && git push --tags` produces signed `.dmg`,
-  `.AppImage`, `.deb`, `.exe` on a GitHub Release.
-- Fresh Mac with no PearCal: download → drag to Applications → first launch
-  passes Gatekeeper, no "developer cannot be verified" prompt.
-- Linux + Windows: download installer → install → launch → calendar UI.
-- Click a `pearcal://join?…` link from a browser → installed app opens /
-  focuses, Join Group sheet appears.
+- `bash scripts/build-linux.sh` produces a signed `.AppImage` and `.deb`
+  in `electron/dist/`.
+- `bash scripts/build-mac.sh` produces a signed-and-notarized `.dmg` via
+  SSH against the Mac Mini and pulls it back to `electron/dist/`.
+- Fresh Mac with no PearCal: install the `.dmg` → first launch passes
+  Gatekeeper, no "developer cannot be verified" prompt.
+- Fresh Linux box: install the `.deb` (or run the `.AppImage`) → launch
+  → calendar UI renders, **tray + window icon now show the PearCal logo**
+  (proves the .desktop file integration fixed E3's dev-mode icon issue).
+- Click a `pearcal://join?…` link from a browser → installed app opens
+  / focuses, Join Group sheet appears.
 
-## Phase E5 — Hardening + parity QA
+## Phase E5 — Hardening + parity QA (carried over)
 
 Same as the prior plan's Phase 5. Run full feature surface on a clean
 installer per platform: events, recurrence, reminders, RSVPs, group
 create/join/leave, profile, mnemonic restore, multi-peer sync (desktop ↔
-iPhone, ↔ Pixel, ↔ desktop). DECISIONS.md entry per CONSTITUTION.md (T2:
-new build pipeline + new distribution channel — pivot from Pear runtime to
-Electron is the headline). README addendum. Close TODO #55 against this
-plan; close #10 since electron-builder handles all three desktops in one
-config.
+iPhone, ↔ Pixel, ↔ desktop). DECISIONS.md entry per CONSTITUTION.md
+(T2: new build pipeline + new distribution channel — pivot from Pear
+runtime to Electron is the headline). README addendum.
+
+## Phase E6 — Desktop UI redesign (separate plan)
+
+`src/ui/App.jsx` is a mobile-first calendar. On a 1024+ wide window it
+looks like a phone app stretched across a desktop monitor. Genuinely
+adapting it is its own undertaking — multi-pane layouts (sidebar +
+main, like Outlook / Apple Calendar), keyboard shortcuts, hover and
+right-click context menus, mouse-first density, possibly multi-window
+(separate event editor windows). Wants its own plan doc with design
+exploration before coding.
+
+Deliberately scheduled AFTER E4 so:
+1. The redesign happens against a real installed app (better signal
+   than `electron .` from a terminal — you'll know what density /
+   layout / shortcuts feel right once it's a "thing in your dock").
+2. E4 produces a shippable artifact for dogfooding the P2P backend,
+   deep links, and signing pipeline before scope grows.
+3. The redesign is its own beast — bundling it into E4 risks scope
+   creep on both fronts.
+
+To be planned post-E4.
 
 ## Risks (revised)
 
