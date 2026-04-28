@@ -83,7 +83,7 @@
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "icon": "build/icon.png",
+      "icon": "build/icons",
       "category": "Office",
       "maintainer": "Timothy Hudgins <peerloomllc@proton.me>",
       "synopsis": "Peer-to-peer calendar",
