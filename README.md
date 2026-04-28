@@ -64,9 +64,28 @@ Joining a group works via an invite link or QR code. The link encodes the crypto
 
 ---
 
+## Desktop (beta)
+
+PearCal also runs on macOS, Windows, and Linux as a native desktop app built on Electron, sharing the same peer-to-peer backend as mobile. Desktop and mobile pair into a single identity — events, groups, and reminders sync between every device on the same identity.
+
+Installers (signed where the platform requires it) are produced by the local build scripts in `electron/scripts/` and land in `electron/dist/`:
+
+- **macOS**: `PearCal-X.Y.Z-arm64.dmg` and `PearCal-X.Y.Z.dmg` — signed with a Developer ID Application certificate, notarized, and stapled
+- **Windows**: `PearCal Setup X.Y.Z.exe` — NSIS installer, currently unsigned (Authenticode signing not yet wired)
+- **Linux**: `PearCal-X.Y.Z.AppImage` and `pearcal-electron_X.Y.Z_amd64.deb`
+
+Pairing on desktop uses the same `pearcal://pair?topic=…` URL the mobile app generates — paste it into the onboarding sheet, click it from a browser, or scan a QR code from a phone. Camera capture and QR scanning are not wired on desktop, by design.
+
+The full architecture pivot from the original Pear runtime to Electron is documented at `docs/superpowers/plans/2026-04-27-pear-desktop-electron-pivot.md` — that's the canonical reference for build pipeline, signing posture, native module replacements, and what survives vs. what was replaced.
+
+Known coverage gaps:
+- **Linux distro coverage**: only Debian (`.deb` via apt) has been verified end-to-end. The AppImage and other distros (Fedora, Arch) are likely fine but not yet smoke-tested.
+- **UI density**: the calendar UI still renders as a stretched mobile layout on a wide window. A desktop-tailored multi-pane redesign is tracked separately and not part of this beta.
+
+---
+
 ## Known Limitations
 
-- **Android only** for now — iOS is planned
 - **Both devices must be online simultaneously** to sync — there is no push delivery when both devices are offline at the same time
 
 ---

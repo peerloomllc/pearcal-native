@@ -19,7 +19,12 @@ const {
   readMarker: readMigrationMarker,
 } = require('./lib/migration.js')
 
-const send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
+// Mobile shells inject `BareKit.IPC` (a duplex over the worklet bridge).
+// Pear's bare worker exposes the same shape via `Pear.worker.pipe()`. Pick once
+// at module load — both paths use the JSON-newline envelope identically.
+const _isDesktopPear = typeof BareKit === 'undefined' && typeof Pear !== 'undefined'
+const ipc = _isDesktopPear ? Pear.worker.pipe() : BareKit.IPC
+const send = (msg) => ipc.write(Buffer.from(JSON.stringify(msg) + '\n'))
 
 // Per-groupId debounce so clustered apply()/mirror emits (one peer reconnect
 // can linearise dozens of blocks) collapse into a single UI refetch instead
@@ -110,7 +115,7 @@ function nativeRequest (method, args = []) {
   })
 }
 
-BareKit.IPC.on('data', chunk => {
+ipc.on('data', chunk => {
   buf += chunk.toString()
   const lines = buf.split('\n')
   buf = lines.pop()
@@ -4887,8 +4892,12 @@ async function setMemberNickname (groupId, nickname) {
 // ── Storage diagnostics ──────────────────────────────────────────────────────
 
 async function storageBreakdown () {
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   // Categorize files by name pattern, tracking size + count per category.
   const cats = {
@@ -5042,8 +5051,12 @@ let rebuildBusy = false
 async function rebuildLocalDb () {
   if (rebuildBusy) throw new Error('rebuild already running')
   rebuildBusy = true
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   async function dirSize (dir) {
     let total = 0
@@ -5129,8 +5142,12 @@ async function rebuildLocalDb () {
 // ── Storage reclamation ──────────────────────────────────────────────────────
 
 async function reclaimStorage () {
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   async function dirSize (dir) {
     let total = 0

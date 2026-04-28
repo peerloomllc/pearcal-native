@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>PearCal</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #0f172a; }
+    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; display: flex; flex-direction: column; }
+    /* Custom title bar — Pear gives us a frameless window on Linux/Windows
+       (no close/min/max controls, no drag region). We add the minimum chrome
+       the user expects: a thin draggable strip and close/minimize buttons.
+       On macOS the OS overlays its traffic-light controls automatically; the
+       custom buttons sit harmlessly to the right. */
+    #titlebar { height: 28px; background: #0f172a; display: flex; align-items: center;
+      padding: 0 0 0 80px; -webkit-app-region: drag; user-select: none;
+      border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+    #titlebar .title { font-size: 12px; font-weight: 300; color: #94a3b8; }
+    #titlebar .controls { margin-left: auto; display: flex; -webkit-app-region: no-drag; }
+    #titlebar .controls button { width: 38px; height: 28px; background: transparent;
+      border: none; color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center; padding: 0; }
+    #titlebar .controls button:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+    #titlebar .controls button.close:hover { background: #dc2626; color: #fff; }
+    #root { flex: 1; min-height: 0; }
+  </style>
+</head>
+<body>
+  <div id="titlebar">
+    <div class="title">PearCal</div>
+    <div class="controls">
+      <button id="tb-min" title="Minimize">&#x2013;</button>
+      <button id="tb-close" class="close" title="Close to tray">&#x2715;</button>
+    </div>
+  </div>
+  <div id="root"></div>
+  <script>
+    document.getElementById('tb-min').addEventListener('click', () => {
+      try { Pear.Window.self.minimize() } catch (e) { console.error('[desktop] minimize:', e?.message ?? e) }
+    })
+    document.getElementById('tb-close').addEventListener('click', () => {
+      // hideable: true makes Pear.Window.self.close() route to .hide() — but
+      // we call hide() directly so the intent is clear and we don't depend
+      // on that branch holding across Pear versions.
+      try { Pear.Window.self.hide() } catch (e) { console.error('[desktop] hide:', e?.message ?? e) }
+    })
+  </script>
+
+  <!--
+    All renderer code stays inline in this file by necessity: external
+    <script src="./x.js" type="module"> in Pear's renderer is wrapped through
+    node-bare-bundle as CJS, which kills top-level await and crashes the renderer.
+    See feedback_pear_renderer_inline_modules.md memory.
+  -->
+
+  <!-- Phase 1 IPC bridge: spawns a bare worker, frames JSON-newline messages,
+       installs window.__pearDB / __pearResponse / __pearEvent so the existing
+       src/ui/main.jsx + App.jsx work unchanged. -->
+  <script>
+    const pipe = Pear.worker.run('./bare-worker.js')
+
+    const _pending = new Map()
+    let _nextId = 1
+    let _buf = ''
+    const _decoder = new TextDecoder('utf-8')
+
+    pipe.on('data', (chunk) => {
+      _buf += _decoder.decode(chunk, { stream: true })
+      let i
+      while ((i = _buf.indexOf('\n')) >= 0) {
+        const line = _buf.slice(0, i); _buf = _buf.slice(i + 1)
+        if (!line) continue
+        let msg
+        try { msg = JSON.parse(line) } catch (e) { console.error('[desktop] bad pipe frame:', e, line); continue }
+        if (msg.event) {
+          window.dispatchEvent(new CustomEvent('pear:' + msg.event, { detail: msg.data }))
+        } else if (typeof msg.id === 'number') {
+          const r = _pending.get(msg.id)
+          if (r) { _pending.delete(msg.id); r(msg) }
+        }
+      }
+    })
+    pipe.on('error', (e) => console.error('[desktop] worker pipe error:', e.message))
+    pipe.on('close', () => console.warn('[desktop] worker pipe closed'))
+
+    const _encoder = new TextEncoder()
+    function send (obj) { pipe.write(_encoder.encode(JSON.stringify(obj) + '\n')) }
+
+    // Hand the worker its dataDir before the UI bundle starts making __pearDB
+    // calls. bare.js's dispatch awaits _dbReady, so any inflight requests park
+    // until init() finishes. The trailing '/pearcal' keeps storage scoped per
+    // app (mobile mirrors this with FileSystem.documentDirectory + 'pearcal/').
+    send({ method: 'init', dataDir: Pear.config.storage + '/pearcal', platform: 'desktop' })
+
+    // Phase 3.2b — Notifications.
+    //
+    // Mirrors the mobile NotificationsModule contract from app/index.tsx:
+    //   __pearDB.call('scheduleForEvent', ev, reminders[])  → schedule alarms
+    //   __pearDB.call('cancelForEvent', eventId)            → cancel them
+    //   __pearDB.call('restoreAll')                          → on cold launch
+    //
+    // Mobile uses native AlarmManager that survives process restart. Desktop
+    // keeps the app process alive via the tray (close-to-tray, see Pear.tray
+    // wiring below), so renderer setTimeout fires reliably as long as the
+    // user closes-to-tray rather than using "Quit PearCal" from the tray menu.
+    const _pearReminders = new Map() // eventId → setTimeout handle[]
+    let _notifPermission = (typeof Notification !== 'undefined') ? Notification.permission : 'denied'
+
+    async function _ensureNotifPermission () {
+      if (typeof Notification === 'undefined') return false
+      if (_notifPermission === 'granted') return true
+      if (_notifPermission === 'denied') return false
+      _notifPermission = await Notification.requestPermission()
+      return _notifPermission === 'granted'
+    }
+
+    function _formatTime12h (t) {
+      if (!t) return ''
+      const [hStr, mStr] = t.split(':')
+      const h = parseInt(hStr, 10)
+      if (isNaN(h)) return t
+      const ampm = h >= 12 ? 'pm' : 'am'
+      const h12 = h % 12 === 0 ? 12 : h % 12
+      return h12 + ':' + (mStr ?? '00') + ampm
+    }
+
+    function _calcReminderFireTime (ev, reminder) {
+      const [y, mo, d] = ev.date.split('-').map(Number)
+      if (reminder === -1) return new Date(y, mo - 1, d, 9, 0, 0, 0).getTime()
+      if (reminder === -2) return new Date(y, mo - 1, d - 1, 9, 0, 0, 0).getTime()
+      let h = 9, m = 0
+      if (!ev.allDay && ev.start) {
+        const parts = ev.start.split(':').map(Number)
+        h = parts[0]; m = parts[1]
+      }
+      const eventStartMs = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+      return eventStartMs - reminder * 60 * 1000
+    }
+
+    const REMINDER_LABELS = {
+      '5': '5 min', '10': '10 min', '15': '15 min', '30': '30 min',
+      '60': '1 hr', '120': '2 hrs', '1440': '1 day',
+      '-1': 'Morning of', '-2': 'Day before'
+    }
+
+    function _fireNotification (title, body, eventId) {
+      if (typeof Notification === 'undefined' || _notifPermission !== 'granted') return
+      try {
+        const n = new Notification(title, { body, tag: eventId })
+        n.onclick = () => {
+          try { Pear.Window.self.show() } catch (e) {}
+          n.close()
+        }
+      } catch (e) {
+        console.error('[desktop] notification fire failed:', e?.message ?? e)
+      }
+    }
+
+    async function _scheduleForEvent (ev, reminders) {
+      if (!ev || !ev.id) return null
+      const granted = await _ensureNotifPermission()
+      if (!granted) return null
+      _cancelForEvent(ev.id) // wipe any prior alarms first
+      const handles = []
+      const list = Array.isArray(reminders) ? reminders : []
+      for (let i = 0; i < Math.min(list.length, 3); i++) {
+        const reminder = list[i]
+        const fireAt = _calcReminderFireTime(ev, reminder)
+        if (!fireAt || fireAt <= Date.now()) continue
+        const label = REMINDER_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
+        const body = ev.allDay
+          ? 'All day · ' + label
+          : label + ' · ' + _formatTime12h(ev.start) + '–' + _formatTime12h(ev.end)
+        handles.push(setTimeout(() => _fireNotification(ev.title, body, ev.id), fireAt - Date.now()))
+      }
+      if (!ev.allDay && ev.start) {
+        const [y, mo, d] = ev.date.split('-').map(Number)
+        const [h, m] = ev.start.split(':').map(Number)
+        const startFireAt = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+        if (startFireAt > Date.now()) {
+          const body = _formatTime12h(ev.start) + ' to ' + _formatTime12h(ev.end)
+          handles.push(setTimeout(() => _fireNotification(ev.title + ' is starting now', body, ev.id), startFireAt - Date.now()))
+        }
+      }
+      if (handles.length) _pearReminders.set(ev.id, handles)
+      return null
+    }
+
+    function _cancelForEvent (eventId) {
+      const handles = _pearReminders.get(eventId)
+      if (handles) {
+        for (const h of handles) clearTimeout(h)
+        _pearReminders.delete(eventId)
+      }
+      return null
+    }
+
+    function _showToast (text) {
+      const t = document.createElement('div')
+      t.textContent = text
+      t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#e2e8f0;padding:10px 18px;border-radius:10px;font:13px -apple-system,system-ui,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,0.4);z-index:99999;opacity:0;transition:opacity 180ms;pointer-events:none;'
+      document.body.appendChild(t)
+      requestAnimationFrame(() => { t.style.opacity = '1' })
+      setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 220) }, 2200)
+    }
+
+    function _downloadBlob (filename, mimeType, content) {
+      try {
+        const blob = new Blob([content], { type: mimeType })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url; a.download = filename; a.style.display = 'none'
+        document.body.appendChild(a)
+        a.click()
+        setTimeout(() => { a.remove(); URL.revokeObjectURL(url) }, 200)
+        _showToast('Downloading ' + filename)
+      } catch (e) {
+        _showToast('Download error: ' + (e?.message ?? e))
+      }
+    }
+
+    window.__pearDB = {
+      call (method, ...args) {
+        // Native-module replacements handled directly in the renderer. These
+        // mirror the methods that mobile's RN shell intercepts before they
+        // reach the bare worklet (see app/index.tsx:446-481).
+        switch (method) {
+          case 'openURL':
+            // Pear's renderer (Electron) routes window.open to the OS shell for
+            // every scheme we need (https / mailto / geo / lightning / etc.).
+            try { window.open(args[0], '_blank') } catch (e) { return Promise.reject(e) }
+            return Promise.resolve(null)
+          case 'openLightning':
+            try { window.open(args[0], '_blank') } catch (e) { return Promise.reject(e) }
+            return Promise.resolve(null)
+          case 'canOpenLightning':
+            // UI listens for the 'pear:canOpenLightning' CustomEvent (set up by
+            // src/ui/main.jsx). On desktop we can't probe registered handlers,
+            // so always claim true — window.open delegates to the OS, which
+            // will show its own error if no handler is installed.
+            queueMicrotask(() => window.__pearEvent('canOpenLightning', true))
+            return Promise.resolve(null)
+          case 'nativeShare': {
+            // On mobile this pops the OS share sheet. Desktop Linux doesn't
+            // have one, so copy text to clipboard and toast.
+            const [title, text] = args
+            navigator.clipboard.writeText(String(text ?? '')).then(
+              () => _showToast((title ? title + ' — c' : 'C') + 'opied to clipboard'),
+              (e) => _showToast('Could not copy: ' + (e?.message ?? e))
+            )
+            return Promise.resolve(null)
+          }
+          case 'exportIcs':
+            _downloadBlob('pearcal-events.ics', 'text/calendar', String(args[0] ?? ''))
+            return Promise.resolve(null)
+          case 'exportRecoveryPhrase':
+            _downloadBlob('pearcal-recovery.txt', 'text/plain', String(args[0] ?? ''))
+            return Promise.resolve(null)
+          case 'haptic':
+            // No haptics on desktop. Fire-and-forget.
+            return Promise.resolve(null)
+          case 'exitApp':
+            try { Pear.exit() } catch (e) { window.close() }
+            return Promise.resolve(null)
+          case 'scheduleForEvent':
+            return _scheduleForEvent(args[0], args[1]).then(() => null, () => null)
+          case 'cancelForEvent':
+            _cancelForEvent(args[0])
+            return Promise.resolve(null)
+          case 'restoreAll':
+            // No-op until the worker bundle loads (Phase 2.4) and can return
+            // the full reminder list. With the stub returning [] for events,
+            // there's nothing to re-schedule. Mobile is a no-op too — its
+            // AlarmManager state survives process restarts on the OS side.
+            return Promise.resolve(null)
+        }
+        return new Promise((resolve, reject) => {
+          const id = _nextId++
+          _pending.set(id, msg => {
+            if (msg.error) reject(new Error(msg.error))
+            else resolve(msg.result)
+          })
+          send({ id, method, args })
+        })
+      }
+    }
+    window.__pearResponse = (msg) => {
+      const r = _pending.get(msg.id)
+      if (r) { _pending.delete(msg.id); r(msg) }
+    }
+    window.__pearEvent = (event, data) => {
+      window.dispatchEvent(new CustomEvent('pear:' + event, { detail: data }))
+    }
+
+    // Phase 3.2: pearcal:// deep-link receive.
+    //
+    // Mobile registers pearcal:// via Android intent-filter + iOS URL types and
+    // routes through native LinkModule → RN → window.__pearHandleInvite. On
+    // desktop, Pear's runtime supplies two equivalent paths:
+    //   • Pear.config.link / linkData — URL the app was cold-launched with
+    //   • Pear.wakeups(fn)            — URL arrives while app is running
+    // Both feed window.__pearHandleInvite (set up in src/ui/main.jsx, with
+    // built-in buffering for invites that arrive pre-mount).
+    //
+    // In dev mode the OS doesn't register the pearcal:// scheme — that needs
+    // the appling's Info.plist (Phase 4). So neither path fires from a real
+    // link click here; the wiring is correct for staged builds and a no-op
+    // until then.
+    function _looksLikeInvite (url) {
+      if (typeof url !== 'string' || !url) return false
+      return url.startsWith('pearcal://') ||
+             url.startsWith('pear://pearcal/') ||
+             url.startsWith('https://peerloomllc.com/join')
+    }
+    function _deliverInvite (url) {
+      if (!_looksLikeInvite(url)) return
+      // main.jsx defines __pearHandleInvite before the React app mounts, but
+      // the UI bundle imports asynchronously after this script runs — retry
+      // until the buffer fn exists.
+      if (typeof window.__pearHandleInvite !== 'function') {
+        setTimeout(() => _deliverInvite(url), 50)
+        return
+      }
+      window.__pearHandleInvite(url)
+    }
+
+    const _coldLink = Pear.config?.linkData || Pear.config?.link
+    if (_coldLink) _deliverInvite(_coldLink)
+
+    if (typeof Pear.wakeups === 'function') {
+      try {
+        Pear.wakeups((wakeup) => {
+          const url = (typeof wakeup === 'string')
+            ? wakeup
+            : (wakeup?.link || wakeup?.linkData || wakeup?.url)
+          _deliverInvite(url)
+        })
+      } catch (e) {
+        console.error('[desktop] Pear.wakeups setup failed:', e?.message ?? e)
+      }
+    }
+
+    // Phase 3.2b — tray + close-to-tray.
+    //
+    // Calendar apps live in the background and only get foregrounded when the
+    // user wants to look at something. So closing the window must NOT quit the
+    // app — it should hide to the tray, leaving setTimeout-backed reminder
+    // scheduling alive. The user quits explicitly via the tray menu.
+    //
+    // Pear.tray(opts, listener) defaults to a {show, quit} menu and a listener
+    // that show()/focus()es the window on click/show events. We override the
+    // listener so 'quit' actually quits and any 'close'-style event hides
+    // instead of destroying the window.
+    if (typeof Pear?.tray === 'function') {
+      Pear.tray({
+        menu: { show: 'Show PearCal', quit: 'Quit PearCal' }
+      }, (key) => {
+        try {
+          if (key === 'click' || key === 'show') {
+            // show() brings the window forward and focuses it. Calling
+            // focus() right after throws "Cannot read properties of null
+            // (reading 'steal')" — Pear's focus handler races against an
+            // in-progress show on Linux.
+            Pear.Window.self.show()
+          } else if (key === 'quit') {
+            Pear.Window.self.quit()
+          } else if (key === 'close' || key === 'hide') {
+            Pear.Window.self.hide()
+          }
+        } catch (e) {
+          console.error('[desktop] tray listener error:', e?.message ?? e)
+        }
+      }).catch?.(e => console.error('[desktop] tray setup failed:', e?.message ?? e))
+    }
+  </script>
+
+  <!-- Inline module: top-level await is valid here. Loads the React UI bundle. -->
+  <script type="module">
+    try {
+      await import('./app-ui-desktop.mjs')
+      console.log('[desktop] UI bundle loaded')
+    } catch (e) {
+      console.error('[desktop] UI bundle import failed:', e)
+      const root = document.getElementById('root')
+      if (root) root.innerHTML = '<div style="padding:16px;font-family:monospace;color:#f87171">UI bundle failed to load:<br>' + (e?.message ?? e) + '</div>'
+    }
+  </script>
+</body>
+</html>

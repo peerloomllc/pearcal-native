@@ -1,0 +1,22 @@
+{
+  "name": "pearcal-desktop",
+  "version": "0.0.0",
+  "main": "index.html",
+  "pear": {
+    "name": "pearcal",
+    "type": "desktop",
+    "gui": {
+      "width": 1024,
+      "height": 720,
+      "minWidth": 720,
+      "minHeight": 480,
+      "backgroundColor": "#0f172a",
+      "movable": true,
+      "resizable": true,
+      "minimizable": true,
+      "maximizable": true,
+      "closable": true,
+      "hideable": true
+    }
+  }
+}

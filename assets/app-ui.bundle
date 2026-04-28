@@ -26651,30 +26651,32 @@ ${link}`;
 
   // src/ui/main.jsx
   var import_jsx_runtime2 = __toESM(require_jsx_runtime());
-  var _nextId = 1;
-  var _pending = /* @__PURE__ */ new Map();
-  window.__pearDB = {
-    call(method, ...args) {
-      return new Promise((resolve2, reject) => {
-        const id = _nextId++;
-        _pending.set(id, (msg) => {
-          if (msg.error) reject(new Error(msg.error));
-          else resolve2(msg.result);
+  if (!window.__pearDB) {
+    let _nextId = 1;
+    const _pending = /* @__PURE__ */ new Map();
+    window.__pearDB = {
+      call(method, ...args) {
+        return new Promise((resolve2, reject) => {
+          const id = _nextId++;
+          _pending.set(id, (msg) => {
+            if (msg.error) reject(new Error(msg.error));
+            else resolve2(msg.result);
+          });
+          window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args }));
         });
-        window.ReactNativeWebView.postMessage(JSON.stringify({ id, method, args }));
-      });
-    }
-  };
-  window.__pearResponse = function(msg) {
-    const resolve2 = _pending.get(msg.id);
-    if (resolve2) {
-      _pending.delete(msg.id);
-      resolve2(msg);
-    }
-  };
-  window.__pearEvent = function(event, data) {
-    window.dispatchEvent(new CustomEvent("pear:" + event, { detail: data }));
-  };
+      }
+    };
+    window.__pearResponse = function(msg) {
+      const resolve2 = _pending.get(msg.id);
+      if (resolve2) {
+        _pending.delete(msg.id);
+        resolve2(msg);
+      }
+    };
+    window.__pearEvent = function(event, data) {
+      window.dispatchEvent(new CustomEvent("pear:" + event, { detail: data }));
+    };
+  }
   window.addEventListener("pear:sync", (e58) => emitter.emit("sync", e58.detail));
   window.addEventListener("pear:qrScanResult", (e58) => emitter.emit("qrScanResult", e58.detail));
   window.addEventListener("pear:cameraResult", (e58) => emitter.emit("cameraResult", e58.detail));
