@@ -4,12 +4,46 @@
   <meta charset="utf-8" />
   <title>PearCal</title>
   <style>
-    html, body, #root { margin: 0; padding: 0; height: 100%; background: #0f172a; }
-    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; }
+    html, body { margin: 0; padding: 0; height: 100%; background: #0f172a; }
+    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; display: flex; flex-direction: column; }
+    /* Custom title bar — Pear gives us a frameless window on Linux/Windows
+       (no close/min/max controls, no drag region). We add the minimum chrome
+       the user expects: a thin draggable strip and close/minimize buttons.
+       On macOS the OS overlays its traffic-light controls automatically; the
+       custom buttons sit harmlessly to the right. */
+    #titlebar { height: 28px; background: #0f172a; display: flex; align-items: center;
+      padding: 0 0 0 80px; -webkit-app-region: drag; user-select: none;
+      border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; }
+    #titlebar .title { font-size: 12px; font-weight: 300; color: #94a3b8; }
+    #titlebar .controls { margin-left: auto; display: flex; -webkit-app-region: no-drag; }
+    #titlebar .controls button { width: 38px; height: 28px; background: transparent;
+      border: none; color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1;
+      display: flex; align-items: center; justify-content: center; padding: 0; }
+    #titlebar .controls button:hover { background: rgba(255,255,255,0.06); color: #e2e8f0; }
+    #titlebar .controls button.close:hover { background: #dc2626; color: #fff; }
+    #root { flex: 1; min-height: 0; }
   </style>
 </head>
 <body>
+  <div id="titlebar">
+    <div class="title">PearCal</div>
+    <div class="controls">
+      <button id="tb-min" title="Minimize">&#x2013;</button>
+      <button id="tb-close" class="close" title="Close to tray">&#x2715;</button>
+    </div>
+  </div>
   <div id="root"></div>
+  <script>
+    document.getElementById('tb-min').addEventListener('click', () => {
+      try { Pear.Window.self.minimize() } catch (e) { console.error('[desktop] minimize:', e?.message ?? e) }
+    })
+    document.getElementById('tb-close').addEventListener('click', () => {
+      // hideable: true makes Pear.Window.self.close() route to .hide() — but
+      // we call hide() directly so the intent is clear and we don't depend
+      // on that branch holding across Pear versions.
+      try { Pear.Window.self.hide() } catch (e) { console.error('[desktop] hide:', e?.message ?? e) }
+    })
+  </script>
 
   <!--
     All renderer code stays inline in this file by necessity: external
@@ -56,6 +90,109 @@
     // until init() finishes. The trailing '/pearcal' keeps storage scoped per
     // app (mobile mirrors this with FileSystem.documentDirectory + 'pearcal/').
     send({ method: 'init', dataDir: Pear.config.storage + '/pearcal', platform: 'desktop' })
+
+    // Phase 3.2b — Notifications.
+    //
+    // Mirrors the mobile NotificationsModule contract from app/index.tsx:
+    //   __pearDB.call('scheduleForEvent', ev, reminders[])  → schedule alarms
+    //   __pearDB.call('cancelForEvent', eventId)            → cancel them
+    //   __pearDB.call('restoreAll')                          → on cold launch
+    //
+    // Mobile uses native AlarmManager that survives process restart. Desktop
+    // keeps the app process alive via the tray (close-to-tray, see Pear.tray
+    // wiring below), so renderer setTimeout fires reliably as long as the
+    // user closes-to-tray rather than using "Quit PearCal" from the tray menu.
+    const _pearReminders = new Map() // eventId → setTimeout handle[]
+    let _notifPermission = (typeof Notification !== 'undefined') ? Notification.permission : 'denied'
+
+    async function _ensureNotifPermission () {
+      if (typeof Notification === 'undefined') return false
+      if (_notifPermission === 'granted') return true
+      if (_notifPermission === 'denied') return false
+      _notifPermission = await Notification.requestPermission()
+      return _notifPermission === 'granted'
+    }
+
+    function _formatTime12h (t) {
+      if (!t) return ''
+      const [hStr, mStr] = t.split(':')
+      const h = parseInt(hStr, 10)
+      if (isNaN(h)) return t
+      const ampm = h >= 12 ? 'pm' : 'am'
+      const h12 = h % 12 === 0 ? 12 : h % 12
+      return h12 + ':' + (mStr ?? '00') + ampm
+    }
+
+    function _calcReminderFireTime (ev, reminder) {
+      const [y, mo, d] = ev.date.split('-').map(Number)
+      if (reminder === -1) return new Date(y, mo - 1, d, 9, 0, 0, 0).getTime()
+      if (reminder === -2) return new Date(y, mo - 1, d - 1, 9, 0, 0, 0).getTime()
+      let h = 9, m = 0
+      if (!ev.allDay && ev.start) {
+        const parts = ev.start.split(':').map(Number)
+        h = parts[0]; m = parts[1]
+      }
+      const eventStartMs = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+      return eventStartMs - reminder * 60 * 1000
+    }
+
+    const REMINDER_LABELS = {
+      '5': '5 min', '10': '10 min', '15': '15 min', '30': '30 min',
+      '60': '1 hr', '120': '2 hrs', '1440': '1 day',
+      '-1': 'Morning of', '-2': 'Day before'
+    }
+
+    function _fireNotification (title, body, eventId) {
+      if (typeof Notification === 'undefined' || _notifPermission !== 'granted') return
+      try {
+        const n = new Notification(title, { body, tag: eventId })
+        n.onclick = () => {
+          try { Pear.Window.self.show() } catch (e) {}
+          n.close()
+        }
+      } catch (e) {
+        console.error('[desktop] notification fire failed:', e?.message ?? e)
+      }
+    }
+
+    async function _scheduleForEvent (ev, reminders) {
+      if (!ev || !ev.id) return null
+      const granted = await _ensureNotifPermission()
+      if (!granted) return null
+      _cancelForEvent(ev.id) // wipe any prior alarms first
+      const handles = []
+      const list = Array.isArray(reminders) ? reminders : []
+      for (let i = 0; i < Math.min(list.length, 3); i++) {
+        const reminder = list[i]
+        const fireAt = _calcReminderFireTime(ev, reminder)
+        if (!fireAt || fireAt <= Date.now()) continue
+        const label = REMINDER_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
+        const body = ev.allDay
+          ? 'All day · ' + label
+          : label + ' · ' + _formatTime12h(ev.start) + '–' + _formatTime12h(ev.end)
+        handles.push(setTimeout(() => _fireNotification(ev.title, body, ev.id), fireAt - Date.now()))
+      }
+      if (!ev.allDay && ev.start) {
+        const [y, mo, d] = ev.date.split('-').map(Number)
+        const [h, m] = ev.start.split(':').map(Number)
+        const startFireAt = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+        if (startFireAt > Date.now()) {
+          const body = _formatTime12h(ev.start) + ' to ' + _formatTime12h(ev.end)
+          handles.push(setTimeout(() => _fireNotification(ev.title + ' is starting now', body, ev.id), startFireAt - Date.now()))
+        }
+      }
+      if (handles.length) _pearReminders.set(ev.id, handles)
+      return null
+    }
+
+    function _cancelForEvent (eventId) {
+      const handles = _pearReminders.get(eventId)
+      if (handles) {
+        for (const h of handles) clearTimeout(h)
+        _pearReminders.delete(eventId)
+      }
+      return null
+    }
 
     function _showToast (text) {
       const t = document.createElement('div')
@@ -124,6 +261,17 @@
           case 'exitApp':
             try { Pear.exit() } catch (e) { window.close() }
             return Promise.resolve(null)
+          case 'scheduleForEvent':
+            return _scheduleForEvent(args[0], args[1]).then(() => null, () => null)
+          case 'cancelForEvent':
+            _cancelForEvent(args[0])
+            return Promise.resolve(null)
+          case 'restoreAll':
+            // No-op until the worker bundle loads (Phase 2.4) and can return
+            // the full reminder list. With the stub returning [] for events,
+            // there's nothing to re-schedule. Mobile is a no-op too — its
+            // AlarmManager state survives process restarts on the OS side.
+            return Promise.resolve(null)
         }
         return new Promise((resolve, reject) => {
           const id = _nextId++
@@ -189,6 +337,39 @@
       } catch (e) {
         console.error('[desktop] Pear.wakeups setup failed:', e?.message ?? e)
       }
+    }
+
+    // Phase 3.2b — tray + close-to-tray.
+    //
+    // Calendar apps live in the background and only get foregrounded when the
+    // user wants to look at something. So closing the window must NOT quit the
+    // app — it should hide to the tray, leaving setTimeout-backed reminder
+    // scheduling alive. The user quits explicitly via the tray menu.
+    //
+    // Pear.tray(opts, listener) defaults to a {show, quit} menu and a listener
+    // that show()/focus()es the window on click/show events. We override the
+    // listener so 'quit' actually quits and any 'close'-style event hides
+    // instead of destroying the window.
+    if (typeof Pear?.tray === 'function') {
+      Pear.tray({
+        menu: { show: 'Show PearCal', quit: 'Quit PearCal' }
+      }, (key) => {
+        try {
+          if (key === 'click' || key === 'show') {
+            // show() brings the window forward and focuses it. Calling
+            // focus() right after throws "Cannot read properties of null
+            // (reading 'steal')" — Pear's focus handler races against an
+            // in-progress show on Linux.
+            Pear.Window.self.show()
+          } else if (key === 'quit') {
+            Pear.Window.self.quit()
+          } else if (key === 'close' || key === 'hide') {
+            Pear.Window.self.hide()
+          }
+        } catch (e) {
+          console.error('[desktop] tray listener error:', e?.message ?? e)
+        }
+      }).catch?.(e => console.error('[desktop] tray setup failed:', e?.message ?? e))
     }
   </script>
 

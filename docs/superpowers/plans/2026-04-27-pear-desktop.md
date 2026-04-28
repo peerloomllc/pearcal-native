@@ -24,7 +24,7 @@ Distribution: **GitHub Releases only**, signed-and-notarized macOS `.dmg`. Mac A
 | 2 — `src/bare.js` running over the worker pipe | 🔶 in progress (blocker — see Phase 2) |
 | 3.1 — Renderer-side native module replacements (openURL, share, .ics, haptic, exitApp) | ✅ Done 2026-04-27 |
 | 3.2a — Deep-link receive (Pear.wakeups + Pear.config.link) | ✅ Done 2026-04-27 (full E2E pending Phase 4 appling) |
-| 3.2b — Notifications | not started |
+| 3.2b — Notifications + tray + custom title bar | ✅ Done 2026-04-27 |
 | 4 — Appling + GitHub release pipeline | not started |
 | 5 — Hardening + parity QA | not started |
 
@@ -357,21 +357,60 @@ the OS won't reach Pear in dev mode. The OS scheme registration lives in
 the appling's Info.plist and only takes effect after Phase 4 packaging.
 Wiring is correct for that future state and a no-op until then.
 
-### 3.2b — Notifications (not started)
+### 3.2b — Notifications + tray + custom title bar ✅ DONE 2026-04-27
 
-| Mobile module | Planned desktop equivalent | Open issues |
-|---|---|---|
-| `NotificationsModule` | Web Notification API in renderer + `setTimeout` for scheduling | Renderer-only setTimeout loses state when the window closes. Background firing needs `Pear.tray` integration — design call: do we ship "fires only while app is open" as the v1 limitation, or wait for tray plumbing? |
+Background firing required `Pear.tray()` (so the app process stays alive when
+the window is closed). Tray turned out to require `gui.hideable: true`, and
+the close-to-tray model meant we had to also build a custom title bar from
+scratch — Pear hardcodes a frameless window on Linux/Windows with no public
+config to enable native chrome.
+
+**Three pieces wired in `desktop/index.html`:**
+
+1. **Custom title bar.** A 28px draggable strip at the top of the window
+   (`-webkit-app-region: drag`) with `PearCal` text and minimize / close
+   buttons. Buttons call `Pear.Window.self.minimize()` and `.hide()`
+   respectively. The close button hides to tray instead of quitting; quit
+   is only via the tray menu.
+
+2. **Tray icon + close-to-tray.** `Pear.tray({menu: {show, quit}}, listener)`.
+   The listener routes `click`/`show` → `Window.self.show()`, `quit` →
+   `Window.self.quit()`. Notably we *don't* call `focus()` after `show()` —
+   Pear's focus handler races with an in-progress show on Linux and throws
+   `Cannot read properties of null (reading 'steal')`. show() brings the
+   window forward on its own.
+
+3. **Notifications module.** Renderer-side implementation of the mobile
+   `NotificationsModule` contract (`scheduleForEvent`, `cancelForEvent`,
+   `restoreAll`):
+   - Uses the Web `Notification` API (permission requested lazily on first
+     `scheduleForEvent`; granted automatically by Pear/Electron in dev — TBD
+     whether the staged appling needs an explicit permission grant on first
+     run).
+   - `setTimeout`-backed scheduling. Up to 3 reminder slots + 1 start-time
+     slot per event (mirrors mobile's slot allocation).
+   - Helpers (`notifId`, `calcReminderFireTime`, `formatTime12h`,
+     `REMINDER_LABELS`) copied verbatim from `app/index.tsx` so the body
+     text matches mobile.
+   - `restoreAll` is a no-op: mobile's AlarmManager survives process restart
+     on the OS side, so it's a no-op there too. Desktop relies on the user
+     keeping the app process alive via close-to-tray.
+
+**UX limitation worth communicating in the in-app reminder UI for desktop:**
+"Reminders fire as long as PearCal is open or running in the system tray.
+Selecting **Quit PearCal** from the tray cancels all pending reminders."
+(This matches mobile's behavior — force-quitting the app there also kills
+pending alarms once the OS clears them.)
 
 `CameraModule` / `QRScannerModule` remain **skipped per scope** — invite UX
 uses QR-render-only, paste, and link click.
 
-### Verify gate
+### Phase 3 verify gate
 - ✅ Click external link → opens in browser / mail app / wallet.
 - ✅ `.ics` export downloads via OS save manager.
 - ✅ Share-app / share-invite → text on clipboard.
 - ✅ Injected `pearcal://join` → Join Group sheet (3.2a — full E2E pending Phase 4).
-- ❌ Reminders fire as desktop notifications. (3.2b)
+- ✅ Scheduled reminder fires as desktop notification while window is hidden to tray.
 - ⏸ `pearcal://…` from Safari opens / focuses the running PearCal desktop and triggers join. (Wiring done — needs Phase 4 appling for the OS scheme registration.)
 
 ## Phase 4 — Appling packaging + GitHub release pipeline (1–2 days)

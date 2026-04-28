@@ -10,7 +10,13 @@
       "height": 720,
       "minWidth": 720,
       "minHeight": 480,
-      "backgroundColor": "#0f172a"
+      "backgroundColor": "#0f172a",
+      "movable": true,
+      "resizable": true,
+      "minimizable": true,
+      "maximizable": true,
+      "closable": true,
+      "hideable": true
     }
   }
 }
