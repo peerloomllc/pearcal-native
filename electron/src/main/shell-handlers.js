@@ -42,7 +42,15 @@ const REMINDER_LABELS = {
 }
 
 function _fireNotification (title, body, eventId, getMainWindow) {
-  if (!Notification.isSupported()) return
+  // Logging here is intentional — on macOS notifications can fail silently
+  // if the user dismissed the auto-permission prompt at first launch (the
+  // app then never appears in System Settings → Notifications, so there's
+  // no UI to re-enable it). These prints surface the cause when the user
+  // launches from Terminal: `/Applications/PearCal.app/Contents/MacOS/PearCal`.
+  if (!Notification.isSupported()) {
+    console.warn('[shell] Notification.isSupported() returned false — OS-level notifications unavailable')
+    return
+  }
   try {
     const n = new Notification({ title, body, tag: eventId })
     n.on('click', () => {
@@ -51,6 +59,9 @@ function _fireNotification (title, body, eventId, getMainWindow) {
         w.show()
         w.focus()
       }
+    })
+    n.on('failed', (_e, error) => {
+      console.error('[shell] notification "failed" event:', error)
     })
     n.show()
   } catch (e) {

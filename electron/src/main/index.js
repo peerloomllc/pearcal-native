@@ -27,6 +27,15 @@ if (!app.requestSingleInstanceLock()) {
 // the scheme — handled by electron-builder.protocols in Phase E4.
 app.setAsDefaultProtocolClient('pearcal')
 
+// AppUserModelID: Win10/11 looks up the app's display name + icon for
+// toast notifications and Start menu grouping by this id. Without it,
+// notifications show the executable-derived id (e.g. "app.electron.
+// pearcal-electron") instead of "PearCal" and use a generic icon.
+// Must match electron-builder's `appId` in package.json so the installer's
+// Start-menu shortcut, the notification bridge, and the main process all
+// reference the same identity. No-op on macOS/Linux but harmless.
+app.setAppUserModelId('com.pearcal.desktop')
+
 let mainWindow = null
 let tray = null
 let isQuitting = false
