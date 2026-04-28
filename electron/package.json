@@ -1,15 +1,109 @@
 {
   "name": "pearcal-electron",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "PearCal desktop client (Electron). Mirrors PearGuard's pattern.",
+  "homepage": "https://peerloomllc.com/pearcal/",
+  "author": {
+    "name": "Timothy Hudgins",
+    "email": "peerloomllc@proton.me"
+  },
   "private": true,
   "main": "src/main/index.js",
   "scripts": {
     "bundle:ui": "bash scripts/bundle-ui.sh",
-    "start": "npm run bundle:ui && electron .",
-    "start:dev-linux": "ELECTRON_DISABLE_SANDBOX=1 npm run bundle:ui && ELECTRON_DISABLE_SANDBOX=1 electron --disable-gpu --disable-software-rasterizer ."
+    "prepack:vendor": "node scripts/prepack.js",
+    "postinstall": "node scripts/prepack.js",
+    "start": "npm run prepack:vendor && npm run bundle:ui && electron .",
+    "start:dev-linux": "ELECTRON_DISABLE_SANDBOX=1 npm run prepack:vendor && ELECTRON_DISABLE_SANDBOX=1 npm run bundle:ui && ELECTRON_DISABLE_SANDBOX=1 electron --disable-gpu --disable-software-rasterizer .",
+    "build:linux": "bash scripts/build-linux.sh",
+    "build:mac": "bash scripts/build-mac.sh",
+    "build:windows": "bash scripts/build-windows.sh"
+  },
+  "dependencies": {
+    "autobase": "^7.25.1",
+    "b4a": "^1.8.0",
+    "bare-fs": "^4.5.4",
+    "bare-path": "^3.0.0",
+    "bip39-mnemonic": "^2.5.0",
+    "blind-peering": "^2.0.1",
+    "corestore": "^7.8.0",
+    "hyperbee": "^2.27.3",
+    "hypercore": "^11.26.0",
+    "hyperswarm": "^4.17.0",
+    "keet-identity-key": "^3.1.0",
+    "protomux-wakeup": "^2.9.0",
+    "sodium-native": "^5.0.10"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.0"
+  },
+  "build": {
+    "appId": "com.pearcal.desktop",
+    "productName": "PearCal",
+    "copyright": "Copyright © 2026 PeerLoom LLC",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "vendor/**/*",
+      "build/icon.png",
+      "build/entitlements.mac.plist",
+      "package.json",
+      "!**/*.test.js",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples,docs,doc,.bin}"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/sodium-native/**/*",
+      "**/node_modules/*/build/Release/*.node",
+      "**/node_modules/*/prebuilds/**/*"
+    ],
+    "protocols": [
+      {
+        "name": "PearCal",
+        "schemes": ["pearcal"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "build/icon.png",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": "Developer ID Application: Timothy Hudgins (G79ALD29NA)",
+      "notarize": false
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "icon": "build/icon.png",
+      "category": "Office",
+      "maintainer": "Timothy Hudgins <peerloomllc@proton.me>",
+      "synopsis": "Peer-to-peer calendar",
+      "description": "PearCal is a peer-to-peer calendar with no servers and no accounts. Share calendars with friends and family directly between devices.",
+      "mimeTypes": ["x-scheme-handler/pearcal"],
+      "desktop": {
+        "Name": "PearCal",
+        "StartupWMClass": "pearcal-electron"
+      }
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PearCal"
+    }
   }
 }

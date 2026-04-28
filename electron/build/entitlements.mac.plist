@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTD/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- V8 JIT — required by Chromium's V8 engine in the renderer. -->
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+
+  <!-- Required by sodium-native and other prebuilt native addons that
+       map writable+executable memory at load time. -->
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+
+  <!-- Lets Electron pick up DYLD_LIBRARY_PATH overrides set by the runtime;
+       harmless without them but required by hardened runtime when present. -->
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+
+  <!-- Native P2P networking — Hyperswarm DHT bootstrap, peer connections. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+  <key>com.apple.security.network.server</key>
+  <true/>
+
+  <!-- Save dialogs (.ics export, recovery phrase export). -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+</dict>
+</plist>

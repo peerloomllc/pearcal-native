@@ -94,3 +94,4 @@ metadata/ios/screenshots/
 /electron/node_modules/
 /electron/dist/
 /electron/src/renderer/app-ui-electron.js
+/electron/vendor/

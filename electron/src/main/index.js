@@ -38,7 +38,11 @@ const bridge = installBridge({
   requestQuit: () => { isQuitting = true; app.quit() }
 })
 
-require('../../../src/bare.js')
+// vendor/src/bare.js is a copy of ../../../src/bare.js placed there by
+// scripts/prepack.js (postinstall + before each build) so the electron/
+// subproject is self-contained for electron-builder packaging. Mobile
+// continues to use ../../../src/bare.js directly via its own bundler.
+require('../../vendor/src/bare.js')
 
 app.whenReady().then(() => {
   const dataDir = path.join(app.getPath('userData'), 'pearcal')
@@ -49,7 +53,7 @@ app.whenReady().then(() => {
   // If we were cold-launched with a pearcal:// URL on Win/Linux, it lives
   // in process.argv. Capture it here so it gets delivered once the renderer
   // installs window.__pearHandleInvite.
-  const cliUrl = process.argv.find(a => /^(pearcal|pear):\/\/[^/]+\/(join|pair)/.test(a))
+  const cliUrl = process.argv.find(a => /^(pearcal:\/\/(join|pair)|pear:\/\/pearcal\/(join|pair))/.test(a))
   if (cliUrl) deliverDeepLink(cliUrl)
 })
 
@@ -158,7 +162,7 @@ app.on('open-url', (event, url) => {
 // Win/Linux: second-instance fires when a second invocation is blocked by
 // requestSingleInstanceLock. The URL lives in argv.
 app.on('second-instance', (_event, argv) => {
-  const url = argv.find(a => /^(pearcal|pear):\/\/[^/]+\/(join|pair)/.test(a))
+  const url = argv.find(a => /^(pearcal:\/\/(join|pair)|pear:\/\/pearcal\/(join|pair))/.test(a))
   if (url) deliverDeepLink(url)
   if (mainWindow) { mainWindow.show(); mainWindow.focus() }
 })
