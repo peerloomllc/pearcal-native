@@ -14530,7 +14530,7 @@
   var import_client = __toESM(require_client());
 
   // src/ui/App.jsx
-  var import_react2 = __toESM(require_react());
+  var import_react3 = __toESM(require_react());
   var import_qrcode = __toESM(require_browser());
 
   // src/ui/fonts.js
@@ -14794,6 +14794,36 @@
   }
   function dateStr(y, m3, d) {
     return `${y}-${String(m3 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  }
+
+  // src/ui-shared/hooks/useProfile.js
+  var import_react = __toESM(require_react());
+  function useProfile(db2, emitter2) {
+    const [profile, setProfile] = (0, import_react.useState)(null);
+    (0, import_react.useEffect)(() => {
+      if (!db2) return;
+      let cancelled = false;
+      db2.getProfile().then((p3) => {
+        if (!cancelled) setProfile(p3);
+      }).catch(() => {
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [db2]);
+    (0, import_react.useEffect)(() => {
+      if (!db2 || !emitter2) return;
+      async function onProfileChanged() {
+        try {
+          const fresh = await db2.getProfile();
+          if (fresh) setProfile(fresh);
+        } catch {
+        }
+      }
+      emitter2.on("profileChanged", onProfileChanged);
+      return () => emitter2.off("profileChanged", onProfileChanged);
+    }, [db2, emitter2]);
+    return [profile, setProfile];
   }
 
   // node_modules/@phosphor-icons/react/dist/defs/ArrowLeft.es.js
@@ -15982,8 +16012,8 @@
   var e34 = __toESM(require_react(), 1);
 
   // node_modules/@phosphor-icons/react/dist/lib/context.es.js
-  var import_react = __toESM(require_react(), 1);
-  var o = (0, import_react.createContext)({
+  var import_react2 = __toESM(require_react(), 1);
+  var o = (0, import_react2.createContext)({
     color: "currentColor",
     size: "1em",
     weight: "regular",
@@ -16483,86 +16513,86 @@
     };
   }
   function App({ db: db2, notifs: notifs2, sync: sync2 }) {
-    const [dark, setDark] = (0, import_react2.useState)(() => {
+    const [dark, setDark] = (0, import_react3.useState)(() => {
       setTheme(true);
       return true;
     });
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       setTheme(dark);
     }, [dark]);
-    const [tab, setTab] = (0, import_react2.useState)("calendar");
-    const [ready, setReady] = (0, import_react2.useState)(false);
-    const [error, setError] = (0, import_react2.useState)(null);
-    const [profile, setProfile] = (0, import_react2.useState)(null);
-    const [groups, setGroups] = (0, import_react2.useState)([]);
-    const [events, setEvents] = (0, import_react2.useState)([]);
-    const [myRsvps, setMyRsvps] = (0, import_react2.useState)({});
-    const [selectedDate, setSelectedDate] = (0, import_react2.useState)(todayStr());
-    const [viewDate, setViewDate] = (0, import_react2.useState)(() => {
+    const [tab, setTab] = (0, import_react3.useState)("calendar");
+    const [ready, setReady] = (0, import_react3.useState)(false);
+    const [error, setError] = (0, import_react3.useState)(null);
+    const [profile, setProfile] = useProfile(db2, emitter);
+    const [groups, setGroups] = (0, import_react3.useState)([]);
+    const [events, setEvents] = (0, import_react3.useState)([]);
+    const [myRsvps, setMyRsvps] = (0, import_react3.useState)({});
+    const [selectedDate, setSelectedDate] = (0, import_react3.useState)(todayStr());
+    const [viewDate, setViewDate] = (0, import_react3.useState)(() => {
       const t7 = /* @__PURE__ */ new Date();
       return { y: t7.getFullYear(), m: t7.getMonth() };
     });
-    const [modal, setModal] = (0, import_react2.useState)(null);
-    const [newGroupOpen, setNewGroupOpen] = (0, import_react2.useState)(false);
-    const eventsReady = (0, import_react2.useRef)(false);
-    const [settingsGroup, setSettingsGroup] = (0, import_react2.useState)(null);
-    const [blockedToast, setBlockedToast] = (0, import_react2.useState)(false);
-    const [pendingApprovalGroups, setPendingApprovalGroups] = (0, import_react2.useState)(() => /* @__PURE__ */ new Set());
-    const [qrGroup, setQrGroup] = (0, import_react2.useState)(null);
-    const [joinOpen, setJoinOpen] = (0, import_react2.useState)(false);
-    const [joinPasteMode, setJoinPasteMode] = (0, import_react2.useState)(false);
-    const [pendingJoin, setPendingJoin] = (0, import_react2.useState)(null);
-    const closePendingJoinRef = (0, import_react2.useRef)(null);
-    const groupsRef = (0, import_react2.useRef)(groups);
-    (0, import_react2.useEffect)(() => {
+    const [modal, setModal] = (0, import_react3.useState)(null);
+    const [newGroupOpen, setNewGroupOpen] = (0, import_react3.useState)(false);
+    const eventsReady = (0, import_react3.useRef)(false);
+    const [settingsGroup, setSettingsGroup] = (0, import_react3.useState)(null);
+    const [blockedToast, setBlockedToast] = (0, import_react3.useState)(false);
+    const [pendingApprovalGroups, setPendingApprovalGroups] = (0, import_react3.useState)(() => /* @__PURE__ */ new Set());
+    const [qrGroup, setQrGroup] = (0, import_react3.useState)(null);
+    const [joinOpen, setJoinOpen] = (0, import_react3.useState)(false);
+    const [joinPasteMode, setJoinPasteMode] = (0, import_react3.useState)(false);
+    const [pendingJoin, setPendingJoin] = (0, import_react3.useState)(null);
+    const closePendingJoinRef = (0, import_react3.useRef)(null);
+    const groupsRef = (0, import_react3.useRef)(groups);
+    (0, import_react3.useEffect)(() => {
       groupsRef.current = groups;
     }, [groups]);
-    const [onboardStep, setOnboardStep] = (0, import_react2.useState)(0);
+    const [onboardStep, setOnboardStep] = (0, import_react3.useState)(0);
     const showOnboarding = ready && !profile?.onboardingComplete;
-    const qrScanModeRef = (0, import_react2.useRef)(null);
-    const closeOnboardSubModeRef = (0, import_react2.useRef)(null);
-    const [showDonationReminder, setShowDonationReminder] = (0, import_react2.useState)(false);
-    const tabHistoryRef = (0, import_react2.useRef)([]);
-    const tabRef = (0, import_react2.useRef)("calendar");
-    const backHandlerRef = (0, import_react2.useRef)(null);
-    const closeAboutSheetRef = (0, import_react2.useRef)(null);
-    const closeJoinSheetRef = (0, import_react2.useRef)(null);
-    const closeInviteSheetRef = (0, import_react2.useRef)(null);
-    const closeNewGroupSheetRef = (0, import_react2.useRef)(null);
-    const [groupCreatedToast, setGroupCreatedToast] = (0, import_react2.useState)(null);
-    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
-    const [backupNudgeDismissed, setBackupNudgeDismissed] = (0, import_react2.useState)(() => {
+    const qrScanModeRef = (0, import_react3.useRef)(null);
+    const closeOnboardSubModeRef = (0, import_react3.useRef)(null);
+    const [showDonationReminder, setShowDonationReminder] = (0, import_react3.useState)(false);
+    const tabHistoryRef = (0, import_react3.useRef)([]);
+    const tabRef = (0, import_react3.useRef)("calendar");
+    const backHandlerRef = (0, import_react3.useRef)(null);
+    const closeAboutSheetRef = (0, import_react3.useRef)(null);
+    const closeJoinSheetRef = (0, import_react3.useRef)(null);
+    const closeInviteSheetRef = (0, import_react3.useRef)(null);
+    const closeNewGroupSheetRef = (0, import_react3.useRef)(null);
+    const [groupCreatedToast, setGroupCreatedToast] = (0, import_react3.useState)(null);
+    const [backupStatus, setBackupStatus] = (0, import_react3.useState)(null);
+    const [backupNudgeDismissed, setBackupNudgeDismissed] = (0, import_react3.useState)(() => {
       try {
         return localStorage.getItem("pearcal:backupNudgeDismissed") === "1";
       } catch {
         return false;
       }
     });
-    const [focusBackup, setFocusBackup] = (0, import_react2.useState)(0);
-    const [confirmSheet, setConfirmSheet] = (0, import_react2.useState)(null);
-    const closeConfirmSheetRef = (0, import_react2.useRef)(null);
-    const [infoSheet, setInfoSheet] = (0, import_react2.useState)(null);
-    const closeInfoSheetRef = (0, import_react2.useRef)(null);
-    const [scopeSheet, setScopeSheet] = (0, import_react2.useState)(null);
-    const closeScopeSheetRef = (0, import_react2.useRef)(null);
-    const [deleteScopeSheet, setDeleteScopeSheet] = (0, import_react2.useState)(null);
-    const closeDeleteScopeSheetRef = (0, import_react2.useRef)(null);
-    const closeEventModalRef = (0, import_react2.useRef)(null);
-    const closeGroupSettingsRef = (0, import_react2.useRef)(null);
-    const closeFullGridRef = (0, import_react2.useRef)(null);
+    const [focusBackup, setFocusBackup] = (0, import_react3.useState)(0);
+    const [confirmSheet, setConfirmSheet] = (0, import_react3.useState)(null);
+    const closeConfirmSheetRef = (0, import_react3.useRef)(null);
+    const [infoSheet, setInfoSheet] = (0, import_react3.useState)(null);
+    const closeInfoSheetRef = (0, import_react3.useRef)(null);
+    const [scopeSheet, setScopeSheet] = (0, import_react3.useState)(null);
+    const closeScopeSheetRef = (0, import_react3.useRef)(null);
+    const [deleteScopeSheet, setDeleteScopeSheet] = (0, import_react3.useState)(null);
+    const closeDeleteScopeSheetRef = (0, import_react3.useRef)(null);
+    const closeEventModalRef = (0, import_react3.useRef)(null);
+    const closeGroupSettingsRef = (0, import_react3.useRef)(null);
+    const closeFullGridRef = (0, import_react3.useRef)(null);
     const goTab = (t7) => {
       tabHistoryRef.current.push(tabRef.current);
       tabRef.current = t7;
       setTab(t7);
     };
-    const [readyGroupKeys, setReadyGroupKeys] = (0, import_react2.useState)(() => /* @__PURE__ */ new Set());
-    const [blindPeerKey, setBlindPeerKey] = (0, import_react2.useState)(null);
-    const [syncingGroups, setSyncingGroups] = (0, import_react2.useState)(() => /* @__PURE__ */ new Set());
+    const [readyGroupKeys, setReadyGroupKeys] = (0, import_react3.useState)(() => /* @__PURE__ */ new Set());
+    const [blindPeerKey, setBlindPeerKey] = (0, import_react3.useState)(null);
+    const [syncingGroups, setSyncingGroups] = (0, import_react3.useState)(() => /* @__PURE__ */ new Set());
     const th = themes();
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
     const weekStart = profile?.weekStart ?? 0;
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!db2) {
         setReady(true);
         return;
@@ -16598,7 +16628,7 @@
         cancelled = true;
       };
     }, [db2]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!db2?.getBackupStatus) return;
       let cancelled = false;
       (async () => {
@@ -16612,7 +16642,7 @@
         cancelled = true;
       };
     }, [db2, tab]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!db2) return;
       function scheduleDefaultReminders(newEvents) {
         if (!newEvents || newEvents.length === 0) return;
@@ -16800,14 +16830,6 @@
       }
       emitter.on("pendingApproval", onPendingApproval);
       emitter.on("pendingApprovalCleared", onPendingApprovalCleared);
-      async function onProfileChanged() {
-        try {
-          const fresh = await db2.getProfile();
-          if (fresh) setProfile(fresh);
-        } catch {
-        }
-      }
-      emitter.on("profileChanged", onProfileChanged);
       return () => {
         emitter.off("sync", onSync);
         emitter.off("syncing", onSyncing);
@@ -16822,14 +16844,13 @@
         emitter.off("groupKeyUpdated", onGroupKeyUpdated);
         emitter.off("pendingApproval", onPendingApproval);
         emitter.off("pendingApprovalCleared", onPendingApprovalCleared);
-        emitter.off("profileChanged", onProfileChanged);
       };
     }, [db2]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       tabRef.current = tab;
     }, [tab]);
     const _scene = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!_scene) return;
       if (_scene.tab) setTab(_scene.tab);
       if (_scene.date) {
@@ -16838,12 +16859,12 @@
         setViewDate({ y: parseInt(y), m: parseInt(m3) - 1 });
       }
     }, []);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!_scene?.openEventId || !events.length) return;
       const ev2 = events.find((e58) => e58.id === _scene.openEventId);
       if (ev2) setModal({ mode: "edit", event: { ...ev2 } });
     }, [events]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       backHandlerRef.current = () => {
         if (showOnboarding) {
           if (closeOnboardSubModeRef.current?.()) return;
@@ -16885,13 +16906,13 @@
         window.ReactNativeWebView?.postMessage(JSON.stringify({ method: "exitApp", id: -1 }));
       };
     }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep, settingsGroup]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       window.__pearBack = () => backHandlerRef.current?.();
     }, []);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       window.__pearSync = sync2;
     }, [sync2]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       function onQrScanResult(url) {
         if (!url || !db2 || !sync2) return;
         const mode = qrScanModeRef.current;
@@ -16926,7 +16947,7 @@
         emitter.off("cameraResult", onCameraResult);
       };
     }, [db2, sync2]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!db2 || !sync2) return;
       window.__pearCal = {
         handleLink: (url) => openPendingJoin(url),
@@ -16945,8 +16966,8 @@
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const forwardBusyTimeRef = (0, import_react2.useRef)(null);
-    const saveEvent = (0, import_react2.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
+    const forwardBusyTimeRef = (0, import_react3.useRef)(null);
+    const saveEvent = (0, import_react3.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
       const { _prevDate, _myForwards, ...evClean } = ev2;
       ev2 = evClean;
       const occurrences = ev2.recurrence && ev2.recurrence !== "none" && ev2.recurrenceEnd && !ev2.recurrenceId ? expandRecurring(ev2) : scope === "future" && ev2.recurrenceId ? (() => {
@@ -17020,7 +17041,7 @@
         }
       }
     }, [db2, notifs2, sync2, profile, events, myRsvps]);
-    const forwardBusyTime = (0, import_react2.useCallback)((sourceOrOccs, newTargetGroupIds) => {
+    const forwardBusyTime = (0, import_react3.useCallback)((sourceOrOccs, newTargetGroupIds) => {
       if (!db2 || !sync2 || !profile?.id) return;
       const myId = profile.id;
       const myName = profile?.name ?? "Someone";
@@ -17069,7 +17090,7 @@
       }
     }, [db2, sync2, events, profile]);
     forwardBusyTimeRef.current = forwardBusyTime;
-    const deleteEvent = (0, import_react2.useCallback)(async (id) => {
+    const deleteEvent = (0, import_react3.useCallback)(async (id) => {
       const ev2 = events.find((e58) => e58.id === id);
       if (!ev2) return;
       const myId = profile?.id;
@@ -17102,7 +17123,7 @@
       setEvents((prev) => prev.filter((e58) => e58.id !== id && !(e58.isShadow && e58.sourceEventId === id && e58.creatorId === myId)));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
-    const deleteEventSeries = (0, import_react2.useCallback)(async (recurrenceId) => {
+    const deleteEventSeries = (0, import_react3.useCallback)(async (recurrenceId) => {
       if (!recurrenceId || !db2) return;
       await db2.deleteEventSeries(recurrenceId).catch(() => {
       });
@@ -17133,7 +17154,7 @@
       setEvents((prev) => prev.filter((e58) => e58.recurrenceId !== recurrenceId && !(e58.isShadow && e58.creatorId === myId && seriesIds.has(e58.sourceEventId))));
       setModal(null);
     }, [db2, notifs2, sync2, events, profile]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!db2 || !sync2 || !profile?.id || events.length === 0) return;
       const myId = profile.id;
       const myName = profile?.name ?? "Someone";
@@ -17228,7 +17249,7 @@
       }
       setPendingJoin({ url, groupName });
     }
-    const joinWithNickname = (0, import_react2.useCallback)(async (url, nickname) => {
+    const joinWithNickname = (0, import_react3.useCallback)(async (url, nickname) => {
       const nick = nickname && nickname !== profile?.name ? nickname : null;
       const result = await handleInviteLink(url, db2, sync2, (g) => {
         setTab("groups");
@@ -17253,7 +17274,7 @@
       setPendingJoin(null);
       return result;
     }, [db2, sync2, profile]);
-    const addGroup = (0, import_react2.useCallback)(async (g, opts) => {
+    const addGroup = (0, import_react3.useCallback)(async (g, opts) => {
       if (db2) {
         if (!opts?.alreadyJoined) {
           await db2.putGroup(g);
@@ -17271,7 +17292,7 @@
       }
       setGroups((prev) => prev.some((x) => x.id === g.id) ? prev : [...prev, g]);
     }, [db2, sync2]);
-    const updateGroup = (0, import_react2.useCallback)(async (updated) => {
+    const updateGroup = (0, import_react3.useCallback)(async (updated) => {
       if (db2) {
         const prev = groups.find((g) => g.id === updated.id);
         const oldIds = new Set((prev?.members ?? []).map((m3) => m3.id));
@@ -17289,7 +17310,7 @@
       setGroups((prev) => prev.map((g) => g.id === updated.id ? updated : g));
       setSettingsGroup((prev) => prev?.id === updated.id ? updated : prev);
     }, [db2, sync2, groups]);
-    const deleteGroup = (0, import_react2.useCallback)(async (id, action = "delete") => {
+    const deleteGroup = (0, import_react3.useCallback)(async (id, action = "delete") => {
       if (db2) {
         const g = groups.find((x) => x.id === id);
         const isOwner = g?.ownerId === profile?.id;
@@ -17312,14 +17333,14 @@
       setEvents((prev) => prev.map((e58) => ({ ...e58, groups: e58.groups.filter((gid) => gid !== id) })).filter((e58) => e58.groups.length > 0));
       setSettingsGroup(null);
     }, [db2, sync2, groups, profile]);
-    const removeBrokenGroup = (0, import_react2.useCallback)(async (id) => {
+    const removeBrokenGroup = (0, import_react3.useCallback)(async (id) => {
       if (sync2?.removeBrokenGroup) await sync2.removeBrokenGroup(id).catch(() => {
       });
       setGroups((prev) => prev.filter((g) => g.id !== id));
       setEvents((prev) => prev.map((e58) => ({ ...e58, groups: e58.groups.filter((gid) => gid !== id) })).filter((e58) => e58.groups.length > 0));
       setSettingsGroup(null);
     }, [sync2]);
-    const removeMember = (0, import_react2.useCallback)(async (g, uid) => {
+    const removeMember = (0, import_react3.useCallback)(async (g, uid) => {
       const removedMember = g.members.find((m3) => m3.id === uid);
       const removedEntry = removedMember ? { ...removedMember } : { id: uid, name: "Member", avatar: "?" };
       const removedMembers = [...g.removedMembers ?? [], removedEntry];
@@ -17328,7 +17349,7 @@
       await sync2?.memberLeft(g.id, uid).catch(() => {
       });
     }, [updateGroup, sync2]);
-    const purgeMember = (0, import_react2.useCallback)(async (g, memberId) => {
+    const purgeMember = (0, import_react3.useCallback)(async (g, memberId) => {
       const updated = {
         ...g,
         removedMembers: (g.removedMembers ?? []).filter((m3) => (m3.id ?? m3) !== memberId)
@@ -17337,7 +17358,7 @@
       await sync2?.purgeMember(g.id, memberId).catch(() => {
       });
     }, [updateGroup, sync2]);
-    const updateProfile = (0, import_react2.useCallback)(async (updates) => {
+    const updateProfile = (0, import_react3.useCallback)(async (updates) => {
       if (db2) {
         const hasPhoto = updates.avatar?.startsWith?.("data:") || profile?.avatar?.startsWith?.("data:");
         const settingPhoto = updates.avatar?.startsWith?.("data:");
@@ -17375,9 +17396,9 @@
         members: g.members?.map((m3) => m3.id === updatedProfile2.id ? { ...m3, name: updatedProfile2.name, avatar: memberAvatarForState, avatarHash: null } : m3) ?? []
       })));
     }, [db2, profile, groups, sync2]);
-    const updateProfileRef = (0, import_react2.useRef)(updateProfile);
+    const updateProfileRef = (0, import_react3.useRef)(updateProfile);
     updateProfileRef.current = updateProfile;
-    const calDays = (0, import_react2.useMemo)(() => {
+    const calDays = (0, import_react3.useMemo)(() => {
       const { y, m: m3 } = viewDate;
       const first = new Date(y, m3, 1).getDay();
       const firstAdj = (first - weekStart + 7) % 7;
@@ -17397,7 +17418,7 @@
         cells.push({ d: nextD++, y: nextY, m: nextM, type: "next" });
       return cells;
     }, [viewDate, weekStart]);
-    const hiddenShadowIds = (0, import_react2.useMemo)(() => {
+    const hiddenShadowIds = (0, import_react3.useMemo)(() => {
       const haveSource = new Set(events.filter((e58) => !e58.isShadow).map((e58) => e58.id));
       const hidden = /* @__PURE__ */ new Set();
       for (const e58 of events) {
@@ -17462,7 +17483,7 @@
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 16, fontWeight: 300 }, children: "Failed to load PearCal" }),
       /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", { style: { fontSize: 12, color: "#888", fontFamily: "monospace" }, children: error })
     ] });
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!ready || !profile || !profile.onboardingComplete) return;
       if (profile.donationReminderShown) return;
       const TWO_WEEKS = 14 * 24 * 60 * 60 * 1e3;
@@ -18215,8 +18236,8 @@
     return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(MemberAvatarByHash, { avatarHash, fallback: avatar, name, color, size, fontSize });
   }
   function MemberAvatarByHash({ avatarHash, fallback, name, color, size, fontSize }) {
-    const [resolved, setResolved] = (0, import_react2.useState)(null);
-    (0, import_react2.useEffect)(() => {
+    const [resolved, setResolved] = (0, import_react3.useState)(null);
+    (0, import_react3.useEffect)(() => {
       if (!window.__pearResolveAvatar) return;
       let cancelled = false;
       window.__pearResolveAvatar(avatarHash).then((d) => {
@@ -18439,7 +18460,7 @@
     myRsvps = {},
     myProfileId
   }) {
-    const weekDays = (0, import_react2.useMemo)(() => {
+    const weekDays = (0, import_react3.useMemo)(() => {
       const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
       const dow = d.getDay();
       const off = (dow - weekStart + 7) % 7;
@@ -18451,8 +18472,8 @@
         return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
       });
     }, [selectedDate, weekStart, dateStr2]);
-    const weekScrollRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const weekScrollRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (!weekScrollRef.current) return;
       const el = weekScrollRef.current.querySelector('[data-weekday="' + selectedDate + '"]');
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -18636,8 +18657,8 @@
     myProfileId
   }) {
     const HOUR_H = 60;
-    const hourGridRef = (0, import_react2.useRef)(null);
-    const adjacentDays = (0, import_react2.useMemo)(() => {
+    const hourGridRef = (0, import_react3.useRef)(null);
+    const adjacentDays = (0, import_react3.useMemo)(() => {
       const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
       return Array.from({ length: 7 }, (_, i2) => {
         const day = new Date(d);
@@ -18645,7 +18666,7 @@
         return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
       });
     }, [selectedDate, dateStr2]);
-    const dayEvents = (0, import_react2.useMemo)(() => {
+    const dayEvents = (0, import_react3.useMemo)(() => {
       let evs = eventsOnDate(selectedDate);
       if (filterGroupIds.size > 0) evs = evs.filter((e58) => (e58.groups ?? []).some((gid) => filterGroupIds.has(gid)));
       evs = evs.filter((e58) => isInAgenda(e58, myProfileId));
@@ -18659,7 +18680,7 @@
       const [h2, m3] = t7.split(":").map(Number);
       return (h2 + m3 / 60) * HOUR_H;
     };
-    const positioned = (0, import_react2.useMemo)(() => {
+    const positioned = (0, import_react3.useMemo)(() => {
       const sorted = [...timedEvents].sort((a38, b) => (a38.start || "").localeCompare(b.start || ""));
       const cols = [];
       return sorted.map((ev2) => {
@@ -18673,7 +18694,7 @@
         return { ev: ev2, top, height, col, totalCols };
       });
     }, [dayEvents]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!hourGridRef.current) return;
       const isToday = selectedDate === todayStr2;
       let scrollTarget;
@@ -18994,7 +19015,7 @@
     );
   }
   function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!closeFullGridRef) return;
       closeFullGridRef.current = () => {
         onExit();
@@ -19018,13 +19039,13 @@
     const dow = today.getDay();
     const startOffset = (dow - weekStart + 7) % 7;
     const initialWeekStart = addDays(today, -startOffset);
-    const [range, setRange] = (0, import_react2.useState)({ before: 40, after: 40 });
-    const [todayVisible, setTodayVisible] = (0, import_react2.useState)(true);
-    const scrollRef = (0, import_react2.useRef)(null);
-    const didInitialScroll = (0, import_react2.useRef)(false);
+    const [range, setRange] = (0, import_react3.useState)({ before: 40, after: 40 });
+    const [todayVisible, setTodayVisible] = (0, import_react3.useState)(true);
+    const scrollRef = (0, import_react3.useRef)(null);
+    const didInitialScroll = (0, import_react3.useRef)(false);
     const totalWeeks = range.before + range.after + 1;
     const firstWeek = addDays(initialWeekStart, -range.before * 7);
-    const weeks = (0, import_react2.useMemo)(() => {
+    const weeks = (0, import_react3.useMemo)(() => {
       const out = [];
       for (let i2 = 0; i2 < totalWeeks; i2++) {
         const ws = addDays(firstWeek, i2 * 7);
@@ -19067,7 +19088,7 @@
       }
       return { placed: placed.filter((p3) => p3.lane < MAX_LANES), overflow };
     };
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (didInitialScroll.current || !scrollRef.current) return;
       const container = scrollRef.current;
       const el = container.querySelector(`[data-weekindex="${range.before}"]`);
@@ -19323,29 +19344,29 @@
     closeFullGridRef
   }) {
     const { y, m: m3 } = viewDate;
-    const [showMonthPicker, setShowMonthPicker] = (0, import_react2.useState)(false);
-    const [showYearPicker, setShowYearPicker] = (0, import_react2.useState)(false);
-    const [slideDir, setSlideDir] = (0, import_react2.useState)(0);
-    const [isSliding, setIsSliding] = (0, import_react2.useState)(false);
-    const touchStartX = (0, import_react2.useRef)(null);
-    const scrollRef = (0, import_react2.useRef)(null);
-    const isProgrammaticScroll = (0, import_react2.useRef)(false);
-    const isUserScrolling = (0, import_react2.useRef)(false);
-    const userScrollTimer = (0, import_react2.useRef)(null);
-    const scrollToDateRef = (0, import_react2.useRef)(null);
-    const [filterGroupIds, setFilterGroupIds] = (0, import_react2.useState)(/* @__PURE__ */ new Set());
-    const [calView, setCalView] = (0, import_react2.useState)(() => {
+    const [showMonthPicker, setShowMonthPicker] = (0, import_react3.useState)(false);
+    const [showYearPicker, setShowYearPicker] = (0, import_react3.useState)(false);
+    const [slideDir, setSlideDir] = (0, import_react3.useState)(0);
+    const [isSliding, setIsSliding] = (0, import_react3.useState)(false);
+    const touchStartX = (0, import_react3.useRef)(null);
+    const scrollRef = (0, import_react3.useRef)(null);
+    const isProgrammaticScroll = (0, import_react3.useRef)(false);
+    const isUserScrolling = (0, import_react3.useRef)(false);
+    const userScrollTimer = (0, import_react3.useRef)(null);
+    const scrollToDateRef = (0, import_react3.useRef)(null);
+    const [filterGroupIds, setFilterGroupIds] = (0, import_react3.useState)(/* @__PURE__ */ new Set());
+    const [calView, setCalView] = (0, import_react3.useState)(() => {
       const s10 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
       return s10?.calendarView || "month";
     });
-    const [fullGrid, setFullGrid] = (0, import_react2.useState)(() => {
+    const [fullGrid, setFullGrid] = (0, import_react3.useState)(() => {
       try {
         return typeof localStorage !== "undefined" && localStorage.getItem("pearcal:fullGrid") === "1";
       } catch {
         return false;
       }
     });
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       try {
         localStorage.setItem("pearcal:fullGrid", fullGrid ? "1" : "0");
       } catch {
@@ -19393,13 +19414,13 @@
         isProgrammaticScroll.current = false;
       }, smooth ? 600 : 50);
     };
-    const didInitialScroll = (0, import_react2.useRef)(false);
-    (0, import_react2.useEffect)(() => {
+    const didInitialScroll = (0, import_react3.useRef)(false);
+    (0, import_react3.useEffect)(() => {
       if (!eventsReady.current || didInitialScroll.current) return;
       didInitialScroll.current = true;
       requestAnimationFrame(() => scrollToDate(todayStr2, false));
     }, [events]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (calView !== "month" || !eventsReady.current) return;
       requestAnimationFrame(() => scrollToDate(todayStr2, false));
     }, [calView]);
@@ -19986,17 +20007,17 @@
     ] }) });
   }
   function OnboardingModal({ th, step, setStep, profile, onUpdateProfile, db: db2, sync: sync2, qrScanModeRef, closeOnboardSubModeRef, onComplete }) {
-    const [name, setName] = (0, import_react2.useState)(profile?.name ?? "");
-    const [saving, setSaving] = (0, import_react2.useState)(false);
-    const [photoSaving, setPhotoSaving] = (0, import_react2.useState)(false);
-    const fileRef = (0, import_react2.useRef)(null);
+    const [name, setName] = (0, import_react3.useState)(profile?.name ?? "");
+    const [saving, setSaving] = (0, import_react3.useState)(false);
+    const [photoSaving, setPhotoSaving] = (0, import_react3.useState)(false);
+    const fileRef = (0, import_react3.useRef)(null);
     const total = 5;
-    const [slideDir, setSlideDir] = (0, import_react2.useState)(1);
-    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
-    const [restoreMode, setRestoreMode] = (0, import_react2.useState)(null);
-    const [restoreError, setRestoreError] = (0, import_react2.useState)("");
-    const [pairInput, setPairInput] = (0, import_react2.useState)("");
-    (0, import_react2.useEffect)(() => {
+    const [slideDir, setSlideDir] = (0, import_react3.useState)(1);
+    const [backupStatus, setBackupStatus] = (0, import_react3.useState)(null);
+    const [restoreMode, setRestoreMode] = (0, import_react3.useState)(null);
+    const [restoreError, setRestoreError] = (0, import_react3.useState)("");
+    const [pairInput, setPairInput] = (0, import_react3.useState)("");
+    (0, import_react3.useEffect)(() => {
       if (!closeOnboardSubModeRef) return;
       closeOnboardSubModeRef.current = () => {
         if (restoreMode === "pair-waiting") return true;
@@ -20014,7 +20035,7 @@
         if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null;
       };
     }, [restoreMode, closeOnboardSubModeRef, db2]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       function onPairingStarted(data) {
         if (!data || data.role !== "secondary") return;
         setRestoreMode("pair-waiting");
@@ -20067,7 +20088,7 @@
         setRestoreError(e58?.message || "Invalid pairing link");
       }
     }
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
         try {
@@ -20516,10 +20537,10 @@
     ] });
   }
   function PairingHostModal({ th, data, error, onRegenerate, onCancel }) {
-    const canvasRef = (0, import_react2.useRef)(null);
-    const [qrError, setQrError] = (0, import_react2.useState)(null);
+    const canvasRef = (0, import_react3.useRef)(null);
+    const [qrError, setQrError] = (0, import_react3.useState)(null);
     const link = data?.url;
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!canvasRef.current || !link) return;
       try {
         import_qrcode.default.toCanvas(canvasRef.current, link, { width: 240, margin: 2 }, (err) => {
@@ -20644,9 +20665,9 @@
     );
   }
   function QRModal({ th, link, onClose }) {
-    const canvasRef = (0, import_react2.useRef)(null);
-    const [qrError, setQrError] = (0, import_react2.useState)(null);
-    (0, import_react2.useEffect)(() => {
+    const canvasRef = (0, import_react3.useRef)(null);
+    const [qrError, setQrError] = (0, import_react3.useState)(null);
+    (0, import_react3.useEffect)(() => {
       if (!canvasRef.current || !link) return;
       try {
         import_qrcode.default.toCanvas(canvasRef.current, link, { width: 260, margin: 2 }, (err) => {
@@ -20932,10 +20953,10 @@
     ] });
   }
   function EventModal({ th, modal, setModal, groups, profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
-    const [ev2, setEv] = (0, import_react2.useState)(modal.event);
+    const [ev2, setEv] = (0, import_react3.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e58) => ({ ...e58, [k]: v }));
-    const [myForwards, setMyForwards] = (0, import_react2.useState)(() => {
+    const [myForwards, setMyForwards] = (0, import_react3.useState)(() => {
       if (!profile?.id) return [];
       const myId = profile.id;
       if (modal.mode === "create" && groups.length === 1 && !(modal.event.groups ?? []).includes(groups[0].id)) {
@@ -20952,10 +20973,10 @@
       }
       return Array.from(targets);
     });
-    const initialForwardsRef = (0, import_react2.useRef)(null);
+    const initialForwardsRef = (0, import_react3.useRef)(null);
     if (initialForwardsRef.current === null) initialForwardsRef.current = myForwards;
     const toggleForward = (gid) => setMyForwards((cur) => cur.includes(gid) ? cur.filter((x) => x !== gid) : [...cur, gid]);
-    const forwardsDirty = (0, import_react2.useMemo)(() => {
+    const forwardsDirty = (0, import_react3.useMemo)(() => {
       const a38 = [...initialForwardsRef.current ?? []].sort().join(",");
       const b = [...myForwards].sort().join(",");
       return a38 !== b;
@@ -20963,7 +20984,7 @@
     function toggleGroup(gid) {
       setEv((e58) => ({ ...e58, groups: e58.groups.includes(gid) ? e58.groups.filter((x) => x !== gid) : [...e58.groups, gid] }));
     }
-    const allMembers = (0, import_react2.useMemo)(() => {
+    const allMembers = (0, import_react3.useMemo)(() => {
       const seen = {}, res = [];
       ev2.groups.forEach((gid) => {
         const g = groups.find((x) => x.id === gid);
@@ -20979,13 +21000,13 @@
     function toggleInvitee(uid) {
       setEv((e58) => ({ ...e58, invitees: e58.invitees.includes(uid) ? e58.invitees.filter((x) => x !== uid) : [...e58.invitees, uid] }));
     }
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       const cols = ev2.groups.map((gid) => groups.find((x) => x.id === gid)?.color).filter(Boolean);
       if (cols.length > 0) setEv((e58) => ({ ...e58, color: cols[0], colors: cols }));
       else setEv((e58) => ({ ...e58, colors: [] }));
     }, [ev2.groups, groups]);
-    const [reminders, setReminders] = (0, import_react2.useState)([]);
-    (0, import_react2.useEffect)(() => {
+    const [reminders, setReminders] = (0, import_react3.useState)([]);
+    (0, import_react3.useEffect)(() => {
       if (!db2) return;
       const eventId = modal.event?.id;
       if (!eventId) return;
@@ -21001,10 +21022,10 @@
       });
     }, [modal.event?.id]);
     const isEventCreator = !ev2.creatorId || ev2.creatorId === profile?.id;
-    const [myRsvp, setMyRsvp] = (0, import_react2.useState)(null);
-    const [rsvpList, setRsvpList] = (0, import_react2.useState)([]);
-    const [rsvpExpanded, setRsvpExpanded] = (0, import_react2.useState)(false);
-    (0, import_react2.useEffect)(() => {
+    const [myRsvp, setMyRsvp] = (0, import_react3.useState)(null);
+    const [rsvpList, setRsvpList] = (0, import_react3.useState)([]);
+    const [rsvpExpanded, setRsvpExpanded] = (0, import_react3.useState)(false);
+    (0, import_react3.useEffect)(() => {
       if (!db2 || modal.mode !== "edit") return;
       const eid = modal.event?.id;
       if (!eid || !ev2.rsvpEnabled) return;
@@ -21038,16 +21059,16 @@
         console.warn("[RSVP-ERR]", e58?.message);
       }
     }
-    const [moreOpen, setMoreOpen] = (0, import_react2.useState)(false);
-    const [mlOpen, setMlOpen] = (0, import_react2.useState)(!!modal.event?.meetingLink);
-    const [locOpen, setLocOpen] = (0, import_react2.useState)(!!modal.event?.location);
-    const [notesOpen, setNotesOpen] = (0, import_react2.useState)(!!modal.event?.desc);
-    const [privNotesOpen, setPrivNotesOpen] = (0, import_react2.useState)(!!modal.event?.privateNote);
-    const [titleErr, setTitleErr] = (0, import_react2.useState)("");
-    const [pastEvents, setPastEvents] = (0, import_react2.useState)(/* @__PURE__ */ new Map());
-    const [suggestions, setSuggestions] = (0, import_react2.useState)([]);
-    const [showSuggestions, setShowSuggestions] = (0, import_react2.useState)(false);
-    (0, import_react2.useEffect)(() => {
+    const [moreOpen, setMoreOpen] = (0, import_react3.useState)(false);
+    const [mlOpen, setMlOpen] = (0, import_react3.useState)(!!modal.event?.meetingLink);
+    const [locOpen, setLocOpen] = (0, import_react3.useState)(!!modal.event?.location);
+    const [notesOpen, setNotesOpen] = (0, import_react3.useState)(!!modal.event?.desc);
+    const [privNotesOpen, setPrivNotesOpen] = (0, import_react3.useState)(!!modal.event?.privateNote);
+    const [titleErr, setTitleErr] = (0, import_react3.useState)("");
+    const [pastEvents, setPastEvents] = (0, import_react3.useState)(/* @__PURE__ */ new Map());
+    const [suggestions, setSuggestions] = (0, import_react3.useState)([]);
+    const [showSuggestions, setShowSuggestions] = (0, import_react3.useState)(false);
+    (0, import_react3.useEffect)(() => {
       db2.listEvents().then((evts) => {
         const byTitle = /* @__PURE__ */ new Map();
         for (const e58 of evts ?? []) {
@@ -21092,8 +21113,8 @@
       }
       onSave(toSave, "one", {}, reminders);
     }
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -22114,11 +22135,11 @@
     ] });
   }
   function JoinGroupModal({ th, onClose, closeRef, db: db2, sync: sync2, onJoined, onPendingJoin }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    const [pasteMode, setPasteMode] = (0, import_react2.useState)(false);
-    const [pasteUrl, setPasteUrl] = (0, import_react2.useState)("");
-    const [pasteErr, setPasteErr] = (0, import_react2.useState)("");
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    const [pasteMode, setPasteMode] = (0, import_react3.useState)(false);
+    const [pasteUrl, setPasteUrl] = (0, import_react3.useState)("");
+    const [pasteErr, setPasteErr] = (0, import_react3.useState)("");
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -22268,11 +22289,11 @@
     ] }) });
   }
   function NicknameBeforeJoinSheet({ th, groupName, defaultName, onConfirm, onClose, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    const [nickname, setNickname] = (0, import_react2.useState)(defaultName);
-    const [joining, setJoining] = (0, import_react2.useState)(false);
-    const [err, setErr] = (0, import_react2.useState)("");
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    const [nickname, setNickname] = (0, import_react3.useState)(defaultName);
+    const [joining, setJoining] = (0, import_react3.useState)(false);
+    const [err, setErr] = (0, import_react3.useState)("");
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -22350,9 +22371,9 @@
     ] }) });
   }
   function GroupsTab({ th, groups, profile, sync: sync2, db: db2, readyGroupKeys, pendingApprovalGroups, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
-    const [copiedId, setCopiedId] = (0, import_react2.useState)(null);
-    const [inviteModalGroup, setInviteModalGroup] = (0, import_react2.useState)(null);
-    (0, import_react2.useEffect)(() => {
+    const [copiedId, setCopiedId] = (0, import_react3.useState)(null);
+    const [inviteModalGroup, setInviteModalGroup] = (0, import_react3.useState)(null);
+    (0, import_react3.useEffect)(() => {
       const s10 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
       if (s10?.openInviteGroupId) {
         const g = groups.find((gr) => gr.id === s10.openInviteGroupId);
@@ -22513,12 +22534,12 @@
     ] });
   }
   function InviteOptionsModal({ th, group, profile, sync: sync2, onQrGroup, onClose, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
+    const bsCloseRef = (0, import_react3.useRef)(null);
     const link = buildInviteLink(group, profile?.id ?? "unknown");
     const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:
 
 ${link}`;
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -22573,8 +22594,8 @@ ${link}`;
     ] }) });
   }
   function GroupSettingsModal({ th, group, me, db: db2, sync: sync2, totalGroupsCount = 1, pendingApproval = false, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -22585,16 +22606,16 @@ ${link}`;
         };
       }
     }, []);
-    const [g, setG] = (0, import_react2.useState)({ ...group });
-    const [nameErr, setNameErr] = (0, import_react2.useState)("");
-    const [saved, setSaved] = (0, import_react2.useState)(false);
-    const [saving, setSaving] = (0, import_react2.useState)(false);
-    const [nickInput, setNickInput] = (0, import_react2.useState)(() => (group.members ?? []).find((m3) => m3.id === me?.id)?.nickname ?? "");
-    const [nickSaved, setNickSaved] = (0, import_react2.useState)(false);
-    const [rejoinRequests, setRejoinRequests] = (0, import_react2.useState)([]);
-    const [transferPicker, setTransferPicker] = (0, import_react2.useState)(false);
-    const [showAllHistory, setShowAllHistory] = (0, import_react2.useState)(false);
-    const fileRef = (0, import_react2.useRef)();
+    const [g, setG] = (0, import_react3.useState)({ ...group });
+    const [nameErr, setNameErr] = (0, import_react3.useState)("");
+    const [saved, setSaved] = (0, import_react3.useState)(false);
+    const [saving, setSaving] = (0, import_react3.useState)(false);
+    const [nickInput, setNickInput] = (0, import_react3.useState)(() => (group.members ?? []).find((m3) => m3.id === me?.id)?.nickname ?? "");
+    const [nickSaved, setNickSaved] = (0, import_react3.useState)(false);
+    const [rejoinRequests, setRejoinRequests] = (0, import_react3.useState)([]);
+    const [transferPicker, setTransferPicker] = (0, import_react3.useState)(false);
+    const [showAllHistory, setShowAllHistory] = (0, import_react3.useState)(false);
+    const fileRef = (0, import_react3.useRef)();
     const isOwner = g.ownerId === me?.id;
     const isAdmin = !isOwner && (g.admins ?? []).includes(me?.id);
     const canManage = isOwner || isAdmin;
@@ -22604,7 +22625,7 @@ ${link}`;
     const ownerInactiveMs = Date.now() - lastOwnerActivityTs;
     const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS;
     const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 864e5));
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!canManage) return;
       let cancelled = false;
       const refresh = () => {
@@ -22624,7 +22645,7 @@ ${link}`;
         emitter.off("pendingRejoin", onPending);
       };
     }, [canManage, g.id]);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       setG((prev) => ({
         ...prev,
         members: group.members ?? prev.members,
@@ -23519,15 +23540,15 @@ ${link}`;
     ] });
   }
   function NewGroupModal({ th, onClose, onAdd, onUpdate, me, sync: sync2, onCreated, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    const [name, setName] = (0, import_react2.useState)("");
-    const [color, setColor] = (0, import_react2.useState)(GROUP_COLORS[0]);
-    const [emoji, setEmoji] = (0, import_react2.useState)(GROUP_EMOJIS[0]);
-    const [icon, setIcon] = (0, import_react2.useState)(null);
-    const [nameErr, setNameErr] = (0, import_react2.useState)("");
-    const [creating, setCreating] = (0, import_react2.useState)(false);
-    const fileRef = (0, import_react2.useRef)();
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    const [name, setName] = (0, import_react3.useState)("");
+    const [color, setColor] = (0, import_react3.useState)(GROUP_COLORS[0]);
+    const [emoji, setEmoji] = (0, import_react3.useState)(GROUP_EMOJIS[0]);
+    const [icon, setIcon] = (0, import_react3.useState)(null);
+    const [nameErr, setNameErr] = (0, import_react3.useState)("");
+    const [creating, setCreating] = (0, import_react3.useState)(false);
+    const fileRef = (0, import_react3.useRef)();
+    (0, import_react3.useEffect)(() => {
       if (closeRef) closeRef.current = () => {
         bsCloseRef.current?.();
         return true;
@@ -23698,8 +23719,8 @@ ${link}`;
     ] });
   }
   function ScopeSheet({ th, ev: ev2, onSave, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -23783,8 +23804,8 @@ ${link}`;
     ] }) });
   }
   function DeleteScopeSheet({ th, onChoose, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -23868,8 +23889,8 @@ ${link}`;
     ] }) });
   }
   function ConfirmSheet({ th, title, message, icon, confirmLabel, dangerous, onConfirm, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -23930,8 +23951,8 @@ ${link}`;
     ] }) });
   }
   function InfoSheet({ th, title, message, icon, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const bsCloseRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -23969,15 +23990,15 @@ ${link}`;
     ] }) });
   }
   function BottomSheet({ th, onClose, children, zIndex = 200, closeRef }) {
-    const [visible, setVisible] = (0, import_react2.useState)(false);
-    const [closing, setClosing] = (0, import_react2.useState)(false);
-    const touchStartY = (0, import_react2.useRef)(null);
+    const [visible, setVisible] = (0, import_react3.useState)(false);
+    const [closing, setClosing] = (0, import_react3.useState)(false);
+    const touchStartY = (0, import_react3.useRef)(null);
     const DURATION = 280;
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       const id = setTimeout(() => setVisible(true), 20);
       return () => clearTimeout(id);
     }, []);
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (closeRef) closeRef.current = close;
     }, [closing]);
     function close() {
@@ -24054,7 +24075,7 @@ ${link}`;
     );
   }
   function ImportIcsSheet({ th, events, filename, groups, existingEventIds, onImport, onClose }) {
-    const bsClose = (0, import_react2.useRef)(null);
+    const bsClose = (0, import_react3.useRef)(null);
     const memberIds = new Set((groups ?? []).map((g) => g.id));
     const routed = events.map((ev2) => {
       const uid = ev2.uid ? ev2.uid.replace(/@pearcal$/, "") : null;
@@ -24165,9 +24186,9 @@ ${link}`;
   }
   function AboutTab({ th, sync: sync2, closeSheetRef }) {
     const LIGHTNING_ADDRESS = "peerloomllc@strike.me";
-    const lsBsCloseRef = (0, import_react2.useRef)(null);
-    const [lightningModal, setLightningModal] = (0, import_react2.useState)(false);
-    (0, import_react2.useEffect)(() => {
+    const lsBsCloseRef = (0, import_react3.useRef)(null);
+    const [lightningModal, setLightningModal] = (0, import_react3.useState)(false);
+    (0, import_react3.useEffect)(() => {
       if (closeSheetRef) closeSheetRef.current = () => {
         if (lightningModal) {
           setLightningModal(false);
@@ -24452,16 +24473,16 @@ ${link}`;
     ] });
   }
   function ProfileTab({ th, profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup }) {
-    const [name, setName] = (0, import_react2.useState)(profile?.name ?? "");
-    const [editing, setEditing] = (0, import_react2.useState)(false);
-    const [saving, setSaving] = (0, import_react2.useState)(false);
-    const [photoSaving, setPhotoSaving] = (0, import_react2.useState)(false);
-    const [holidayWorking, setHolidayWorking] = (0, import_react2.useState)(false);
-    const [holidaysOpen, setHolidaysOpen] = (0, import_react2.useState)((profile?.holidayCountries ?? []).length > 0);
-    const [personalOpen, setPersonalOpen] = (0, import_react2.useState)(false);
-    const [advancedOpen, setAdvancedOpen] = (0, import_react2.useState)(false);
-    const backupRowRef = (0, import_react2.useRef)(null);
-    (0, import_react2.useEffect)(() => {
+    const [name, setName] = (0, import_react3.useState)(profile?.name ?? "");
+    const [editing, setEditing] = (0, import_react3.useState)(false);
+    const [saving, setSaving] = (0, import_react3.useState)(false);
+    const [photoSaving, setPhotoSaving] = (0, import_react3.useState)(false);
+    const [holidayWorking, setHolidayWorking] = (0, import_react3.useState)(false);
+    const [holidaysOpen, setHolidaysOpen] = (0, import_react3.useState)((profile?.holidayCountries ?? []).length > 0);
+    const [personalOpen, setPersonalOpen] = (0, import_react3.useState)(false);
+    const [advancedOpen, setAdvancedOpen] = (0, import_react3.useState)(false);
+    const backupRowRef = (0, import_react3.useRef)(null);
+    (0, import_react3.useEffect)(() => {
       if (!focusBackup) return;
       setAdvancedOpen(true);
       const t7 = setTimeout(() => {
@@ -24469,46 +24490,46 @@ ${link}`;
       }, 450);
       return () => clearTimeout(t7);
     }, [focusBackup]);
-    const [appearanceOpen, setAppearanceOpen] = (0, import_react2.useState)(false);
-    const [timeFormatOpen, setTimeFormatOpen] = (0, import_react2.useState)(false);
-    const [weekStartOpen, setWeekStartOpen] = (0, import_react2.useState)(false);
-    const [defaultRemOpen, setDefaultRemOpen] = (0, import_react2.useState)(false);
-    const [importExportOpen, setImportExportOpen] = (0, import_react2.useState)(false);
-    const [reclaimBusy, setReclaimBusy] = (0, import_react2.useState)(false);
-    const [reclaimResult, setReclaimResult] = (0, import_react2.useState)(null);
-    const [rebuildConfirm, setRebuildConfirm] = (0, import_react2.useState)(false);
-    const [storageOpen, setStorageOpen] = (0, import_react2.useState)(false);
-    const [reportOpen, setReportOpen] = (0, import_react2.useState)(null);
-    const [sweepReport, setSweepReport] = (0, import_react2.useState)(null);
-    const [sweepBusy, setSweepBusy] = (0, import_react2.useState)(false);
-    const [sweepResult, setSweepResult] = (0, import_react2.useState)(null);
+    const [appearanceOpen, setAppearanceOpen] = (0, import_react3.useState)(false);
+    const [timeFormatOpen, setTimeFormatOpen] = (0, import_react3.useState)(false);
+    const [weekStartOpen, setWeekStartOpen] = (0, import_react3.useState)(false);
+    const [defaultRemOpen, setDefaultRemOpen] = (0, import_react3.useState)(false);
+    const [importExportOpen, setImportExportOpen] = (0, import_react3.useState)(false);
+    const [reclaimBusy, setReclaimBusy] = (0, import_react3.useState)(false);
+    const [reclaimResult, setReclaimResult] = (0, import_react3.useState)(null);
+    const [rebuildConfirm, setRebuildConfirm] = (0, import_react3.useState)(false);
+    const [storageOpen, setStorageOpen] = (0, import_react3.useState)(false);
+    const [reportOpen, setReportOpen] = (0, import_react3.useState)(null);
+    const [sweepReport, setSweepReport] = (0, import_react3.useState)(null);
+    const [sweepBusy, setSweepBusy] = (0, import_react3.useState)(false);
+    const [sweepResult, setSweepResult] = (0, import_react3.useState)(null);
     const formatBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " KB" : b + " B";
-    const [icsImport, setIcsImport] = (0, import_react2.useState)(null);
-    const icsFileRef = (0, import_react2.useRef)(null);
+    const [icsImport, setIcsImport] = (0, import_react3.useState)(null);
+    const icsFileRef = (0, import_react3.useRef)(null);
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
     const weekStart = profile?.weekStart ?? 0;
-    const fileRef = (0, import_react2.useRef)();
-    const [seedPeerOpen, setSeedPeerOpen] = (0, import_react2.useState)(false);
-    const [seedPeerInput, setSeedPeerInput] = (0, import_react2.useState)(blindPeerKey ?? "");
-    const [seedPeerSaving, setSeedPeerSaving] = (0, import_react2.useState)(false);
-    const [seedPeerSaved, setSeedPeerSaved] = (0, import_react2.useState)(false);
-    const [seedPeerError, setSeedPeerError] = (0, import_react2.useState)(null);
-    const [seedPeerInfoOpen, setSeedPeerInfoOpen] = (0, import_react2.useState)(false);
-    const [backupStatus, setBackupStatus] = (0, import_react2.useState)(null);
-    const [mnemonicReveal, setMnemonicReveal] = (0, import_react2.useState)(null);
-    const [mnemonicBusy, setMnemonicBusy] = (0, import_react2.useState)(false);
-    const [pairHost, setPairHost] = (0, import_react2.useState)(null);
-    const [pairHostBusy, setPairHostBusy] = (0, import_react2.useState)(false);
-    const [pairHostError, setPairHostError] = (0, import_react2.useState)(null);
-    const [mnemonicCopied, setMnemonicCopied] = (0, import_react2.useState)(false);
-    const [linkedDevices, setLinkedDevices] = (0, import_react2.useState)([]);
-    const [renamingKey, setRenamingKey] = (0, import_react2.useState)(null);
-    const [renameDraft, setRenameDraft] = (0, import_react2.useState)("");
-    const [renameSaving, setRenameSaving] = (0, import_react2.useState)(false);
-    const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react2.useState)(null);
-    const [removingKey, setRemovingKey] = (0, import_react2.useState)(null);
-    (0, import_react2.useEffect)(() => {
+    const fileRef = (0, import_react3.useRef)();
+    const [seedPeerOpen, setSeedPeerOpen] = (0, import_react3.useState)(false);
+    const [seedPeerInput, setSeedPeerInput] = (0, import_react3.useState)(blindPeerKey ?? "");
+    const [seedPeerSaving, setSeedPeerSaving] = (0, import_react3.useState)(false);
+    const [seedPeerSaved, setSeedPeerSaved] = (0, import_react3.useState)(false);
+    const [seedPeerError, setSeedPeerError] = (0, import_react3.useState)(null);
+    const [seedPeerInfoOpen, setSeedPeerInfoOpen] = (0, import_react3.useState)(false);
+    const [backupStatus, setBackupStatus] = (0, import_react3.useState)(null);
+    const [mnemonicReveal, setMnemonicReveal] = (0, import_react3.useState)(null);
+    const [mnemonicBusy, setMnemonicBusy] = (0, import_react3.useState)(false);
+    const [pairHost, setPairHost] = (0, import_react3.useState)(null);
+    const [pairHostBusy, setPairHostBusy] = (0, import_react3.useState)(false);
+    const [pairHostError, setPairHostError] = (0, import_react3.useState)(null);
+    const [mnemonicCopied, setMnemonicCopied] = (0, import_react3.useState)(false);
+    const [linkedDevices, setLinkedDevices] = (0, import_react3.useState)([]);
+    const [renamingKey, setRenamingKey] = (0, import_react3.useState)(null);
+    const [renameDraft, setRenameDraft] = (0, import_react3.useState)("");
+    const [renameSaving, setRenameSaving] = (0, import_react3.useState)(false);
+    const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react3.useState)(null);
+    const [removingKey, setRemovingKey] = (0, import_react3.useState)(null);
+    (0, import_react3.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
         try {
@@ -24588,7 +24609,7 @@ ${link}`;
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const publicKey = profile?.publicKey ?? "\u2014";
     const identityId = profile?.id ?? "\u2014";
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       if (!pairHost || pairHost.status === "completed") return;
       function onPairingCompleted(data) {
         if (!data || data.role !== "primary") return;
@@ -24625,7 +24646,7 @@ ${link}`;
       }
       setPairHostBusy(false);
     }
-    (0, import_react2.useEffect)(() => {
+    (0, import_react3.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
         try {

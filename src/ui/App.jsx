@@ -22,6 +22,7 @@ import {
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring,
   formatTime, formatRelativeTime, todayStr, dateStr,
+  useProfile,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs } from '../ui-shared/index.js'
 import {
@@ -289,7 +290,7 @@ export default function App ({ db, notifs, sync }) {
   const [ready, setReady] = useState(false)
   const [error, setError] = useState(null)
 
-  const [profile,       setProfile]       = useState(null)
+  const [profile,       setProfile]       = useProfile(db, emitter)
   const [groups,        setGroups]        = useState([])
   const [events,        setEvents]        = useState([])
   const [myRsvps,       setMyRsvps]       = useState({})  // { eventId: 'going'|'declined'|'pending' }
@@ -585,15 +586,6 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('pendingApproval', onPendingApproval)
     emitter.on('pendingApprovalCleared', onPendingApprovalCleared)
 
-    // Sibling device edited name/avatar — re-read profile so the UI updates.
-    // Group member records sync separately through the per-group Autobase.
-    async function onProfileChanged () {
-      try {
-        const fresh = await db.getProfile()
-        if (fresh) setProfile(fresh)
-      } catch { /* non-fatal */ }
-    }
-    emitter.on('profileChanged', onProfileChanged)
     return () => {
       emitter.off('sync', onSync)
       emitter.off('syncing', onSyncing)
@@ -608,7 +600,6 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
       emitter.off('pendingApproval', onPendingApproval)
       emitter.off('pendingApprovalCleared', onPendingApprovalCleared)
-      emitter.off('profileChanged', onProfileChanged)
     }
   }, [db])
   useEffect(() => { tabRef.current = tab }, [tab])

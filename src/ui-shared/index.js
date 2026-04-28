@@ -17,3 +17,5 @@ export {
 } from './lib/colors.js'
 export { expandRecurring } from './lib/recurring.js'
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
+
+export { useProfile } from './hooks/useProfile.js'
