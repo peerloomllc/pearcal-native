@@ -4892,8 +4892,12 @@ async function setMemberNickname (groupId, nickname) {
 // ── Storage diagnostics ──────────────────────────────────────────────────────
 
 async function storageBreakdown () {
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   // Categorize files by name pattern, tracking size + count per category.
   const cats = {
@@ -5047,8 +5051,12 @@ let rebuildBusy = false
 async function rebuildLocalDb () {
   if (rebuildBusy) throw new Error('rebuild already running')
   rebuildBusy = true
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   async function dirSize (dir) {
     let total = 0
@@ -5134,8 +5142,12 @@ async function rebuildLocalDb () {
 // ── Storage reclamation ──────────────────────────────────────────────────────
 
 async function reclaimStorage () {
-  const fs = require('bare-fs')
-  const path = require('bare-path')
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load — both fail under Node (Electron desktop). Fall back to Node's fs/path
+  // when Bare is absent. Both APIs share the readdir/stat/join surface this
+  // function uses.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+  const path = typeof Bare !== 'undefined' ? require('bare-path') : require('path')
 
   async function dirSize (dir) {
     let total = 0

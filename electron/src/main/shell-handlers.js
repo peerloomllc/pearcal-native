@@ -127,6 +127,34 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
       await _saveBlob(getMainWindow(), 'pearcal-recovery.txt', String(args?.[0] ?? ''))
       return { handled: true, result: null }
 
+    case 'takePhoto': {
+      // Mobile uses the device camera (PearCalCamera.capture); on desktop
+      // there's no camera we want to wire up, so open the OS file picker
+      // for an image and emit cameraResult with a data URL — same shape
+      // app/index.tsx:745-754 produces, so the renderer's camera consumer
+      // (App.jsx activeCameraConsumer) accepts it as-is.
+      ;(async () => {
+        try {
+          const win = getMainWindow()
+          const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+            properties: ['openFile'],
+            filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'] }],
+            buttonLabel: 'Choose Photo'
+          })
+          if (canceled || !filePaths?.[0]) return
+          const filePath = filePaths[0]
+          const buf = fs.readFileSync(filePath)
+          const ext = path.extname(filePath).slice(1).toLowerCase()
+          const mime = ext === 'jpg' ? 'image/jpeg' : 'image/' + ext
+          const dataUrl = 'data:' + mime + ';base64,' + buf.toString('base64')
+          fireRendererEvent('cameraResult', dataUrl)
+        } catch (e) {
+          console.error('[shell] takePhoto failed:', e?.message ?? e)
+        }
+      })()
+      return { handled: true, result: null }
+    }
+
     case 'haptic':
       return { handled: true, result: null }
 
