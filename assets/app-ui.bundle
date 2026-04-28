@@ -14883,6 +14883,23 @@
     return [events, setEvents, eventsReady];
   }
 
+  // src/ui-shared/emitter.js
+  var Emitter = class {
+    constructor() {
+      this._h = {};
+    }
+    on(e58, fn) {
+      (this._h[e58] ??= []).push(fn);
+    }
+    off(e58, fn) {
+      this._h[e58] = (this._h[e58] ?? []).filter((f) => f !== fn);
+    }
+    emit(e58, ...a38) {
+      (this._h[e58] ?? []).forEach((fn) => fn(...a38));
+    }
+  };
+  var emitter = new Emitter();
+
   // node_modules/@phosphor-icons/react/dist/defs/ArrowLeft.es.js
   var e = __toESM(require_react(), 1);
   var a = /* @__PURE__ */ new Map([
@@ -16335,21 +16352,6 @@
 
   // src/ui/App.jsx
   var import_jsx_runtime = __toESM(require_jsx_runtime());
-  var Emitter = class {
-    constructor() {
-      this._h = {};
-    }
-    on(e58, fn) {
-      (this._h[e58] ??= []).push(fn);
-    }
-    off(e58, fn) {
-      this._h[e58] = (this._h[e58] ?? []).filter((f) => f !== fn);
-    }
-    emit(e58, ...a38) {
-      (this._h[e58] ?? []).forEach((fn) => fn(...a38));
-    }
-  };
-  var emitter = new Emitter();
   if (typeof document !== "undefined" && !document.getElementById("pear-styles")) {
     const style = document.createElement("style");
     style.id = "pear-styles";

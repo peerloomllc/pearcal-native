@@ -22,3 +22,5 @@ export { useProfile } from './hooks/useProfile.js'
 export { useRsvps } from './hooks/useRsvps.js'
 export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
+
+export { emitter } from './emitter.js'

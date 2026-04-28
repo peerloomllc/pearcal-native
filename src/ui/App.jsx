@@ -23,8 +23,9 @@ import {
   expandRecurring,
   formatTime, formatRelativeTime, todayStr, dateStr,
   useProfile, useRsvps, useGroups, useEvents,
+  emitter,
 } from '../ui-shared/index.js'
-export { parseIcs, generateIcs } from '../ui-shared/index.js'
+export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
   CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
@@ -37,17 +38,6 @@ import {
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
   FunnelSimple, GridFour,
 } from '@phosphor-icons/react'
-
-// ─── Simple event emitter for P2P → UI updates ───────────────────────────────
-// SyncManager calls emitter.emit('sync', groupId) whenever Autobase
-// linearises new remote writes, triggering a selective state refresh.
-class Emitter {
-  constructor () { this._h = {} }
-  on  (e, fn) { (this._h[e] ??= []).push(fn) }
-  off (e, fn) { this._h[e] = (this._h[e] ?? []).filter(f => f !== fn) }
-  emit (e, ...a) { (this._h[e] ?? []).forEach(fn => fn(...a)) }
-}
-export const emitter = new Emitter()
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
 if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
