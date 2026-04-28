@@ -8,7 +8,7 @@ if (process.platform === 'linux') {
 }
 
 const path = require('path')
-const { app, BrowserWindow, Menu, Tray, ipcMain } = require('electron')
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require('electron')
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
 
@@ -109,8 +109,16 @@ function createTray () {
     // theme + .desktop file, not the path Electron supplies at runtime —
     // packaging via electron-builder (Phase E4) installs a .desktop file
     // pointing at the properly registered icon, which fixes both.
+    //
+    // macOS does NOT auto-resize the tray (menu-bar) image, so the raw 1024×1024
+    // build icon stretches the menu bar to its full height. Linux/Windows
+    // resize automatically, but explicitly downscaling once via nativeImage
+    // keeps every platform sized correctly. 32×32 is small enough for the
+    // Mac menu bar (which auto-scales 22pt → retina from this) and large
+    // enough for Windows/Linux taskbar tray.
     const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.png')
-    tray = new Tray(iconPath)
+    const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 })
+    tray = new Tray(trayIcon)
     tray.setToolTip('PearCal')
     tray.setContextMenu(Menu.buildFromTemplate([
       {
