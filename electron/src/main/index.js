@@ -110,14 +110,25 @@ function createTray () {
     // packaging via electron-builder (Phase E4) installs a .desktop file
     // pointing at the properly registered icon, which fixes both.
     //
-    // macOS does NOT auto-resize the tray (menu-bar) image, so the raw 1024×1024
-    // build icon stretches the menu bar to its full height. Linux/Windows
-    // resize automatically, but explicitly downscaling once via nativeImage
-    // keeps every platform sized correctly. 32×32 is small enough for the
-    // Mac menu bar (which auto-scales 22pt → retina from this) and large
-    // enough for Windows/Linux taskbar tray.
-    const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.png')
-    const trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 })
+    // macOS menu-bar icons are conventionally white-on-transparent (template
+    // images) so they auto-theme between light and dark menu bars. Use the
+    // monochrome Android status-bar drawable (ic_stat_name) as the source on
+    // Mac, downsized to 22×22 (the canonical menu-bar size), and flagged as
+    // a template — Cocoa renders it black on light bg, white on dark bg.
+    //
+    // Linux/Windows trays expect a colored full-bleed icon and use the
+    // standard build/icon.png (resized once to keep the source tiny — Mac
+    // doesn't auto-resize at all; Linux/Windows do but starting from 32×32
+    // avoids any "1024×1024 source got blurred down" surprise).
+    let trayIcon
+    if (process.platform === 'darwin') {
+      const trayPath = path.join(__dirname, '..', '..', 'build', 'tray-icon.png')
+      trayIcon = nativeImage.createFromPath(trayPath).resize({ width: 22, height: 22 })
+      trayIcon.setTemplateImage(true)
+    } else {
+      const iconPath = path.join(__dirname, '..', '..', 'build', 'icon.png')
+      trayIcon = nativeImage.createFromPath(iconPath).resize({ width: 32, height: 32 })
+    }
     tray = new Tray(trayIcon)
     tray.setToolTip('PearCal')
     tray.setContextMenu(Menu.buildFromTemplate([

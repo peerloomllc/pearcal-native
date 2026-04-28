@@ -50,6 +50,7 @@
       "src/**/*",
       "vendor/**/*",
       "build/icon.png",
+      "build/tray-icon.png",
       "build/entitlements.mac.plist",
       "package.json",
       "!**/*.test.js",
