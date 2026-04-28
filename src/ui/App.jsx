@@ -22,7 +22,7 @@ import {
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring,
   formatTime, formatRelativeTime, todayStr, dateStr,
-  useProfile,
+  useProfile, useRsvps, useGroups, useEvents,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs } from '../ui-shared/index.js'
 import {
@@ -291,16 +291,15 @@ export default function App ({ db, notifs, sync }) {
   const [error, setError] = useState(null)
 
   const [profile,       setProfile]       = useProfile(db, emitter)
-  const [groups,        setGroups]        = useState([])
-  const [events,        setEvents]        = useState([])
-  const [myRsvps,       setMyRsvps]       = useState({})  // { eventId: 'going'|'declined'|'pending' }
+  const [groups,        setGroups]        = useGroups(db)
+  const [events,        setEvents,       eventsReady] = useEvents(db)
+  const [myRsvps,       setMyRsvps]       = useRsvps(db)
   const [selectedDate,  setSelectedDate]  = useState(todayStr())
   const [viewDate,      setViewDate]      = useState(() => {
     const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }
   })
   const [modal,         setModal]         = useState(null)
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
-  const eventsReady = useRef(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
   const [pendingApprovalGroups, setPendingApprovalGroups] = useState(() => new Set())
