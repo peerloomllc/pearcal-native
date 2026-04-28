@@ -1,0 +1,15 @@
+{
+  "name": "pearcal-electron",
+  "version": "0.0.0",
+  "description": "PearCal desktop client (Electron). Mirrors PearGuard's pattern.",
+  "private": true,
+  "main": "src/main/index.js",
+  "scripts": {
+    "bundle:ui": "bash scripts/bundle-ui.sh",
+    "start": "npm run bundle:ui && electron .",
+    "start:dev-linux": "ELECTRON_DISABLE_SANDBOX=1 npm run bundle:ui && ELECTRON_DISABLE_SANDBOX=1 electron --disable-gpu --disable-software-rasterizer ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

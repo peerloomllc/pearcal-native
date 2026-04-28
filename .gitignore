@@ -89,3 +89,8 @@ metadata/ios/screenshots/
 /desktop/bare-desktop.bundle
 /desktop/node_modules/
 /desktop/.pear/
+
+# Electron desktop build artifacts
+/electron/node_modules/
+/electron/dist/
+/electron/src/renderer/app-ui-electron.js
