@@ -21,7 +21,7 @@ function formatDateHeader (dateStr) {
   return DAYS[dt.getDay()] + ', ' + MONTHS[dt.getMonth()] + ' ' + dt.getDate() + ', ' + dt.getFullYear()
 }
 
-export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode }) {
+export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode, onCreate }) {
   const isToday = selectedDate === todayLocal()
 
   const btn = {
@@ -64,6 +64,13 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode 
         <button style={tabBtn(mode === 'week')}  onClick={() => setMode('week')}>Week</button>
         <button style={tabBtn(mode === 'month')} onClick={() => setMode('month')}>Month</button>
       </div>
+
+      {onCreate && (
+        <button onClick={onCreate} title="New event"
+                style={{ ...btn, marginLeft: 8, background: tokens.accent, color: tokens.bg, borderColor: tokens.accent, fontWeight: 500 }}>
+          + New
+        </button>
+      )}
     </header>
   )
 }

@@ -1,10 +1,10 @@
-// PearCal Desktop renderer — Apple-Calendar-shaped layout (sidebar +
-// main grid). D2 laid the structural shell + Day view; D3 adds the
-// sidebar mini-month, group visibility toggles, and Week + Month
-// views. Mouse interactions, modals, keyboard shortcuts come in
-// later phases. Mobile renderer (src/ui/App.jsx) is untouched.
+// PearCal Desktop renderer — Apple-Calendar-shaped layout. Phases:
+//   D2 — scaffold + Day view (read-only)
+//   D3 — sidebar mini-month + group toggles + Week/Month views
+//   D4 — mouse interactions (click/right-click), EventModal, Inspector
+// Mobile renderer (src/ui/App.jsx) is untouched.
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps,
   emitter,
@@ -14,8 +14,12 @@ import { Toolbar } from './components/Toolbar.jsx'
 import { DayView } from './components/DayView.jsx'
 import { WeekView } from './components/WeekView.jsx'
 import { MonthView } from './components/MonthView.jsx'
+import { EventModal } from './components/EventModal.jsx'
+import { EventInspector } from './components/EventInspector.jsx'
+import { ContextMenu } from './components/ContextMenu.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
+import { useEventActions } from './hooks/useEventActions.js'
 
 const DARK_TOKENS = {
   bg:        '#0E0D0C',
@@ -30,20 +34,26 @@ const DARK_TOKENS = {
 export default function App ({ db, notifs, sync }) {
   const [profile] = useProfile(db, emitter)
   const [groups]  = useGroups(db)
-  const [events]  = useEvents(db)
+  const [events, setEvents] = useEvents(db)
   const [myRsvps] = useRsvps(db)
   const view      = useViewState()
   const visibleGroups = useVisibleGroups(groups)
+  const { saveEvent, deleteEvent } = useEventActions({
+    db, notifs, sync, profile, events, setEvents,
+  })
 
-  // Group lookup by id — used by event color resolution + sidebar list.
+  // Interaction state: at most one of these is open at a time
+  // (modal | inspector | contextMenu).
+  const [modal,       setModal]       = useState(null)        // { mode, initial }
+  const [inspector,   setInspector]   = useState(null)        // { ev, x, y }
+  const [contextMenu, setContextMenu] = useState(null)        // { x, y, items }
+
   const groupsById = useMemo(() => {
     const map = new Map()
     for (const g of groups) map.set(g.id, g)
     return map
   }, [groups])
 
-  // Filter events by visible-groups membership (any-of). Events with no
-  // groups (legacy or personal) stay visible regardless.
   const visibleEvents = useMemo(() => {
     if (visibleGroups.hiddenIds.size === 0) return events
     return events.filter(ev => {
@@ -68,6 +78,49 @@ export default function App ({ db, notifs, sync }) {
   const use24h    = profile.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const weekStart = profile.weekStart ?? 0
 
+  // Interaction handlers — passed down to views
+  function openCreateAt (date, start, end) {
+    setInspector(null); setContextMenu(null)
+    setModal({ mode: 'create', initial: { date, start, end, allDay: !start } })
+  }
+  function openInspector (ev, x, y) {
+    setContextMenu(null); setModal(null)
+    setInspector({ ev, x, y })
+  }
+  function openContextMenu (x, y, items) {
+    setInspector(null); setModal(null)
+    setContextMenu({ x, y, items })
+  }
+  function openEditModal (ev) {
+    setInspector(null); setContextMenu(null)
+    setModal({ mode: 'edit', initial: ev })
+  }
+
+  function buildEventContextItems (ev) {
+    return [
+      { label: 'Edit',      onClick: () => openEditModal(ev) },
+      { label: 'Duplicate', onClick: () => {
+        const copy = { ...ev, id: undefined, recurrence: 'none', recurrenceId: '' }
+        setModal({ mode: 'create', initial: copy })
+      }},
+      { divider: true },
+      { label: 'Delete', danger: true, onClick: () => deleteEvent(ev.id) },
+    ]
+  }
+
+  function buildSlotContextItems (date, start) {
+    return [
+      { label: 'New event here', onClick: () => openCreateAt(date, start, start ? bumpHalfHour(start) : '') },
+    ]
+  }
+
+  const interactions = {
+    onSlotClick:        openCreateAt,
+    onEventClick:       openInspector,
+    onEventContextMenu: (ev, x, y) => openContextMenu(x, y, buildEventContextItems(ev)),
+    onSlotContextMenu:  (date, start, x, y) => openContextMenu(x, y, buildSlotContextItems(date, start)),
+  }
+
   const viewProps = {
     tokens: DARK_TOKENS,
     events: visibleEvents,
@@ -77,6 +130,7 @@ export default function App ({ db, notifs, sync }) {
     setSelectedDate: view.setSelectedDate,
     use24h,
     weekStart,
+    interactions,
   }
 
   return (
@@ -100,11 +154,59 @@ export default function App ({ db, notifs, sync }) {
           setSelectedDate={view.setSelectedDate}
           mode={view.mode}
           setMode={view.setMode}
+          onCreate={() => openCreateAt(view.selectedDate, '', '')}
         />
         {view.mode === 'day'   && <DayView   {...viewProps} />}
         {view.mode === 'week'  && <WeekView  {...viewProps} />}
         {view.mode === 'month' && <MonthView {...viewProps} setMode={view.setMode} />}
       </main>
+
+      {modal && (
+        <EventModal
+          tokens={DARK_TOKENS}
+          mode={modal.mode}
+          initial={modal.initial}
+          groups={groups}
+          profile={profile}
+          onSave={(ev, opts) => { saveEvent(ev, opts); setModal(null) }}
+          onDelete={(id) => { deleteEvent(id); setModal(null) }}
+          onClose={() => setModal(null)}
+        />
+      )}
+      {inspector && (
+        <EventInspector
+          tokens={DARK_TOKENS}
+          ev={inspector.ev}
+          anchor={{ x: inspector.x, y: inspector.y }}
+          groupsById={groupsById}
+          use24h={use24h}
+          onEdit={() => openEditModal(inspector.ev)}
+          onDelete={() => { deleteEvent(inspector.ev.id); setInspector(null) }}
+          onDuplicate={() => {
+            const copy = { ...inspector.ev, id: undefined, recurrence: 'none', recurrenceId: '' }
+            setInspector(null)
+            setModal({ mode: 'create', initial: copy })
+          }}
+          onClose={() => setInspector(null)}
+        />
+      )}
+      {contextMenu && (
+        <ContextMenu
+          tokens={DARK_TOKENS}
+          x={contextMenu.x} y={contextMenu.y}
+          items={contextMenu.items}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   )
+}
+
+function bumpHalfHour (hhmm) {
+  if (!hhmm) return ''
+  const [h, m] = hhmm.split(':').map(Number)
+  const total = h * 60 + m + 30
+  const nh = Math.floor(total / 60) % 24
+  const nm = total % 60
+  return String(nh).padStart(2, '0') + ':' + String(nm).padStart(2, '0')
 }

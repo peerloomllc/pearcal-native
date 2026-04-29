@@ -43,7 +43,7 @@ function eventGroups (ev, groupsById) {
   return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
 }
 
-export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, setMode, weekStart = 0 }) {
+export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, setMode, weekStart = 0, interactions = {} }) {
   const [cy, cmRaw] = selectedDate.split('-').map(Number)
   const cm = cmRaw - 1
   const today = todayLocal()
@@ -100,6 +100,7 @@ export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, 
                     events={eventsForDate(events, cell.date)}
                     groupsById={groupsById} myRsvps={myRsvps}
                     borderLeft={col > 0}
+                    interactions={interactions}
                     onClick={() => { setSelectedDate(cell.date); setMode?.('day') }} />
             ))}
           </div>
@@ -109,13 +110,20 @@ export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, 
   )
 }
 
-function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps, borderLeft, onClick }) {
+function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps, borderLeft, onClick, interactions }) {
   const isToday = cell.date === today
   const isSelected = cell.date === selectedDate
   const visible = events.slice(0, MAX_CHIPS_PER_CELL)
   const overflow = events.length - visible.length
+
+  function onCellContextMenu (e) {
+    if (e.target.closest('[data-event-id]')) return
+    e.preventDefault()
+    interactions.onSlotContextMenu?.(cell.date, '', e.clientX, e.clientY)
+  }
+
   return (
-    <div onClick={onClick}
+    <div onClick={onClick} onContextMenu={onCellContextMenu}
       style={{
         borderLeft: borderLeft ? `1px solid ${tokens.border}` : 'none',
         padding: '4px 6px', overflow: 'hidden',
@@ -135,15 +143,19 @@ function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps,
           const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
           const declined = myRsvps[ev.id] === 'declined'
           return (
-            <div key={ev.id} style={{
-              fontSize: 11, padding: '1px 6px',
-              background: colors[0] ?? tokens.muted,
-              color: tokens.bg,
-              borderRadius: 2,
-              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-              opacity: declined ? 0.5 : 1,
-              textDecoration: declined ? 'line-through' : 'none',
-            }}>
+            <div key={ev.id} data-event-id={ev.id}
+              onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
+              onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
+              style={{
+                fontSize: 11, padding: '1px 6px',
+                background: colors[0] ?? tokens.muted,
+                color: tokens.bg,
+                borderRadius: 2,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                opacity: declined ? 0.5 : 1,
+                textDecoration: declined ? 'line-through' : 'none',
+                cursor: 'pointer',
+              }}>
               {ev.title}
             </div>
           )

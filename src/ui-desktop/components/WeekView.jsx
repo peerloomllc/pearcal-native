@@ -1,12 +1,12 @@
 // Week view — 7-day grid sharing the DayView's hour gutter on the
-// left. Each day column is identical to a slice of DayView. All-day
-// events get a row above the timeline, scoped to the day they cover.
+// left. Click handlers identical to DayView except date is per-column.
 
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
 
 const HOUR_HEIGHT = 56
 const HOUR_PAD_LEFT = 56
+const SNAP_MIN = 15
 const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 function shiftDate (dateStr, days) {
@@ -50,6 +50,13 @@ function parseTimeToMinutes (t) {
   return h * 60 + m
 }
 
+function minutesToHHMM (mins) {
+  const total = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins / SNAP_MIN) * SNAP_MIN))
+  const h = Math.floor(total / 60)
+  const m = total % 60
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')
+}
+
 function formatHour (h, use24h) {
   if (use24h) return String(h).padStart(2, '0') + ':00'
   if (h === 0) return '12am'
@@ -57,14 +64,36 @@ function formatHour (h, use24h) {
   return (h > 12 ? h - 12 : h) + (h >= 12 ? 'pm' : 'am')
 }
 
-export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, use24h, weekStart = 0 }) {
+function eventGroups (ev, groupsById) {
+  return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
+}
+
+export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, use24h, weekStart = 0, interactions = {} }) {
   const startDate = useMemo(() => weekStartFor(selectedDate, weekStart), [selectedDate, weekStart])
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => shiftDate(startDate, i)), [startDate])
   const today = todayLocal()
+  const colRefs = useRef({})
+
+  function timeAtY (date, clientY) {
+    const rect = colRefs.current[date]?.getBoundingClientRect()
+    if (!rect) return ''
+    const y = clientY - rect.top
+    const minutes = (y / HOUR_HEIGHT) * 60
+    return minutesToHHMM(minutes)
+  }
+
+  function handleColClick (date, e) {
+    if (e.target.closest('[data-event-id]')) return
+    interactions.onSlotClick?.(date, timeAtY(date, e.clientY), '')
+  }
+  function handleColContextMenu (date, e) {
+    if (e.target.closest('[data-event-id]')) return
+    e.preventDefault()
+    interactions.onSlotContextMenu?.(date, timeAtY(date, e.clientY), e.clientX, e.clientY)
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      {/* Day headers */}
       <div style={{
         display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
         borderBottom: `1px solid ${tokens.border}`, background: tokens.bg,
@@ -75,15 +104,13 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
           const isToday = d === today
           const isSelected = d === selectedDate
           return (
-            <button key={d}
-              onClick={() => setSelectedDate(d)}
-              style={{
-                padding: '8px 0', borderLeft: `1px solid ${tokens.border}`,
-                background: 'transparent', border: 'none', borderLeftColor: tokens.border,
-                color: isToday ? tokens.accent : tokens.text,
-                fontWeight: isSelected ? 600 : 400, fontSize: 12,
-                cursor: 'pointer', fontFamily: tokens.font,
-              }}>
+            <button key={d} onClick={() => setSelectedDate(d)} style={{
+              padding: '8px 0', borderLeft: `1px solid ${tokens.border}`,
+              background: 'transparent', border: 'none', borderLeftColor: tokens.border,
+              color: isToday ? tokens.accent : tokens.text,
+              fontWeight: isSelected ? 600 : 400, fontSize: 12,
+              cursor: 'pointer', fontFamily: tokens.font,
+            }}>
               <div style={{ fontSize: 10, color: tokens.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                 {DOW_FULL[new Date(y, mo - 1, dd).getDay()]}
               </div>
@@ -93,16 +120,14 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
         })}
       </div>
 
-      {/* All-day row */}
-      <AllDayRow tokens={tokens} days={days} events={events} groupsById={groupsById} myRsvps={myRsvps} />
+      <AllDayRow tokens={tokens} days={days} events={events} groupsById={groupsById} myRsvps={myRsvps}
+                 interactions={interactions} />
 
-      {/* Scrollable timeline */}
       <div style={{ flex: 1, overflowY: 'auto' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
           height: HOUR_HEIGHT * 24, position: 'relative',
         }}>
-          {/* Hour labels column */}
           <div style={{ position: 'relative' }}>
             {Array.from({ length: 24 }, (_, h) => (
               <div key={h} style={{
@@ -114,20 +139,24 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
             ))}
           </div>
 
-          {/* Day columns */}
           {days.map(d => (
-            <div key={d} style={{
-              position: 'relative', borderLeft: `1px solid ${tokens.border}`, height: HOUR_HEIGHT * 24,
-            }}>
-              {/* Hour grid lines */}
+            <div key={d}
+              ref={el => { if (el) colRefs.current[d] = el }}
+              onClick={(e) => handleColClick(d, e)}
+              onContextMenu={(e) => handleColContextMenu(d, e)}
+              style={{
+                position: 'relative', borderLeft: `1px solid ${tokens.border}`, height: HOUR_HEIGHT * 24,
+                cursor: 'crosshair',
+              }}>
               {Array.from({ length: 24 }, (_, h) => (
                 <div key={h} style={{
                   position: 'absolute', top: h * HOUR_HEIGHT, left: 0, right: 0, height: HOUR_HEIGHT,
-                  borderTop: `1px solid ${tokens.border}`,
+                  borderTop: `1px solid ${tokens.border}`, pointerEvents: 'none',
                 }} />
               ))}
               {eventsForDate(events, d).filter(e => !e.allDay && e.start).map(ev => (
-                <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps} use24h={use24h} />
+                <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
+                                 use24h={use24h} interactions={interactions} />
               ))}
             </div>
           ))}
@@ -137,7 +166,7 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
   )
 }
 
-function AllDayRow ({ tokens, days, events, groupsById, myRsvps }) {
+function AllDayRow ({ tokens, days, events, groupsById, myRsvps, interactions }) {
   const perDay = days.map(d => eventsForDate(events, d).filter(e => e.allDay))
   if (perDay.every(arr => arr.length === 0)) return null
   return (
@@ -156,15 +185,19 @@ function AllDayRow ({ tokens, days, events, groupsById, myRsvps }) {
             const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
             const declined = myRsvps[ev.id] === 'declined'
             return (
-              <div key={ev.id} style={{
-                padding: '2px 6px',
-                background: tokens.surface, border: `1px solid ${tokens.border}`,
-                borderRadius: 3, fontSize: 11, fontWeight: 500,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                opacity: declined ? 0.45 : 1,
-                textDecoration: declined ? 'line-through' : 'none',
-                ...leftStripeStyle(colors, 3),
-              }}>
+              <div key={ev.id} data-event-id={ev.id}
+                onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
+                onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
+                style={{
+                  padding: '2px 6px',
+                  background: tokens.surface, border: `1px solid ${tokens.border}`,
+                  borderRadius: 3, fontSize: 11, fontWeight: 500,
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                  opacity: declined ? 0.45 : 1,
+                  textDecoration: declined ? 'line-through' : 'none',
+                  cursor: 'pointer',
+                  ...leftStripeStyle(colors, 3),
+                }}>
                 {ev.title}
               </div>
             )
@@ -175,34 +208,32 @@ function AllDayRow ({ tokens, days, events, groupsById, myRsvps }) {
   )
 }
 
-function eventGroups (ev, groupsById) {
-  return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
-}
-
-function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h }) {
+function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interactions }) {
   const startMin = parseTimeToMinutes(ev.start)
   const endMin   = ev.end ? parseTimeToMinutes(ev.end) : startMin + 30
   const top    = (startMin / 60) * HOUR_HEIGHT
   const height = Math.max(20, ((endMin - startMin) / 60) * HOUR_HEIGHT - 2)
   const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
   const declined = myRsvps[ev.id] === 'declined'
+  function onClick (e) { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }
+  function onContextMenu (e) { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }
   return (
-    <div style={{
+    <div data-event-id={ev.id} onClick={onClick} onContextMenu={onContextMenu} style={{
       position: 'absolute', top, left: 4, right: 4, height,
       background: tokens.surface, border: `1px solid ${tokens.border}`,
       borderRadius: 4, padding: '2px 6px 2px 8px',
       fontSize: 11, overflow: 'hidden',
-      opacity: declined ? 0.45 : 1,
+      opacity: declined ? 0.45 : 1, cursor: 'pointer',
       ...leftStripeStyle(colors, 3),
     }}>
       <div style={{
         fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-        textDecoration: declined ? 'line-through' : 'none',
+        textDecoration: declined ? 'line-through' : 'none', pointerEvents: 'none',
       }}>
         {ev.title}
       </div>
       {height >= 30 && (
-        <div style={{ color: tokens.muted, fontSize: 10, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ color: tokens.muted, fontSize: 10, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
           {formatTime(ev.start, use24h)}
         </div>
       )}
