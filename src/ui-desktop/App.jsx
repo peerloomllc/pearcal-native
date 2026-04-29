@@ -26,6 +26,8 @@ import { SettingsModal } from './components/SettingsModal.jsx'
 import { GroupSettingsModal } from './components/GroupSettingsModal.jsx'
 import { NewGroupModal } from './components/NewGroupModal.jsx'
 import { JoinGroupModal } from './components/JoinGroupModal.jsx'
+import { LinkedDevicesModal } from './components/LinkedDevicesModal.jsx'
+import { OnboardingScreen } from './components/OnboardingScreen.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
@@ -63,6 +65,7 @@ export default function App ({ db, notifs, sync }) {
   const [groupSettings, setGroupSettings] = useState(null)        // group object or null
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
+  const [linkedDevicesOpen, setLinkedDevicesOpen] = useState(false)
 
   const groupsById = useMemo(() => {
     const map = new Map()
@@ -90,9 +93,14 @@ export default function App ({ db, notifs, sync }) {
   // Interaction handlers — passed down to views. allDay defaults OFF;
   // EventModal computes smart-default start/end times when none are
   // passed (matches mobile App.jsx's openCreate semantics).
-  function openCreateAt (date, start, end) {
+  // The optional `anchor` carries click coords ({x, y}) so EventModal
+  // can position itself adjacent to the click instead of dead-center —
+  // matches Apple Calendar's "popover stays out of your way" behavior.
+  // Falls back to centered when no anchor is provided ("+ New", N key,
+  // palette command, etc.).
+  function openCreateAt (date, start, end, anchor) {
     setInspector(null); setContextMenu(null); setPaletteOpen(false)
-    setModal({ mode: 'create', initial: { date, start, end, allDay: false } })
+    setModal({ mode: 'create', initial: { date, start, end, allDay: false }, anchor: anchor ?? null })
   }
   function openInspector (ev, x, y) {
     setContextMenu(null); setModal(null); setPaletteOpen(false)
@@ -102,9 +110,9 @@ export default function App ({ db, notifs, sync }) {
     setInspector(null); setModal(null); setPaletteOpen(false)
     setContextMenu({ x, y, items })
   }
-  function openEditModal (ev) {
+  function openEditModal (ev, anchor) {
     setInspector(null); setContextMenu(null); setPaletteOpen(false)
-    setModal({ mode: 'edit', initial: ev })
+    setModal({ mode: 'edit', initial: ev, anchor: anchor ?? null })
   }
   // Close any transient layer — the universal Esc handler. EventModal,
   // EventInspector, ContextMenu, CommandPalette, ProfileModal,
@@ -114,6 +122,7 @@ export default function App ({ db, notifs, sync }) {
     setModal(null); setInspector(null); setContextMenu(null); setPaletteOpen(false)
     setProfileOpen(false); setSettingsOpen(false); setGroupSettings(null)
     setNewGroupOpen(false); setJoinGroupOpen(false)
+    setLinkedDevicesOpen(false)
   }, [])
 
   function openSettings ()           { closeAllTransient(); setSettingsOpen(true) }
@@ -121,6 +130,7 @@ export default function App ({ db, notifs, sync }) {
   function openGroupSettings (group) { closeAllTransient(); setGroupSettings(group) }
   function openNewGroup  ()          { closeAllTransient(); setNewGroupOpen(true) }
   function openJoinGroup ()          { closeAllTransient(); setJoinGroupOpen(true) }
+  function openLinkedDevices ()      { closeAllTransient(); setLinkedDevicesOpen(true) }
 
   // Group create/join hand-off — mirrors mobile's addGroup
   // (src/ui/App.jsx:1021). The owner-create path skips the redundant
@@ -269,21 +279,23 @@ export default function App ({ db, notifs, sync }) {
     setGroups(prev => prev.filter(x => x.id !== id))
   }, [db, sync, setGroups])
 
-  function buildEventContextItems (ev) {
+  function buildEventContextItems (ev, anchorX, anchorY) {
+    const anchor = (anchorX != null && anchorY != null) ? { x: anchorX, y: anchorY } : null
     return [
-      { label: 'Edit',      onClick: () => openEditModal(ev) },
+      { label: 'Edit',      onClick: () => openEditModal(ev, anchor) },
       { label: 'Duplicate', onClick: () => {
         const copy = { ...ev, id: undefined, recurrence: 'none', recurrenceId: '' }
-        setModal({ mode: 'create', initial: copy })
+        setModal({ mode: 'create', initial: copy, anchor })
       }},
       { divider: true },
       { label: 'Delete', danger: true, onClick: () => deleteEvent(ev.id) },
     ]
   }
 
-  function buildSlotContextItems (date, start) {
+  function buildSlotContextItems (date, start, anchorX, anchorY) {
+    const anchor = (anchorX != null && anchorY != null) ? { x: anchorX, y: anchorY } : null
     return [
-      { label: 'New event here', onClick: () => openCreateAt(date, start, start ? bumpHalfHour(start) : '') },
+      { label: 'New event here', onClick: () => openCreateAt(date, start, start ? bumpHalfHour(start) : '', anchor) },
     ]
   }
 
@@ -307,12 +319,28 @@ export default function App ({ db, notifs, sync }) {
   }
 
   const interactions = {
-    onSlotClick:        openCreateAt,
+    onSlotClick:        (date, start, end, x, y) => openCreateAt(date, start, end, (x != null && y != null) ? { x, y } : null),
     onEventClick:       openInspector,
-    onEventContextMenu: (ev, x, y) => openContextMenu(x, y, buildEventContextItems(ev)),
-    onSlotContextMenu:  (date, start, x, y) => openContextMenu(x, y, buildSlotContextItems(date, start)),
+    onEventContextMenu: (ev, x, y) => openContextMenu(x, y, buildEventContextItems(ev, x, y)),
+    onSlotContextMenu:  (date, start, x, y) => openContextMenu(x, y, buildSlotContextItems(date, start, x, y)),
     onEventDragCommit:  commitEventDrag,
   }
+
+  // While a create-mode EventModal is open with a non-all-day time
+  // range, project a ghost block onto the timeline at that range so the
+  // calendar context stays visible behind the popover. Apple Calendar
+  // does the same — the placeholder you see during drag-to-create
+  // doesn't disappear when the form opens.
+  const pendingCreateRange = (() => {
+    if (modal?.mode !== 'create') return null
+    const i = modal.initial ?? {}
+    if (i.allDay) return null
+    if (!i.date || !i.start) return null
+    const fromMin_ = toMin(i.start)
+    const toMin_ = i.end ? toMin(i.end) : Math.min(24 * 60, fromMin_ + 60)
+    if (toMin_ <= fromMin_) return null
+    return { date: i.date, from: fromMin_, to: toMin_, title: i.title || '(new event)' }
+  })()
 
   const viewProps = {
     tokens: DARK_TOKENS,
@@ -324,6 +352,7 @@ export default function App ({ db, notifs, sync }) {
     use24h,
     weekStart,
     interactions,
+    pendingCreateRange,
   }
 
   // Command list for the palette. Includes static commands, group
@@ -334,12 +363,13 @@ export default function App ({ db, notifs, sync }) {
       { id: 'view:day',   icon: '☷', label: 'View: Day',   hint: 'Switch to day view',   shortcut: '1',     action: () => view.setMode('day') },
       { id: 'view:week',  icon: '▥', label: 'View: Week',  hint: 'Switch to week view',  shortcut: '2',     action: () => view.setMode('week') },
       { id: 'view:month', icon: '▦', label: 'View: Month', hint: 'Switch to month view', shortcut: '3',     action: () => view.setMode('month') },
-      { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T',     action: () => view.setSelectedDate(todayLocal()) },
+      { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T',     action: () => view.goToToday() },
       { id: 'create:new', icon: '+', label: 'New Event',   hint: 'Create an event on the selected date', shortcut: 'N', action: () => openCreateAt(view.selectedDate, '', '') },
       { id: 'open:profile',   icon: '◐', label: 'Profile…',   hint: 'Edit your name + avatar', action: openProfile  },
       { id: 'open:settings',  icon: '⚙', label: 'Settings…',  hint: 'Display preferences + about', shortcut: '⌘,', action: openSettings },
       { id: 'group:new',      icon: '+', label: 'New Group…', hint: 'Create a group and invite people', action: openNewGroup },
       { id: 'group:join',     icon: '↘', label: 'Join Group…', hint: 'Paste an invite link to join', action: openJoinGroup },
+      { id: 'open:devices',   icon: '⎌', label: 'Linked Devices…', hint: 'Pair another device or manage paired ones', action: openLinkedDevices },
     ]
     for (const g of groups) {
       const visible = visibleGroups.isVisible(g.id)
@@ -378,6 +408,8 @@ export default function App ({ db, notifs, sync }) {
     setSelectedDate: view.setSelectedDate,
     mode:            view.mode,
     setMode:         view.setMode,
+    navigate:        view.navigateBy,
+    goToToday:       view.goToToday,
     onCreate:        () => openCreateAt(view.selectedDate, '', ''),
     onOpenPalette:   () => setPaletteOpen(true),
     onOpenSettings:  openSettings,
@@ -396,6 +428,21 @@ export default function App ({ db, notifs, sync }) {
     )
   }
 
+  // First-launch onboarding gate. Bare seeds an empty profile with no
+  // onboardingComplete flag (bare.js:5837); flipping it via updateProfile
+  // (either inline here or via a successful pair handshake) drops the
+  // user into the calendar.
+  if (!profile.onboardingComplete) {
+    return (
+      <OnboardingScreen
+        tokens={DARK_TOKENS}
+        profile={profile}
+        db={db}
+        updateProfile={updateProfile}
+      />
+    )
+  }
+
   return (
     <div style={{
       height: '100vh', display: 'flex',
@@ -408,6 +455,8 @@ export default function App ({ db, notifs, sync }) {
         groups={groups}
         selectedDate={view.selectedDate}
         setSelectedDate={view.setSelectedDate}
+        miniCursor={view.miniCursor}
+        setMiniCursor={view.setMiniCursor}
         visibleGroups={visibleGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
@@ -436,11 +485,14 @@ export default function App ({ db, notifs, sync }) {
           setSelectedDate={view.setSelectedDate}
           mode={view.mode}
           setMode={view.setMode}
+          navigateBy={view.navigateBy}
+          goToToday={view.goToToday}
+          isFullyToday={view.isFullyToday}
           onCreate={() => openCreateAt(view.selectedDate, '', '')}
         />
         {view.mode === 'day'   && <DayView   {...viewProps} />}
-        {view.mode === 'week'  && <WeekView  {...viewProps} />}
-        {view.mode === 'month' && <MonthView {...viewProps} setMode={view.setMode} />}
+        {view.mode === 'week'  && <WeekView  {...viewProps} navDir={view.navDir} />}
+        {view.mode === 'month' && <MonthView {...viewProps} navDir={view.navDir} setMode={view.setMode} />}
       </main>
 
       {modal && (
@@ -448,6 +500,7 @@ export default function App ({ db, notifs, sync }) {
           tokens={DARK_TOKENS}
           mode={modal.mode}
           initial={modal.initial}
+          anchor={modal.anchor}
           groups={groups}
           profile={profile}
           use24h={use24h}
@@ -463,12 +516,13 @@ export default function App ({ db, notifs, sync }) {
           anchor={{ x: inspector.x, y: inspector.y }}
           groupsById={groupsById}
           use24h={use24h}
-          onEdit={() => openEditModal(inspector.ev)}
+          onEdit={() => openEditModal(inspector.ev, { x: inspector.x, y: inspector.y })}
           onDelete={() => { deleteEvent(inspector.ev.id); setInspector(null) }}
           onDuplicate={() => {
             const copy = { ...inspector.ev, id: undefined, recurrence: 'none', recurrenceId: '' }
+            const anchor = { x: inspector.x, y: inspector.y }
             setInspector(null)
-            setModal({ mode: 'create', initial: copy })
+            setModal({ mode: 'create', initial: copy, anchor })
           }}
           onClose={() => setInspector(null)}
         />
@@ -504,7 +558,16 @@ export default function App ({ db, notifs, sync }) {
           updateProfile={updateProfile}
           db={db}
           sync={sync}
+          onOpenLinkedDevices={openLinkedDevices}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {linkedDevicesOpen && (
+        <LinkedDevicesModal
+          tokens={DARK_TOKENS}
+          db={db}
+          profile={profile}
+          onClose={() => setLinkedDevicesOpen(false)}
         />
       )}
       {groupSettings && (

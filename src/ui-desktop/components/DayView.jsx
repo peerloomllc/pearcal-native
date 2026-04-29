@@ -55,7 +55,7 @@ function eventGroups (ev, groupsById) {
   return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
 }
 
-export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, use24h, interactions = {} }) {
+export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, use24h, pendingCreateRange = null, interactions = {} }) {
   const dayEvents    = useMemo(() => eventsForDate(events, selectedDate), [events, selectedDate])
   const allDayEvents = dayEvents.filter(e => e.allDay)
   const timedEvents  = dayEvents.filter(e => !e.allDay && e.start)
@@ -66,12 +66,12 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
   // both endpoints explicit so the modal pre-fills exactly that span.
   const drag = useDragCreate({
     snapMin: 30,
-    onClick: ({ date, startMin }) => {
+    onClick: ({ date, startMin, clientX, clientY }) => {
       const h = Math.floor(startMin / 60)
-      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '')
+      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '', clientX, clientY)
     },
-    onCommit: ({ date, fromMin, toMin }) => {
-      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin))
+    onCommit: ({ date, fromMin, toMin, clientX, clientY }) => {
+      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin), clientX, clientY)
     },
   })
 
@@ -119,22 +119,33 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
              onContextMenu={handleTimelineContextMenu}
              style={{ position: 'relative', height: HOUR_HEIGHT * 24, minHeight: HOUR_HEIGHT * 24, cursor: 'crosshair' }}>
           {Array.from({ length: 24 }, (_, h) => (
-            <div key={h} style={{
+            // Whole hour band gets the hover wash. The time label sits on
+            // top with pointer-events:none so it doesn't intercept the
+            // hover or block drag-create mousedown.
+            <div key={h} data-clickable style={{
               position: 'absolute', top: h * HOUR_HEIGHT, left: 0, right: 0,
               height: HOUR_HEIGHT, borderTop: `1px solid ${tokens.border}`,
-              display: 'flex', pointerEvents: 'none',
             }}>
               <div style={{
+                position: 'absolute', top: 0, left: 0,
                 width: HOUR_PAD_LEFT, paddingTop: 4, paddingRight: 8, textAlign: 'right',
                 color: tokens.muted, fontSize: 11, fontVariantNumeric: 'tabular-nums',
+                pointerEvents: 'none',
               }}>
                 {formatHour(h, use24h)}
               </div>
-              <div style={{ flex: 1 }} />
             </div>
           ))}
 
-          <div style={{ position: 'absolute', top: 0, left: HOUR_PAD_LEFT, right: 24, bottom: 0 }}>
+          {/* Events container has pointer-events: none so hovering empty
+              space inside its bounds falls through to the hour bands
+              behind it (otherwise the hour-row hover wash would only
+              fire over the time-label gutter and the 24px right margin
+              that aren't covered by this layer). PositionedEvent
+              children re-enable pointer events so clicks/drags on
+              actual event cards still work. DragPreview is already
+              pointer-events: none. */}
+          <div style={{ position: 'absolute', top: 0, left: HOUR_PAD_LEFT, right: 24, bottom: 0, pointerEvents: 'none' }}>
             {timedEvents.map(ev => (
               <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
                                use24h={use24h} interactions={interactions}
@@ -142,6 +153,11 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
             ))}
             {drag.dragRange && drag.dragRange.date === selectedDate && (
               <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
+            )}
+            {/* Ghost while a create-mode modal is open over this date —
+                drag is gone but the visual context stays. */}
+            {!drag.dragRange && pendingCreateRange && pendingCreateRange.date === selectedDate && (
+              <DragPreview tokens={tokens} fromMin={pendingCreateRange.from} toMin={pendingCreateRange.to} hourHeight={HOUR_HEIGHT} />
             )}
           </div>
         </div>
@@ -192,6 +208,10 @@ function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interaction
         opacity: declined ? 0.45 : (isDragged ? 0.7 : 1),
         cursor: isDragged && dragState.mode === 'resize' ? 'ns-resize' : (isDragged ? 'grabbing' : 'pointer'),
         zIndex: isDragged ? 10 : 1,
+        // Re-enable pointer events that were turned off on the parent
+        // events-container so empty-space hover falls through to hour
+        // bands. The event card itself still receives clicks/drags.
+        pointerEvents: 'auto',
         ...leftStripeStyle(colors, 4),
       }}>
       <div style={{

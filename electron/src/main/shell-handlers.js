@@ -12,6 +12,14 @@ const { shell, clipboard, dialog, app, Notification } = require('electron')
 // Lives in main now so setTimeout survives a window-hide-to-tray.
 const _reminders = new Map() // eventId → setTimeout handle[]
 
+// setTimeout's max delay is 2^31-1 ms (~24.8 days). Anything longer
+// overflows to 0 and fires immediately — a notorious JS gotcha that
+// would flood the user with pseudo-instant "reminder" notifications
+// for any event scheduled past that boundary. Skip rather than cap;
+// the cold-launch rehydration loop in main/index.js re-runs daily and
+// will pick the event up once it's within the safe window.
+const MAX_TIMEOUT_DELAY = 0x7FFFFFFF
+
 function _formatTime12h (t) {
   if (!t) return ''
   const [hStr, mStr] = String(t).split(':')
@@ -80,23 +88,27 @@ function _scheduleForEvent (ev, reminders, getMainWindow) {
   _cancelForEvent(ev.id)
   const handles = []
   const list = Array.isArray(reminders) ? reminders : []
+  const now = Date.now()
   for (let i = 0; i < Math.min(list.length, 3); i++) {
     const reminder = list[i]
     const fireAt = _calcReminderFireTime(ev, reminder)
-    if (!fireAt || fireAt <= Date.now()) continue
+    if (!fireAt || fireAt <= now) continue
+    const delay = fireAt - now
+    if (delay > MAX_TIMEOUT_DELAY) continue
     const label = REMINDER_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
     const body = ev.allDay
       ? 'All day · ' + label
       : label + ' · ' + _formatTime12h(ev.start) + '–' + _formatTime12h(ev.end)
-    handles.push(setTimeout(() => _fireNotification(ev.title, body, ev.id, getMainWindow), fireAt - Date.now()))
+    handles.push(setTimeout(() => _fireNotification(ev.title, body, ev.id, getMainWindow), delay))
   }
   if (!ev.allDay && ev.start) {
     const [y, mo, d] = ev.date.split('-').map(Number)
     const [h, m] = ev.start.split(':').map(Number)
     const startFireAt = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
-    if (startFireAt > Date.now()) {
+    const delay = startFireAt - now
+    if (startFireAt > now && delay <= MAX_TIMEOUT_DELAY) {
       const body = _formatTime12h(ev.start) + ' to ' + _formatTime12h(ev.end)
-      handles.push(setTimeout(() => _fireNotification(ev.title + ' is starting now', body, ev.id, getMainWindow), startFireAt - Date.now()))
+      handles.push(setTimeout(() => _fireNotification(ev.title + ' is starting now', body, ev.id, getMainWindow), delay))
     }
   }
   if (handles.length) _reminders.set(ev.id, handles)

@@ -70,7 +70,7 @@ function eventGroups (ev, groupsById) {
   return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
 }
 
-export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, use24h, weekStart = 0, interactions = {} }) {
+export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, use24h, weekStart = 0, navDir = 0, pendingCreateRange = null, interactions = {} }) {
   const startDate = useMemo(() => weekStartFor(selectedDate, weekStart), [selectedDate, weekStart])
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => shiftDate(startDate, i)), [startDate])
   const today = todayLocal()
@@ -80,12 +80,12 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
   // column so other columns don't render a stale ghost.
   const drag = useDragCreate({
     snapMin: 30,
-    onClick: ({ date, startMin }) => {
+    onClick: ({ date, startMin, clientX, clientY }) => {
       const h = Math.floor(startMin / 60)
-      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '')
+      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '', clientX, clientY)
     },
-    onCommit: ({ date, fromMin, toMin }) => {
-      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin))
+    onCommit: ({ date, fromMin, toMin, clientX, clientY }) => {
+      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin), clientX, clientY)
     },
   })
 
@@ -109,11 +109,23 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
     interactions.onSlotContextMenu?.(date, topOfHourAtY(e.clientY - rect.top), e.clientX, e.clientY)
   }
 
+  // Keyed wrapper so the toolbar arrows / keyboard arrows trigger a
+  // one-shot slide-in animation. navDir=±1 picks slide direction; 0
+  // skips animation entirely (used for non-directional date changes
+  // like palette jumps and MiniMonth clicks).
+  const slideClass = navDir > 0 ? 'pearcal-nav-forward'
+                  : navDir < 0 ? 'pearcal-nav-back'
+                  : ''
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div key={startDate} className={slideClass}
+         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{
         display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
         borderBottom: `1px solid ${tokens.border}`, background: tokens.bg,
+        // The timeline below has scrollbar-gutter: stable to match
+        // header alignment regardless of scrollbar visibility. Reserve
+        // the same 8px on the header so the 7 day columns line up.
+        paddingRight: 8,
       }}>
         <div />
         {days.map(d => {
@@ -123,7 +135,8 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
           return (
             <button key={d} onClick={() => setSelectedDate(d)} style={{
               padding: '6px 0', borderLeft: `1px solid ${tokens.border}`,
-              background: 'transparent', border: 'none', borderLeftColor: tokens.border,
+              background: isToday ? tokens.surface : 'transparent',
+              border: 'none', borderLeftColor: tokens.border,
               color: isToday ? tokens.accent : tokens.text,
               fontWeight: isSelected ? 600 : 400, fontSize: 12,
               cursor: 'pointer', fontFamily: tokens.font,
@@ -137,10 +150,10 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
         })}
       </div>
 
-      <AllDayRow tokens={tokens} days={days} events={events} groupsById={groupsById} myRsvps={myRsvps}
+      <AllDayRow tokens={tokens} days={days} today={today} events={events} groupsById={groupsById} myRsvps={myRsvps}
                  interactions={interactions} />
 
-      <div style={{ flex: 1, overflowY: 'auto' }}>
+      <div style={{ flex: 1, overflowY: 'auto', scrollbarGutter: 'stable' }}>
         <div style={{
           display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
           height: HOUR_HEIGHT * 24, position: 'relative',
@@ -163,12 +176,15 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
               onContextMenu={(e) => handleColContextMenu(d, e)}
               style={{
                 position: 'relative', borderLeft: `1px solid ${tokens.border}`, height: HOUR_HEIGHT * 24,
+                background: d === today ? tokens.surface : 'transparent',
                 cursor: 'crosshair',
               }}>
               {Array.from({ length: 24 }, (_, h) => (
-                <div key={h} style={{
+                // Per-cell hover wash — matches Month view's clickable
+                // cells. mousedown bubbles to the column for drag-create.
+                <div key={h} data-clickable style={{
                   position: 'absolute', top: h * HOUR_HEIGHT, left: 0, right: 0, height: HOUR_HEIGHT,
-                  borderTop: `1px solid ${tokens.border}`, pointerEvents: 'none',
+                  borderTop: `1px solid ${tokens.border}`,
                 }} />
               ))}
               {eventsForDate(events, d).filter(e => !e.allDay && e.start).map(ev => (
@@ -179,6 +195,10 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
               {drag.dragRange && drag.dragRange.date === d && (
                 <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
               )}
+              {/* Ghost while a create-mode modal is open over this column. */}
+              {!drag.dragRange && pendingCreateRange && pendingCreateRange.date === d && (
+                <DragPreview tokens={tokens} fromMin={pendingCreateRange.from} toMin={pendingCreateRange.to} hourHeight={HOUR_HEIGHT} />
+              )}
             </div>
           ))}
         </div>
@@ -187,7 +207,7 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
   )
 }
 
-function AllDayRow ({ tokens, days, events, groupsById, myRsvps, interactions }) {
+function AllDayRow ({ tokens, days, today, events, groupsById, myRsvps, interactions }) {
   const perDay = days.map(d => eventsForDate(events, d).filter(e => e.allDay))
   if (perDay.every(arr => arr.length === 0)) return null
   return (
@@ -195,11 +215,14 @@ function AllDayRow ({ tokens, days, events, groupsById, myRsvps, interactions })
       display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
       borderBottom: `1px solid ${tokens.border}`, background: tokens.bg,
       minHeight: 28,
+      // Match the header + timeline scrollbar-gutter so columns align.
+      paddingRight: 8,
     }}>
       <div />
       {perDay.map((evs, i) => (
         <div key={i} style={{
           padding: '4px 6px', borderLeft: `1px solid ${tokens.border}`,
+          background: days[i] === today ? tokens.surface : 'transparent',
           display: 'flex', flexDirection: 'column', gap: 2,
         }}>
           {evs.map(ev => {

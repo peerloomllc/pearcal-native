@@ -1,12 +1,11 @@
-// Settings modal — display preferences (24h, week start) + About.
-// Mobile's full settings tab also covers backup/blind-peer, mnemonic
-// reveal, linked devices, holiday subscriptions, ICS import/export,
-// and storage reclaim. Those are deferred to D7.2/D7.3; this is the
-// high-frequency surface only.
+// Settings modal — display preferences (24h / week start), recovery
+// phrase reveal + restore, linked devices, About. Mobile's settings
+// tab also covers backup/blind-peer, holiday subscriptions, ICS
+// import/export, and storage reclaim — deferred until users ask.
 //
-// Persists by calling db.updateProfile — the `pear:profileChanged`
-// emitter event refreshes the App-level useProfile hook so the
-// time-format / week-start change reflects without a remount.
+// updateProfile-routed prefs use the wrapper from App.jsx (db.updateProfile
+// + optimistic setProfile) since bare's profileChanged event only fires
+// on sibling-device sync, never on local writes.
 
 import { useEffect, useState } from 'react'
 
@@ -17,10 +16,13 @@ const WEEK_STARTS = [
   { value: 1, label: 'Monday' },
 ]
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpenLinkedDevices, onClose }) {
   const [phrase,   setPhrase]   = useState(null)         // null = hidden, '' = loading, '...' = revealed
   const [phraseErr, setPhraseErr] = useState('')
   const [phraseCopied, setPhraseCopied] = useState(false)
+  // Mnemonic restore lives in bare (db.restoreMnemonic), but the mobile
+  // app doesn't expose a settings-time restore yet — restore there only
+  // runs during onboarding. Hide the desktop UI until parity lands.
   // Match the same locale-aware default the App uses so the toggle
   // reads "On" only when the user has explicitly chosen 24h.
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -172,6 +174,18 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onClo
             )}
           </div>
         </div>
+
+        {onOpenLinkedDevices && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={label}>Linked devices</div>
+            <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
+              Pair another phone or computer so the same calendar identity follows you across devices.
+            </div>
+            <button onClick={onOpenLinkedDevices} style={{ ...btnBase, width: '100%' }}>
+              Manage linked devices
+            </button>
+          </div>
+        )}
 
         <div style={{ marginBottom: 4 }}>
           <div style={label}>About</div>

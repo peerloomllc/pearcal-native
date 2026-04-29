@@ -33,7 +33,75 @@
     button, [data-clickable], [data-event-id] {
       transition: box-shadow 80ms ease;
     }
+    /* Auto-hiding scrollbars (macOS-style overlay). Default state is
+       fully transparent; a delegated scroll listener stamps the scrolled
+       element with [data-scrolling="1"] for 1s after each scroll, which
+       fades the thumb in. Hovering a scrollable region also shows the
+       thumb so users can grab it without first scrolling. */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0);
+      border-radius: 4px;
+      transition: background 250ms ease-out;
+    }
+    [data-scrolling="1"]::-webkit-scrollbar-thumb,
+    *:hover > ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    [data-scrolling="1"]::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.32);
+    }
+    /* Week / Month / MiniMonth nav slide-in. View / mini-month component
+       wraps its grid in a keyed div so each period change remounts the
+       wrapper, triggering one of these animations based on navDir (back
+       vs forward). */
+    @keyframes pearcal-slide-from-right {
+      from { transform: translateX(28px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes pearcal-slide-from-left {
+      from { transform: translateX(-28px); opacity: 0; }
+      to   { transform: translateX(0);     opacity: 1; }
+    }
+    .pearcal-nav-forward { animation: pearcal-slide-from-right 360ms ease-out; }
+    .pearcal-nav-back    { animation: pearcal-slide-from-left  360ms ease-out; }
+    /* Modal grow-in — Apple Calendar-style scale + fade. Long enough
+       (260ms) and bouncy enough (cubic-bezier overshoot) to register
+       as deliberate without feeling laggy. */
+    @keyframes pearcal-modal-enter {
+      from { opacity: 0; transform: scale(0.88); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .pearcal-modal-enter {
+      animation: pearcal-modal-enter 520ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+      transform-origin: center center;
+    }
   </style>
+  <script>
+    // Delegated scroll detector. Stamps any scrolling element with
+    // data-scrolling=1 and clears it 1s after the last scroll event.
+    // Capturing listener so it catches every scrollable container without
+    // each one needing its own onScroll wiring.
+    (function () {
+      const timers = new WeakMap()
+      function clear (el) {
+        el.removeAttribute('data-scrolling')
+        timers.delete(el)
+      }
+      window.addEventListener('scroll', (e) => {
+        const el = e.target
+        if (!el || el.nodeType !== 1) return
+        el.setAttribute('data-scrolling', '1')
+        const prev = timers.get(el)
+        if (prev) clearTimeout(prev)
+        timers.set(el, setTimeout(() => clear(el), 1000))
+      }, true)
+    })()
+  </script>
 </head>
 <body>
   <div id="root"></div>

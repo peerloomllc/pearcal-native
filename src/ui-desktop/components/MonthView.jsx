@@ -43,7 +43,7 @@ function eventGroups (ev, groupsById) {
   return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
 }
 
-export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, setMode, weekStart = 0, interactions = {} }) {
+export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, setSelectedDate, setMode, weekStart = 0, navDir = 0, interactions = {} }) {
   const [cy, cmRaw] = selectedDate.split('-').map(Number)
   const cm = cmRaw - 1
   const today = todayLocal()
@@ -64,8 +64,15 @@ export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, 
     return out
   }, [cy, cm, weekStart])
 
+  const slideClass = navDir > 0 ? 'pearcal-nav-forward'
+                  : navDir < 0 ? 'pearcal-nav-back'
+                  : ''
+  // Key on year-month so within-month date changes (clicking a different
+  // day in the same month) don't trigger a re-mount + animation.
+  const monthKey = cy + '-' + cm
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div key={monthKey} className={slideClass}
+         style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* DOW header */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
@@ -127,7 +134,11 @@ function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps,
       style={{
         borderLeft: borderLeft ? `1px solid ${tokens.border}` : 'none',
         padding: '4px 6px', overflow: 'hidden',
-        background: isSelected ? tokens.border : 'transparent',
+        // Today highlight matches the Week view's today column color
+        // (tokens.surface). Selected cell uses the same shade so Today
+        // and selected feel consistent — Selected is reinforced by the
+        // bolder day-number text.
+        background: isToday || isSelected ? tokens.surface : 'transparent',
         cursor: 'pointer',
         display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0,
       }}>

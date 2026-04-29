@@ -37,16 +37,18 @@ export function useDragCreate ({ snapMin = 30, threshold = 5, onClick, onCommit 
         setDragRange({ date, from, to })
       }
     }
-    function onUp () {
+    function onUp (uev) {
       document.removeEventListener('mousemove', onMove)
       document.removeEventListener('mouseup', onUp)
+      const x = uev?.clientX ?? e.clientX
+      const y = uev?.clientY ?? e.clientY
       if (!dragged) {
-        onClick?.({ date, startMin })
+        onClick?.({ date, startMin, clientX: e.clientX, clientY: e.clientY })
       } else {
         let from = Math.min(startMin, lastMin)
         let to   = Math.max(startMin, lastMin)
         if (to <= from) to = Math.min(24 * 60, from + snapMin)
-        onCommit?.({ date, fromMin: from, toMin: to })
+        onCommit?.({ date, fromMin: from, toMin: to, clientX: x, clientY: y })
       }
       setDragRange(null)
     }

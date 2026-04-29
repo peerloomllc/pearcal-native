@@ -41,7 +41,44 @@ function defaultsFor (initialStart) {
   }
 }
 
-export function EventModal ({ tokens, mode, initial, groups, profile, use24h, onSave, onDelete, onClose }) {
+// Modal layout — width and viewport guard rails. Used both for the
+// centered fallback and the anchor-positioned variant so the popover
+// can never be clipped off-screen.
+const MODAL_WIDTH    = 460
+const MODAL_GAP_PX   = 16
+const MODAL_MARGIN   = 16
+
+// Compute the popover position adjacent to the anchor, preferring the
+// right side. Falls back to the left if right would overflow; clamps
+// vertically so the panel never lands outside the viewport. Returns
+// null when the anchor itself doesn't fit either side — caller falls
+// back to a centered modal in that case.
+function computeAnchorPosition (anchor) {
+  if (!anchor) return null
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  // Estimate panel height — actual height varies by content (50% of the
+  // form is conditionally rendered by allDay), so cap at 90vh and let
+  // the inner scroll handle anything that would clip.
+  const estH = Math.min(560, vh - MODAL_MARGIN * 2)
+
+  let left
+  if (anchor.x + MODAL_GAP_PX + MODAL_WIDTH + MODAL_MARGIN <= vw) {
+    left = anchor.x + MODAL_GAP_PX
+  } else if (anchor.x - MODAL_GAP_PX - MODAL_WIDTH >= MODAL_MARGIN) {
+    left = anchor.x - MODAL_GAP_PX - MODAL_WIDTH
+  } else {
+    return null  // neither side fits; fall back to centered
+  }
+
+  // Center vertically on the anchor, then clamp.
+  let top = anchor.y - estH / 2
+  if (top < MODAL_MARGIN) top = MODAL_MARGIN
+  if (top + estH > vh - MODAL_MARGIN) top = vh - MODAL_MARGIN - estH
+  return { left, top }
+}
+
+export function EventModal ({ tokens, mode, initial, anchor, groups, profile, use24h, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
@@ -137,19 +174,33 @@ export function EventModal ({ tokens, mode, initial, groups, profile, use24h, on
     background: tokens.bg, color: tokens.text,
   }
 
-  return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0,
-      background: 'rgba(0,0,0,0.5)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 100,
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
+  // Compute placement once on render. window dimensions can change if
+  // the user resizes mid-modal, but for a single-shot popover the
+  // initial calculation is good enough; recomputing on resize would
+  // also fight the user's instinctive close-on-click-outside.
+  const anchorPos = computeAnchorPosition(anchor)
+  const overlayStyle = anchorPos
+    ? { position: 'fixed', inset: 0, background: 'transparent', zIndex: 100 }
+    : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }
+  const panelStyle = anchorPos
+    ? {
+        position: 'fixed', top: anchorPos.top, left: anchorPos.left,
+        width: MODAL_WIDTH, maxHeight: '90vh', overflowY: 'auto',
         background: tokens.surface, border: `1px solid ${tokens.border}`,
-        borderRadius: 10, padding: 20, width: 460, maxWidth: '90vw',
+        borderRadius: 10, padding: 20,
+        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
+      }
+    : {
+        background: tokens.surface, border: `1px solid ${tokens.border}`,
+        borderRadius: 10, padding: 20, width: MODAL_WIDTH, maxWidth: '90vw',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-      }}>
+      }
+
+  return (
+    <div onClick={onClose} style={overlayStyle}>
+      <div onClick={e => e.stopPropagation()} className="pearcal-modal-enter" style={panelStyle}>
         <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
           {mode === 'edit' ? 'Edit event' : 'New event'}
         </div>
