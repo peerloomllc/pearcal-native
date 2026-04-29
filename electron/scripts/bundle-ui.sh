@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-../node_modules/.bin/esbuild ../src/ui/main.jsx \
+../node_modules/.bin/esbuild ../src/ui-desktop/main.jsx \
   --bundle \
   --format=iife \
   --jsx=automatic \

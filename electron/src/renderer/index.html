@@ -5,9 +5,103 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' data: blob:; img-src 'self' data: blob:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self';" />
   <title>PearCal</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; }
     html, body, #root { margin: 0; padding: 0; height: 100%; background: #0f172a; }
-    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; }
+    body {
+      font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #e2e8f0; overflow: hidden;
+      font-size: 13px; line-height: 1.4;
+    }
+    /* D5: visible keyboard focus rings for tab navigation. Mouse focus
+       (`:focus` without `:focus-visible`) stays unstyled so click ≠ ring. */
+    button:focus { outline: none; }
+    input:focus, textarea:focus, select:focus { outline: none; }
+    button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible {
+      outline: 2px solid #C8922A;
+      outline-offset: 1px;
+      border-radius: 4px;
+    }
+    /* D6: subtle hover states. Inset box-shadow paints a translucent
+       white wash over the element regardless of its inline background,
+       so transparent toolbar buttons and accent-colored buttons both
+       light up on hover without overriding inline styles. */
+    button:not(:disabled):hover,
+    [data-clickable]:not(:disabled):hover,
+    [data-event-id]:hover {
+      box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.06);
+    }
+    button, [data-clickable], [data-event-id] {
+      transition: box-shadow 80ms ease;
+    }
+    /* Auto-hiding scrollbars (macOS-style overlay). Default state is
+       fully transparent; a delegated scroll listener stamps the scrolled
+       element with [data-scrolling="1"] for 1s after each scroll, which
+       fades the thumb in. Hovering a scrollable region also shows the
+       thumb so users can grab it without first scrolling. */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0);
+      border-radius: 4px;
+      transition: background 250ms ease-out;
+    }
+    [data-scrolling="1"]::-webkit-scrollbar-thumb,
+    *:hover > ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.18);
+    }
+    [data-scrolling="1"]::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.32);
+    }
+    /* Week / Month / MiniMonth nav slide-in. View / mini-month component
+       wraps its grid in a keyed div so each period change remounts the
+       wrapper, triggering one of these animations based on navDir (back
+       vs forward). */
+    @keyframes pearcal-slide-from-right {
+      from { transform: translateX(28px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes pearcal-slide-from-left {
+      from { transform: translateX(-28px); opacity: 0; }
+      to   { transform: translateX(0);     opacity: 1; }
+    }
+    .pearcal-nav-forward { animation: pearcal-slide-from-right 360ms ease-out; }
+    .pearcal-nav-back    { animation: pearcal-slide-from-left  360ms ease-out; }
+    /* Modal grow-in — Apple Calendar-style scale + fade. Long enough
+       (260ms) and bouncy enough (cubic-bezier overshoot) to register
+       as deliberate without feeling laggy. */
+    @keyframes pearcal-modal-enter {
+      from { opacity: 0; transform: scale(0.88); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .pearcal-modal-enter {
+      animation: pearcal-modal-enter 520ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+      transform-origin: center center;
+    }
   </style>
+  <script>
+    // Delegated scroll detector. Stamps any scrolling element with
+    // data-scrolling=1 and clears it 1s after the last scroll event.
+    // Capturing listener so it catches every scrollable container without
+    // each one needing its own onScroll wiring.
+    (function () {
+      const timers = new WeakMap()
+      function clear (el) {
+        el.removeAttribute('data-scrolling')
+        timers.delete(el)
+      }
+      window.addEventListener('scroll', (e) => {
+        const el = e.target
+        if (!el || el.nodeType !== 1) return
+        el.setAttribute('data-scrolling', '1')
+        const prev = timers.get(el)
+        if (prev) clearTimeout(prev)
+        timers.set(el, setTimeout(() => clear(el), 1000))
+      }, true)
+    })()
+  </script>
 </head>
 <body>
   <div id="root"></div>

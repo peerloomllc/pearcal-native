@@ -72,20 +72,74 @@ app.whenReady().then(() => {
   // re-schedule. callBare queues until bare init resolves, so this is safe
   // to fire-and-forget here.
   rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
+  scheduleNextRehydration()
 })
+
+// Rehydration window. setTimeout's max delay is 2^31-1 ms (~24.8 days);
+// any longer delay overflows to 0 and fires immediately. Recurring
+// events with occurrences months out would all schedule into the past,
+// flooding the user with notifications at cold launch. Capping at 7
+// days keeps every scheduled timer well under the overflow boundary,
+// and the daily re-rehydration loop pulls events into the window as
+// they get closer.
+const REHYDRATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+const REHYDRATE_INTERVAL_MS = 24 * 60 * 60 * 1000
+
+function _eventStartMs (ev) {
+  if (!ev?.date) return null
+  const [y, mo, d] = ev.date.split('-').map(Number)
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null
+  let h = 9, m = 0
+  if (!ev.allDay && ev.start) {
+    const parts = ev.start.split(':').map(Number)
+    if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
+      h = parts[0]; m = parts[1]
+    }
+  }
+  const ms = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+  return Number.isFinite(ms) ? ms : null
+}
 
 async function rehydrateReminders () {
   const events = await bridge.callBare('listEvents', [])
   if (!Array.isArray(events) || events.length === 0) return
+  const now = Date.now()
+  const cutoff = now + REHYDRATE_WINDOW_MS
   let scheduled = 0
+  let outOfWindow = 0
   for (const ev of events) {
     if (!ev || !ev.id) continue
+    const startMs = _eventStartMs(ev)
+    // Skip events outside the rehydration window. Events more than 7
+    // days out get scheduled by a future re-rehydration tick. Events
+    // more than 1 hour past would be filtered by the schedule logic
+    // anyway, but bailing here saves the bare-call round-trip.
+    if (startMs == null || startMs < now - 60 * 60 * 1000 || startMs > cutoff) {
+      outOfWindow++
+      continue
+    }
     const reminders = await bridge.callBare('getReminders', [ev.id]).catch(() => null)
     if (!Array.isArray(reminders) || reminders.length === 0) continue
     scheduleForEventOnBoot(ev, reminders, () => mainWindow)
     scheduled++
   }
-  if (scheduled > 0) console.log('[main] rehydrated reminders for ' + scheduled + ' event(s)')
+  if (scheduled > 0 || outOfWindow > 0) {
+    console.log('[main] rehydrated reminders: scheduled=' + scheduled + ' outOfWindow=' + outOfWindow)
+  }
+}
+
+// Daily rolling rehydration so events sitting just past the 7-day
+// window get picked up as they get closer, without requiring the user
+// to restart the app. _scheduleForEvent's per-event _cancelForEvent
+// makes the re-call idempotent — already-scheduled timers in the same
+// window get replaced rather than duplicated.
+let _rehydrateTimer = null
+function scheduleNextRehydration () {
+  if (_rehydrateTimer) clearTimeout(_rehydrateTimer)
+  _rehydrateTimer = setTimeout(() => {
+    rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
+    scheduleNextRehydration()
+  }, REHYDRATE_INTERVAL_MS)
 }
 
 function createWindow () {

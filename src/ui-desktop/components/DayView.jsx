@@ -1,0 +1,257 @@
+// Day view — 24h timeline, single column. Click any timed event opens
+// the inspector popover; click empty timeline opens the create modal
+// pre-filled with the slot time. Right-click anywhere opens the
+// context menu (event-specific or "New event here").
+//
+// Drag-to-create / drag-to-move / drag-to-resize land in a follow-up
+// phase — D4 ships click + right-click only.
+
+import { useMemo, useRef } from 'react'
+import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
+import { useDragCreate, fromMinHHMM } from '../hooks/useDragCreate.js'
+import { useDragEvent } from '../hooks/useDragEvent.js'
+import { DragPreview } from './DragPreview.jsx'
+
+const HOUR_HEIGHT = 56
+const HOUR_PAD_LEFT = 56
+
+function eventsForDate (events, dateStr) {
+  const out = []
+  for (const ev of events) {
+    if (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId) {
+      for (const occ of expandRecurring(ev)) if (occ.date === dateStr) out.push(occ)
+    } else if (ev.date === dateStr) {
+      out.push(ev)
+    }
+    if (ev.endDate && ev.date !== dateStr && dateStr >= ev.date && dateStr <= ev.endDate) {
+      if (!out.some(e => e.id === ev.id)) out.push(ev)
+    }
+  }
+  return out
+}
+
+function parseTimeToMinutes (t) {
+  if (!t) return 0
+  const [h, m] = t.split(':').map(Number)
+  return h * 60 + m
+}
+
+// Click anywhere within an hour band → top of that hour. Drag-to-create
+// (D4b) will use a finer snap; for click only, top-of-hour matches what
+// users mean ("a 6am-7am event when I click in that band").
+function topOfHourAtY (y) {
+  const h = Math.max(0, Math.min(23, Math.floor(y / HOUR_HEIGHT)))
+  return String(h).padStart(2, '0') + ':00'
+}
+
+function formatHour (h, use24h) {
+  if (use24h) return String(h).padStart(2, '0') + ':00'
+  if (h === 0) return '12am'
+  if (h === 12) return '12pm'
+  return (h > 12 ? h - 12 : h) + (h >= 12 ? 'pm' : 'am')
+}
+
+function eventGroups (ev, groupsById) {
+  return (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean)
+}
+
+export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, use24h, pendingCreateRange = null, interactions = {} }) {
+  const dayEvents    = useMemo(() => eventsForDate(events, selectedDate), [events, selectedDate])
+  const allDayEvents = dayEvents.filter(e => e.allDay)
+  const timedEvents  = dayEvents.filter(e => !e.allDay && e.start)
+  const timelineRef  = useRef(null)
+
+  // Drag-to-create. Click (no movement) → top-of-hour, no end (modal
+  // computes 1h default). Drag (≥ threshold) → snapped 30-min range,
+  // both endpoints explicit so the modal pre-fills exactly that span.
+  const drag = useDragCreate({
+    snapMin: 30,
+    onClick: ({ date, startMin, clientX, clientY }) => {
+      const h = Math.floor(startMin / 60)
+      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '', clientX, clientY)
+    },
+    onCommit: ({ date, fromMin, toMin, clientX, clientY }) => {
+      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin), clientX, clientY)
+    },
+  })
+
+  // Drag-on-event: move (drag body) or resize (drag bottom 8px).
+  // Click-through fires onEventClick so the inspector still opens for
+  // plain clicks (no movement past the threshold).
+  const dragEv = useDragEvent({
+    snapMin: 30,
+    onClickThrough: (ev, x, y) => interactions.onEventClick?.(ev, x, y),
+    onCommit: (info) => interactions.onEventDragCommit?.(info),
+  })
+
+  function handleTimelineMouseDown (e) {
+    const rect = timelineRef.current?.getBoundingClientRect()
+    drag.start(e, { rect, date: selectedDate, hourHeight: HOUR_HEIGHT })
+  }
+
+  function handleTimelineContextMenu (e) {
+    if (e.target.closest('[data-event-id]')) return  // event has its own menu
+    e.preventDefault()
+    const rect = timelineRef.current?.getBoundingClientRect()
+    if (!rect) return
+    interactions.onSlotContextMenu?.(selectedDate, topOfHourAtY(e.clientY - rect.top), e.clientX, e.clientY)
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {allDayEvents.length > 0 && (
+        <div style={{
+          padding: '8px 24px 8px ' + (HOUR_PAD_LEFT + 24) + 'px',
+          borderBottom: `1px solid ${tokens.border}`,
+          background: tokens.bg,
+          display: 'flex', flexWrap: 'wrap', gap: 6,
+        }}>
+          {allDayEvents.map(ev => (
+            <EventChip key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
+                       interactions={interactions} />
+          ))}
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
+        <div ref={timelineRef}
+             onMouseDown={handleTimelineMouseDown}
+             onContextMenu={handleTimelineContextMenu}
+             style={{ position: 'relative', height: HOUR_HEIGHT * 24, minHeight: HOUR_HEIGHT * 24, cursor: 'crosshair' }}>
+          {Array.from({ length: 24 }, (_, h) => (
+            // Whole hour band gets the hover wash. The time label sits on
+            // top with pointer-events:none so it doesn't intercept the
+            // hover or block drag-create mousedown.
+            <div key={h} data-clickable style={{
+              position: 'absolute', top: h * HOUR_HEIGHT, left: 0, right: 0,
+              height: HOUR_HEIGHT, borderTop: `1px solid ${tokens.border}`,
+            }}>
+              <div style={{
+                position: 'absolute', top: 0, left: 0,
+                width: HOUR_PAD_LEFT, paddingTop: 4, paddingRight: 8, textAlign: 'right',
+                color: tokens.muted, fontSize: 11, fontVariantNumeric: 'tabular-nums',
+                pointerEvents: 'none',
+              }}>
+                {formatHour(h, use24h)}
+              </div>
+            </div>
+          ))}
+
+          {/* Events container has pointer-events: none so hovering empty
+              space inside its bounds falls through to the hour bands
+              behind it (otherwise the hour-row hover wash would only
+              fire over the time-label gutter and the 24px right margin
+              that aren't covered by this layer). PositionedEvent
+              children re-enable pointer events so clicks/drags on
+              actual event cards still work. DragPreview is already
+              pointer-events: none. */}
+          <div style={{ position: 'absolute', top: 0, left: HOUR_PAD_LEFT, right: 24, bottom: 0, pointerEvents: 'none' }}>
+            {timedEvents.map(ev => (
+              <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
+                               use24h={use24h} interactions={interactions}
+                               dragState={dragEv.dragState} onDragStart={dragEv.start} />
+            ))}
+            {drag.dragRange && drag.dragRange.date === selectedDate && (
+              <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
+            )}
+            {/* Ghost while a create-mode modal is open over this date —
+                drag is gone but the visual context stays. */}
+            {!drag.dragRange && pendingCreateRange && pendingCreateRange.date === selectedDate && (
+              <DragPreview tokens={tokens} fromMin={pendingCreateRange.from} toMin={pendingCreateRange.to} hourHeight={HOUR_HEIGHT} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interactions, dragState, onDragStart }) {
+  const startMin = parseTimeToMinutes(ev.start)
+  const endMin   = ev.end ? parseTimeToMinutes(ev.end) : startMin + 30
+  // Visual position derives from in-flight drag if this is the dragging
+  // event; otherwise use the persisted start/end. Saves don't fire until
+  // mouseup, so the underlying record stays unchanged during drag.
+  const isDragged = dragState && dragState.ev.id === ev.id
+  let vStart = startMin, vEnd = endMin
+  if (isDragged) {
+    if (dragState.mode === 'move') {
+      vStart = startMin + dragState.deltaMin
+      vEnd   = endMin   + dragState.deltaMin
+    } else {
+      vEnd   = Math.max(startMin + 30, endMin + dragState.deltaMin)
+    }
+  }
+  const top    = (vStart / 60) * HOUR_HEIGHT
+  const height = Math.max(20, ((vEnd - vStart) / 60) * HOUR_HEIGHT)
+  const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
+  const declined = myRsvps[ev.id] === 'declined'
+
+  function onMouseDown (e) {
+    onDragStart?.(e, ev, HOUR_HEIGHT)
+  }
+  function onContextMenu (e) {
+    e.stopPropagation()
+    e.preventDefault()
+    interactions.onEventContextMenu?.(ev, e.clientX, e.clientY)
+  }
+
+  return (
+    <div data-event-id={ev.id} onMouseDown={onMouseDown} onContextMenu={onContextMenu}
+      style={{
+        position: 'absolute', top, left: 8, right: 8, height,
+        background: tokens.surface,
+        border: `1px solid ${tokens.border}`,
+        borderRadius: 6,
+        padding: '4px 8px 4px 12px',
+        fontSize: 12, overflow: 'hidden',
+        opacity: declined ? 0.45 : (isDragged ? 0.7 : 1),
+        cursor: isDragged && dragState.mode === 'resize' ? 'ns-resize' : (isDragged ? 'grabbing' : 'pointer'),
+        zIndex: isDragged ? 10 : 1,
+        // Re-enable pointer events that were turned off on the parent
+        // events-container so empty-space hover falls through to hour
+        // bands. The event card itself still receives clicks/drags.
+        pointerEvents: 'auto',
+        ...leftStripeStyle(colors, 4),
+      }}>
+      <div style={{
+        fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        textDecoration: declined ? 'line-through' : 'none', pointerEvents: 'none',
+      }}>
+        {ev.title}
+      </div>
+      <div style={{ color: tokens.muted, fontSize: 11, fontVariantNumeric: 'tabular-nums', pointerEvents: 'none' }}>
+        {formatTime(ev.start, use24h)}{ev.end ? '–' + formatTime(ev.end, use24h) : ''}
+      </div>
+      {/* Bottom 8px is the resize handle; mousedown there starts a resize
+          drag, mousedown elsewhere on the card starts a move drag. */}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 8,
+        cursor: 'ns-resize', pointerEvents: 'none',
+      }} />
+    </div>
+  )
+}
+
+function EventChip ({ ev, tokens, groupsById, myRsvps, interactions }) {
+  const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
+  const declined = myRsvps[ev.id] === 'declined'
+  function onClick (e) { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }
+  function onContextMenu (e) {
+    e.stopPropagation(); e.preventDefault()
+    interactions.onEventContextMenu?.(ev, e.clientX, e.clientY)
+  }
+  return (
+    <div data-event-id={ev.id} onClick={onClick} onContextMenu={onContextMenu} style={{
+      padding: '3px 10px',
+      background: tokens.surface, border: `1px solid ${tokens.border}`,
+      borderRadius: 4, fontSize: 12, fontWeight: 500,
+      opacity: declined ? 0.45 : 1,
+      textDecoration: declined ? 'line-through' : 'none',
+      cursor: 'pointer',
+      ...leftStripeStyle(colors, 3),
+    }}>
+      {ev.title}
+    </div>
+  )
+}
