@@ -2,9 +2,10 @@
 //   D2 — scaffold + Day view (read-only)
 //   D3 — sidebar mini-month + group toggles + Week/Month views
 //   D4 — mouse interactions (click/right-click), EventModal, Inspector
+//   D5 — global keyboard shortcuts + Cmd+K command palette
 // Mobile renderer (src/ui/App.jsx) is untouched.
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps,
   emitter,
@@ -17,9 +18,11 @@ import { MonthView } from './components/MonthView.jsx'
 import { EventModal } from './components/EventModal.jsx'
 import { EventInspector } from './components/EventInspector.jsx'
 import { ContextMenu } from './components/ContextMenu.jsx'
+import { CommandPalette } from './components/CommandPalette.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
+import { useKeyboard } from './hooks/useKeyboard.js'
 
 const DARK_TOKENS = {
   bg:        '#0E0D0C',
@@ -43,10 +46,11 @@ export default function App ({ db, notifs, sync }) {
   })
 
   // Interaction state: at most one of these is open at a time
-  // (modal | inspector | contextMenu).
+  // (modal | inspector | contextMenu | palette).
   const [modal,       setModal]       = useState(null)        // { mode, initial }
   const [inspector,   setInspector]   = useState(null)        // { ev, x, y }
   const [contextMenu, setContextMenu] = useState(null)        // { x, y, items }
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   const groupsById = useMemo(() => {
     const map = new Map()
@@ -63,40 +67,39 @@ export default function App ({ db, notifs, sync }) {
     })
   }, [events, visibleGroups])
 
-  if (!profile) {
-    return (
-      <div style={{
-        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: DARK_TOKENS.bg, color: DARK_TOKENS.muted,
-        fontFamily: DARK_TOKENS.font, fontSize: 14,
-      }}>
-        Loading PearCal…
-      </div>
-    )
-  }
-
-  const use24h    = profile.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
-  const weekStart = profile.weekStart ?? 0
+  // Profile may be null on first render (the bare backend hasn't replied
+  // to getProfile yet). Don't early-return here: every hook below this
+  // point — closeAllTransient, commands useMemo, useKeyboard — must
+  // run unconditionally to satisfy the Rules of Hooks. The loading state
+  // is rendered inline at the bottom of the function instead.
+  const use24h    = profile?.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
+  const weekStart = profile?.weekStart ?? 0
 
   // Interaction handlers — passed down to views. allDay defaults OFF;
   // EventModal computes smart-default start/end times when none are
   // passed (matches mobile App.jsx's openCreate semantics).
   function openCreateAt (date, start, end) {
-    setInspector(null); setContextMenu(null)
+    setInspector(null); setContextMenu(null); setPaletteOpen(false)
     setModal({ mode: 'create', initial: { date, start, end, allDay: false } })
   }
   function openInspector (ev, x, y) {
-    setContextMenu(null); setModal(null)
+    setContextMenu(null); setModal(null); setPaletteOpen(false)
     setInspector({ ev, x, y })
   }
   function openContextMenu (x, y, items) {
-    setInspector(null); setModal(null)
+    setInspector(null); setModal(null); setPaletteOpen(false)
     setContextMenu({ x, y, items })
   }
   function openEditModal (ev) {
-    setInspector(null); setContextMenu(null)
+    setInspector(null); setContextMenu(null); setPaletteOpen(false)
     setModal({ mode: 'edit', initial: ev })
   }
+  // Close any transient layer — the universal Esc handler. EventModal,
+  // EventInspector, ContextMenu, and CommandPalette each also bind Esc
+  // locally, but this fallback covers focus-elsewhere edge cases.
+  const closeAllTransient = useCallback(() => {
+    setModal(null); setInspector(null); setContextMenu(null); setPaletteOpen(false)
+  }, [])
 
   function buildEventContextItems (ev) {
     return [
@@ -153,6 +156,64 @@ export default function App ({ db, notifs, sync }) {
     use24h,
     weekStart,
     interactions,
+  }
+
+  // Command list for the palette. Includes static commands, group
+  // visibility toggles, and one entry per event so users can jump-to-event
+  // by typing a title fragment. The palette filters/scores by query.
+  const commands = useMemo(() => {
+    const out = [
+      { id: 'view:day',   icon: '☷', label: 'View: Day',   hint: 'Switch to day view',   shortcut: '1', action: () => view.setMode('day') },
+      { id: 'view:week',  icon: '▥', label: 'View: Week',  hint: 'Switch to week view',  shortcut: '2', action: () => view.setMode('week') },
+      { id: 'view:month', icon: '▦', label: 'View: Month', hint: 'Switch to month view', shortcut: '3', action: () => view.setMode('month') },
+      { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T', action: () => view.setSelectedDate(todayLocal()) },
+      { id: 'create:new', icon: '+', label: 'New Event',   hint: 'Create an event on the selected date', shortcut: 'N', action: () => openCreateAt(view.selectedDate, '', '') },
+    ]
+    for (const g of groups) {
+      const visible = visibleGroups.isVisible(g.id)
+      out.push({
+        id: 'toggle:' + g.id,
+        icon: visible ? '☑' : '☐',
+        label: (visible ? 'Hide ' : 'Show ') + (g.emoji ? g.emoji + ' ' : '') + g.name,
+        hint: 'Toggle group visibility',
+        action: () => visibleGroups.toggle(g.id),
+      })
+    }
+    for (const ev of events) {
+      out.push({
+        id: 'event:' + ev.id,
+        icon: '·',
+        label: ev.title || '(untitled)',
+        hint: ev.date + (ev.allDay ? ' · all-day' : (ev.start ? ' · ' + ev.start : '')),
+        action: () => {
+          view.setSelectedDate(ev.date)
+          view.setMode('day')
+        },
+      })
+    }
+    return out
+  }, [groups, events, visibleGroups, view])
+
+  useKeyboard({
+    selectedDate:    view.selectedDate,
+    setSelectedDate: view.setSelectedDate,
+    mode:            view.mode,
+    setMode:         view.setMode,
+    onCreate:        () => openCreateAt(view.selectedDate, '', ''),
+    onOpenPalette:   () => setPaletteOpen(true),
+    onCloseTransient: closeAllTransient,
+  })
+
+  if (!profile) {
+    return (
+      <div style={{
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: DARK_TOKENS.bg, color: DARK_TOKENS.muted,
+        fontFamily: DARK_TOKENS.font, fontSize: 14,
+      }}>
+        Loading PearCal…
+      </div>
+    )
   }
 
   return (
@@ -220,8 +281,23 @@ export default function App ({ db, notifs, sync }) {
           onClose={() => setContextMenu(null)}
         />
       )}
+      {paletteOpen && (
+        <CommandPalette
+          tokens={DARK_TOKENS}
+          commands={commands}
+          onJumpToDate={(d) => view.setSelectedDate(d)}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
     </div>
   )
+}
+
+function todayLocal () {
+  const t = new Date()
+  return t.getFullYear() + '-' +
+    String(t.getMonth() + 1).padStart(2, '0') + '-' +
+    String(t.getDate()).padStart(2, '0')
 }
 
 function bumpHalfHour (hhmm) {
