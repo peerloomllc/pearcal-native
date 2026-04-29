@@ -78,10 +78,12 @@ export default function App ({ db, notifs, sync }) {
   const use24h    = profile.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const weekStart = profile.weekStart ?? 0
 
-  // Interaction handlers — passed down to views
+  // Interaction handlers — passed down to views. allDay defaults OFF;
+  // EventModal computes smart-default start/end times when none are
+  // passed (matches mobile App.jsx's openCreate semantics).
   function openCreateAt (date, start, end) {
     setInspector(null); setContextMenu(null)
-    setModal({ mode: 'create', initial: { date, start, end, allDay: !start } })
+    setModal({ mode: 'create', initial: { date, start, end, allDay: false } })
   }
   function openInspector (ev, x, y) {
     setContextMenu(null); setModal(null)

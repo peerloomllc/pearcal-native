@@ -11,14 +11,35 @@ function makeEventId () {
   return 'e' + Date.now() + Math.floor(Math.random() * 1000)
 }
 
-const DEFAULT_TIMES = { start: '09:00', end: '10:00' }
+// Smart-default times — match mobile App.jsx's openCreate (line 1205):
+// when a slot was clicked we use that snapped time as start and round
+// up to the next hour-mark for end; when nothing was clicked (the
+// "+ New" button or a month-cell create) start defaults to the next
+// hour from now and end is one hour after that.
+function nextHourMark (hh) {
+  return String((hh + 1) % 24).padStart(2, '0') + ':00'
+}
+function defaultsFor (initialStart) {
+  if (initialStart) {
+    const h = parseInt(initialStart.split(':')[0], 10)
+    return { start: initialStart, end: nextHourMark(h) }
+  }
+  const now = new Date()
+  const next = new Date(now.getTime() + (60 - now.getMinutes()) * 60000)
+  next.setSeconds(0, 0)
+  return {
+    start: String(next.getHours()).padStart(2, '0') + ':00',
+    end:   nextHourMark(next.getHours()),
+  }
+}
 
 export function EventModal ({ tokens, mode, initial, groups, profile, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
-  const [start,    setStart]    = useState(initial?.start ?? DEFAULT_TIMES.start)
-  const [end,      setEnd]      = useState(initial?.end ?? DEFAULT_TIMES.end)
+  const seedTimes = defaultsFor(initial?.start)
+  const [start,    setStart]    = useState(initial?.start ?? seedTimes.start)
+  const [end,      setEnd]      = useState(initial?.end   ?? seedTimes.end)
   const [groupIds, setGroupIds] = useState(initial?.groups ?? [])
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
