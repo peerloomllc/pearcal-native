@@ -37,9 +37,12 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
+  // `||` instead of `??` here: parent passes empty strings (not undefined)
+  // when no slot time was clicked, and we want those to fall through to
+  // the smart defaults rather than land in the input as ''.
   const seedTimes = defaultsFor(initial?.start)
-  const [start,    setStart]    = useState(initial?.start ?? seedTimes.start)
-  const [end,      setEnd]      = useState(initial?.end   ?? seedTimes.end)
+  const [start,    setStart]    = useState(initial?.start || seedTimes.start)
+  const [end,      setEnd]      = useState(initial?.end   || seedTimes.end)
   const [groupIds, setGroupIds] = useState(initial?.groups ?? [])
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
