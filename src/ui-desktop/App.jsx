@@ -1,19 +1,21 @@
 // PearCal Desktop renderer — Apple-Calendar-shaped layout (sidebar +
-// main grid). Phase D2 lays the structural shell and the Day view;
-// later phases fill in Week/Month, sidebar group list, mouse/keyboard
-// interactions, and modals. Mobile renderer (src/ui/App.jsx) is
-// untouched.
+// main grid). D2 laid the structural shell + Day view; D3 adds the
+// sidebar mini-month, group visibility toggles, and Week + Month
+// views. Mouse interactions, modals, keyboard shortcuts come in
+// later phases. Mobile renderer (src/ui/App.jsx) is untouched.
 
 import { useMemo } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps,
-  emitter, todayStr, formatTime,
-  derivedEventColors, leftStripeStyle,
+  emitter,
 } from '../ui-shared/index.js'
-import { Sidebar } from './components/Sidebar.jsx'
+import { Sidebar } from './components/Sidebar/index.jsx'
 import { Toolbar } from './components/Toolbar.jsx'
 import { DayView } from './components/DayView.jsx'
+import { WeekView } from './components/WeekView.jsx'
+import { MonthView } from './components/MonthView.jsx'
 import { useViewState } from './hooks/useViewState.js'
+import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 
 const DARK_TOKENS = {
   bg:        '#0E0D0C',
@@ -31,6 +33,7 @@ export default function App ({ db, notifs, sync }) {
   const [events]  = useEvents(db)
   const [myRsvps] = useRsvps(db)
   const view      = useViewState()
+  const visibleGroups = useVisibleGroups(groups)
 
   // Group lookup by id — used by event color resolution + sidebar list.
   const groupsById = useMemo(() => {
@@ -38,6 +41,17 @@ export default function App ({ db, notifs, sync }) {
     for (const g of groups) map.set(g.id, g)
     return map
   }, [groups])
+
+  // Filter events by visible-groups membership (any-of). Events with no
+  // groups (legacy or personal) stay visible regardless.
+  const visibleEvents = useMemo(() => {
+    if (visibleGroups.hiddenIds.size === 0) return events
+    return events.filter(ev => {
+      const ids = ev.groups ?? []
+      if (ids.length === 0) return true
+      return ids.some(id => visibleGroups.isVisible(id))
+    })
+  }, [events, visibleGroups])
 
   if (!profile) {
     return (
@@ -51,7 +65,19 @@ export default function App ({ db, notifs, sync }) {
     )
   }
 
-  const use24h = profile.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
+  const use24h    = profile.use24h ?? !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
+  const weekStart = profile.weekStart ?? 0
+
+  const viewProps = {
+    tokens: DARK_TOKENS,
+    events: visibleEvents,
+    groupsById,
+    myRsvps,
+    selectedDate: view.selectedDate,
+    setSelectedDate: view.setSelectedDate,
+    use24h,
+    weekStart,
+  }
 
   return (
     <div style={{
@@ -65,6 +91,7 @@ export default function App ({ db, notifs, sync }) {
         groups={groups}
         selectedDate={view.selectedDate}
         setSelectedDate={view.setSelectedDate}
+        visibleGroups={visibleGroups}
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
@@ -74,24 +101,9 @@ export default function App ({ db, notifs, sync }) {
           mode={view.mode}
           setMode={view.setMode}
         />
-        {view.mode === 'day' && (
-          <DayView
-            tokens={DARK_TOKENS}
-            events={events}
-            groupsById={groupsById}
-            myRsvps={myRsvps}
-            selectedDate={view.selectedDate}
-            use24h={use24h}
-          />
-        )}
-        {view.mode !== 'day' && (
-          <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: DARK_TOKENS.muted, fontSize: 14,
-          }}>
-            {view.mode} view — coming in D3
-          </div>
-        )}
+        {view.mode === 'day'   && <DayView   {...viewProps} />}
+        {view.mode === 'week'  && <WeekView  {...viewProps} />}
+        {view.mode === 'month' && <MonthView {...viewProps} setMode={view.setMode} />}
       </main>
     </div>
   )
