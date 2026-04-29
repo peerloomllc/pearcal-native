@@ -7,7 +7,11 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html, body, #root { margin: 0; padding: 0; height: 100%; background: #0f172a; }
-    body { font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif; color: #e2e8f0; overflow: hidden; }
+    body {
+      font-family: -apple-system, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+      color: #e2e8f0; overflow: hidden;
+      font-size: 12px; line-height: 1.4;
+    }
     /* D5: visible keyboard focus rings for tab navigation. Mouse focus
        (`:focus` without `:focus-visible`) stays unstyled so click ≠ ring. */
     button:focus { outline: none; }
@@ -16,6 +20,18 @@
       outline: 2px solid #C8922A;
       outline-offset: 1px;
       border-radius: 4px;
+    }
+    /* D6: subtle hover states. Inset box-shadow paints a translucent
+       white wash over the element regardless of its inline background,
+       so transparent toolbar buttons and accent-colored buttons both
+       light up on hover without overriding inline styles. */
+    button:not(:disabled):hover,
+    [data-clickable]:not(:disabled):hover,
+    [data-event-id]:hover {
+      box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.06);
+    }
+    button, [data-clickable], [data-event-id] {
+      transition: box-shadow 80ms ease;
     }
   </style>
 </head>

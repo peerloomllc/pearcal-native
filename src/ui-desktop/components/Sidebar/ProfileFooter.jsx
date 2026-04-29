@@ -5,21 +5,21 @@ export function ProfileFooter ({ tokens, profile }) {
   const isPhoto = profile.avatar?.startsWith?.('data:')
   return (
     <footer style={{
-      padding: '12px 16px', borderTop: `1px solid ${tokens.border}`,
-      display: 'flex', alignItems: 'center', gap: 10,
+      padding: '10px 14px', borderTop: `1px solid ${tokens.border}`,
+      display: 'flex', alignItems: 'center', gap: 9,
     }}>
       <div style={{
-        width: 32, height: 32, borderRadius: '50%',
+        width: 28, height: 28, borderRadius: '50%',
         background: tokens.accent, color: tokens.bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 13, fontWeight: 600, overflow: 'hidden', flexShrink: 0,
+        fontSize: 12, fontWeight: 600, overflow: 'hidden', flexShrink: 0,
       }}>
         {isPhoto
           ? <img src={profile.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : (profile.avatar ?? '?')}
       </div>
       <div style={{ overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {profile.name ?? 'Unnamed'}
         </div>
       </div>

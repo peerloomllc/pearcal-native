@@ -44,15 +44,15 @@ export function MiniMonth ({ tokens, selectedDate, setSelectedDate }) {
 
   const navBtn = {
     background: 'transparent', border: 'none', color: tokens.muted,
-    fontSize: 14, cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+    fontSize: 13, cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
     fontFamily: tokens.font,
   }
 
   return (
-    <div style={{ padding: '12px 16px', borderBottom: `1px solid ${tokens.border}` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+    <div style={{ padding: '10px 14px', borderBottom: `1px solid ${tokens.border}` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
         <button style={navBtn} onClick={() => setCursor(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} aria-label="Previous month">‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 500 }}>{monthLabel}</div>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: 600 }}>{monthLabel}</div>
         <button style={navBtn} onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} aria-label="Next month">›</button>
       </div>
 

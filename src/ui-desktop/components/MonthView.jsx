@@ -123,7 +123,7 @@ function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps,
   }
 
   return (
-    <div onClick={onClick} onContextMenu={onCellContextMenu}
+    <div data-clickable onClick={onClick} onContextMenu={onCellContextMenu}
       style={{
         borderLeft: borderLeft ? `1px solid ${tokens.border}` : 'none',
         padding: '4px 6px', overflow: 'hidden',
@@ -132,7 +132,7 @@ function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps,
         display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0,
       }}>
       <div style={{
-        fontSize: 12, fontWeight: isToday ? 600 : 400,
+        fontSize: 11, fontWeight: isToday ? 600 : 400,
         color: cell.inMonth ? (isToday ? tokens.accent : tokens.text) : tokens.muted,
         fontVariantNumeric: 'tabular-nums', flexShrink: 0,
       }}>

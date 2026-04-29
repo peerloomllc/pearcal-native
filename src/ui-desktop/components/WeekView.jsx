@@ -122,16 +122,16 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
           const isSelected = d === selectedDate
           return (
             <button key={d} onClick={() => setSelectedDate(d)} style={{
-              padding: '8px 0', borderLeft: `1px solid ${tokens.border}`,
+              padding: '6px 0', borderLeft: `1px solid ${tokens.border}`,
               background: 'transparent', border: 'none', borderLeftColor: tokens.border,
               color: isToday ? tokens.accent : tokens.text,
-              fontWeight: isSelected ? 600 : 400, fontSize: 12,
+              fontWeight: isSelected ? 600 : 400, fontSize: 11,
               cursor: 'pointer', fontFamily: tokens.font,
             }}>
-              <div style={{ fontSize: 10, color: tokens.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div style={{ fontSize: 10, color: tokens.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 {DOW_FULL[new Date(y, mo - 1, dd).getDay()]}
               </div>
-              <div style={{ fontSize: 16, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{dd}</div>
+              <div style={{ fontSize: 14, fontVariantNumeric: 'tabular-nums', marginTop: 2 }}>{dd}</div>
             </button>
           )
         })}

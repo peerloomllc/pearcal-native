@@ -19,8 +19,8 @@ export function Sidebar ({
       background: tokens.surface, borderRight: `1px solid ${tokens.border}`,
       display: 'flex', flexDirection: 'column',
     }}>
-      <header style={{ padding: '20px 16px 12px', borderBottom: `1px solid ${tokens.border}` }}>
-        <div style={{ fontSize: 18, fontWeight: 600, letterSpacing: '-0.01em' }}>🍐 PearCal</div>
+      <header style={{ padding: '14px 14px 10px', borderBottom: `1px solid ${tokens.border}` }}>
+        <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em' }}>🍐 PearCal</div>
       </header>
 
       <MiniMonth tokens={tokens} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />

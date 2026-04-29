@@ -119,20 +119,20 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
   }
 
   const inputBase = {
-    width: '100%', padding: '8px 10px', borderRadius: 6,
-    fontSize: 13, fontWeight: 400,
+    width: '100%', padding: '6px 9px', borderRadius: 5,
+    fontSize: 12, fontWeight: 400,
     border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
     fontFamily: tokens.font, boxSizing: 'border-box', outline: 'none',
   }
 
   const label = {
-    fontSize: 11, fontWeight: 500, color: tokens.muted,
-    textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4,
+    fontSize: 10, fontWeight: 600, color: tokens.muted,
+    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4,
   }
 
   const btnBase = {
-    padding: '8px 16px', fontSize: 13, fontWeight: 500,
-    borderRadius: 6, cursor: 'pointer',
+    padding: '6px 14px', fontSize: 12, fontWeight: 500,
+    borderRadius: 5, cursor: 'pointer',
     fontFamily: tokens.font, border: `1px solid ${tokens.border}`,
     background: tokens.bg, color: tokens.text,
   }
@@ -146,11 +146,11 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
     }}>
       <div onClick={e => e.stopPropagation()} style={{
         background: tokens.surface, border: `1px solid ${tokens.border}`,
-        borderRadius: 10, padding: 24, width: 480, maxWidth: '90vw',
+        borderRadius: 10, padding: 20, width: 460, maxWidth: '90vw',
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
       }}>
-        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>
           {mode === 'edit' ? 'Edit event' : 'New event'}
         </div>
 
@@ -166,8 +166,8 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputBase} />
           </div>
           <label style={{
-            display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 8,
-            fontSize: 13, color: tokens.text, cursor: 'pointer',
+            display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 7,
+            fontSize: 12, color: tokens.text, cursor: 'pointer',
           }}>
             <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} />
             All day
@@ -190,21 +190,21 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Groups</div>
           {groups.length === 0 && (
-            <div style={{ fontSize: 13, color: tokens.muted }}>
+            <div style={{ fontSize: 12, color: tokens.muted }}>
               No groups. Event will be personal-only.
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
             {groups.map(g => {
               const selected = groupIds.includes(g.id)
               return (
                 <button key={g.id} onClick={() => toggleGroup(g.id)} style={{
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  padding: '4px 10px', borderRadius: 14,
+                  display: 'flex', alignItems: 'center', gap: 5,
+                  padding: '3px 9px', borderRadius: 12,
                   background: selected ? (g.color ?? tokens.muted) : 'transparent',
                   color: selected ? tokens.bg : tokens.text,
                   border: `1px solid ${g.color ?? tokens.border}`,
-                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
+                  fontSize: 11, fontWeight: 500, cursor: 'pointer',
                   fontFamily: tokens.font,
                 }}>
                   {g.emoji ? g.emoji + ' ' : ''}{g.name}

@@ -26,8 +26,8 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
 
   const btn = {
     background: 'transparent', border: `1px solid ${tokens.border}`, color: tokens.text,
-    padding: '6px 12px', fontSize: 13, fontWeight: 400,
-    borderRadius: 6, cursor: 'pointer',
+    padding: '4px 10px', fontSize: 12, fontWeight: 400,
+    borderRadius: 5, cursor: 'pointer',
     fontFamily: tokens.font,
   }
 
@@ -41,8 +41,8 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
 
   return (
     <header style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '12px 24px', borderBottom: `1px solid ${tokens.border}`,
+      display: 'flex', alignItems: 'center', gap: 8,
+      padding: '8px 16px', borderBottom: `1px solid ${tokens.border}`,
       background: tokens.bg,
     }}>
       <button style={btn} onClick={() => setSelectedDate(shiftDate(selectedDate, -1))} aria-label="Previous day">←</button>
@@ -53,7 +53,7 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
       </button>
 
       <div style={{
-        flex: 1, fontSize: 16, fontWeight: 500, letterSpacing: '-0.01em',
+        flex: 1, fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
         textAlign: 'center',
       }}>
         {formatDateHeader(selectedDate)}
@@ -66,8 +66,8 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
       </div>
 
       {onCreate && (
-        <button onClick={onCreate} title="New event"
-                style={{ ...btn, marginLeft: 8, background: tokens.accent, color: tokens.bg, borderColor: tokens.accent, fontWeight: 500 }}>
+        <button onClick={onCreate} title="New event (N)"
+                style={{ ...btn, marginLeft: 4, background: tokens.accent, color: tokens.bg, borderColor: tokens.accent, fontWeight: 600 }}>
           + New
         </button>
       )}

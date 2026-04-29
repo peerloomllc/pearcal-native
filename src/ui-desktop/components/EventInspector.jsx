@@ -40,7 +40,7 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, onEdit
   const colors = derivedEventColors(ev, (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean))
 
   const btn = {
-    flex: 1, padding: '6px 10px', fontSize: 12, fontWeight: 500,
+    flex: 1, padding: '5px 8px', fontSize: 11, fontWeight: 500,
     borderRadius: 4, cursor: 'pointer',
     fontFamily: tokens.font,
     border: `1px solid ${tokens.border}`,
@@ -51,39 +51,39 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, onEdit
     <div ref={ref} onMouseDown={e => e.stopPropagation()} style={{
       position: 'fixed', top, left, width: POPOVER_WIDTH, zIndex: 90,
       background: tokens.surface, border: `1px solid ${tokens.border}`,
-      borderRadius: 8, padding: 12,
+      borderRadius: 8, padding: 10,
       boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
       ...leftStripeStyle(colors, 4),
-      paddingLeft: 16,
+      paddingLeft: 14,
       fontFamily: tokens.font,
     }}>
-      <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
         {ev.title}
       </div>
-      <div style={{ fontSize: 12, color: tokens.muted, marginBottom: 8, fontVariantNumeric: 'tabular-nums' }}>
+      <div style={{ fontSize: 11, color: tokens.muted, marginBottom: 6, fontVariantNumeric: 'tabular-nums' }}>
         {ev.allDay
           ? 'All day · ' + ev.date
           : ev.date + ' · ' + formatTime(ev.start, use24h) + (ev.end ? '–' + formatTime(ev.end, use24h) : '')}
       </div>
       {groupNames.length > 0 && (
-        <div style={{ fontSize: 11, color: tokens.muted, marginBottom: 6 }}>
+        <div style={{ fontSize: 10, color: tokens.muted, marginBottom: 5 }}>
           {groupNames.join(', ')}
         </div>
       )}
       {ev.location && (
-        <div style={{ fontSize: 12, color: tokens.text, marginBottom: 6 }}>
+        <div style={{ fontSize: 11, color: tokens.text, marginBottom: 5 }}>
           📍 {ev.location}
         </div>
       )}
       {ev.desc && (
         <div style={{
-          fontSize: 12, color: tokens.text, marginBottom: 8,
+          fontSize: 11, color: tokens.text, marginBottom: 6,
           maxHeight: 80, overflowY: 'auto', whiteSpace: 'pre-wrap',
         }}>
           {ev.desc}
         </div>
       )}
-      <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+      <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
         <button onClick={onEdit}      style={btn}>Edit</button>
         <button onClick={onDuplicate} style={btn}>Duplicate</button>
         <button onClick={onDelete}    style={{ ...btn, color: '#C0504A', borderColor: '#C0504A' }}>Delete</button>

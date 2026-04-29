@@ -4,15 +4,15 @@
 
 export function GroupList ({ tokens, groups, isVisible, toggle }) {
   return (
-    <div style={{ padding: '12px 16px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+    <div style={{ padding: '10px 14px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
       <div style={{
-        fontSize: 11, fontWeight: 500, color: tokens.muted,
-        textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8,
+        fontSize: 10, fontWeight: 600, color: tokens.muted,
+        textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6,
       }}>
         Groups
       </div>
       {groups.length === 0 && (
-        <div style={{ fontSize: 13, color: tokens.muted, fontWeight: 300 }}>
+        <div style={{ fontSize: 12, color: tokens.muted, fontWeight: 300 }}>
           No groups yet
         </div>
       )}
@@ -22,17 +22,17 @@ export function GroupList ({ tokens, groups, isVisible, toggle }) {
           <button key={g.id}
             onClick={() => toggle(g.id)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '6px 4px', width: '100%',
-              background: 'transparent', border: 'none',
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '4px 4px', width: '100%',
+              background: 'transparent', border: 'none', borderRadius: 4,
               color: tokens.text, fontFamily: tokens.font,
-              fontSize: 13, fontWeight: 400,
+              fontSize: 12, fontWeight: 400,
               cursor: 'pointer',
               opacity: visible ? 1 : 0.4,
               textAlign: 'left',
             }}>
             <div style={{
-              width: 12, height: 12, borderRadius: 3,
+              width: 10, height: 10, borderRadius: 2,
               background: visible ? (g.color ?? tokens.muted) : 'transparent',
               border: `1px solid ${g.color ?? tokens.muted}`,
               flexShrink: 0,
