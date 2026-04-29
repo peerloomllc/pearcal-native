@@ -3,6 +3,8 @@
 
 import { useMemo, useRef } from 'react'
 import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
+import { useDragCreate, fromMinHHMM } from '../hooks/useDragCreate.js'
+import { DragPreview } from './DragPreview.jsx'
 
 const HOUR_HEIGHT = 56
 const HOUR_PAD_LEFT = 56
@@ -73,20 +75,29 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
   const today = todayLocal()
   const colRefs = useRef({})
 
-  function timeAtY (date, clientY) {
-    const rect = colRefs.current[date]?.getBoundingClientRect()
-    if (!rect) return ''
-    return topOfHourAtY(clientY - rect.top)
-  }
+  // Drag-to-create. dragRange.date scopes the preview to the active
+  // column so other columns don't render a stale ghost.
+  const drag = useDragCreate({
+    snapMin: 30,
+    onClick: ({ date, startMin }) => {
+      const h = Math.floor(startMin / 60)
+      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '')
+    },
+    onCommit: ({ date, fromMin, toMin }) => {
+      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin))
+    },
+  })
 
-  function handleColClick (date, e) {
-    if (e.target.closest('[data-event-id]')) return
-    interactions.onSlotClick?.(date, timeAtY(date, e.clientY), '')
+  function handleColMouseDown (date, e) {
+    const rect = colRefs.current[date]?.getBoundingClientRect()
+    drag.start(e, { rect, date, hourHeight: HOUR_HEIGHT })
   }
   function handleColContextMenu (date, e) {
     if (e.target.closest('[data-event-id]')) return
     e.preventDefault()
-    interactions.onSlotContextMenu?.(date, timeAtY(date, e.clientY), e.clientX, e.clientY)
+    const rect = colRefs.current[date]?.getBoundingClientRect()
+    if (!rect) return
+    interactions.onSlotContextMenu?.(date, topOfHourAtY(e.clientY - rect.top), e.clientX, e.clientY)
   }
 
   return (
@@ -139,7 +150,7 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
           {days.map(d => (
             <div key={d}
               ref={el => { if (el) colRefs.current[d] = el }}
-              onClick={(e) => handleColClick(d, e)}
+              onMouseDown={(e) => handleColMouseDown(d, e)}
               onContextMenu={(e) => handleColContextMenu(d, e)}
               style={{
                 position: 'relative', borderLeft: `1px solid ${tokens.border}`, height: HOUR_HEIGHT * 24,
@@ -155,6 +166,9 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
                 <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
                                  use24h={use24h} interactions={interactions} />
               ))}
+              {drag.dragRange && drag.dragRange.date === d && (
+                <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
+              )}
             </div>
           ))}
         </div>

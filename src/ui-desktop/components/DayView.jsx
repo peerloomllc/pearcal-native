@@ -8,6 +8,8 @@
 
 import { useMemo, useRef } from 'react'
 import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
+import { useDragCreate, fromMinHHMM } from '../hooks/useDragCreate.js'
+import { DragPreview } from './DragPreview.jsx'
 
 const HOUR_HEIGHT = 56
 const HOUR_PAD_LEFT = 56
@@ -58,21 +60,31 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
   const timedEvents  = dayEvents.filter(e => !e.allDay && e.start)
   const timelineRef  = useRef(null)
 
-  function timeAtY (clientY) {
-    const rect = timelineRef.current?.getBoundingClientRect()
-    if (!rect) return ''
-    return topOfHourAtY(clientY - rect.top)
-  }
+  // Drag-to-create. Click (no movement) → top-of-hour, no end (modal
+  // computes 1h default). Drag (≥ threshold) → snapped 30-min range,
+  // both endpoints explicit so the modal pre-fills exactly that span.
+  const drag = useDragCreate({
+    snapMin: 30,
+    onClick: ({ date, startMin }) => {
+      const h = Math.floor(startMin / 60)
+      interactions.onSlotClick?.(date, String(h).padStart(2, '0') + ':00', '')
+    },
+    onCommit: ({ date, fromMin, toMin }) => {
+      interactions.onSlotClick?.(date, fromMinHHMM(fromMin), fromMinHHMM(toMin))
+    },
+  })
 
-  function handleTimelineClick (e) {
-    if (e.target.closest('[data-event-id]')) return  // click landed on an event
-    interactions.onSlotClick?.(selectedDate, timeAtY(e.clientY), '')
+  function handleTimelineMouseDown (e) {
+    const rect = timelineRef.current?.getBoundingClientRect()
+    drag.start(e, { rect, date: selectedDate, hourHeight: HOUR_HEIGHT })
   }
 
   function handleTimelineContextMenu (e) {
     if (e.target.closest('[data-event-id]')) return  // event has its own menu
     e.preventDefault()
-    interactions.onSlotContextMenu?.(selectedDate, timeAtY(e.clientY), e.clientX, e.clientY)
+    const rect = timelineRef.current?.getBoundingClientRect()
+    if (!rect) return
+    interactions.onSlotContextMenu?.(selectedDate, topOfHourAtY(e.clientY - rect.top), e.clientX, e.clientY)
   }
 
   return (
@@ -93,7 +105,7 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
 
       <div style={{ flex: 1, overflowY: 'auto', position: 'relative' }}>
         <div ref={timelineRef}
-             onClick={handleTimelineClick}
+             onMouseDown={handleTimelineMouseDown}
              onContextMenu={handleTimelineContextMenu}
              style={{ position: 'relative', height: HOUR_HEIGHT * 24, minHeight: HOUR_HEIGHT * 24, cursor: 'crosshair' }}>
           {Array.from({ length: 24 }, (_, h) => (
@@ -117,6 +129,9 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
               <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
                                use24h={use24h} interactions={interactions} />
             ))}
+            {drag.dragRange && drag.dragRange.date === selectedDate && (
+              <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
+            )}
           </div>
         </div>
       </div>
