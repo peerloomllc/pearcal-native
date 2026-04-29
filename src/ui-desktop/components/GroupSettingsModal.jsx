@@ -8,22 +8,54 @@
 // non-owners cannot delete (must leave).
 
 import { useEffect, useRef, useState } from 'react'
+import { buildInviteLink } from '../../invite.js'
+import { compressImage } from '../lib/imagePicker.js'
+import { MemberAvatar } from './MemberAvatar.jsx'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 
-export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave, onDelete, onClose }) {
+export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLeave, onDelete, onClose }) {
   const [name,    setName]    = useState(group?.name  ?? '')
   const [emoji,   setEmoji]   = useState(group?.emoji ?? '')
   const [color,   setColor]   = useState(group?.color ?? GROUP_COLORS[0])
+  const [icon,    setIcon]    = useState(group?.icon  ?? null)
+  const [iconBusy, setIconBusy] = useState(false)
+  const [iconErr,  setIconErr]  = useState('')
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const myMember = (group?.members ?? []).find(m => m.id === profile?.id)
+  const [nickname, setNickname] = useState(myMember?.nickname ?? '')
+  const [nickSaving, setNickSaving] = useState(false)
+  const [nickSaved, setNickSaved] = useState(false)
   const nameRef = useRef(null)
+  const fileRef = useRef(null)
 
   const isOwner   = group?.ownerId === profile?.id
   const dirty = (name.trim() !== (group?.name ?? '').trim())
              || (emoji !== (group?.emoji ?? ''))
              || (color !== (group?.color ?? GROUP_COLORS[0]))
+             || ((icon ?? null) !== (group?.icon ?? null))
+
+  async function handleFile (e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!file.type.startsWith('image/')) {
+      setIconErr('That file is not an image.')
+      return
+    }
+    setIconBusy(true); setIconErr('')
+    try {
+      const compressed = await compressImage(file)
+      setIcon(compressed)
+    } catch (err) {
+      setIconErr('Could not load image: ' + (err?.message ?? 'unknown error'))
+    }
+    setIconBusy(false)
+  }
+  function clearIcon () { setIcon(null); setIconErr('') }
 
   useEffect(() => { nameRef.current?.focus() }, [])
   useEffect(() => {
@@ -37,7 +69,7 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
     if (!trimmed) return
     setSaving(true)
     try {
-      await onUpdate({ ...group, name: trimmed, emoji, color, updatedAt: Date.now() })
+      await onUpdate({ ...group, name: trimmed, emoji, color, icon, updatedAt: Date.now() })
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
     } catch (e) {
@@ -57,6 +89,36 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
     await onDelete(group.id)
     onClose()
   }
+
+  // Keep the nickname draft in sync if another device updates the
+  // group's member record while this modal is open. Skip while a save
+  // is in flight so we don't blow away the user's in-progress edit.
+  useEffect(() => {
+    if (nickSaving) return
+    setNickname(myMember?.nickname ?? '')
+  }, [myMember?.nickname, nickSaving])
+
+  async function saveNickname () {
+    if (!db) return
+    setNickSaving(true)
+    try {
+      await db.setMemberNickname(group.id, nickname.trim())
+      setNickSaved(true)
+      setTimeout(() => setNickSaved(false), 1500)
+    } catch (e) {
+      alert('Could not save nickname: ' + (e?.message ?? 'unknown error'))
+    }
+    setNickSaving(false)
+  }
+
+  async function copyInviteLink () {
+    const link = buildInviteLink(group, profile?.id ?? 'unknown')
+    try { await navigator.clipboard?.writeText?.(link) } catch {}
+    setLinkCopied(true)
+    setTimeout(() => setLinkCopied(false), 1500)
+  }
+
+  const inviteLink = group ? buildInviteLink(group, profile?.id ?? 'unknown') : ''
 
   const inputBase = {
     width: '100%', padding: '7px 10px', borderRadius: 5,
@@ -117,23 +179,57 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <div style={label}>Emoji</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-            {GROUP_EMOJIS.map(em => (
-              <button key={em} disabled={!isOwner}
-                onClick={() => setEmoji(em)}
-                style={{
-                  width: 30, height: 30, borderRadius: 6, fontSize: 16,
-                  background: emoji === em ? color + '22' : tokens.bg,
-                  border: `2px solid ${emoji === em ? color : tokens.border}`,
-                  cursor: isOwner ? 'pointer' : 'default',
-                  opacity: isOwner ? 1 : 0.6,
-                  fontFamily: tokens.font,
-                }}>
-                {em}
-              </button>
-            ))}
+          <div style={label}>Group icon</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 8,
+              background: icon ? 'transparent' : color + '22',
+              border: `2px solid ${color}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 22, overflow: 'hidden', flexShrink: 0,
+            }}>
+              {icon
+                ? <img src={icon} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : (emoji || '👥')}
+            </div>
+            {isOwner && (
+              <div style={{ display: 'flex', gap: 6, flex: 1 }}>
+                <button onClick={() => fileRef.current?.click()} disabled={iconBusy}
+                        style={{ ...btnBase, flex: 1, opacity: iconBusy ? 0.5 : 1 }}>
+                  {iconBusy ? 'Loading…' : (icon ? 'Change Photo' : 'Choose Photo')}
+                </button>
+                <button onClick={clearIcon} disabled={!icon}
+                        style={{ ...btnBase, flex: 1, opacity: icon ? 1 : 0.4, cursor: icon ? 'pointer' : 'default' }}>
+                  Remove Photo
+                </button>
+              </div>
+            )}
           </div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }}
+                 onChange={handleFile} />
+          {iconErr && (
+            <div style={{ fontSize: 11, color: '#C0504A', marginBottom: 6 }}>{iconErr}</div>
+          )}
+          {isOwner && (
+            <>
+              <div style={{ fontSize: 11, color: tokens.muted, marginBottom: 6 }}>
+                Or pick an emoji:
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                {GROUP_EMOJIS.map(em => (
+                  <button key={em} onClick={() => { setEmoji(em); setIcon(null) }}
+                    style={{
+                      width: 30, height: 30, borderRadius: 6, fontSize: 16,
+                      background: !icon && emoji === em ? color + '22' : tokens.bg,
+                      border: `2px solid ${!icon && emoji === em ? color : tokens.border}`,
+                      cursor: 'pointer', fontFamily: tokens.font,
+                    }}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         <div style={{ marginBottom: 14 }}>
@@ -155,19 +251,41 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
           </div>
         </div>
 
+        {db && myMember && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={label}>Your nickname in this group</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input value={nickname}
+                     onChange={e => { setNickname(e.target.value); setNickSaved(false) }}
+                     placeholder={profile?.name ?? 'Your name'}
+                     style={{ ...inputBase, flex: 1 }} />
+              <button onClick={saveNickname} disabled={nickSaving || nickname.trim() === (myMember.nickname ?? '').trim()}
+                      style={{
+                        ...btnBase, minWidth: 80,
+                        opacity: (nickSaving || nickname.trim() === (myMember.nickname ?? '').trim()) ? 0.5 : 1,
+                      }}>
+                {nickSaved ? '✓ Saved' : (nickSaving ? 'Saving…' : 'Save')}
+              </button>
+            </div>
+            <div style={{ fontSize: 11, color: tokens.muted, marginTop: 5 }}>
+              Only changes how others in this group see you. Your profile name stays unchanged.
+            </div>
+          </div>
+        )}
+
         <div style={{ marginBottom: 14 }}>
           <div style={label}>Members ({members.length})</div>
           <div style={{
             border: `1px solid ${tokens.border}`, borderRadius: 6,
-            background: tokens.bg, maxHeight: 140, overflowY: 'auto',
+            background: tokens.bg, maxHeight: 180, overflowY: 'auto',
           }}>
             {members.length === 0 && (
               <div style={{ padding: '8px 10px', fontSize: 12, color: tokens.muted }}>No members yet.</div>
             )}
             {members.map(m => {
-              const isMe    = m.id === profile?.id
+              const isMe          = m.id === profile?.id
               const isOwnerMember = m.id === group?.ownerId
-              const display = m.nickname?.trim() || m.name || 'Unnamed'
+              const display       = m.nickname?.trim() || m.name || 'Unnamed'
               return (
                 <div key={m.id} style={{
                   display: 'flex', alignItems: 'center', gap: 9,
@@ -175,14 +293,9 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
                   borderBottom: `1px solid ${tokens.border}`,
                   fontSize: 13,
                 }}>
-                  <div style={{
-                    width: 24, height: 24, borderRadius: '50%',
-                    background: m.color ?? tokens.muted, color: tokens.bg,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 12, fontWeight: 600, flexShrink: 0,
-                  }}>
-                    {(m.avatar?.startsWith?.('data:') ? null : (m.avatar || display[0] || '?'))}
-                  </div>
+                  <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash}
+                                name={display} color={m.color ?? tokens.muted}
+                                size={26} fontSize={12} />
                   <div style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {display}{isMe ? ' (you)' : ''}
                   </div>
@@ -197,20 +310,46 @@ export function GroupSettingsModal ({ tokens, group, profile, onUpdate, onLeave,
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+        <div style={{ marginBottom: 14 }}>
+          <div style={label}>Invite link</div>
+          <textarea readOnly value={inviteLink} rows={3}
+                    onClick={e => e.target.select()}
+                    style={{ ...inputBase, fontFamily: 'ui-monospace, monospace', fontSize: 11, resize: 'none' }} />
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button onClick={copyInviteLink} style={{ ...btnBase, flex: 1 }}>
+              {linkCopied ? '✓ Copied' : 'Copy invite link'}
+            </button>
+          </div>
+          <div style={{ fontSize: 11, color: tokens.muted, marginTop: 6, lineHeight: 1.5 }}>
+            Anyone with this link can paste it into PearCal to join the group.
+          </div>
+        </div>
+
+        {/* Destructive actions get their own section above the modal's
+            primary action row so users can't fat-finger Delete while
+            reaching for Save. Pattern: GitHub / Linear / Notion. */}
+        <div style={{
+          marginTop: 14, paddingTop: 14,
+          borderTop: `1px solid ${tokens.border}`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+        }}>
+          <div style={{ ...label, color: '#C0504A', textAlign: 'center', marginBottom: 8 }}>Danger zone</div>
           {isOwner ? (
             <button onClick={handleDelete} style={{
-              ...btnBase, color: '#C0504A', borderColor: '#C0504A', marginRight: 'auto',
+              ...btnBase, minWidth: 140, color: '#C0504A', borderColor: '#C0504A',
             }}>Delete group</button>
           ) : (
             <button onClick={handleLeave} style={{
-              ...btnBase, color: '#C0504A', borderColor: '#C0504A', marginRight: 'auto',
+              ...btnBase, minWidth: 140, color: '#C0504A', borderColor: '#C0504A',
             }}>Leave group</button>
           )}
-          <button onClick={onClose} style={btnBase}>Close</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 18 }}>
+          <button onClick={onClose} style={{ ...btnBase, minWidth: 140 }}>Close</button>
           {isOwner && (
             <button onClick={handleSave} disabled={!dirty || !name.trim() || saving} style={{
-              ...btnBase,
+              ...btnBase, minWidth: 140,
               background: tokens.accent, color: tokens.bg, borderColor: tokens.accent,
               opacity: (!dirty || !name.trim() || saving) ? 0.5 : 1,
               cursor:  (!dirty || !name.trim() || saving) ? 'default' : 'pointer',

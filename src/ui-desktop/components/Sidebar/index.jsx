@@ -13,6 +13,7 @@ export function Sidebar ({
   selectedDate, setSelectedDate,
   visibleGroups,
   onOpenProfile, onOpenSettings, onGroupContextMenu,
+  onNewGroup, onJoinGroup,
 }) {
   return (
     <aside style={{
@@ -41,7 +42,8 @@ export function Sidebar ({
 
       <GroupList tokens={tokens} groups={groups}
                  isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle}
-                 onContextMenu={onGroupContextMenu} />
+                 onContextMenu={onGroupContextMenu}
+                 onNewGroup={onNewGroup} onJoinGroup={onJoinGroup} />
 
       <ProfileFooter tokens={tokens} profile={profile} onClick={onOpenProfile} />
     </aside>

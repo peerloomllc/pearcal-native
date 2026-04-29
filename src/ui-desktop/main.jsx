@@ -79,6 +79,7 @@ const db = {
   listMembers:   (gid)       => window.__pearDB.call('listMembers', gid),
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),
   removeMember:  (gid, mid)  => window.__pearDB.call('removeMember', gid, mid),
+  getAvatar:     (hash)      => window.__pearDB.call('getAvatar', hash),
   resyncGroup:   (groupId)   => window.__pearDB.call('resyncGroup', groupId),
   resyncAll:     ()          => window.__pearDB.call('resyncAll'),
   removeBrokenGroup: (id)    => window.__pearDB.call('removeBrokenGroup', id),
@@ -137,6 +138,35 @@ const sync = {
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
+
+// Avatar hash resolver with in-memory LRU cache. Bare's apply hook
+// dedupes inline avatar data: URLs into avatar-hash refs (members carry
+// `avatarHash` instead of `avatar`), so member rows from peers need a
+// hash → data-URL round-trip to render. Mirrors mobile's main.jsx shim.
+const AVATAR_CACHE_MAX = 256
+const _avatarCache = new Map()
+const _avatarInflight = new Map()
+window.__pearResolveAvatar = function (hash) {
+  if (!hash) return Promise.resolve(null)
+  if (_avatarCache.has(hash)) {
+    const v = _avatarCache.get(hash)
+    _avatarCache.delete(hash); _avatarCache.set(hash, v)
+    return Promise.resolve(v)
+  }
+  if (_avatarInflight.has(hash)) return _avatarInflight.get(hash)
+  const p = window.__pearDB.call('getAvatar', hash).then(data => {
+    _avatarInflight.delete(hash)
+    if (data == null) return null
+    _avatarCache.set(hash, data)
+    if (_avatarCache.size > AVATAR_CACHE_MAX) {
+      const firstKey = _avatarCache.keys().next().value
+      _avatarCache.delete(firstKey)
+    }
+    return data
+  }).catch(() => { _avatarInflight.delete(hash); return null })
+  _avatarInflight.set(hash, p)
+  return p
+}
 
 // Deep link — pair URLs go straight to bare's consumePairLink, join URLs
 // surface as a CustomEvent the App can pick up. Same split mobile uses

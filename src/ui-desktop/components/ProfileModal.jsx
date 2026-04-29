@@ -1,56 +1,15 @@
 // Profile editing modal: name + avatar (emoji char or photo upload).
 // Holiday subscriptions and the advanced/personal sections from
-// mobile's ProfileTab are deferred to D7.2/D7.3.
+// mobile's ProfileTab are deferred to D7.3.
 //
-// Photo handling mirrors mobile (src/ui/App.jsx:1813-1855): center-crop
-// + downscale to 96x96 webp (jpeg fallback), but pass animated formats
-// (gif, webp) through unchanged because canvas flattens them to a
-// static first frame.
+// Photo handling lives in ../lib/imagePicker.js so NewGroupModal and
+// GroupSettingsModal share the same compress + animated-passthrough
+// behaviour.
 
 import { useEffect, useRef, useState } from 'react'
+import { compressImage } from '../lib/imagePicker.js'
 
 const AVATAR_SUGGESTIONS = ['🍐', '🐝', '🌿', '🦊', '🌊', '🔥', '⭐', '🎯', '🍋', '🌸', '🐢', '🦋']
-const AVATAR_SIZE_PX = 96
-const AVATAR_QUALITY = 0.82
-
-function readFileAsDataUrl (file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload  = () => resolve(reader.result)
-    reader.onerror = () => reject(new Error('Could not read file'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function downscaleDataUrl (dataUrl) {
-  return new Promise((resolve, reject) => {
-    const img = new Image()
-    const timeout = setTimeout(() => reject(new Error('Image load timed out')), 15000)
-    img.onload = () => {
-      clearTimeout(timeout)
-      const canvas = document.createElement('canvas')
-      canvas.width = canvas.height = AVATAR_SIZE_PX
-      const ctx = canvas.getContext('2d')
-      const side = Math.min(img.width, img.height)
-      const sx = (img.width  - side) / 2
-      const sy = (img.height - side) / 2
-      ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_SIZE_PX, AVATAR_SIZE_PX)
-      let out = canvas.toDataURL('image/webp', AVATAR_QUALITY)
-      if (!out.startsWith('data:image/webp')) out = canvas.toDataURL('image/jpeg', AVATAR_QUALITY)
-      resolve(out)
-    }
-    img.onerror = () => { clearTimeout(timeout); reject(new Error('Image load failed')) }
-    img.src = dataUrl
-  })
-}
-
-async function compressAvatar (file) {
-  const dataUrl = await readFileAsDataUrl(file)
-  // Animated formats (gif, webp) bypass canvas: canvas flattens to a
-  // static first frame, so downscaling would strip the animation.
-  if (file.type === 'image/gif' || file.type === 'image/webp') return dataUrl
-  return downscaleDataUrl(dataUrl)
-}
 
 export function ProfileModal ({ tokens, profile, updateProfile, onClose }) {
   const [name,   setName]   = useState(profile?.name ?? '')
@@ -71,7 +30,7 @@ export function ProfileModal ({ tokens, profile, updateProfile, onClose }) {
     }
     setPhotoBusy(true); setPhotoErr('')
     try {
-      const compressed = await compressAvatar(file)
+      const compressed = await compressImage(file)
       setAvatar(compressed)
     } catch (err) {
       setPhotoErr('Could not load image: ' + (err?.message ?? 'unknown error'))

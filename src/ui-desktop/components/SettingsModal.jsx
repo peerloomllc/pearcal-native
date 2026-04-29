@@ -17,7 +17,10 @@ const WEEK_STARTS = [
   { value: 1, label: 'Monday' },
 ]
 
-export function SettingsModal ({ tokens, profile, updateProfile, sync, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onClose }) {
+  const [phrase,   setPhrase]   = useState(null)         // null = hidden, '' = loading, '...' = revealed
+  const [phraseErr, setPhraseErr] = useState('')
+  const [phraseCopied, setPhraseCopied] = useState(false)
   // Match the same locale-aware default the App uses so the toggle
   // reads "On" only when the user has explicitly chosen 24h.
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -44,6 +47,26 @@ export function SettingsModal ({ tokens, profile, updateProfile, sync, onClose }
       alert('Could not save: ' + (e?.message ?? 'unknown error'))
     }
     setSaving(false)
+  }
+
+  async function revealPhrase () {
+    if (phrase != null) { setPhrase(null); setPhraseErr(''); return }  // toggle hide
+    setPhrase('')
+    setPhraseErr('')
+    try {
+      const m = await db.revealMnemonic()
+      setPhrase(m ?? '')
+    } catch (e) {
+      setPhrase(null)
+      setPhraseErr(e?.message ?? 'Could not reveal recovery phrase')
+    }
+  }
+
+  async function copyPhrase () {
+    if (!phrase) return
+    try { await navigator.clipboard?.writeText?.(phrase) } catch {}
+    setPhraseCopied(true)
+    setTimeout(() => setPhraseCopied(false), 1500)
   }
 
   function handleUse24hChange (next) {
@@ -114,6 +137,39 @@ export function SettingsModal ({ tokens, profile, updateProfile, sync, onClose }
                 </button>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Recovery phrase</div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
+            Twelve words that recover your identity on a new device. Anyone with this phrase can impersonate you.
+            Write it down somewhere safe; do not share it.
+          </div>
+          {phrase != null && phrase !== '' && (
+            <div style={{
+              padding: '10px 12px', borderRadius: 5,
+              background: tokens.bg, border: `1px solid ${tokens.border}`,
+              fontFamily: 'ui-monospace, monospace', fontSize: 13,
+              lineHeight: 1.7, marginBottom: 8, userSelect: 'text',
+            }}>{phrase}</div>
+          )}
+          {phraseErr && (
+            <div style={{ fontSize: 12, color: '#C0504A', marginBottom: 8 }}>{phraseErr}</div>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={revealPhrase}
+                    disabled={phrase === ''}
+                    style={{ ...btnBase, flex: 1, opacity: phrase === '' ? 0.5 : 1 }}>
+              {phrase === ''      ? 'Loading…'
+               : phrase != null   ? 'Hide phrase'
+               :                    'Reveal phrase'}
+            </button>
+            {phrase && (
+              <button onClick={copyPhrase} style={{ ...btnBase, flex: 1 }}>
+                {phraseCopied ? '✓ Copied' : 'Copy phrase'}
+              </button>
+            )}
           </div>
         </div>
 

@@ -7,7 +7,7 @@
 //   D7.1 — Profile / Settings / Group Settings modals
 // Mobile renderer (src/ui/App.jsx) is untouched.
 
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps,
   emitter,
@@ -24,6 +24,8 @@ import { CommandPalette } from './components/CommandPalette.jsx'
 import { ProfileModal } from './components/ProfileModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
 import { GroupSettingsModal } from './components/GroupSettingsModal.jsx'
+import { NewGroupModal } from './components/NewGroupModal.jsx'
+import { JoinGroupModal } from './components/JoinGroupModal.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
@@ -59,6 +61,8 @@ export default function App ({ db, notifs, sync }) {
   const [profileOpen,   setProfileOpen]   = useState(false)
   const [settingsOpen,  setSettingsOpen]  = useState(false)
   const [groupSettings, setGroupSettings] = useState(null)        // group object or null
+  const [newGroupOpen,  setNewGroupOpen]  = useState(false)
+  const [joinGroupOpen, setJoinGroupOpen] = useState(false)
 
   const groupsById = useMemo(() => {
     const map = new Map()
@@ -109,11 +113,27 @@ export default function App ({ db, notifs, sync }) {
   const closeAllTransient = useCallback(() => {
     setModal(null); setInspector(null); setContextMenu(null); setPaletteOpen(false)
     setProfileOpen(false); setSettingsOpen(false); setGroupSettings(null)
+    setNewGroupOpen(false); setJoinGroupOpen(false)
   }, [])
 
   function openSettings ()           { closeAllTransient(); setSettingsOpen(true) }
   function openProfile  ()           { closeAllTransient(); setProfileOpen(true) }
   function openGroupSettings (group) { closeAllTransient(); setGroupSettings(group) }
+  function openNewGroup  ()          { closeAllTransient(); setNewGroupOpen(true) }
+  function openJoinGroup ()          { closeAllTransient(); setJoinGroupOpen(true) }
+
+  // Group create/join hand-off — mirrors mobile's addGroup
+  // (src/ui/App.jsx:1021). The owner-create path skips the redundant
+  // db.putGroup + sync.joinGroup since sync.createGroup already wrote
+  // the group + members + base on the bare side.
+  const addGroup = useCallback(async (g, opts) => {
+    if (!opts?.alreadyJoined) {
+      await db.putGroup(g).catch(() => {})
+      for (const m of (g.members ?? [])) await db.putMember(g.id, m).catch(() => {})
+      await sync?.joinGroup?.(g).catch(() => {})
+    }
+    setGroups(prev => prev.some(x => x.id === g.id) ? prev : [...prev, g])
+  }, [db, sync, setGroups])
 
   // Profile updates: bare's `pear:profileChanged` only fires on
   // sibling-device sync, not local writes (bare.js:1555). Mirror mobile's
@@ -126,6 +146,100 @@ export default function App ({ db, notifs, sync }) {
     await db.updateProfile(updates).catch(e => { throw e })
     setProfile(prev => ({ ...(prev ?? {}), ...updates }))
   }, [db, setProfile])
+
+  // Sync-event subscriptions — mirrors mobile (src/ui/App.jsx:418-590).
+  // useGroups/useEvents only do an initial listGroups/listEvents on mount;
+  // post-mount changes (autobase apply replicating the joiner's writer key,
+  // owner pushing the authoritative member list, group rekeys, etc.) need
+  // these to land back into local state.
+  //
+  // 'sync' fires after each autobase apply: full-reload re-fetches events
+  // and the touched group; delta path patches events + refreshes the group
+  // record when groupChanged is set (member-list changes set this).
+  useEffect(() => {
+    if (!db) return
+
+    function refreshGroupRecord (groupId) {
+      if (!groupId) return
+      db.getGroup(groupId).then(g => {
+        if (!g) return
+        setGroups(prev => {
+          const idx = prev.findIndex(x => x.id === groupId)
+          if (idx === -1) return [...prev, g]
+          const next = prev.slice()
+          next[idx] = g
+          return next
+        })
+      }).catch(() => {})
+    }
+
+    async function onSync (payload) {
+      const groupId = typeof payload === 'string' ? payload : payload?.groupId
+      const delta   = (payload && typeof payload === 'object') ? payload.delta : null
+      if (!delta || delta.fullReload) {
+        const fresh = await db.listEvents().catch(() => null)
+        if (fresh) setEvents(fresh)
+        refreshGroupRecord(groupId)
+        return
+      }
+      const changed = delta.changedEvents ?? []
+      const removed = delta.removedIds   ?? []
+      if (changed.length || removed.length) {
+        setEvents(prev => {
+          const removedSet = new Set(removed)
+          const changedMap = new Map(changed.map(e => [e.id, e]))
+          const next = []
+          const seen = new Set()
+          for (const e of prev) {
+            if (removedSet.has(e.id)) continue
+            seen.add(e.id)
+            next.push(changedMap.get(e.id) ?? e)
+          }
+          for (const e of changed) {
+            if (!seen.has(e.id)) next.push(e)
+          }
+          return next
+        })
+      }
+      if (delta.groupChanged) refreshGroupRecord(groupId)
+    }
+
+    function onGroupKeyUpdated (g) {
+      if (!g?.id) return
+      setGroups(prev => prev.map(x => x.id === g.id ? g : x))
+    }
+
+    function onGroupDeleted (gid) {
+      if (!gid) return
+      setGroups(prev => prev.filter(x => x.id !== gid))
+      setEvents(prev => prev
+        .map(e => ({ ...e, groups: (e.groups ?? []).filter(id => id !== gid) }))
+        .filter(e => (e.groups ?? []).length > 0))
+    }
+
+    async function onGroupJoined (g) {
+      if (!g) return
+      const fresh = await db.listGroups().catch(() => null)
+      if (fresh) setGroups(fresh)
+      await db.resyncGroup?.(g.id).catch(() => {})
+      const evts = await db.listEvents().catch(() => null)
+      if (evts) setEvents(evts)
+    }
+    const onDomGroupJoined = (e) => onGroupJoined(e.detail)
+
+    emitter.on('sync',            onSync)
+    emitter.on('groupKeyUpdated', onGroupKeyUpdated)
+    emitter.on('groupDeleted',    onGroupDeleted)
+    emitter.on('group:joined',    onGroupJoined)
+    window.addEventListener('pear:groupJoined', onDomGroupJoined)
+    return () => {
+      emitter.off('sync',            onSync)
+      emitter.off('groupKeyUpdated', onGroupKeyUpdated)
+      emitter.off('groupDeleted',    onGroupDeleted)
+      emitter.off('group:joined',    onGroupJoined)
+      window.removeEventListener('pear:groupJoined', onDomGroupJoined)
+    }
+  }, [db, setGroups, setEvents])
 
   // Group mutations — same db.putGroup + sync.putGroup pattern mobile uses
   // (src/ui/App.jsx:1045-1056). Kept inline here rather than a hook because
@@ -222,8 +336,10 @@ export default function App ({ db, notifs, sync }) {
       { id: 'view:month', icon: '▦', label: 'View: Month', hint: 'Switch to month view', shortcut: '3',     action: () => view.setMode('month') },
       { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T',     action: () => view.setSelectedDate(todayLocal()) },
       { id: 'create:new', icon: '+', label: 'New Event',   hint: 'Create an event on the selected date', shortcut: 'N', action: () => openCreateAt(view.selectedDate, '', '') },
-      { id: 'open:profile',  icon: '◐', label: 'Profile…',  hint: 'Edit your name + avatar', action: openProfile  },
-      { id: 'open:settings', icon: '⚙', label: 'Settings…', hint: 'Display preferences + about', shortcut: '⌘,', action: openSettings },
+      { id: 'open:profile',   icon: '◐', label: 'Profile…',   hint: 'Edit your name + avatar', action: openProfile  },
+      { id: 'open:settings',  icon: '⚙', label: 'Settings…',  hint: 'Display preferences + about', shortcut: '⌘,', action: openSettings },
+      { id: 'group:new',      icon: '+', label: 'New Group…', hint: 'Create a group and invite people', action: openNewGroup },
+      { id: 'group:join',     icon: '↘', label: 'Join Group…', hint: 'Paste an invite link to join', action: openJoinGroup },
     ]
     for (const g of groups) {
       const visible = visibleGroups.isVisible(g.id)
@@ -295,6 +411,8 @@ export default function App ({ db, notifs, sync }) {
         visibleGroups={visibleGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
+        onNewGroup={openNewGroup}
+        onJoinGroup={openJoinGroup}
         onGroupContextMenu={(g, x, y) => {
           openContextMenu(x, y, [
             { label: 'Group settings…', onClick: () => openGroupSettings(g) },
@@ -384,6 +502,7 @@ export default function App ({ db, notifs, sync }) {
           tokens={DARK_TOKENS}
           profile={profile}
           updateProfile={updateProfile}
+          db={db}
           sync={sync}
           onClose={() => setSettingsOpen(false)}
         />
@@ -391,12 +510,32 @@ export default function App ({ db, notifs, sync }) {
       {groupSettings && (
         <GroupSettingsModal
           tokens={DARK_TOKENS}
-          group={groupSettings}
+          group={groups.find(g => g.id === groupSettings.id) ?? groupSettings}
           profile={profile}
+          db={db}
           onUpdate={updateGroup}
           onLeave={leaveGroup}
           onDelete={deleteGroupAction}
           onClose={() => setGroupSettings(null)}
+        />
+      )}
+      {newGroupOpen && (
+        <NewGroupModal
+          tokens={DARK_TOKENS}
+          profile={profile}
+          sync={sync}
+          addGroup={addGroup}
+          onClose={() => setNewGroupOpen(false)}
+        />
+      )}
+      {joinGroupOpen && (
+        <JoinGroupModal
+          tokens={DARK_TOKENS}
+          profile={profile}
+          db={db}
+          sync={sync}
+          onJoined={(g) => setGroups(prev => prev.some(x => x.id === g.id) ? prev : [...prev, g])}
+          onClose={() => setJoinGroupOpen(false)}
         />
       )}
     </div>
