@@ -123,7 +123,7 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
           aria-label="Command palette search"
           style={{
             width: '100%', boxSizing: 'border-box',
-            padding: '12px 14px', fontSize: 13,
+            padding: '13px 14px', fontSize: 14,
             background: 'transparent', border: 'none',
             borderBottom: `1px solid ${tokens.border}`,
             color: tokens.text, fontFamily: tokens.font,
@@ -132,7 +132,7 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
         />
         <div ref={listRef} style={{ maxHeight: 420, overflowY: 'auto', padding: 4 }}>
           {filtered.length === 0 && (
-            <div style={{ padding: '16px 12px', fontSize: 13, color: tokens.muted }}>
+            <div style={{ padding: '16px 12px', fontSize: 14, color: tokens.muted }}>
               No matches
             </div>
           )}
@@ -145,14 +145,14 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
                 onMouseEnter={() => setActive(i)}
                 onMouseDown={() => { c.action(); onClose() }}
                 style={{
-                  display: 'flex', alignItems: 'center', gap: 9,
-                  padding: '6px 10px', borderRadius: 5,
-                  cursor: 'pointer', fontSize: 12,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 12px', borderRadius: 5,
+                  cursor: 'pointer', fontSize: 13,
                   background: isActive ? tokens.accent : 'transparent',
                   color: isActive ? tokens.bg : tokens.text,
                 }}>
                 <div style={{
-                  width: 18, fontSize: 12, textAlign: 'center',
+                  width: 20, fontSize: 13, textAlign: 'center',
                   opacity: isActive ? 1 : 0.85,
                 }}>
                   {c.icon ?? '·'}
@@ -163,7 +163,7 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
                   </div>
                   {c.hint && (
                     <div style={{
-                      fontSize: 10,
+                      fontSize: 11,
                       color: isActive ? tokens.bg : tokens.muted,
                       opacity: isActive ? 0.75 : 1,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -174,7 +174,7 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
                 </div>
                 {c.shortcut && (
                   <div style={{
-                    fontSize: 10, color: isActive ? tokens.bg : tokens.muted,
+                    fontSize: 11, color: isActive ? tokens.bg : tokens.muted,
                     opacity: 0.75, fontVariantNumeric: 'tabular-nums',
                   }}>
                     {c.shortcut}
@@ -185,9 +185,9 @@ export function CommandPalette ({ tokens, commands, onJumpToDate, onClose }) {
           })}
         </div>
         <div style={{
-          display: 'flex', gap: 14, padding: '6px 12px',
+          display: 'flex', gap: 14, padding: '7px 12px',
           borderTop: `1px solid ${tokens.border}`,
-          fontSize: 10, color: tokens.muted, fontVariantNumeric: 'tabular-nums',
+          fontSize: 11, color: tokens.muted, fontVariantNumeric: 'tabular-nums',
         }}>
           <span>↑↓ navigate</span>
           <span>↵ select</span>

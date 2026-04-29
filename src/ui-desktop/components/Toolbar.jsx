@@ -26,7 +26,7 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
 
   const btn = {
     background: 'transparent', border: `1px solid ${tokens.border}`, color: tokens.text,
-    padding: '4px 10px', fontSize: 12, fontWeight: 400,
+    padding: '5px 11px', fontSize: 13, fontWeight: 400,
     borderRadius: 5, cursor: 'pointer',
     fontFamily: tokens.font,
   }
@@ -53,7 +53,7 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
       </button>
 
       <div style={{
-        flex: 1, fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em',
+        flex: 1, fontSize: 14, fontWeight: 600, letterSpacing: '-0.01em',
         textAlign: 'center',
       }}>
         {formatDateHeader(selectedDate)}

@@ -3,6 +3,8 @@
 //   D3 — sidebar mini-month + group toggles + Week/Month views
 //   D4 — mouse interactions (click/right-click), EventModal, Inspector
 //   D5 — global keyboard shortcuts + Cmd+K command palette
+//   D6 — density + hover polish
+//   D7.1 — Profile / Settings / Group Settings modals
 // Mobile renderer (src/ui/App.jsx) is untouched.
 
 import { useCallback, useMemo, useState } from 'react'
@@ -19,6 +21,9 @@ import { EventModal } from './components/EventModal.jsx'
 import { EventInspector } from './components/EventInspector.jsx'
 import { ContextMenu } from './components/ContextMenu.jsx'
 import { CommandPalette } from './components/CommandPalette.jsx'
+import { ProfileModal } from './components/ProfileModal.jsx'
+import { SettingsModal } from './components/SettingsModal.jsx'
+import { GroupSettingsModal } from './components/GroupSettingsModal.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
@@ -35,8 +40,8 @@ const DARK_TOKENS = {
 }
 
 export default function App ({ db, notifs, sync }) {
-  const [profile] = useProfile(db, emitter)
-  const [groups]  = useGroups(db)
+  const [profile, setProfile] = useProfile(db, emitter)
+  const [groups, setGroups] = useGroups(db)
   const [events, setEvents] = useEvents(db)
   const [myRsvps] = useRsvps(db)
   const view      = useViewState()
@@ -46,11 +51,14 @@ export default function App ({ db, notifs, sync }) {
   })
 
   // Interaction state: at most one of these is open at a time
-  // (modal | inspector | contextMenu | palette).
-  const [modal,       setModal]       = useState(null)        // { mode, initial }
-  const [inspector,   setInspector]   = useState(null)        // { ev, x, y }
-  const [contextMenu, setContextMenu] = useState(null)        // { x, y, items }
-  const [paletteOpen, setPaletteOpen] = useState(false)
+  // (modal | inspector | contextMenu | palette | profileOpen | settingsOpen | groupSettings).
+  const [modal,         setModal]         = useState(null)        // { mode, initial }
+  const [inspector,     setInspector]     = useState(null)        // { ev, x, y }
+  const [contextMenu,   setContextMenu]   = useState(null)        // { x, y, items }
+  const [paletteOpen,   setPaletteOpen]   = useState(false)
+  const [profileOpen,   setProfileOpen]   = useState(false)
+  const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [groupSettings, setGroupSettings] = useState(null)        // group object or null
 
   const groupsById = useMemo(() => {
     const map = new Map()
@@ -95,11 +103,57 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode: 'edit', initial: ev })
   }
   // Close any transient layer — the universal Esc handler. EventModal,
-  // EventInspector, ContextMenu, and CommandPalette each also bind Esc
-  // locally, but this fallback covers focus-elsewhere edge cases.
+  // EventInspector, ContextMenu, CommandPalette, ProfileModal,
+  // SettingsModal, and GroupSettingsModal each also bind Esc locally,
+  // but this fallback covers focus-elsewhere edge cases.
   const closeAllTransient = useCallback(() => {
     setModal(null); setInspector(null); setContextMenu(null); setPaletteOpen(false)
+    setProfileOpen(false); setSettingsOpen(false); setGroupSettings(null)
   }, [])
+
+  function openSettings ()           { closeAllTransient(); setSettingsOpen(true) }
+  function openProfile  ()           { closeAllTransient(); setProfileOpen(true) }
+  function openGroupSettings (group) { closeAllTransient(); setGroupSettings(group) }
+
+  // Profile updates: bare's `pear:profileChanged` only fires on
+  // sibling-device sync, not local writes (bare.js:1555). Mirror mobile's
+  // pattern (src/ui/App.jsx:1116) — write to bare AND optimistically update
+  // local state so the UI refreshes immediately. Kept thinner than mobile's
+  // version: no auto-initials avatar generation (the modal handles that
+  // explicitly) and no group-member ripple (the desktop renderer doesn't
+  // expose member-avatar editing yet — D7.2 territory).
+  const updateProfile = useCallback(async (updates) => {
+    await db.updateProfile(updates).catch(e => { throw e })
+    setProfile(prev => ({ ...(prev ?? {}), ...updates }))
+  }, [db, setProfile])
+
+  // Group mutations — same db.putGroup + sync.putGroup pattern mobile uses
+  // (src/ui/App.jsx:1045-1056). Kept inline here rather than a hook because
+  // the surface is just three actions and they all touch local groups state.
+  const updateGroup = useCallback(async (updated) => {
+    await db.putGroup(updated).catch(() => {})
+    await sync?.putGroup(updated).catch(() => {})
+    setGroups(prev => prev.map(g => g.id === updated.id ? updated : g))
+  }, [db, sync, setGroups])
+
+  const leaveGroup = useCallback(async (id) => {
+    const g = groups.find(x => x.id === id)
+    if (!g) return
+    const updatedMembers = (g.members ?? []).filter(m => m.id !== profile?.id)
+    const updatedGroup   = { ...g, members: updatedMembers, updatedAt: Date.now() }
+    await db.putGroup(updatedGroup).catch(() => {})
+    await sync?.memberLeft?.(id, profile?.id).catch(() => {})
+    await db.deleteGroup(id).catch(() => {})
+    await sync?.leaveGroup?.(id).catch(() => {})
+    setGroups(prev => prev.filter(x => x.id !== id))
+  }, [db, sync, groups, profile, setGroups])
+
+  const deleteGroupAction = useCallback(async (id) => {
+    await sync?.deleteGroup?.(id).catch(() => {})
+    await db.deleteGroup(id).catch(() => {})
+    await sync?.leaveGroup?.(id).catch(() => {})
+    setGroups(prev => prev.filter(x => x.id !== id))
+  }, [db, sync, setGroups])
 
   function buildEventContextItems (ev) {
     return [
@@ -159,15 +213,17 @@ export default function App ({ db, notifs, sync }) {
   }
 
   // Command list for the palette. Includes static commands, group
-  // visibility toggles, and one entry per event so users can jump-to-event
-  // by typing a title fragment. The palette filters/scores by query.
+  // visibility toggles, group-settings entries, and one entry per event
+  // so users can jump-to-event by typing a title fragment.
   const commands = useMemo(() => {
     const out = [
-      { id: 'view:day',   icon: '☷', label: 'View: Day',   hint: 'Switch to day view',   shortcut: '1', action: () => view.setMode('day') },
-      { id: 'view:week',  icon: '▥', label: 'View: Week',  hint: 'Switch to week view',  shortcut: '2', action: () => view.setMode('week') },
-      { id: 'view:month', icon: '▦', label: 'View: Month', hint: 'Switch to month view', shortcut: '3', action: () => view.setMode('month') },
-      { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T', action: () => view.setSelectedDate(todayLocal()) },
+      { id: 'view:day',   icon: '☷', label: 'View: Day',   hint: 'Switch to day view',   shortcut: '1',     action: () => view.setMode('day') },
+      { id: 'view:week',  icon: '▥', label: 'View: Week',  hint: 'Switch to week view',  shortcut: '2',     action: () => view.setMode('week') },
+      { id: 'view:month', icon: '▦', label: 'View: Month', hint: 'Switch to month view', shortcut: '3',     action: () => view.setMode('month') },
+      { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T',     action: () => view.setSelectedDate(todayLocal()) },
       { id: 'create:new', icon: '+', label: 'New Event',   hint: 'Create an event on the selected date', shortcut: 'N', action: () => openCreateAt(view.selectedDate, '', '') },
+      { id: 'open:profile',  icon: '◐', label: 'Profile…',  hint: 'Edit your name + avatar', action: openProfile  },
+      { id: 'open:settings', icon: '⚙', label: 'Settings…', hint: 'Display preferences + about', shortcut: '⌘,', action: openSettings },
     ]
     for (const g of groups) {
       const visible = visibleGroups.isVisible(g.id)
@@ -177,6 +233,13 @@ export default function App ({ db, notifs, sync }) {
         label: (visible ? 'Hide ' : 'Show ') + (g.emoji ? g.emoji + ' ' : '') + g.name,
         hint: 'Toggle group visibility',
         action: () => visibleGroups.toggle(g.id),
+      })
+      out.push({
+        id: 'group:' + g.id,
+        icon: '⚙',
+        label: 'Group settings: ' + (g.emoji ? g.emoji + ' ' : '') + g.name,
+        hint: 'Edit name, color, members, leave/delete',
+        action: () => openGroupSettings(g),
       })
     }
     for (const ev of events) {
@@ -201,6 +264,7 @@ export default function App ({ db, notifs, sync }) {
     setMode:         view.setMode,
     onCreate:        () => openCreateAt(view.selectedDate, '', ''),
     onOpenPalette:   () => setPaletteOpen(true),
+    onOpenSettings:  openSettings,
     onCloseTransient: closeAllTransient,
   })
 
@@ -229,6 +293,23 @@ export default function App ({ db, notifs, sync }) {
         selectedDate={view.selectedDate}
         setSelectedDate={view.setSelectedDate}
         visibleGroups={visibleGroups}
+        onOpenProfile={openProfile}
+        onOpenSettings={openSettings}
+        onGroupContextMenu={(g, x, y) => {
+          openContextMenu(x, y, [
+            { label: 'Group settings…', onClick: () => openGroupSettings(g) },
+            { label: visibleGroups.isVisible(g.id) ? 'Hide events' : 'Show events',
+              onClick: () => visibleGroups.toggle(g.id) },
+            { divider: true },
+            g.ownerId === profile.id
+              ? { label: 'Delete group', danger: true, onClick: async () => {
+                  if (confirm('Delete "' + g.name + '" for everyone?')) await deleteGroupAction(g.id)
+                }}
+              : { label: 'Leave group', danger: true, onClick: async () => {
+                  if (confirm('Leave "' + g.name + '"?')) await leaveGroup(g.id)
+                }},
+          ])
+        }}
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
@@ -251,6 +332,7 @@ export default function App ({ db, notifs, sync }) {
           initial={modal.initial}
           groups={groups}
           profile={profile}
+          use24h={use24h}
           onSave={(ev, opts) => { saveEvent(ev, opts); setModal(null) }}
           onDelete={(id) => { deleteEvent(id); setModal(null) }}
           onClose={() => setModal(null)}
@@ -287,6 +369,34 @@ export default function App ({ db, notifs, sync }) {
           commands={commands}
           onJumpToDate={(d) => view.setSelectedDate(d)}
           onClose={() => setPaletteOpen(false)}
+        />
+      )}
+      {profileOpen && (
+        <ProfileModal
+          tokens={DARK_TOKENS}
+          profile={profile}
+          updateProfile={updateProfile}
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
+      {settingsOpen && (
+        <SettingsModal
+          tokens={DARK_TOKENS}
+          profile={profile}
+          updateProfile={updateProfile}
+          sync={sync}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {groupSettings && (
+        <GroupSettingsModal
+          tokens={DARK_TOKENS}
+          group={groupSettings}
+          profile={profile}
+          onUpdate={updateGroup}
+          onLeave={leaveGroup}
+          onDelete={deleteGroupAction}
+          onClose={() => setGroupSettings(null)}
         />
       )}
     </div>

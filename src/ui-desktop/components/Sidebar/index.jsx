@@ -12,6 +12,7 @@ export function Sidebar ({
   tokens, profile, groups,
   selectedDate, setSelectedDate,
   visibleGroups,
+  onOpenProfile, onOpenSettings, onGroupContextMenu,
 }) {
   return (
     <aside style={{
@@ -19,16 +20,30 @@ export function Sidebar ({
       background: tokens.surface, borderRight: `1px solid ${tokens.border}`,
       display: 'flex', flexDirection: 'column',
     }}>
-      <header style={{ padding: '14px 14px 10px', borderBottom: `1px solid ${tokens.border}` }}>
-        <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '-0.01em' }}>🍐 PearCal</div>
+      <header style={{
+        padding: '14px 14px 10px', borderBottom: `1px solid ${tokens.border}`,
+        display: 'flex', alignItems: 'center', gap: 8,
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 600, letterSpacing: '-0.01em', flex: 1 }}>🍐 PearCal</div>
+        {onOpenSettings && (
+          <button onClick={onOpenSettings} title="Settings (Ctrl+,)"
+            aria-label="Settings"
+            style={{
+              background: tokens.bg, border: `1px solid ${tokens.border}`,
+              fontSize: 16, cursor: 'pointer', color: tokens.text,
+              padding: '4px 8px', borderRadius: 5, fontFamily: tokens.font,
+              lineHeight: 1,
+            }}>⚙</button>
+        )}
       </header>
 
       <MiniMonth tokens={tokens} selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
 
       <GroupList tokens={tokens} groups={groups}
-                 isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle} />
+                 isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle}
+                 onContextMenu={onGroupContextMenu} />
 
-      <ProfileFooter tokens={tokens} profile={profile} />
+      <ProfileFooter tokens={tokens} profile={profile} onClick={onOpenProfile} />
     </aside>
   )
 }

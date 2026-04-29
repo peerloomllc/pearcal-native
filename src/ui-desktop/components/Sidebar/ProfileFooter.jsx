@@ -1,25 +1,30 @@
-// Avatar + name footer at the bottom of the sidebar. D7 wires the
-// settings/profile-edit modals to a click on this row.
+// Avatar + name footer at the bottom of the sidebar. Click anywhere on
+// the row to open the profile editor (D7.1).
 
-export function ProfileFooter ({ tokens, profile }) {
+export function ProfileFooter ({ tokens, profile, onClick }) {
   const isPhoto = profile.avatar?.startsWith?.('data:')
   return (
-    <footer style={{
-      padding: '10px 14px', borderTop: `1px solid ${tokens.border}`,
-      display: 'flex', alignItems: 'center', gap: 9,
-    }}>
+    <footer
+      data-clickable={onClick ? '' : undefined}
+      onClick={onClick}
+      title={onClick ? 'Edit profile' : undefined}
+      style={{
+        padding: '11px 14px', borderTop: `1px solid ${tokens.border}`,
+        display: 'flex', alignItems: 'center', gap: 10,
+        cursor: onClick ? 'pointer' : 'default',
+      }}>
       <div style={{
-        width: 28, height: 28, borderRadius: '50%',
+        width: 30, height: 30, borderRadius: '50%',
         background: tokens.accent, color: tokens.bg,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: 12, fontWeight: 600, overflow: 'hidden', flexShrink: 0,
+        fontSize: 13, fontWeight: 600, overflow: 'hidden', flexShrink: 0,
       }}>
         {isPhoto
           ? <img src={profile.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           : (profile.avatar ?? '?')}
       </div>
       <div style={{ overflow: 'hidden', minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {profile.name ?? 'Unnamed'}
         </div>
       </div>

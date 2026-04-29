@@ -132,7 +132,7 @@ function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps,
         display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0,
       }}>
       <div style={{
-        fontSize: 11, fontWeight: isToday ? 600 : 400,
+        fontSize: 12, fontWeight: isToday ? 600 : 400,
         color: cell.inMonth ? (isToday ? tokens.accent : tokens.text) : tokens.muted,
         fontVariantNumeric: 'tabular-nums', flexShrink: 0,
       }}>

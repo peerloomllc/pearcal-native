@@ -50,7 +50,7 @@ function isTyping (target) {
 
 export function useKeyboard ({
   selectedDate, setSelectedDate, mode, setMode,
-  onCreate, onOpenPalette, onCloseTransient,
+  onCreate, onOpenPalette, onOpenSettings, onCloseTransient,
 }) {
   useEffect(() => {
     function onKey (e) {
@@ -63,6 +63,14 @@ export function useKeyboard ({
       if (meta && (e.key === 'k' || e.key === 'K' || e.key === 'f' || e.key === 'F')) {
         e.preventDefault()
         onOpenPalette?.()
+        return
+      }
+      // Match by both `e.key` and `e.code` — some Linux/Wayland setups
+      // send a modifier-translated character for Ctrl+, that doesn't
+      // equal ",". e.code is layout-stable.
+      if (meta && (e.key === ',' || e.code === 'Comma')) {
+        e.preventDefault()
+        onOpenSettings?.()
         return
       }
       if (meta) return
@@ -106,5 +114,5 @@ export function useKeyboard ({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [selectedDate, setSelectedDate, mode, setMode, onCreate, onOpenPalette, onCloseTransient])
+  }, [selectedDate, setSelectedDate, mode, setMode, onCreate, onOpenPalette, onOpenSettings, onCloseTransient])
 }

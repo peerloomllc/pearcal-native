@@ -41,7 +41,7 @@ function defaultsFor (initialStart) {
   }
 }
 
-export function EventModal ({ tokens, mode, initial, groups, profile, onSave, onDelete, onClose }) {
+export function EventModal ({ tokens, mode, initial, groups, profile, use24h, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
@@ -119,19 +119,19 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
   }
 
   const inputBase = {
-    width: '100%', padding: '6px 9px', borderRadius: 5,
-    fontSize: 12, fontWeight: 400,
+    width: '100%', padding: '7px 10px', borderRadius: 5,
+    fontSize: 13, fontWeight: 400,
     border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
     fontFamily: tokens.font, boxSizing: 'border-box', outline: 'none',
   }
 
   const label = {
-    fontSize: 10, fontWeight: 600, color: tokens.muted,
-    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4,
+    fontSize: 11, fontWeight: 600, color: tokens.muted,
+    textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 5,
   }
 
   const btnBase = {
-    padding: '6px 14px', fontSize: 12, fontWeight: 500,
+    padding: '7px 14px', fontSize: 13, fontWeight: 500,
     borderRadius: 5, cursor: 'pointer',
     fontFamily: tokens.font, border: `1px solid ${tokens.border}`,
     background: tokens.bg, color: tokens.text,
@@ -150,7 +150,7 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
         maxHeight: '90vh', overflowY: 'auto',
         boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
       }}>
-        <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>
           {mode === 'edit' ? 'Edit event' : 'New event'}
         </div>
 
@@ -166,8 +166,8 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
             <input type="date" value={date} onChange={e => setDate(e.target.value)} style={inputBase} />
           </div>
           <label style={{
-            display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 7,
-            fontSize: 12, color: tokens.text, cursor: 'pointer',
+            display: 'flex', alignItems: 'flex-end', gap: 6, paddingBottom: 8,
+            fontSize: 13, color: tokens.text, cursor: 'pointer',
           }}>
             <input type="checkbox" checked={allDay} onChange={e => setAllDay(e.target.checked)} />
             All day
@@ -178,11 +178,11 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={label}>Start</div>
-              <input type="time" value={start} onChange={e => handleStartChange(e.target.value)} style={inputBase} />
+              <TimeSelect tokens={tokens} value={start} use24h={use24h} onChange={handleStartChange} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={label}>End</div>
-              <input type="time" value={end} onChange={e => setEnd(e.target.value)} style={inputBase} />
+              <TimeSelect tokens={tokens} value={end} use24h={use24h} onChange={setEnd} />
             </div>
           </div>
         )}
@@ -190,21 +190,21 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Groups</div>
           {groups.length === 0 && (
-            <div style={{ fontSize: 12, color: tokens.muted }}>
+            <div style={{ fontSize: 13, color: tokens.muted }}>
               No groups. Event will be personal-only.
             </div>
           )}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {groups.map(g => {
               const selected = groupIds.includes(g.id)
               return (
                 <button key={g.id} onClick={() => toggleGroup(g.id)} style={{
-                  display: 'flex', alignItems: 'center', gap: 5,
-                  padding: '3px 9px', borderRadius: 12,
+                  display: 'flex', alignItems: 'center', gap: 6,
+                  padding: '4px 10px', borderRadius: 14,
                   background: selected ? (g.color ?? tokens.muted) : 'transparent',
                   color: selected ? tokens.bg : tokens.text,
                   border: `1px solid ${g.color ?? tokens.border}`,
-                  fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                  fontSize: 12, fontWeight: 500, cursor: 'pointer',
                   fontFamily: tokens.font,
                 }}>
                   {g.emoji ? g.emoji + ' ' : ''}{g.name}
@@ -243,6 +243,72 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
           }}>{mode === 'edit' ? 'Save' : 'Create'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// 24h-aware time picker. Native <input type="time"> displays in the OS
+// locale's preferred format (12h with AM/PM in en-US Chromium), which
+// ignores the user's profile.use24h setting. Custom 2- or 3-select
+// picker honors use24h regardless of locale. Underlying value contract
+// is unchanged: always "HH:MM" 24h.
+function TimeSelect ({ tokens, value, use24h, onChange }) {
+  const [h, m] = (value || '00:00').split(':').map(Number)
+  function fire (newH, newM) {
+    onChange(String(newH).padStart(2, '0') + ':' + String(newM).padStart(2, '0'))
+  }
+  const sel = {
+    padding: '7px 8px', fontSize: 13, fontWeight: 400,
+    border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
+    fontFamily: tokens.font, outline: 'none', borderRadius: 5,
+    appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+    cursor: 'pointer',
+  }
+  if (use24h) {
+    return (
+      <div style={{ display: 'flex', gap: 4 }}>
+        <select value={h} onChange={e => fire(parseInt(e.target.value, 10), m)} style={{ ...sel, flex: 1 }}>
+          {Array.from({ length: 24 }, (_, i) => (
+            <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+          ))}
+        </select>
+        <select value={m} onChange={e => fire(h, parseInt(e.target.value, 10))} style={{ ...sel, flex: 1 }}>
+          {Array.from({ length: 60 }, (_, i) => (
+            <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+          ))}
+        </select>
+      </div>
+    )
+  }
+  // 12h: hour (1..12), minute, AM/PM
+  const ampm = h >= 12 ? 'pm' : 'am'
+  const h12  = h % 12 === 0 ? 12 : h % 12
+  function setH12 (newH12) {
+    let newH = newH12 % 12
+    if (ampm === 'pm') newH += 12
+    fire(newH, m)
+  }
+  function setAmPm (newAmPm) {
+    let newH = h12 % 12
+    if (newAmPm === 'pm') newH += 12
+    fire(newH, m)
+  }
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      <select value={h12} onChange={e => setH12(parseInt(e.target.value, 10))} style={{ ...sel, flex: 1 }}>
+        {Array.from({ length: 12 }, (_, i) => (
+          <option key={i} value={i + 1}>{i + 1}</option>
+        ))}
+      </select>
+      <select value={m} onChange={e => fire(h, parseInt(e.target.value, 10))} style={{ ...sel, flex: 1 }}>
+        {Array.from({ length: 60 }, (_, i) => (
+          <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
+        ))}
+      </select>
+      <select value={ampm} onChange={e => setAmPm(e.target.value)} style={{ ...sel, width: 60 }}>
+        <option value="am">AM</option>
+        <option value="pm">PM</option>
+      </select>
     </div>
   )
 }

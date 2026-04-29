@@ -44,7 +44,7 @@ export function MiniMonth ({ tokens, selectedDate, setSelectedDate }) {
 
   const navBtn = {
     background: 'transparent', border: 'none', color: tokens.muted,
-    fontSize: 13, cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
+    fontSize: 15, cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
     fontFamily: tokens.font,
   }
 
@@ -52,13 +52,13 @@ export function MiniMonth ({ tokens, selectedDate, setSelectedDate }) {
     <div style={{ padding: '10px 14px', borderBottom: `1px solid ${tokens.border}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
         <button style={navBtn} onClick={() => setCursor(c => c.m === 0 ? { y: c.y - 1, m: 11 } : { y: c.y, m: c.m - 1 })} aria-label="Previous month">‹</button>
-        <div style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: 600 }}>{monthLabel}</div>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 600 }}>{monthLabel}</div>
         <button style={navBtn} onClick={() => setCursor(c => c.m === 11 ? { y: c.y + 1, m: 0 } : { y: c.y, m: c.m + 1 })} aria-label="Next month">›</button>
       </div>
 
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2,
-        fontSize: 10, color: tokens.muted, marginBottom: 4,
+        fontSize: 11, color: tokens.muted, marginBottom: 4,
       }}>
         {DOW.map((d, i) => (
           <div key={i} style={{ textAlign: 'center', fontWeight: 500, padding: '2px 0' }}>{d}</div>
@@ -79,7 +79,7 @@ export function MiniMonth ({ tokens, selectedDate, setSelectedDate }) {
                 background: isSelected ? tokens.accent : (isToday ? tokens.border : 'transparent'),
                 color: isSelected ? tokens.bg : tokens.text,
                 border: 'none', borderRadius: 4,
-                fontSize: 11, fontWeight: isSelected ? 600 : 400,
+                fontSize: 12, fontWeight: isSelected ? 600 : 400,
                 cursor: 'pointer',
                 fontFamily: tokens.font,
                 fontVariantNumeric: 'tabular-nums',
