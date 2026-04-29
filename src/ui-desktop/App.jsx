@@ -116,11 +116,31 @@ export default function App ({ db, notifs, sync }) {
     ]
   }
 
+  // Drag-commit: View hands back the dragged event with mode + delta-min;
+  // we compute the new start/end (preserving duration on move, clamping
+  // resize to a 30-min minimum and the day boundary), then ship it through
+  // saveEvent — same path the modal uses, so per-group sync fires too.
+  function commitEventDrag ({ ev, mode, deltaMin }) {
+    const startMin = toMin(ev.start || '00:00')
+    const endMin   = toMin(ev.end   || ev.start || '00:00')
+    const duration = Math.max(30, endMin - startMin)
+    let newStart, newEnd
+    if (mode === 'move') {
+      newStart = Math.max(0, Math.min(24 * 60 - duration, startMin + deltaMin))
+      newEnd   = newStart + duration
+    } else {
+      newStart = startMin
+      newEnd   = Math.max(startMin + 30, Math.min(24 * 60, endMin + deltaMin))
+    }
+    saveEvent({ ...ev, start: fromMin(newStart), end: fromMin(newEnd) }, {})
+  }
+
   const interactions = {
     onSlotClick:        openCreateAt,
     onEventClick:       openInspector,
     onEventContextMenu: (ev, x, y) => openContextMenu(x, y, buildEventContextItems(ev)),
     onSlotContextMenu:  (date, start, x, y) => openContextMenu(x, y, buildSlotContextItems(date, start)),
+    onEventDragCommit:  commitEventDrag,
   }
 
   const viewProps = {
@@ -211,4 +231,13 @@ function bumpHalfHour (hhmm) {
   const nh = Math.floor(total / 60) % 24
   const nm = total % 60
   return String(nh).padStart(2, '0') + ':' + String(nm).padStart(2, '0')
+}
+
+function toMin (hhmm) {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+function fromMin (mins) {
+  const m = ((mins % 1440) + 1440) % 1440
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0')
 }

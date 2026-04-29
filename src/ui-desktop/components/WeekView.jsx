@@ -4,6 +4,7 @@
 import { useMemo, useRef } from 'react'
 import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
 import { useDragCreate, fromMinHHMM } from '../hooks/useDragCreate.js'
+import { useDragEvent } from '../hooks/useDragEvent.js'
 import { DragPreview } from './DragPreview.jsx'
 
 const HOUR_HEIGHT = 56
@@ -88,6 +89,14 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
     },
   })
 
+  // Drag-on-event: move (drag body) or resize (drag bottom 8px). Same
+  // hook as DayView; the visual delta lives on the event itself.
+  const dragEv = useDragEvent({
+    snapMin: 30,
+    onClickThrough: (ev, x, y) => interactions.onEventClick?.(ev, x, y),
+    onCommit: (info) => interactions.onEventDragCommit?.(info),
+  })
+
   function handleColMouseDown (date, e) {
     const rect = colRefs.current[date]?.getBoundingClientRect()
     drag.start(e, { rect, date, hourHeight: HOUR_HEIGHT })
@@ -164,7 +173,8 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
               ))}
               {eventsForDate(events, d).filter(e => !e.allDay && e.start).map(ev => (
                 <PositionedEvent key={ev.id} ev={ev} tokens={tokens} groupsById={groupsById} myRsvps={myRsvps}
-                                 use24h={use24h} interactions={interactions} />
+                                 use24h={use24h} interactions={interactions}
+                                 dragState={dragEv.dragState} onDragStart={dragEv.start} />
               ))}
               {drag.dragRange && drag.dragRange.date === d && (
                 <DragPreview tokens={tokens} fromMin={drag.dragRange.from} toMin={drag.dragRange.to} hourHeight={HOUR_HEIGHT} />
@@ -219,22 +229,34 @@ function AllDayRow ({ tokens, days, events, groupsById, myRsvps, interactions })
   )
 }
 
-function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interactions }) {
+function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interactions, dragState, onDragStart }) {
   const startMin = parseTimeToMinutes(ev.start)
   const endMin   = ev.end ? parseTimeToMinutes(ev.end) : startMin + 30
-  const top    = (startMin / 60) * HOUR_HEIGHT
-  const height = Math.max(20, ((endMin - startMin) / 60) * HOUR_HEIGHT)
+  const isDragged = dragState && dragState.ev.id === ev.id
+  let vStart = startMin, vEnd = endMin
+  if (isDragged) {
+    if (dragState.mode === 'move') {
+      vStart = startMin + dragState.deltaMin
+      vEnd   = endMin   + dragState.deltaMin
+    } else {
+      vEnd   = Math.max(startMin + 30, endMin + dragState.deltaMin)
+    }
+  }
+  const top    = (vStart / 60) * HOUR_HEIGHT
+  const height = Math.max(20, ((vEnd - vStart) / 60) * HOUR_HEIGHT)
   const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
   const declined = myRsvps[ev.id] === 'declined'
-  function onClick (e) { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }
+  function onMouseDown (e) { onDragStart?.(e, ev, HOUR_HEIGHT) }
   function onContextMenu (e) { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }
   return (
-    <div data-event-id={ev.id} onClick={onClick} onContextMenu={onContextMenu} style={{
+    <div data-event-id={ev.id} onMouseDown={onMouseDown} onContextMenu={onContextMenu} style={{
       position: 'absolute', top, left: 4, right: 4, height,
       background: tokens.surface, border: `1px solid ${tokens.border}`,
       borderRadius: 4, padding: '2px 6px 2px 8px',
       fontSize: 11, overflow: 'hidden',
-      opacity: declined ? 0.45 : 1, cursor: 'pointer',
+      opacity: declined ? 0.45 : (isDragged ? 0.7 : 1),
+      cursor: isDragged && dragState.mode === 'resize' ? 'ns-resize' : (isDragged ? 'grabbing' : 'pointer'),
+      zIndex: isDragged ? 10 : 1,
       ...leftStripeStyle(colors, 3),
     }}>
       <div style={{
@@ -248,6 +270,10 @@ function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interaction
           {formatTime(ev.start, use24h)}
         </div>
       )}
+      <div style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 8,
+        cursor: 'ns-resize', pointerEvents: 'none',
+      }} />
     </div>
   )
 }
