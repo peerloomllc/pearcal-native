@@ -209,7 +209,7 @@ function PositionedEvent ({ ev, tokens, groupsById, myRsvps, use24h, interaction
   const startMin = parseTimeToMinutes(ev.start)
   const endMin   = ev.end ? parseTimeToMinutes(ev.end) : startMin + 30
   const top    = (startMin / 60) * HOUR_HEIGHT
-  const height = Math.max(20, ((endMin - startMin) / 60) * HOUR_HEIGHT - 2)
+  const height = Math.max(20, ((endMin - startMin) / 60) * HOUR_HEIGHT)
   const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
   const declined = myRsvps[ev.id] === 'declined'
   function onClick (e) { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }
