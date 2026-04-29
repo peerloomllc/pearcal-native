@@ -11,7 +11,6 @@ import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from
 
 const HOUR_HEIGHT = 56
 const HOUR_PAD_LEFT = 56
-const SNAP_MIN = 15  // 15-minute snap when computing time from y
 
 function eventsForDate (events, dateStr) {
   const out = []
@@ -34,11 +33,12 @@ function parseTimeToMinutes (t) {
   return h * 60 + m
 }
 
-function minutesToHHMM (mins) {
-  const total = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins / SNAP_MIN) * SNAP_MIN))
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')
+// Click anywhere within an hour band → top of that hour. Drag-to-create
+// (D4b) will use a finer snap; for click only, top-of-hour matches what
+// users mean ("a 6am-7am event when I click in that band").
+function topOfHourAtY (y) {
+  const h = Math.max(0, Math.min(23, Math.floor(y / HOUR_HEIGHT)))
+  return String(h).padStart(2, '0') + ':00'
 }
 
 function formatHour (h, use24h) {
@@ -61,9 +61,7 @@ export function DayView ({ tokens, events, groupsById, myRsvps, selectedDate, us
   function timeAtY (clientY) {
     const rect = timelineRef.current?.getBoundingClientRect()
     if (!rect) return ''
-    const y = clientY - rect.top
-    const minutes = (y / HOUR_HEIGHT) * 60
-    return minutesToHHMM(minutes)
+    return topOfHourAtY(clientY - rect.top)
   }
 
   function handleTimelineClick (e) {

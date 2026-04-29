@@ -19,6 +19,14 @@ function makeEventId () {
 function nextHourMark (hh) {
   return String((hh + 1) % 24).padStart(2, '0') + ':00'
 }
+function toMin (hhmm) {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+function fromMin (mins) {
+  const m = ((mins % 1440) + 1440) % 1440
+  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0')
+}
 function defaultsFor (initialStart) {
   if (initialStart) {
     const h = parseInt(initialStart.split(':')[0], 10)
@@ -43,6 +51,16 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
   const seedTimes = defaultsFor(initial?.start)
   const [start,    setStart]    = useState(initial?.start || seedTimes.start)
   const [end,      setEnd]      = useState(initial?.end   || seedTimes.end)
+
+  // Keep End synced to Start by preserving the current duration. User
+  // edits Start → End shifts by the same delta. User edits End → only
+  // End changes (and the implicit duration is whatever they set).
+  // Standard Apple Calendar / Outlook behavior.
+  function handleStartChange (newStart) {
+    const oldDuration = (toMin(end) - toMin(start) + 1440) % 1440
+    setStart(newStart)
+    setEnd(fromMin(toMin(newStart) + oldDuration))
+  }
   const [groupIds, setGroupIds] = useState(initial?.groups ?? [])
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
@@ -160,7 +178,7 @@ export function EventModal ({ tokens, mode, initial, groups, profile, onSave, on
           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={label}>Start</div>
-              <input type="time" value={start} onChange={e => setStart(e.target.value)} style={inputBase} />
+              <input type="time" value={start} onChange={e => handleStartChange(e.target.value)} style={inputBase} />
             </div>
             <div style={{ flex: 1 }}>
               <div style={label}>End</div>

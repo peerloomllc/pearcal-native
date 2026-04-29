@@ -6,7 +6,6 @@ import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from
 
 const HOUR_HEIGHT = 56
 const HOUR_PAD_LEFT = 56
-const SNAP_MIN = 15
 const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
 
 function shiftDate (dateStr, days) {
@@ -50,11 +49,11 @@ function parseTimeToMinutes (t) {
   return h * 60 + m
 }
 
-function minutesToHHMM (mins) {
-  const total = Math.max(0, Math.min(24 * 60 - 1, Math.round(mins / SNAP_MIN) * SNAP_MIN))
-  const h = Math.floor(total / 60)
-  const m = total % 60
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0')
+// Click anywhere within an hour band → top of that hour. See DayView
+// for rationale; D4b drag-to-create will use a finer snap.
+function topOfHourAtY (y) {
+  const h = Math.max(0, Math.min(23, Math.floor(y / HOUR_HEIGHT)))
+  return String(h).padStart(2, '0') + ':00'
 }
 
 function formatHour (h, use24h) {
@@ -77,9 +76,7 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
   function timeAtY (date, clientY) {
     const rect = colRefs.current[date]?.getBoundingClientRect()
     if (!rect) return ''
-    const y = clientY - rect.top
-    const minutes = (y / HOUR_HEIGHT) * 60
-    return minutesToHHMM(minutes)
+    return topOfHourAtY(clientY - rect.top)
   }
 
   function handleColClick (date, e) {
