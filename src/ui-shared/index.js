@@ -24,3 +24,5 @@ export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
 
 export { emitter } from './emitter.js'
+
+export { Tour } from './components/Tour.jsx'

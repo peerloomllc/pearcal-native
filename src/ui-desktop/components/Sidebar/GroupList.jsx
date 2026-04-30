@@ -14,7 +14,7 @@ export function GroupList ({ tokens, groups, isVisible, toggle, onContextMenu, o
   }
   return (
     <div style={{ padding: '10px 14px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
-      <div style={{
+      <div data-tour="sidebar-add-group" style={{
         display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6,
       }}>
         <div style={{

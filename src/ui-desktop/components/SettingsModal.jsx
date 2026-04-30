@@ -187,6 +187,19 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
           </div>
         )}
 
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Help</div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
+            Walk through the calendar's main controls again — sidebar, view tabs, and event creation.
+          </div>
+          <button onClick={async () => {
+              await updateProfile({ tourPending: true })
+              onClose()
+            }} style={{ ...btnBase, width: '100%' }}>
+            Replay welcome tour
+          </button>
+        </div>
+
         <div style={{ marginBottom: 4 }}>
           <div style={label}>About</div>
           <div style={{ ...row, fontSize: 13, color: tokens.text }}>
