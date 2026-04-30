@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from 'react'
 import { emitter } from '../../ui-shared/index.js'
+import { QRCodeCanvas } from './QRCode.jsx'
 
 function formatDate (ts) {
   if (!ts) return '—'
@@ -345,9 +346,14 @@ export function LinkedDevicesModal ({ tokens, db, profile, onClose }) {
               <div style={{ fontSize: 12, color: tokens.text, lineHeight: 1.5, marginBottom: 8 }}>
                 {pairBusy && !pairUrl
                   ? 'Generating pairing link…'
-                  : 'Open PearCal on the other device, go to Linked Devices, and paste this link there. Link expires in '
+                  : 'On the other device, scan this QR code, or open PearCal → Linked Devices and paste the link below. Link expires in '
                     + expiresIn + ' second' + (expiresIn === 1 ? '' : 's') + '.'}
               </div>
+              {pairUrl && (
+                <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+                  <QRCodeCanvas value={pairUrl} size={240} tokens={tokens} />
+                </div>
+              )}
               {pairUrl && (
                 <textarea readOnly value={pairUrl} rows={3}
                           onClick={e => e.target.select()}

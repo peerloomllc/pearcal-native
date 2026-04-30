@@ -5,6 +5,9 @@
 
 export function ProfileFooter ({ tokens, profile, onClick, onOpenSettings }) {
   const isPhoto = profile.avatar?.startsWith?.('data:')
+  // Mobile parity: when no photo and no emoji, fall back to the first letter
+  // of the user's name. Empty/whitespace avatar falls through to the letter.
+  const fallback = (profile.avatar?.trim()) || (profile.name?.trim()?.[0]?.toUpperCase() ?? '?')
   return (
     <footer style={{
       padding: '9px 14px', borderTop: `1px solid ${tokens.border}`,
@@ -29,7 +32,7 @@ export function ProfileFooter ({ tokens, profile, onClick, onOpenSettings }) {
         }}>
           {isPhoto
             ? <img src={profile.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            : (profile.avatar ?? '?')}
+            : fallback}
         </div>
         <div style={{ overflow: 'hidden', minWidth: 0 }}>
           <div style={{ fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

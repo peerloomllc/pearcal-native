@@ -10,6 +10,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { buildInviteLink } from '../../invite.js'
 import { compressImage } from '../lib/imagePicker.js'
+import { QRCodeCanvas } from './QRCode.jsx'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
@@ -198,7 +199,10 @@ export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
               "{created.name}" is ready. Share this invite link with anyone you want to add to the group. They paste it into PearCal to join.
             </div>
             <div style={{ marginBottom: 12 }}>
-              <div style={label}>Invite link</div>
+              <div style={label}>Invite</div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+                <QRCodeCanvas value={inviteLink} size={240} tokens={tokens} />
+              </div>
               <textarea readOnly value={inviteLink} rows={3}
                         onClick={e => e.target.select()}
                         style={{ ...inputBase, fontFamily: 'ui-monospace, monospace', fontSize: 11, resize: 'none' }} />

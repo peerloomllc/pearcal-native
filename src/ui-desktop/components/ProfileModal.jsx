@@ -103,7 +103,7 @@ export function ProfileModal ({ tokens, profile, updateProfile, onClose }) {
           }}>
             {isPhoto
               ? <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              : (avatar || (name.trim()[0] ?? '?'))}
+              : (avatar?.trim() || name.trim()[0]?.toUpperCase() || '?')}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={label}>Name</div>
