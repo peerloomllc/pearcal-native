@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { buildInviteLink } from '../../invite.js'
 import { compressImage } from '../lib/imagePicker.js'
 import { MemberAvatar } from './MemberAvatar.jsx'
+import { QRCodeCanvas } from './QRCode.jsx'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
@@ -311,7 +312,10 @@ export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLe
         </div>
 
         <div style={{ marginBottom: 14 }}>
-          <div style={label}>Invite link</div>
+          <div style={label}>Invite</div>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+            <QRCodeCanvas value={inviteLink} size={180} tokens={tokens} />
+          </div>
           <textarea readOnly value={inviteLink} rows={3}
                     onClick={e => e.target.select()}
                     style={{ ...inputBase, fontFamily: 'ui-monospace, monospace', fontSize: 11, resize: 'none' }} />
@@ -321,7 +325,7 @@ export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLe
             </button>
           </div>
           <div style={{ fontSize: 11, color: tokens.muted, marginTop: 6, lineHeight: 1.5 }}>
-            Anyone with this link can paste it into PearCal to join the group.
+            Anyone with this link can scan the QR or paste the link into PearCal to join.
           </div>
         </div>
 
