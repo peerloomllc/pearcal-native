@@ -63,7 +63,10 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
     if (!trimmed) { setErr('Enter a name to continue.'); return }
     setBusy(true); setErr('')
     try {
-      await updateProfile({ name: trimmed, avatar, onboardingComplete: true })
+      // tourPending is a device-local signal (updateProfile only syncs
+      // name/avatar across paired devices). App.jsx picks it up after the
+      // calendar mounts and runs the guided tour, then clears the flag.
+      await updateProfile({ name: trimmed, avatar, onboardingComplete: true, tourPending: true })
     } catch (e) {
       setBusy(false)
       setErr('Could not save profile: ' + (e?.message ?? 'unknown error'))

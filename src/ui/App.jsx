@@ -23,7 +23,7 @@ import {
   expandRecurring,
   formatTime, formatRelativeTime, todayStr, dateStr,
   useProfile, useRsvps, useGroups, useEvents,
-  emitter,
+  emitter, Tour,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
@@ -241,6 +241,23 @@ const REMINDER_OPTIONS = [
   {label:'Morning of (9 AM)', value:MORNING_OF},
   {label:'Day before (9 AM)', value:DAY_BEFORE},
   {label:'1 day before',      value:1440},
+]
+
+// Mobile guided tour steps (D9). Anchors are `[data-tour="<key>"]` —
+// missing anchors fall through to a centered tooltip in Tour.jsx.
+const MOBILE_TOUR_STEPS = [
+  { anchor: 'mobile-create', placement: 'top',
+    title: 'Create an event',
+    body: 'Tap + to add an event. Or tap any day on the calendar and start filling it in.' },
+  { anchor: 'nav-groups', placement: 'top',
+    title: 'Groups & invites',
+    body: 'Share a calendar with others. Tap Groups to create a new one, or scan/paste an invite link to join. Each group surfaces a QR + paste link to invite more people.' },
+  { anchor: 'nav-profile', placement: 'top',
+    title: 'Profile & settings',
+    body: 'Edit your name and photo, change theme, notifications, and time format. Linked devices and recovery phrase live here too — pair another phone or computer under the same identity.' },
+  { anchor: 'nav-about', placement: 'top',
+    title: 'About & help',
+    body: 'How P2P works, app info, donations, and a "Replay welcome tour" button if you want to revisit this.' },
 ]
 
 function themes () {
@@ -1354,7 +1371,7 @@ export default function App ({ db, notifs, sync }) {
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
-            <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} />
+            <AboutTab th={th} sync={sync} closeSheetRef={closeAboutSheetRef} onReplayTour={() => { updateProfile({ tourPending: true }); goTab('calendar') }} />
           )}
           </div>
         </div>
@@ -1378,6 +1395,7 @@ export default function App ({ db, notifs, sync }) {
             const isActive = tab === t.key
             return (
               <button key={t.key} onClick={() => goTab(t.key)}
+                data-tour={'nav-' + t.key}
                 style={{
                   flex: 1, padding: '10px 0 8px', border: 'none', cursor: 'pointer',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
@@ -1482,7 +1500,20 @@ export default function App ({ db, notifs, sync }) {
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
           qrScanModeRef={qrScanModeRef}
           closeOnboardSubModeRef={closeOnboardSubModeRef}
-          onComplete={async () => { await db.updateProfile({ onboardingComplete: true }); const p = await db.getProfile(); setProfile(p) }} />}
+          onComplete={async () => { await db.updateProfile({ onboardingComplete: true, tourPending: true }); const p = await db.getProfile(); setProfile(p) }} />}
+        {profile?.tourPending && !showOnboarding && (
+          <Tour
+            tokens={{
+              text: 'var(--color-text)', bg: 'var(--color-bg)',
+              surface: 'var(--color-surface)', border: 'var(--color-border)',
+              accent: 'var(--color-accent)', muted: 'var(--color-muted)',
+              font: FONT,
+            }}
+            steps={MOBILE_TOUR_STEPS}
+            onDone={() => updateProfile({ tourPending: false })}
+            onSkip={() => updateProfile({ tourPending: false })}
+          />
+        )}
         {showDonationReminder && !showOnboarding && (
           <DonationReminderModal th={th} sync={sync}
             onDonate={() => {
@@ -2082,7 +2113,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
 
       {/* Add event button */}
       <div style={{ display:'flex', justifyContent:'flex-end', padding:'0 16px 8px' }}>
-        <button onClick={() => openCreate(selectedDate)} style={{
+        <button onClick={() => openCreate(selectedDate)} data-tour="mobile-create" style={{
           width: 36, height: 36, borderRadius: 10,
           background: 'var(--color-surface)',
           border: '1px solid var(--color-border)',
@@ -5886,7 +5917,7 @@ function ImportIcsSheet ({ th, events, filename, groups, existingEventIds, onImp
   )
 }
 
-function AboutTab ({ th, sync, closeSheetRef }) {
+function AboutTab ({ th, sync, closeSheetRef, onReplayTour }) {
   const LIGHTNING_ADDRESS = 'peerloomllc@strike.me'
   const lsBsCloseRef = useRef(null)
   const [lightningModal, setLightningModal] = useState(false)
@@ -5947,6 +5978,20 @@ function AboutTab ({ th, sync, closeSheetRef }) {
           Learn about P2P <ArrowSquareOut size={14} weight="thin" />
         </button>
       </div>
+
+      {/* Replay tour */}
+      {onReplayTour && (
+        <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
+          <div style={{ fontSize:11, fontWeight:400, ...th.text, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HELP</div>
+          <div style={{ fontSize:12, fontWeight:300, color:th.muted, lineHeight:'1.6', marginBottom:10 }}>
+            Walk through the calendar's main controls again — create flow, groups, profile, settings.
+          </div>
+          <button onClick={onReplayTour}
+            style={{ ...th.pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300 }}>
+            Replay welcome tour
+          </button>
+        </div>
+      )}
 
       {/* Donate */}
       <div style={{ ...th.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>

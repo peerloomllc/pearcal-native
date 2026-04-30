@@ -64,14 +64,14 @@ export function Toolbar ({ tokens, selectedDate, setSelectedDate, mode, setMode,
         {formatDateHeader(selectedDate)}
       </div>
 
-      <div style={{ display: 'flex', gap: 4 }}>
+      <div data-tour="toolbar-views" style={{ display: 'flex', gap: 4 }}>
         <button style={tabBtn(mode === 'day')}   onClick={() => setMode('day')}>Day</button>
         <button style={tabBtn(mode === 'week')}  onClick={() => setMode('week')}>Week</button>
         <button style={tabBtn(mode === 'month')} onClick={() => setMode('month')}>Month</button>
       </div>
 
       {onCreate && (
-        <button onClick={onCreate} title="New event (N)"
+        <button data-tour="toolbar-create" onClick={onCreate} title="New event (N)"
                 style={{ ...btn, marginLeft: 4, background: tokens.accent, color: tokens.bg, borderColor: tokens.accent, fontWeight: 600 }}>
           + New
         </button>

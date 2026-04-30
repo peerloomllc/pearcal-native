@@ -42,6 +42,7 @@ export function ProfileFooter ({ tokens, profile, onClick, onOpenSettings }) {
       </div>
       {onOpenSettings && (
         <button onClick={(e) => { e.stopPropagation(); onOpenSettings() }}
+                data-tour="sidebar-settings"
                 title="Settings (Ctrl+,)"
                 aria-label="Settings"
                 style={{

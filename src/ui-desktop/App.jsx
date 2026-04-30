@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps,
-  emitter,
+  emitter, Tour,
 } from '../ui-shared/index.js'
 import { Sidebar } from './components/Sidebar/index.jsx'
 import { Toolbar } from './components/Toolbar.jsx'
@@ -601,9 +601,44 @@ export default function App ({ db, notifs, sync }) {
           onClose={() => setJoinGroupOpen(false)}
         />
       )}
+      {profile.tourPending && (
+        <Tour
+          tokens={DARK_TOKENS}
+          steps={DESKTOP_TOUR_STEPS}
+          onDone={() => updateProfile({ tourPending: false })}
+          onSkip={() => updateProfile({ tourPending: false })}
+        />
+      )}
     </div>
   )
 }
+
+// Steps render in order against `[data-tour="<anchor>"]` in the live DOM.
+// Anchors that aren't present (e.g. the user has no groups yet) gracefully
+// fall through to a centered tooltip — see Tour.jsx.
+const DESKTOP_TOUR_STEPS = [
+  { anchor: 'sidebar-mini-month', placement: 'right',
+    title: 'Pick a date',
+    body: 'The mini month at the top of the sidebar jumps the main view to any day. Click a date to fly there.' },
+  { anchor: 'sidebar-groups', placement: 'right',
+    title: 'Your groups',
+    body: 'Groups live in the sidebar. Toggle a group\'s checkbox to hide its events; right-click for settings.' },
+  { anchor: 'sidebar-add-group', placement: 'right',
+    title: 'Share a calendar',
+    body: 'Use + to start a new group, or ↘ to join one with an invite link or QR. Group settings show a QR + paste link to share.' },
+  { anchor: 'toolbar-views', placement: 'bottom',
+    title: 'Switch the view',
+    body: 'Day, Week, or Month — pick whichever fits what you\'re planning. Keyboard shortcuts: 1, 2, 3.' },
+  { anchor: 'toolbar-create', placement: 'bottom',
+    title: 'Create an event',
+    body: 'Click + to add an event, or drag across empty time in Day/Week to create one in place.' },
+  { anchor: 'sidebar-profile', placement: 'top',
+    title: 'Your profile',
+    body: 'Click your avatar to edit your name and photo. Profile + groups stay in sync across paired devices.' },
+  { anchor: 'sidebar-settings', placement: 'top',
+    title: 'Settings & linked devices',
+    body: 'The gear opens settings (Ctrl+,). Pair a phone or another computer under the same identity from "Manage linked devices".' },
+]
 
 function todayLocal () {
   const t = new Date()

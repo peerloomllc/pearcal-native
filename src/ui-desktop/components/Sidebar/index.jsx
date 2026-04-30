@@ -26,18 +26,24 @@ export function Sidebar ({
       background: tokens.surface, borderRight: `1px solid ${tokens.border}`,
       display: 'flex', flexDirection: 'column',
     }}>
-      <MiniMonth tokens={tokens}
-                 selectedDate={selectedDate} setSelectedDate={setSelectedDate}
-                 cursor={miniCursor} setCursor={setMiniCursor} />
+      <div data-tour="sidebar-mini-month">
+        <MiniMonth tokens={tokens}
+                   selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+                   cursor={miniCursor} setCursor={setMiniCursor} />
+      </div>
 
-      <GroupList tokens={tokens} groups={groups}
-                 isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle}
-                 onContextMenu={onGroupContextMenu}
-                 onNewGroup={onNewGroup} onJoinGroup={onJoinGroup} />
+      <div data-tour="sidebar-groups" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <GroupList tokens={tokens} groups={groups}
+                   isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle}
+                   onContextMenu={onGroupContextMenu}
+                   onNewGroup={onNewGroup} onJoinGroup={onJoinGroup} />
+      </div>
 
-      <ProfileFooter tokens={tokens} profile={profile}
-                     onClick={onOpenProfile}
-                     onOpenSettings={onOpenSettings} />
+      <div data-tour="sidebar-profile">
+        <ProfileFooter tokens={tokens} profile={profile}
+                       onClick={onOpenProfile}
+                       onOpenSettings={onOpenSettings} />
+      </div>
     </aside>
   )
 }
