@@ -314,7 +314,7 @@ export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLe
         <div style={{ marginBottom: 14 }}>
           <div style={label}>Invite</div>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-            <QRCodeCanvas value={inviteLink} size={180} tokens={tokens} />
+            <QRCodeCanvas value={inviteLink} size={220} tokens={tokens} />
           </div>
           <textarea readOnly value={inviteLink} rows={3}
                     onClick={e => e.target.select()}

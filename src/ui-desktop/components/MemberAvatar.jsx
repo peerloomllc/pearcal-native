@@ -25,7 +25,7 @@ export function MemberAvatar ({ avatar, avatarHash, name = '?', color = '#6C9BF5
       }}>
         {isPhoto
           ? <img src={avatar} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          : <span style={{ color: '#fff', fontWeight: 600, fontSize, lineHeight: 1 }}>{avatar || '?'}</span>}
+          : <span style={{ color: '#fff', fontWeight: 600, fontSize, lineHeight: 1 }}>{(avatar?.trim()) || (name?.trim()?.[0]?.toUpperCase() ?? '?')}</span>}
       </div>
     )
   }
@@ -52,7 +52,7 @@ function MemberAvatarByHash ({ avatarHash, fallback, name, color, size, fontSize
     }}>
       {isPhoto
         ? <img src={resolved} alt={name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : <span style={{ color: '#fff', fontWeight: 600, fontSize, lineHeight: 1 }}>{fallback || '?'}</span>}
+        : <span style={{ color: '#fff', fontWeight: 600, fontSize, lineHeight: 1 }}>{(fallback?.trim()) || (name?.trim()?.[0]?.toUpperCase() ?? '?')}</span>}
     </div>
   )
 }

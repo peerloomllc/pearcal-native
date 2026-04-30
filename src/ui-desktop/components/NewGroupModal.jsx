@@ -201,7 +201,7 @@ export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
             <div style={{ marginBottom: 12 }}>
               <div style={label}>Invite</div>
               <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
-                <QRCodeCanvas value={inviteLink} size={200} tokens={tokens} />
+                <QRCodeCanvas value={inviteLink} size={240} tokens={tokens} />
               </div>
               <textarea readOnly value={inviteLink} rows={3}
                         onClick={e => e.target.select()}

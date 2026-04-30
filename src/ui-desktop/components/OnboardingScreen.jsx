@@ -17,7 +17,7 @@ const AVATAR_SUGGESTIONS = ['🍐', '🐝', '🌿', '🦊', '🌊', '🔥', '⭐
 export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
   const [mode,    setMode]    = useState(null)        // null | 'fresh' | 'pair'
   const [name,    setName]    = useState(profile?.name ?? '')
-  const [avatar,  setAvatar]  = useState(profile?.avatar ?? '🍐')
+  const [avatar,  setAvatar]  = useState(profile?.avatar ?? '')
   const [busy,    setBusy]    = useState(false)
   const [err,     setErr]     = useState('')
   const [pasteUrl, setPasteUrl] = useState('')

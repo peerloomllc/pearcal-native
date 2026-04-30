@@ -351,7 +351,7 @@ export function LinkedDevicesModal ({ tokens, db, profile, onClose }) {
               </div>
               {pairUrl && (
                 <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-                  <QRCodeCanvas value={pairUrl} size={200} tokens={tokens} />
+                  <QRCodeCanvas value={pairUrl} size={240} tokens={tokens} />
                 </div>
               )}
               {pairUrl && (
