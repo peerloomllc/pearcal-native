@@ -9,7 +9,10 @@
 
 import { useEffect, useState } from 'react'
 
-const APP_VERSION = '0.0.1'  // Mirrors electron/package.json#version. Update in lockstep.
+// Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
+// at build time. Falls back to "0.0.0" only if someone runs the bundle without
+// that script (e.g., raw esbuild during dev).
+const APP_VERSION = process.env.PEARCAL_VERSION || '0.0.0'
 
 const WEEK_STARTS = [
   { value: 0, label: 'Sunday' },
@@ -28,6 +31,7 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const [use24h,    setUse24h]    = useState(profile?.use24h    ?? localeUse24h)
   const [weekStart, setWeekStart] = useState(profile?.weekStart ?? 0)
+  const [dark,      setDark]      = useState(profile?.dark      ?? true)
   const [saving,    setSaving]    = useState(false)
   const [saved,     setSaved]     = useState(false)
 
@@ -79,6 +83,10 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
     setWeekStart(next)
     persist({ weekStart: next })
   }
+  function handleDarkChange (next) {
+    setDark(next)
+    persist({ dark: next })
+  }
 
   const label = {
     fontSize: 11, fontWeight: 600, color: tokens.muted,
@@ -107,18 +115,40 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
         boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
         fontFamily: tokens.font,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 14 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, flex: 1 }}>Settings</div>
-          {saved && <div style={{ fontSize: 12, color: '#5DBF8A', marginRight: 10 }}>✓ Saved</div>}
-          {saving && !saved && <div style={{ fontSize: 12, color: tokens.muted, marginRight: 10 }}>Saving…</div>}
+        <div style={{ position: 'relative', marginBottom: 14 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, textAlign: 'center' }}>Settings</div>
+          {saved && (
+            <div style={{ position: 'absolute', top: 0, right: 36, fontSize: 12, color: '#5DBF8A' }}>✓ Saved</div>
+          )}
+          {saving && !saved && (
+            <div style={{ position: 'absolute', top: 0, right: 36, fontSize: 12, color: tokens.muted }}>Saving…</div>
+          )}
           <button onClick={onClose} style={{
             ...btnBase, padding: '4px 10px', fontSize: 14,
             background: 'transparent', border: 'none',
+            position: 'absolute', top: 0, right: 0,
           }}>✕</button>
         </div>
 
         <div style={{ marginBottom: 18 }}>
           <div style={label}>Display</div>
+          <div style={row}>
+            <div style={{ flex: 1, fontSize: 13 }}>Theme</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[{ value: false, label: 'Light' }, { value: true, label: 'Dark' }].map(t => (
+                <button key={String(t.value)}
+                  onClick={() => handleDarkChange(t.value)}
+                  style={{
+                    ...btnBase, padding: '4px 10px',
+                    background: dark === t.value ? tokens.accent : tokens.bg,
+                    color:      dark === t.value ? tokens.bg     : tokens.text,
+                    borderColor: dark === t.value ? tokens.accent : tokens.border,
+                  }}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div style={row}>
             <div style={{ flex: 1, fontSize: 13 }}>24-hour time</div>
             <ToggleSwitch tokens={tokens} value={use24h} onChange={handleUse24hChange} />
@@ -187,36 +217,11 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
           </div>
         )}
 
-        <div style={{ marginBottom: 18 }}>
-          <div style={label}>Help</div>
-          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
-            Walk through the calendar's main controls again — sidebar, view tabs, and event creation.
-          </div>
-          <button onClick={async () => {
-              await updateProfile({ tourPending: true })
-              onClose()
-            }} style={{ ...btnBase, width: '100%' }}>
-            Replay welcome tour
-          </button>
-        </div>
-
         <div style={{ marginBottom: 4 }}>
           <div style={label}>About</div>
           <div style={{ ...row, fontSize: 13, color: tokens.text }}>
             <div style={{ flex: 1 }}>PearCal Desktop</div>
             <div style={{ color: tokens.muted, fontVariantNumeric: 'tabular-nums' }}>v{APP_VERSION}</div>
-          </div>
-          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
-            Decentralized calendar. Your data lives only on the devices in your groups.
-            No servers, no accounts, no data collection.
-          </div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => sync?.openURL?.('https://peerloomllc.com/pearcal/')}
-                    style={{ ...btnBase, flex: 1 }}>Website</button>
-            <button onClick={() => sync?.openURL?.('https://github.com/peerloomllc/pearcal-native')}
-                    style={{ ...btnBase, flex: 1 }}>Source</button>
-            <button onClick={() => sync?.openURL?.('https://pears.com/')}
-                    style={{ ...btnBase, flex: 1 }}>How P2P works</button>
           </div>
         </div>
       </div>

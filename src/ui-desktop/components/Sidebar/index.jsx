@@ -17,7 +17,7 @@ export function Sidebar ({
   selectedDate, setSelectedDate,
   miniCursor, setMiniCursor,
   visibleGroups,
-  onOpenProfile, onOpenSettings, onGroupContextMenu,
+  onOpenProfile, onOpenSettings, onOpenAbout, onGroupContextMenu,
   onNewGroup, onJoinGroup,
 }) {
   return (
@@ -42,7 +42,8 @@ export function Sidebar ({
       <div data-tour="sidebar-profile">
         <ProfileFooter tokens={tokens} profile={profile}
                        onClick={onOpenProfile}
-                       onOpenSettings={onOpenSettings} />
+                       onOpenSettings={onOpenSettings}
+                       onOpenAbout={onOpenAbout} />
       </div>
     </aside>
   )

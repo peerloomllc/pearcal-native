@@ -144,8 +144,8 @@ function scheduleNextRehydration () {
 
 function createWindow () {
   mainWindow = new BrowserWindow({
-    width: 1024,
-    height: 720,
+    width: 1536,
+    height: 1080,
     minWidth: 720,
     minHeight: 480,
     backgroundColor: '#0f172a',
