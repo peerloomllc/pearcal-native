@@ -7,9 +7,15 @@ BUNDLE_ID="com.pearcal"
 XCODE_WORKSPACE="ios/PearCal.xcworkspace"
 XCODE_SCHEME="PearCal"
 
-# Mac Mini SSH host and the repo path relative to its $HOME.
+# Mac Mini SSH host and the repo path relative to its $HOME. Used for both
+# iOS App Store builds (via xcodebuild over SSH) and the desktop Mac .dmg
+# build (electron-builder via SSH).
 MAC_MINI_HOST="Tims-Mac-mini.local"
 MAC_MINI_REPO_PATH="peerloomllc/pearcal-native"
+
+# Windows build VM SSH target (libvirt KVM, shared with PearGuard). Used by
+# release.sh's desktop build phase for the NSIS .exe via electron-builder.
+WINDOWS_VM_HOST="ben@192.168.50.157"
 
 # ── Screenshot automation ──
 # iOS: space-separated "DeviceName|UDID" pairs (see `xcrun simctl list devices`).
