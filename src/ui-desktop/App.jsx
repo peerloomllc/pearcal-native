@@ -23,6 +23,7 @@ import { ContextMenu } from './components/ContextMenu.jsx'
 import { CommandPalette } from './components/CommandPalette.jsx'
 import { ProfileModal } from './components/ProfileModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
+import { AboutModal } from './components/AboutModal.jsx'
 import { GroupSettingsModal } from './components/GroupSettingsModal.jsx'
 import { NewGroupModal } from './components/NewGroupModal.jsx'
 import { JoinGroupModal } from './components/JoinGroupModal.jsx'
@@ -33,6 +34,8 @@ import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 
+const FONT = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif"
+
 const DARK_TOKENS = {
   bg:        '#0E0D0C',
   surface:   '#1A1916',
@@ -40,11 +43,35 @@ const DARK_TOKENS = {
   text:      '#F2EFE8',
   muted:     '#8A8478',
   accent:    '#C8922A',
-  font:      "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif",
+  font:      FONT,
+}
+
+const LIGHT_TOKENS = {
+  bg:        '#FFFFFF',
+  surface:   '#F6F4EE',
+  border:    '#E2DED4',
+  text:      '#1A1816',
+  muted:     '#6F6B62',
+  accent:    '#C8922A',
+  font:      FONT,
 }
 
 export default function App ({ db, notifs, sync }) {
   const [profile, setProfile] = useProfile(db, emitter)
+  // Theme is device-local: profile.dark is stored in the local Hyperbee but
+  // updateProfile only syncs name/avatar via the personal autobase, so each
+  // paired device keeps its own dark/light preference. Default dark for
+  // backward compatibility with the original desktop ship.
+  const isDark = profile?.dark ?? true
+  const tokens = isDark ? DARK_TOKENS : LIGHT_TOKENS
+  // Stamp the theme onto <body> so the global hover-wash CSS var (in
+  // electron/src/renderer/index.html) picks the right tint — white wash
+  // for dark surfaces, black wash for light. Without this, light-mode
+  // hover is invisible (white-on-white).
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    document.body.setAttribute('data-theme', isDark ? 'dark' : 'light')
+  }, [isDark])
   const [groups, setGroups] = useGroups(db)
   const [events, setEvents] = useEvents(db)
   const [myRsvps] = useRsvps(db)
@@ -62,6 +89,7 @@ export default function App ({ db, notifs, sync }) {
   const [paletteOpen,   setPaletteOpen]   = useState(false)
   const [profileOpen,   setProfileOpen]   = useState(false)
   const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [aboutOpen,     setAboutOpen]     = useState(false)
   const [groupSettings, setGroupSettings] = useState(null)        // group object or null
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
@@ -120,12 +148,13 @@ export default function App ({ db, notifs, sync }) {
   // but this fallback covers focus-elsewhere edge cases.
   const closeAllTransient = useCallback(() => {
     setModal(null); setInspector(null); setContextMenu(null); setPaletteOpen(false)
-    setProfileOpen(false); setSettingsOpen(false); setGroupSettings(null)
+    setProfileOpen(false); setSettingsOpen(false); setAboutOpen(false); setGroupSettings(null)
     setNewGroupOpen(false); setJoinGroupOpen(false)
     setLinkedDevicesOpen(false)
   }, [])
 
   function openSettings ()           { closeAllTransient(); setSettingsOpen(true) }
+  function openAbout    ()           { closeAllTransient(); setAboutOpen(true) }
   function openProfile  ()           { closeAllTransient(); setProfileOpen(true) }
   function openGroupSettings (group) { closeAllTransient(); setGroupSettings(group) }
   function openNewGroup  ()          { closeAllTransient(); setNewGroupOpen(true) }
@@ -343,7 +372,7 @@ export default function App ({ db, notifs, sync }) {
   })()
 
   const viewProps = {
-    tokens: DARK_TOKENS,
+    tokens: tokens,
     events: visibleEvents,
     groupsById,
     myRsvps,
@@ -366,7 +395,8 @@ export default function App ({ db, notifs, sync }) {
       { id: 'goto:today', icon: '◉', label: 'Today',       hint: 'Jump to today',        shortcut: 'T',     action: () => view.goToToday() },
       { id: 'create:new', icon: '+', label: 'New Event',   hint: 'Create an event on the selected date', shortcut: 'N', action: () => openCreateAt(view.selectedDate, '', '') },
       { id: 'open:profile',   icon: '◐', label: 'Profile…',   hint: 'Edit your name + avatar', action: openProfile  },
-      { id: 'open:settings',  icon: '⚙', label: 'Settings…',  hint: 'Display preferences + about', shortcut: '⌘,', action: openSettings },
+      { id: 'open:settings',  icon: '⚙', label: 'Settings…',  hint: 'Display preferences', shortcut: '⌘,', action: openSettings },
+      { id: 'open:about',     icon: 'ⓘ', label: 'About PearCal…', hint: 'How P2P works, donate, share, contact', action: openAbout },
       { id: 'group:new',      icon: '+', label: 'New Group…', hint: 'Create a group and invite people', action: openNewGroup },
       { id: 'group:join',     icon: '↘', label: 'Join Group…', hint: 'Paste an invite link to join', action: openJoinGroup },
       { id: 'open:devices',   icon: '⎌', label: 'Linked Devices…', hint: 'Pair another device or manage paired ones', action: openLinkedDevices },
@@ -420,8 +450,8 @@ export default function App ({ db, notifs, sync }) {
     return (
       <div style={{
         height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: DARK_TOKENS.bg, color: DARK_TOKENS.muted,
-        fontFamily: DARK_TOKENS.font, fontSize: 14,
+        background: tokens.bg, color: tokens.muted,
+        fontFamily: tokens.font, fontSize: 14,
       }}>
         Loading PearCal…
       </div>
@@ -435,7 +465,7 @@ export default function App ({ db, notifs, sync }) {
   if (!profile.onboardingComplete) {
     return (
       <OnboardingScreen
-        tokens={DARK_TOKENS}
+        tokens={tokens}
         profile={profile}
         db={db}
         updateProfile={updateProfile}
@@ -446,11 +476,11 @@ export default function App ({ db, notifs, sync }) {
   return (
     <div style={{
       height: '100vh', display: 'flex',
-      background: DARK_TOKENS.bg, color: DARK_TOKENS.text,
-      fontFamily: DARK_TOKENS.font,
+      background: tokens.bg, color: tokens.text,
+      fontFamily: tokens.font,
     }}>
       <Sidebar
-        tokens={DARK_TOKENS}
+        tokens={tokens}
         profile={profile}
         groups={groups}
         selectedDate={view.selectedDate}
@@ -460,6 +490,7 @@ export default function App ({ db, notifs, sync }) {
         visibleGroups={visibleGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
+        onOpenAbout={openAbout}
         onNewGroup={openNewGroup}
         onJoinGroup={openJoinGroup}
         onGroupContextMenu={(g, x, y) => {
@@ -480,7 +511,7 @@ export default function App ({ db, notifs, sync }) {
       />
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Toolbar
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           selectedDate={view.selectedDate}
           setSelectedDate={view.setSelectedDate}
           mode={view.mode}
@@ -497,7 +528,7 @@ export default function App ({ db, notifs, sync }) {
 
       {modal && (
         <EventModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           mode={modal.mode}
           initial={modal.initial}
           anchor={modal.anchor}
@@ -511,7 +542,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {inspector && (
         <EventInspector
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           ev={inspector.ev}
           anchor={{ x: inspector.x, y: inspector.y }}
           groupsById={groupsById}
@@ -529,7 +560,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {contextMenu && (
         <ContextMenu
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           x={contextMenu.x} y={contextMenu.y}
           items={contextMenu.items}
           onClose={() => setContextMenu(null)}
@@ -537,7 +568,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {paletteOpen && (
         <CommandPalette
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           commands={commands}
           onJumpToDate={(d) => view.setSelectedDate(d)}
           onClose={() => setPaletteOpen(false)}
@@ -545,7 +576,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {profileOpen && (
         <ProfileModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           profile={profile}
           updateProfile={updateProfile}
           onClose={() => setProfileOpen(false)}
@@ -553,7 +584,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {settingsOpen && (
         <SettingsModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           profile={profile}
           updateProfile={updateProfile}
           db={db}
@@ -562,9 +593,20 @@ export default function App ({ db, notifs, sync }) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+      {aboutOpen && (
+        <AboutModal
+          tokens={tokens}
+          sync={sync}
+          onReplayTour={async () => {
+            await updateProfile({ tourPending: true })
+            setAboutOpen(false)
+          }}
+          onClose={() => setAboutOpen(false)}
+        />
+      )}
       {linkedDevicesOpen && (
         <LinkedDevicesModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           db={db}
           profile={profile}
           onClose={() => setLinkedDevicesOpen(false)}
@@ -572,7 +614,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {groupSettings && (
         <GroupSettingsModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           group={groups.find(g => g.id === groupSettings.id) ?? groupSettings}
           profile={profile}
           db={db}
@@ -584,7 +626,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {newGroupOpen && (
         <NewGroupModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           profile={profile}
           sync={sync}
           addGroup={addGroup}
@@ -593,7 +635,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {joinGroupOpen && (
         <JoinGroupModal
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           profile={profile}
           db={db}
           sync={sync}
@@ -603,7 +645,7 @@ export default function App ({ db, notifs, sync }) {
       )}
       {profile.tourPending && (
         <Tour
-          tokens={DARK_TOKENS}
+          tokens={tokens}
           steps={DESKTOP_TOUR_STEPS}
           onDone={() => updateProfile({ tourPending: false })}
           onSkip={() => updateProfile({ tourPending: false })}
