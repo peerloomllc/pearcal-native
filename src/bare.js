@@ -1730,11 +1730,16 @@ async function ensurePersonalBase () {
     // Backfill identity-scoped profile record for installs that enabled
     // personal sync before the identityProfile keyspace existed. Idempotent.
     seedIdentityProfileIfNeeded().catch(e => console.warn('[personal] identityProfile seed:', e.message))
-    // NB: deviceMeta seed (TODO #95) is NOT auto-fired on boot — appending a
-    // new block immediately after open triggers an Autobase truncate-vs-prologue
-    // crash on already-paired secondaries with un-indexed chain state. The row
-    // is created lazily via setDeviceNickname; until then listLinkedDevices
-    // injects a synthetic placeholder for the local writer.
+    // deviceMeta seed (TODO #95) — deferred ~2.5s past open to dodge the
+    // truncate-vs-prologue window noted in DECISIONS 2026-04-26 (the crash
+    // only triggered on appends *immediately* after open, on already-paired
+    // secondaries with un-indexed chain state). Idempotent + flag-guarded,
+    // so a missed seed (timer never fired before runtime exit) just retries
+    // on next boot. Pair-completion paths also call this directly as
+    // belt-and-suspenders for fresh secondaries.
+    setTimeout(() => {
+      seedDeviceMetaIfNeeded().catch(e => console.warn('[personal] deviceMeta seed:', e.message))
+    }, 2500)
     // Drop personal-base groupMembership entries pointing at groups this device
     // was kicked from or has locally deleted. Without this sweep, kicks that
     // landed before the live self-kick path existed (or during sync replay)
@@ -1983,6 +1988,35 @@ async function personalBaseAppendIdentityProfile ({ name, avatar, updatedAt }) {
       value: { name: name ?? '', avatar: avatar ?? '', updatedAt: updatedAt ?? Date.now() }
     })
   } catch (e) { console.warn('[personal] append identityProfile failed:', e.message) }
+}
+
+// Idempotent one-shot seed of the local device's deviceMeta row. The
+// 2026-04-26 decision dropped the original boot-seed because appending
+// immediately after personalBase open could race the truncate-vs-prologue
+// window on already-paired secondaries with un-indexed chain state. We
+// reintroduce the seed on a deferred timer + at pair-completion (well past
+// that race window) so peers see the new device's platform label without
+// waiting for the user to manually rename it. Mirrors
+// seedIdentityProfileIfNeeded — guarded by a local-only flag, skips if a
+// deviceMeta row already exists for this writer (idempotent across reboots).
+async function seedDeviceMetaIfNeeded () {
+  if (!personalBase?.writable) return
+  const localKey = b4a.toString(personalBase.local.key, 'hex')
+  const flagKey = 'personalMeta:deviceMetaSeeded:' + localKey
+  const flag = await db.get(flagKey).catch(() => null)
+  if (flag?.value) return
+  const existing = await db.get('deviceMeta:' + localKey).catch(() => null)
+  if (existing?.value) {
+    // Row already populated (prior install seeded, or a sibling's apply branch
+    // mirrored back). Stamp the flag so we don't re-check on every boot.
+    await db.put(flagKey, { ts: Date.now() }).catch(() => {})
+    return
+  }
+  // personalBaseAppendDeviceMeta with empty patch creates a fresh row using
+  // the current `_platform` (set at init) and an empty nickname — the
+  // user-rename path overwrites those later via setDeviceNickname.
+  await personalBaseAppendDeviceMeta({})
+  await db.put(flagKey, { ts: Date.now() }).catch(() => {})
 }
 
 // Per-device row in the linked-devices list (TODO #95). Self-write only:
@@ -2372,6 +2406,26 @@ async function _handlePairHello (parsed, replySend) {
       })
     }
 
+    // Snapshot of every sibling's deviceMeta — written straight to the
+    // secondary's local DB on receipt so the linked-devices list shows
+    // platform labels immediately, without waiting for hypercore replication
+    // of each writer's chain to dial through Hyperswarm. Without this, late-
+    // paired secondaries see "Unnamed device" for every sibling that hasn't
+    // recently appended a block (each device's hypercore is fetched lazily
+    // when its peer connects, which can take indefinitely on partial swarm
+    // topologies).
+    const siblings = []
+    for await (const { value } of db.createReadStream({ gt: 'deviceMeta:', lt: 'deviceMeta:ÿ' })) {
+      if (!value?.writerKey) continue
+      siblings.push({
+        writerKey: value.writerKey,
+        nickname:  value.nickname  ?? '',
+        platform:  value.platform  ?? '',
+        pairedAt:  value.pairedAt  ?? null,
+        updatedAt: value.updatedAt ?? null,
+      })
+    }
+
     const granted = {
       type: 'granted',
       mnemonic,
@@ -2379,9 +2433,10 @@ async function _handlePairHello (parsed, replySend) {
       identitySignature: b4a.toString(sig, 'hex'),
       identityPublicKey: myIdentityHex,
       groups,
+      siblings,
     }
     replySend(granted)
-    console.log('[pair] granted sent: groups=' + groups.length)
+    console.log('[pair] granted sent: groups=' + groups.length + ' siblings=' + siblings.length)
   } catch (e) {
     console.error('[pair] hello handler error:', e.message)
     _emitPair('pairingFailed', { reason: 'primary_grant_error', message: e.message })
@@ -2466,6 +2521,25 @@ async function _handlePairGranted (parsed, replySend) {
     const newDeviceKey = b4a.toString(personalBase.local.key, 'hex')
     _pairSession.granted = true
     _pairSession.groupsReceived = parsed.groups ?? []
+    // Eager-write the siblings snapshot to local DB so the linked-devices
+    // list shows the cohort immediately, without waiting for each writer's
+    // hypercore to finish replicating. Apply branch's last-writer-wins guard
+    // (incomingTs >= prevTs) keeps these in sync if a real apply lands later.
+    const incomingSiblings = Array.isArray(parsed.siblings) ? parsed.siblings : []
+    let siblingsWritten = 0
+    for (const s of incomingSiblings) {
+      if (!s?.writerKey || s.writerKey === newDeviceKey) continue
+      const key = 'deviceMeta:' + s.writerKey
+      const prev = (await db.get(key).catch(() => null))?.value
+      if (prev && (prev.updatedAt ?? 0) >= (s.updatedAt ?? 0)) continue
+      await db.put(key, s).catch(() => {})
+      await db.del('deviceMetaHidden:' + s.writerKey).catch(() => {})
+      siblingsWritten++
+    }
+    console.log('[pair] siblings received=' + incomingSiblings.length + ' written=' + siblingsWritten)
+    if (siblingsWritten > 0) {
+      send({ type: 'event', event: 'linkedDevicesChanged', data: null })
+    }
     // Persist the group list so a crash between `granted` and `complete` leaves
     // the secondary with enough data to recover on next boot via
     // resumePendingPair(). Cleared in _handlePairComplete.
@@ -2508,6 +2582,11 @@ async function _handlePairPersonalWriter (parsed, replySend) {
     // that writerKey actually connects — which can lag the addWriter append
     // by an arbitrary amount on the primary side).
     await db.put('pairedWriter:' + newDeviceKey, { addedAt: Date.now() }).catch(() => {})
+    // Belt-and-suspenders: ensure the primary's own deviceMeta row exists so
+    // the freshly-paired secondary sees this device by its platform label
+    // (e.g. "Linux") rather than "Unnamed device" while the user hasn't
+    // explicitly named it yet. No-op if already seeded.
+    seedDeviceMetaIfNeeded().catch(e => console.warn('[pair] primary deviceMeta seed:', e.message))
     replySend({ type: 'complete' })
     _emitPair('pairingCompleted', { role: 'primary' })
     send({ type: 'event', event: 'linkedDevicesChanged', data: null })
@@ -2567,6 +2646,11 @@ async function _handlePairComplete () {
   try {
     const newCount = await _seedGroupsFromPair(groups)
     await db.del('personalMeta:pendingGroups').catch(() => {})
+    // Belt-and-suspenders: seed the secondary's deviceMeta row now (well past
+    // the post-open truncate-vs-prologue race window) so siblings see this
+    // device by its platform label without waiting for the deferred boot
+    // timer or a manual rename. No-op if already seeded.
+    seedDeviceMetaIfNeeded().catch(e => console.warn('[pair] secondary deviceMeta seed:', e.message))
     _emitPair('pairingCompleted', { role: 'secondary', groups: newCount })
     resolve?.({ ok: true, groups: newCount })
   } catch (e) {

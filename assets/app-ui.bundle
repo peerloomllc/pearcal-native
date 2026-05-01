@@ -24972,8 +24972,10 @@ ${link}`;
       }
       emitter.on("linkedDevicesChanged", onChanged);
       emitter.on("pairingCompleted", onPairingCompleted);
+      const poll = setInterval(refresh, 3e3);
       return () => {
         cancelled = true;
+        clearInterval(poll);
         emitter.off("linkedDevicesChanged", onChanged);
         emitter.off("pairingCompleted", onPairingCompleted);
       };

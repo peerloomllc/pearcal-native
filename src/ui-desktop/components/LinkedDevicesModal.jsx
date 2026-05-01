@@ -60,24 +60,41 @@ export function LinkedDevicesModal ({ tokens, db, profile, onClose }) {
     return () => clearInterval(t)
   }, [pairMode, pairExpiry])
 
-  async function refresh () {
+  // initial=true on first mount + after user-driven actions where we want
+  // to resync the nickname input + show a loading state. Polling refreshes
+  // pass initial=false so they don't (a) flash the loading UI and (b) stomp
+  // the user's in-progress nickname edit.
+  async function refresh (initial = false) {
     if (!db) return
-    setLoading(true)
+    if (initial) setLoading(true)
     try {
       const list = await db.listLinkedDevices()
       setDevices(list ?? [])
-      const me = (list ?? []).find(d => d.isThisDevice)
-      setMyNickname(me?.nickname ?? '')
+      if (initial) {
+        const me = (list ?? []).find(d => d.isThisDevice)
+        setMyNickname(me?.nickname ?? '')
+      }
     } catch {
-      setDevices([])
+      if (initial) setDevices([])
     }
-    setLoading(false)
+    if (initial) setLoading(false)
   }
 
   // listLinkedDevices reads from the local DB keyspace and tolerates a
   // missing personal base (returns just the "this device" synthetic row).
   // Don't call enablePersonalSync here — see the note above.
-  useEffect(() => { refresh() }, [db])
+  useEffect(() => { refresh(true) }, [db])
+
+  // Belt-and-suspenders: poll every 3s while the modal is open so devices
+  // whose deviceMeta arrives via Autobase replay-after-pair eventually show
+  // their platform label even if the linkedDevicesChanged event raced the
+  // initial mount. The event-driven refresh path still wins in the common
+  // case; this just guarantees convergence within a few seconds.
+  useEffect(() => {
+    if (!db) return
+    const t = setInterval(() => { refresh() }, 3000)
+    return () => clearInterval(t)
+  }, [db])
 
   // Esc routes to onClose
   useEffect(() => {
@@ -277,7 +294,7 @@ export function LinkedDevicesModal ({ tokens, db, profile, onClose }) {
         <div style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
             <div style={{ ...label, marginBottom: 0, flex: 1 }}>Other linked devices ({otherDevices.length})</div>
-            <button onClick={refresh} disabled={loading}
+            <button onClick={() => refresh(true)} disabled={loading}
                     title="Refresh device list"
                     style={{
                       ...btnBase, padding: '3px 9px', fontSize: 11,

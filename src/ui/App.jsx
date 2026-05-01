@@ -6314,8 +6314,13 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
     }
     emitter.on('linkedDevicesChanged', onChanged)
     emitter.on('pairingCompleted', onPairingCompleted)
+    // Belt-and-suspenders: poll every 3s so deviceMeta rows that arrive via
+    // Autobase replay-after-pair eventually show up even if their event raced
+    // the initial mount. Cheap (single hyperbee read).
+    const poll = setInterval(refresh, 3000)
     return () => {
       cancelled = true
+      clearInterval(poll)
       emitter.off('linkedDevicesChanged', onChanged)
       emitter.off('pairingCompleted', onPairingCompleted)
     }

@@ -8,6 +8,12 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Re-vendor src/bare.js + helpers into electron/vendor/src/ so the asar
+# packed below contains current source. Without this, electron-builder
+# uses whatever vendor/ was last refreshed by `npm install`'s postinstall
+# hook — easy to ship a build with weeks-old bare.js.
+node scripts/prepack.js
+
 # Bundle the React UI before electron-builder packs it into the asar.
 bash scripts/bundle-ui.sh
 
