@@ -1,24 +1,22 @@
 #!/usr/bin/env bash
-# Build PearCal Desktop for macOS (.dmg, signed + notarized) by:
+# Build PearCal Desktop for macOS (.dmg, signed but NOT notarized) by:
 #   1. rsync source to Mac Mini
 #   2. SSH there, unlock keychain, run electron-builder --mac (signs the .app
 #      and packages a .dmg using the Developer ID Application identity)
-#   3. SSH there, run xcrun notarytool submit + stapler staple
-#   4. rsync the stapled .dmg back to electron/dist/
+#   3. rsync the .dmg back to electron/dist/
 #
-# Mirrors the pattern in scripts/release.sh / scripts/ios-appstore.sh — same
-# Mac Mini host, same buildkey.keychain unlock dance, same pearcal-notary
-# notarytool keychain profile. See:
-#   reference_macos_signing.md     — Developer ID Application identity SHA1
-#   reference_macos_notarization.md — pearcal-notary keychain profile setup
+# Notarization is intentionally skipped: macOS Sequoia silently blocks
+# outbound LAN connections from hardened-runtime apps that use raw sockets
+# (Hyperswarm's bare-tcp/udp), and Apple's notary service requires hardened
+# runtime. We trade notarization (first-launch "unidentified developer"
+# warning, right-click → Open works around) for working LAN pairing on
+# Mac. See feedback_macos_lan_gate_hardened_runtime.md for the full story.
 #
 # Usage:  cd electron && npm run build:mac
 #
 # Prerequisites (one-time, on the Mac Mini):
 #   - Keychain `~/Library/Keychains/buildkey.keychain` provisioned with the
 #     Developer ID Application cert (already done — Phase 0).
-#   - notarytool keychain profile `pearcal-notary` stored in the keychain
-#     (already done — Phase 0).
 
 set -euo pipefail
 
@@ -26,6 +24,11 @@ cd "$(dirname "$0")/.."
 
 MAC_HOST="${MAC_MINI_HOST:-Tims-Mac-mini.local}"
 REMOTE_DIR="~/peerloomllc/pearcal-native"
+
+# Re-vendor src/bare.js + helpers into electron/vendor/src/ so the rsync
+# below carries current source. Without this, the Mac packs whatever
+# vendor/ was last refreshed by `npm install`'s postinstall hook.
+node scripts/prepack.js
 
 # Bundle UI locally first so the source rsync up to the Mac is the
 # deployable shape.
@@ -69,31 +72,16 @@ ssh "$MAC_HOST" '
   ls -lh dist/*.dmg
 '
 
-echo ">> Notarizing the .dmg(s)"
-# Each electron-builder run produces TWO dmgs (one per arch); both need
-# independent notarization + staple. A new SSH session opens a fresh shell,
-# so the keychain unlock from the build step does NOT carry over — we have
-# to unlock again here.
-ssh "$MAC_HOST" '
-  set -euo pipefail
-  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain
-  cd ~/peerloomllc/pearcal-native/electron
-  for DMG in dist/*.dmg; do
-    echo ">>> Submitting $DMG to notarytool..."
-    # notarytool requires the literal keychain file path including the -db
-    # suffix that the modern keychain format uses. The `security` command
-    # tolerates both forms, but notarytool does not.
-    xcrun notarytool submit "$DMG" \
-      --keychain-profile pearcal-notary \
-      --keychain ~/Library/Keychains/buildkey.keychain-db \
-      --wait
-    echo ">>> Stapling notarization ticket onto $DMG..."
-    xcrun stapler staple "$DMG"
-    xcrun stapler validate "$DMG"
-  done
-'
+# Notarization is intentionally skipped: macOS Sequoia silently blocks
+# outbound LAN connections from hardened-runtime apps that use raw sockets
+# (Hyperswarm's bare-tcp/udp), and Apple's notary service requires hardened
+# runtime. We trade notarization (first-launch "unidentified developer"
+# warning, right-click → Open works around) for working LAN pairing on
+# Mac. Revisit when Hyperswarm's macOS path uses Network.framework, or
+# when we route everything through a public-IP relay.
+echo ">> Skipping notarization (hardenedRuntime is off — required for LAN pairing)"
 
-echo ">> Pulling stapled .dmg back to electron/dist/"
+echo ">> Pulling unstapled .dmg back to electron/dist/"
 mkdir -p dist
 rsync -az "$MAC_HOST:$REMOTE_DIR/electron/dist/*.dmg" dist/
 
