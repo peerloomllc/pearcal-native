@@ -3,6 +3,20 @@
 // Renderer ↔ main IPC contract is unchanged from E2; the new behavior lives
 // behind ipcMain handlers and Electron app events.
 
+// AppImage / desktop-launcher launches give us stdio wired to pipes whose
+// other end can close (e.g. the launcher exits a few seconds after spawn).
+// The next write to stderr then throws EPIPE asynchronously with no listener,
+// surfacing as Electron's "A JavaScript error occurred in the main process"
+// dialog. bare.js logs freely via console.warn/error from peer-connection
+// error handlers, so install listeners that swallow EPIPE on both stdio
+// streams. Other write errors still throw.
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on('error', (err) => {
+    if (err && (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED')) return
+    throw err
+  })
+}
+
 if (process.platform === 'linux') {
   process.env.ELECTRON_DISABLE_SANDBOX = '1'
 }
