@@ -194,6 +194,20 @@ function formatTime12h (t: string | undefined): string {
 const MORNING_DIGEST_BASE = 900000
 const MORNING_DIGEST_SLOTS = 3
 
+// Top-K reminder/start-time alarm slots (TODO #82 Phase 2). Reserves a fixed
+// numeric range so reconciliation is a straight cancel-then-schedule over
+// the same IDs every pass — no per-event ID bookkeeping needed. iOS caps
+// pending local notifications at 64; we keep K=50 to leave headroom for the
+// digest (3 slots) plus ad-hoc.
+const TOPK_SCHEDULER_BASE = 800000
+const TOPK_SCHEDULER_SLOTS = 50
+
+// Serialize reconcileSchedule passes. Without this, two concurrent IPC
+// messages each cancel-then-schedule the same fixed-id range and can
+// interleave — the second pass's cancel runs while the first is still
+// scheduling, leaving stale alarms armed in the range.
+let _reconcileChain: Promise<void> = Promise.resolve()
+
 // Coalesce syncNotify bursts. When the phone wakes on charger overnight, Autobase
 // catch-up applies N buffered remote changes at once and each emits a syncNotify →
 // postNow → a separate local notification. Without a window the user wakes to a
@@ -339,6 +353,38 @@ async function handleNotification (msg: any, webViewRef: any) {
       for (let i = 0; i < 4; i++) {
         await PearCalNotifications?.cancel?.(base + i).catch(() => {})
       }
+    } else if (msg.method === 'reconcileSchedule') {
+      // Top-K next-firings reconcile (TODO #82 Phase 2). Triples come from
+      // the worklet's `computeUpcomingReminders(K)` already sorted ascending
+      // by fireAt. Schedule into a fixed ID range so cancellation is just a
+      // tight loop over the same range; iOS's 64-slot quota stays honored
+      // regardless of how many recurring-series occurrences exist.
+      //
+      // Chained off `_reconcileChain` so two concurrent calls serialize.
+      const triples: any[] = msg.args?.[0] ?? []
+      _reconcileChain = _reconcileChain.then(async () => {
+        for (let i = 0; i < TOPK_SCHEDULER_SLOTS; i++) {
+          await PearCalNotifications?.cancel?.(TOPK_SCHEDULER_BASE + i).catch(() => {})
+        }
+        const now = Date.now()
+        for (let i = 0; i < Math.min(triples.length, TOPK_SCHEDULER_SLOTS); i++) {
+          const t = triples[i]
+          if (!t || !t.fireAt || t.fireAt <= now) continue
+          try {
+            await PearCalNotifications?.schedule?.({
+              id:      TOPK_SCHEDULER_BASE + i,
+              title:   t.title ?? '',
+              body:    t.body ?? '',
+              fireAt:  t.fireAt,
+              eventId: t.eventId ?? '',
+              tab:     t.tab ?? 'calendar',
+            })
+          } catch (e: any) {
+            console.log('Top-K reminder schedule error (non-fatal):', e?.message)
+          }
+        }
+      }).catch(() => {})
+      await _reconcileChain
     }
     webViewRef.current?.injectJavaScript(
       'window.__pearResponse(' + JSON.stringify({ id: msg.id, result: null }) + ');true;'
@@ -448,7 +494,7 @@ export default function Root () {
     try {
       const msg = JSON.parse(e.nativeEvent.data)
 
-      if (['scheduleForEvent', 'cancelForEvent', 'restoreAll'].includes(msg.method)) {
+      if (['scheduleForEvent', 'cancelForEvent', 'restoreAll', 'reconcileSchedule'].includes(msg.method)) {
         handleNotification(msg, webViewRef)
         return
       }

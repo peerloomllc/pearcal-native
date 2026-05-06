@@ -104,10 +104,43 @@ const db = {
   removeDeviceFromList: (k) => window.__pearDB.call('removeDeviceFromList', k),
 }
 
+// Trailing-edge debounce for reconcile (TODO #82 Phase 2). Rapid back-to-back
+// saves (e.g. user creates event → immediately edits) collapse into one pass
+// that runs against the final state, instead of two interleaving passes that
+// race over the same fixed alarm-ID range.
+let _reconcileTimer = null
+async function _runReconcile () {
+  try {
+    const triples = await window.__pearDB.call('computeUpcomingReminders', 50)
+    await window.__pearDB.call('reconcileSchedule', triples)
+  } catch (e) {
+    console.warn('[notifs.reconcile]', e?.message)
+  }
+}
+
 const notifs = {
   scheduleForEvent: (ev, reminders) => window.__pearDB.call('scheduleForEvent', ev, reminders),
   cancelForEvent:   (id) => window.__pearDB.call('cancelForEvent', id),
   restoreAll:       ()   => window.__pearDB.call('restoreAll'),
+  reconcile: () => {
+    if (_reconcileTimer) clearTimeout(_reconcileTimer)
+    _reconcileTimer = setTimeout(() => {
+      _reconcileTimer = null
+      _runReconcile()
+    }, 200)
+  },
+}
+
+// Foreground reconcile (TODO #82 Phase 2). visibilitychange fires when the
+// WebView becomes visible after the app returns to foreground — re-arms the
+// top-K alarms from current state, catching anything that expired or got
+// missed during background.
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      notifs.reconcile()
+    }
+  })
 }
 
 const sync = {

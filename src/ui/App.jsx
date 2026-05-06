@@ -392,6 +392,10 @@ export default function App ({ db, notifs, sync }) {
         setPendingApprovalGroups(new Set(pendingApprovals ?? []))
         eventsReady.current = true
         setReady(true)
+        // Boot-time reconcile (TODO #82 Phase 2). Catches events whose
+        // alarms expired during a long offline period and re-arms the
+        // top-K window from the current canonical state.
+        notifs?.reconcile?.()
       } catch (e) {
         if (!cancelled) setError(e.message)
       }
@@ -419,19 +423,21 @@ export default function App ({ db, notifs, sync }) {
 
     function scheduleDefaultReminders (newEvents) {
       if (!newEvents || newEvents.length === 0) return
-      db.getProfile().then(prof => {
+      ;(async () => {
+        const prof = await db.getProfile().catch(() => null)
         const defaultReminder = typeof prof?.defaultReminder === 'number'
           ? prof.defaultReminder : 15
         if (defaultReminder <= 0) return
+        // Await each write so reconcile sees the latest state. Sequential
+        // is fine here — small N (newly-synced events in one delta).
         for (const ev of newEvents) {
-          db.getReminders(ev.id).then(existing => {
-            if (existing && existing.length > 0) return
-            const reminders = [defaultReminder]
-            db.putReminders(ev.id, reminders).catch(() => {})
-            notifs?.scheduleForEvent(ev, reminders).catch(() => {})
-          }).catch(() => {})
+          const existing = await db.getReminders(ev.id).catch(() => [])
+          if (!existing || existing.length === 0) {
+            await db.putReminders(ev.id, [defaultReminder]).catch(() => {})
+          }
         }
-      }).catch(() => {})
+        notifs?.reconcile?.()
+      })()
     }
 
     function refreshGroupRecord (groupId) {
@@ -758,34 +764,43 @@ export default function App ({ db, notifs, sync }) {
       return next
     })
     setModal(null)
-    // Background: persist to local DB, schedule notifications, fire P2P sync
+    // Background: persist to local DB, schedule notifications, fire P2P sync.
+    // Wrapped in an async IIFE so we can `await` the local writes before the
+    // top-K reconcile reads from the DB (TODO #82 Phase 2). Without these
+    // awaits the worklet's IPC dispatcher races: it processes putReminders /
+    // putEvent / computeUpcomingReminders concurrently, so the reconcile can
+    // read before the writes commit and miss the just-saved reminders.
     if (db) {
-      if (_prevDate && _prevDate !== ev.date) {
-        db.deleteEvent(_prevDate, ev.id).catch(() => {})
-      }
-      // Reminders are series-keyed (TODO #82 Phase 1) — write once per save
-      // instead of per-occurrence. Use the series root id when available so
-      // every occurrence resolves to the same record.
-      if (withAuthor.length > 0) {
-        const reminderId = withAuthor[0].recurrenceId || withAuthor[0].id
-        db.putReminders(reminderId, reminders).catch(() => {})
-      }
-      for (const occ of withAuthor) {
-        db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
-        notifs?.cancelForEvent(occ.id).catch(() => {})
-        if (myRsvps[occ.id] !== 'declined') {
-          notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+      ;(async () => {
+        if (_prevDate && _prevDate !== ev.date) {
+          await db.deleteEvent(_prevDate, ev.id).catch(() => {})
         }
-        const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
-        for (const gid of occ.groups ?? []) {
-          sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
+        // Reminders are series-keyed (TODO #82 Phase 1) — write once per save
+        // instead of per-occurrence. Use the series root id when available so
+        // every occurrence resolves to the same record.
+        if (withAuthor.length > 0) {
+          const reminderId = withAuthor[0].recurrenceId || withAuthor[0].id
+          await db.putReminders(reminderId, reminders).catch(() => {})
         }
-        const original = events.find(e => e.id === occ.id)
-        const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
-        for (const gid of removedGroups) {
-          sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+        for (const occ of withAuthor) {
+          await db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
+          // Cancel any pre-Phase-2 alarms scheduled under the legacy notifId
+          // range so they don't double-fire alongside the new top-K alarms.
+          notifs?.cancelForEvent(occ.id).catch(() => {})
+          const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+          for (const gid of occ.groups ?? []) {
+            sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
+          }
+          const original = events.find(e => e.id === occ.id)
+          const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
+          for (const gid of removedGroups) {
+            sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+          }
         }
-      }
+        // Single global top-K reconcile. Now safe — all local writes have
+        // committed, so computeUpcomingReminders will see them.
+        notifs?.reconcile?.()
+      })()
       // Fan out busy-time shadows for any forwards the modal passed in. Done
       // here (rather than in handleSave) so expanded occurrences from a new
       // recurring series each get shadows.
@@ -888,6 +903,7 @@ export default function App ({ db, notifs, sync }) {
       e.id !== id &&
       !(e.isShadow && e.sourceEventId === id && e.creatorId === myId)))
     setModal(null)
+    notifs?.reconcile?.()
   }, [db, notifs, sync, events, profile])
 
   const deleteEventSeries = useCallback(async recurrenceId => {
@@ -920,6 +936,7 @@ export default function App ({ db, notifs, sync }) {
       e.recurrenceId !== recurrenceId &&
       !(e.isShadow && e.creatorId === myId && seriesIds.has(e.sourceEventId))))
     setModal(null)
+    notifs?.reconcile?.()
   }, [db, notifs, sync, events, profile])
 
   // Keep my busy-time shadows in lockstep with their source events. Runs on
@@ -3859,14 +3876,11 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
     setMyRsvps?.(prev => ({ ...prev, [eid]: status }))
     try {
       await db.putRsvp(eid, profile.id, status, groupIds)
-      // Reschedule/cancel notifications based on new status
-      if (status === 'declined') {
-        notifs?.cancelForEvent(eid).catch(() => {})
-      } else {
-        const reminders = await db.getReminders(eid).catch(() => [])
-        notifs?.cancelForEvent(eid).catch(() => {})
-        notifs?.scheduleForEvent(modal.event, reminders ?? []).catch(() => {})
-      }
+      // Cancel any pre-Phase-2 alarms in the legacy notifId range; the
+      // global reconcile below handles top-K rescheduling regardless of
+      // status (declined events are filtered out of computeUpcomingReminders).
+      notifs?.cancelForEvent(eid).catch(() => {})
+      notifs?.reconcile?.()
     } catch(e) { console.warn('[RSVP-ERR]', e?.message) }
   }
 
