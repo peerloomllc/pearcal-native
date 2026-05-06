@@ -20,7 +20,7 @@ import {
   MAX_COLOR_SEGMENTS,
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
-  expandRecurring,
+  expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
   formatTime, formatRelativeTime, todayStr, dateStr,
   useProfile, useRsvps, useGroups, useEvents,
   emitter, Tour,
@@ -231,6 +231,77 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const MORNING_OF = -1
 const DAY_BEFORE = -2
 
+// Tail-extension thresholds for `repeatForever` series (TODO #82 Phase 3).
+// Re-extend when the latest materialised occurrence is within this many days
+// of now; add another year of occurrences each time.
+const FOREVER_REEXTEND_THRESHOLD_DAYS = 90
+const FOREVER_EXTEND_WINDOW_MONTHS = 12
+
+// Walk the just-loaded events list, find any series whose latest occurrence
+// is still flagged `repeatForever: true` and falls inside the threshold
+// window, generate the next chunk of occurrences, persist them via
+// db.putEvent (which mirrors to personal-base for sync), and return the new
+// occurrences so the caller can merge into local state.
+//
+// Only the LATEST occurrence's flag matters. If a user toggled forever OFF
+// with scope='future' at some midpoint, every occurrence at or after that
+// point is now forever=false, so the latest is forever=false and we skip
+// extension — the series ends naturally at its materialized tail. Mixed
+// flags (e.g. r0..r9 true, r10..r364 false) are handled correctly by this
+// rule without any special-casing.
+async function extendForeverSeriesIfNeeded (events, db) {
+  if (!Array.isArray(events) || !db) return []
+  const now = new Date()
+  const thresholdMs = FOREVER_REEXTEND_THRESHOLD_DAYS * 24 * 60 * 60 * 1000
+
+  // Group ALL series occurrences (regardless of flag) so we can inspect the
+  // latest's flag below.
+  const seriesMap = new Map()
+  for (const ev of events) {
+    if (!ev || ev.isShadow || !ev.recurrenceId) continue
+    if (!seriesMap.has(ev.recurrenceId)) seriesMap.set(ev.recurrenceId, [])
+    seriesMap.get(ev.recurrenceId).push(ev)
+  }
+
+  const newOccurrences = []
+  for (const [rid, occurrences] of seriesMap) {
+    occurrences.sort((a, b) => a.date.localeCompare(b.date))
+    const last = occurrences[occurrences.length - 1]
+    if (!last.repeatForever) continue
+    const lastDate = parseDate(last.date)
+    if (lastDate.getTime() - now.getTime() > thresholdMs) continue
+
+    let maxIdx = 0
+    for (const occ of occurrences) {
+      const m = occ.id.match(/_r(\d+)$/)
+      if (m) maxIdx = Math.max(maxIdx, parseInt(m[1], 10))
+    }
+
+    const target = new Date(lastDate.getFullYear(), lastDate.getMonth() + FOREVER_EXTEND_WINDOW_MONTHS, lastDate.getDate())
+    const cur = new Date(lastDate)
+    let i = maxIdx
+    let added = 0
+    const HARD_CAP = 500
+    while (added < HARD_CAP) {
+      stepRecurrenceDate(cur, last)
+      if (cur > target) break
+      i++
+      added++
+      newOccurrences.push({
+        ...last,
+        id: rid + '_r' + i,
+        date: fmtDate(cur),
+        recurrenceId: rid,
+      })
+    }
+  }
+
+  for (const occ of newOccurrences) {
+    await db.putEvent(occ).catch(e => console.warn('[FOREVER-EXTEND-ERR]', e?.message))
+  }
+  return newOccurrences
+}
+
 const REMINDER_OPTIONS = [
   {label:'5 min before',      value:5},
   {label:'10 min before',     value:10},
@@ -392,10 +463,23 @@ export default function App ({ db, notifs, sync }) {
         setPendingApprovalGroups(new Set(pendingApprovals ?? []))
         eventsReady.current = true
         setReady(true)
-        // Boot-time reconcile (TODO #82 Phase 2). Catches events whose
-        // alarms expired during a long offline period and re-arms the
-        // top-K window from the current canonical state.
-        notifs?.reconcile?.()
+        // Boot-time tail extension for `repeatForever` series (TODO #82
+        // Phase 3). Walks the just-loaded events, finds any series whose
+        // tail is within the threshold window, materialises another year
+        // of occurrences, and merges them back into local state.
+        extendForeverSeriesIfNeeded(evts, db).then(added => {
+          if (added.length > 0 && !cancelled) {
+            setEvents(prev => {
+              const ids = new Set(prev.map(e => e.id))
+              return [...prev, ...added.filter(e => !ids.has(e.id))]
+            })
+          }
+          // Boot-time reconcile (TODO #82 Phase 2). Catches events whose
+          // alarms expired during a long offline period and re-arms the
+          // top-K window from the current canonical state. Run after
+          // tail-extension so newly-materialised occurrences are included.
+          notifs?.reconcile?.()
+        }).catch(() => { notifs?.reconcile?.() })
       } catch (e) {
         if (!cancelled) setError(e.message)
       }
@@ -730,18 +814,20 @@ export default function App ({ db, notifs, sync }) {
     const { _prevDate, _myForwards, ...evClean } = ev
     ev = evClean
     // Expand recurring events into individual occurrences (new series only)
-    const occurrences = (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId)
+    const occurrences = (ev.recurrence && ev.recurrence !== 'none' && (ev.recurrenceEnd || ev.repeatForever) && !ev.recurrenceId)
       ? expandRecurring(ev)
-      : scope === 'future' && ev.recurrenceId
+      : (scope === 'future' || scope === 'all') && ev.recurrenceId
         ? (() => {
             const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
                                ...(options.propagateGroups ? ['groups','invitees'] : []),
                                'color','desc','location','recurrence','recurrenceEnd',
-                               'recurrenceNth','recurrenceWeekday','editPermission']
+                               'repeatForever','recurrenceNth','recurrenceWeekday','editPermission']
             const patch = {}
             for (const k of PROPAGATE) patch[k] = ev[k]
+            // scope='all' patches every occurrence in the series; scope='future'
+            // is the original "from this date forward" filter.
             return events
-              .filter(e => e.recurrenceId === ev.recurrenceId && e.date >= ev.date)
+              .filter(e => e.recurrenceId === ev.recurrenceId && (scope === 'all' || e.date >= ev.date))
               .map(e => ({ ...e, ...patch }))
           })()
         : [ev]
@@ -4152,36 +4238,46 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                       }} />
                   </div>
                   {ev.recurrence && ev.recurrence !== 'none' && (
-                    <>
-                      <div><Label th={th}>Frequency</Label>
-                        <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
-                          onChange={e => {
-                            const val = e.target.value
-                            set('recurrence', val)
-                            if (val === 'monthly-nth' && ev.date) {
-                              const d = new Date(ev.date + 'T12:00:00')
-                              const weekday = d.getDay()
-                              let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
-                              while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
-                              set('recurrenceNth', nth)
-                              set('recurrenceWeekday', weekday)
-                            }
-                          }}>
-                          <option value="daily">Daily</option>
-                          <option value="weekly">Weekly</option>
-                          <option value="biweekly">Every 2 weeks</option>
-                          <option value="monthly">Monthly (same date)</option>
-                          <option value="monthly-nth">Monthly (same weekday)</option>
-                          <option value="yearly">Yearly</option>
-                        </select>
-                      </div>
-                      <div><Label th={th}>Repeat until</Label>
-                        <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
-                          onChange={e => set('recurrenceEnd', e.target.value)} />
-                      </div>
-                    </>
+                    <div><Label th={th}>Frequency</Label>
+                      <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
+                        onChange={e => {
+                          const val = e.target.value
+                          set('recurrence', val)
+                          if (val === 'monthly-nth' && ev.date) {
+                            const d = new Date(ev.date + 'T12:00:00')
+                            const weekday = d.getDay()
+                            let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                            while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                            set('recurrenceNth', nth)
+                            set('recurrenceWeekday', weekday)
+                          }
+                        }}>
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="biweekly">Every 2 weeks</option>
+                        <option value="monthly">Monthly (same date)</option>
+                        <option value="monthly-nth">Monthly (same weekday)</option>
+                        <option value="yearly">Yearly</option>
+                      </select>
+                    </div>
                   )}
                 </>
+              )}
+              {/* Repeat-forever toggle — visible for both create-mode and edit-series-occurrence
+                  (TODO #82 Phase 3). Series-level flag, propagated via the saveEvent
+                  scope='future' PROPAGATE list. */}
+              {ev.recurrence && ev.recurrence !== 'none' && (
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                  <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Repeat forever</span>
+                  <Toggle val={!!ev.repeatForever} accent={th.accent}
+                    onChange={v => set('repeatForever', v)} />
+                </div>
+              )}
+              {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && !ev.repeatForever && (
+                <div><Label th={th}>Repeat until</Label>
+                  <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
+                    onChange={e => set('recurrenceEnd', e.target.value)} />
+                </div>
               )}
             </div>
           </div>
@@ -5662,26 +5758,24 @@ function ScopeSheet ({ th, ev, onSave, onDismiss, closeRef }) {
       return () => { closeRef.current = null }
     }
   }, [])
+  const btn = {
+    width:'100%', padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
+    background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer',
+  }
   return (
     <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
-      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:10, textAlign:'center' }}>
         <div style={{ marginBottom:4 }}><ArrowsClockwise size={28} weight="thin" color="var(--color-accent)" /></div>
         <div style={{ fontWeight:300, fontSize:17, ...th.text }}>Edit recurring event</div>
         <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>
-          Save changes to just this event, or this and all future events in the series?
+          Apply changes to just this event, this and future events, or every event in the series?
         </div>
-        <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
-          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'one'), 280) }}
-            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-              background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-            This Event
-          </button>
-          <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'future'), 280) }}
-            style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-              background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
-            This & Future
-          </button>
-        </div>
+        <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'one'), 280) }}
+          style={btn}>This Event</button>
+        <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'future'), 280) }}
+          style={btn}>This & Future</button>
+        <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'all'), 280) }}
+          style={btn}>Entire Series</button>
         <button onClick={() => bsCloseRef.current?.()}
           style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
             fontFamily:FONT, background:'transparent', color:'var(--color-text)',
