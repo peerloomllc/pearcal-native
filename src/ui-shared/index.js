@@ -15,7 +15,13 @@ export {
   leftStripeStyle,
   dotBackground,
 } from './lib/colors.js'
-export { expandRecurring } from './lib/recurring.js'
+export {
+  expandRecurring,
+  stepRecurrenceDate,
+  fmtDate,
+  parseDate,
+  FOREVER_INITIAL_WINDOW_MONTHS,
+} from './lib/recurring.js'
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
 
 export { useProfile } from './hooks/useProfile.js'
