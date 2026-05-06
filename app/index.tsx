@@ -288,6 +288,7 @@ async function handleNotification (msg: any, webViewRef: any) {
         const OPTION_LABELS: Record<string, string> = {
           '5': '5 min', '10': '10 min', '15': '15 min', '30': '30 min',
           '60': '1 hr', '120': '2 hrs', '1440': '1 day',
+          '10080': '1 wk', '20160': '2 wk',
           '-1': 'Morning of', '-2': 'Day before',
         }
         for (let i = 0; i < Math.min(reminders.length, 3); i++) {

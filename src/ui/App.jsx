@@ -241,6 +241,8 @@ const REMINDER_OPTIONS = [
   {label:'Morning of (9 AM)', value:MORNING_OF},
   {label:'Day before (9 AM)', value:DAY_BEFORE},
   {label:'1 day before',      value:1440},
+  {label:'1 week before',     value:10080},
+  {label:'2 weeks before',    value:20160},
 ]
 
 // Mobile guided tour steps (D9). Anchors are `[data-tour="<key>"]` —
