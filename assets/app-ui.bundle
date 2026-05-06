@@ -17288,10 +17288,13 @@
           db2.deleteEvent(_prevDate, ev2.id).catch(() => {
           });
         }
+        if (withAuthor.length > 0) {
+          const reminderId = withAuthor[0].recurrenceId || withAuthor[0].id;
+          db2.putReminders(reminderId, reminders).catch(() => {
+          });
+        }
         for (const occ of withAuthor) {
           db2.putEvent(occ).catch((e58) => console.warn("[PUT-EVENT-ERR]", e58?.message));
-          db2.putReminders(occ.id, reminders).catch(() => {
-          });
           notifs2?.cancelForEvent(occ.id).catch(() => {
           });
           if (myRsvps[occ.id] !== "declined") {

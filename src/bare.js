@@ -273,6 +273,14 @@ function eventIdFromKey (key) {
   return key.slice(second + 1)
 }
 
+// Strip the `_r{N}` suffix to derive the series-root id from any occurrence
+// id. For one-off events and the series root itself this is a no-op.
+// Reminders are stored under the series-root key so all occurrences share
+// one reminders record — see TODO #82 Phase 1.
+function reminderKeyId (eventId) {
+  return typeof eventId === 'string' ? eventId.replace(/_r\d+$/, '') : eventId
+}
+
 // Tombstones (`deleted:{eventId}`) guard against sync-replay resurrection and
 // duplicate delete notifications. After this window the originating delete op
 // will have linearized on every peer's Autobase, so the guard is no longer
@@ -710,8 +718,16 @@ async function putEvent (event) {
 }
 
 async function deleteEvent (date, id) {
+  // Read the event first so we can decide whether to wipe reminders. Series
+  // reminders live at the series-root key (TODO #82 Phase 1) and must
+  // outlive any single-occurrence delete; only one-off events own their
+  // reminders key.
+  const node = await db.get(NS.events + date + ':' + id).catch(() => null)
+  const ev = node?.value
   await db.del(NS.events + date + ':' + id)
-  await db.del('reminders:' + id).catch(() => {})
+  if (!ev?.recurrenceId) {
+    await db.del('reminders:' + id).catch(() => {})
+  }
   await db.del(NS.privateNotes + id).catch(() => {})
   await _deleteAllRsvps(id).catch(() => {})
   // Tombstone guards against mirror-replay resurrection. localDeleteEvent
@@ -730,12 +746,13 @@ async function deleteEventSeries (recurrenceId) {
   }
   for (const { key, id, date } of toDelete) {
     await db.del(key)
-    await db.del('reminders:' + id).catch(() => {})
     await db.del(NS.privateNotes + id).catch(() => {})
     await _deleteAllRsvps(id).catch(() => {})
     await db.put(NS.deleted + id, { date, ts: Date.now() }).catch(() => {})
     await personalBaseDeleteEvent(date, id).catch(() => {})
   }
+  // Series-level reminders cleanup (one entry per series under the root id).
+  await db.del('reminders:' + recurrenceId).catch(() => {})
   scheduleWidgetCacheRefresh()
 }
 
@@ -901,8 +918,19 @@ async function _deleteAllRsvps (eventId) {
 }
 
 async function getReminders (eventId) {
-  const node = await db.get('reminders:' + eventId)
+  const id = reminderKeyId(eventId)
+  const node = await db.get('reminders:' + id)
   if (node) return node.value
+  // Pre-Phase-1 fallback: occurrences may have been written under their own
+  // occurrence id (`{rootId}_r{N}`). Rescue once and migrate forward to the
+  // series-root key.
+  if (id !== eventId) {
+    const legacy = await db.get('reminders:' + eventId)
+    if (legacy) {
+      await db.put('reminders:' + id, legacy.value).catch(() => {})
+      return legacy.value
+    }
+  }
   // One-time migration: seed from legacy event.reminder field
   let legacyReminder = 0
   for await (const { value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
@@ -910,15 +938,16 @@ async function getReminders (eventId) {
   }
   if (legacyReminder > 0) {
     const migrated = [legacyReminder]
-    await db.put('reminders:' + eventId, migrated)
+    await db.put('reminders:' + id, migrated)
     return migrated
   }
   return []
 }
 
 async function putReminders (eventId, reminders) {
-  await db.put('reminders:' + eventId, reminders)
-  await personalBaseAppendReminders(eventId, reminders).catch(() => {})
+  const id = reminderKeyId(eventId)
+  await db.put('reminders:' + id, reminders)
+  await personalBaseAppendReminders(id, reminders).catch(() => {})
 }
 
 async function localDeleteEvent (date, id) {
@@ -1496,9 +1525,17 @@ function makePersonalApply () {
         await view.del(val.key)
         const eid = eventIdFromKey(val.key)
         if (eid) {
+          // Read the event before deleting so we can preserve series-level
+          // reminders (TODO #82 Phase 1). Worst case the local copy is
+          // already gone — `db.del('reminders:' + eid)` below would be a
+          // no-op anyway under the new keying.
+          const evNode = await db.get(val.key).catch(() => null)
+          const evRec = evNode?.value
           await db.put(NS.deleted + eid, { ts: Date.now() }).catch(() => {})
           await db.del(val.key).catch(() => {})
-          await db.del('reminders:' + eid).catch(() => {})
+          if (!evRec?.recurrenceId) {
+            await db.del('reminders:' + eid).catch(() => {})
+          }
           await db.del(NS.privateNotes + eid).catch(() => {})
           // Emit sync so sibling-device UIs refresh in real-time. Without
           // this the personal-base del replicates to local DB but the calendar
