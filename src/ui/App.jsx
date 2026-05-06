@@ -763,9 +763,15 @@ export default function App ({ db, notifs, sync }) {
       if (_prevDate && _prevDate !== ev.date) {
         db.deleteEvent(_prevDate, ev.id).catch(() => {})
       }
+      // Reminders are series-keyed (TODO #82 Phase 1) — write once per save
+      // instead of per-occurrence. Use the series root id when available so
+      // every occurrence resolves to the same record.
+      if (withAuthor.length > 0) {
+        const reminderId = withAuthor[0].recurrenceId || withAuthor[0].id
+        db.putReminders(reminderId, reminders).catch(() => {})
+      }
       for (const occ of withAuthor) {
         db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
-        db.putReminders(occ.id, reminders).catch(() => {})
         notifs?.cancelForEvent(occ.id).catch(() => {})
         if (myRsvps[occ.id] !== 'declined') {
           notifs?.scheduleForEvent(occ, reminders).catch(() => {})
