@@ -280,12 +280,19 @@ function eventIdFromKey (key) {
   return key.slice(second + 1)
 }
 
-// Strip the `_r{N}` suffix to derive the series-root id from any occurrence
-// id. For one-off events and the series root itself this is a no-op.
-// Reminders are stored under the series-root key so all occurrences share
-// one reminders record — see TODO #82 Phase 1.
+// Strip occurrence + version suffixes to derive the series-root id from any
+// occurrence id. For one-off events and the series root itself this is a
+// no-op. Reminders are stored under the series-root key so all occurrences
+// share one reminders record — see TODO #82 Phase 1.
+//
+// Suffix shapes:
+//   `{rid}`             one-off / series root        -> `{rid}`
+//   `{rid}_r{N}`        original-cadence occurrence  -> `{rid}`
+//   `{rid}_v{V}`        regen series root (TODO #80) -> `{rid}`
+//   `{rid}_v{V}_r{N}`   regen-cadence occurrence     -> `{rid}`
 function reminderKeyId (eventId) {
-  return typeof eventId === 'string' ? eventId.replace(/_r\d+$/, '') : eventId
+  if (typeof eventId !== 'string') return eventId
+  return eventId.replace(/(_v\d+)?(_r\d+)?$/, '')
 }
 
 // Tombstones (`deleted:{eventId}`) guard against sync-replay resurrection and

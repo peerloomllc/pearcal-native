@@ -813,24 +813,61 @@ export default function App ({ db, notifs, sync }) {
   const saveEvent = useCallback((ev, scope = 'one', options = {}, reminders = []) => {
     const { _prevDate, _myForwards, ...evClean } = ev
     ev = evClean
-    // Expand recurring events into individual occurrences (new series only)
-    const occurrences = (ev.recurrence && ev.recurrence !== 'none' && (ev.recurrenceEnd || ev.repeatForever) && !ev.recurrenceId)
-      ? expandRecurring(ev)
-      : (scope === 'future' || scope === 'all') && ev.recurrenceId
-        ? (() => {
-            const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
-                               ...(options.propagateGroups ? ['groups','invitees'] : []),
-                               'color','desc','location','recurrence','recurrenceEnd',
-                               'repeatForever','recurrenceNth','recurrenceWeekday','editPermission']
-            const patch = {}
-            for (const k of PROPAGATE) patch[k] = ev[k]
-            // scope='all' patches every occurrence in the series; scope='future'
-            // is the original "from this date forward" filter.
-            return events
-              .filter(e => e.recurrenceId === ev.recurrenceId && (scope === 'all' || e.date >= ev.date))
-              .map(e => ({ ...e, ...patch }))
-          })()
-        : [ev]
+    // Detect frequency change on a series-occurrence edit (TODO #80). When
+    // the user changes the cadence rule, PROPAGATE-patching existing occurrence
+    // rows would leave them on the OLD dates but tagged with the NEW frequency
+    // — semantically broken. Instead we tombstone the affected old occurrences
+    // and regenerate fresh ones using a versioned id (`{rid}_v{V}_r{N}`) so
+    // peer tombstones don't suppress the new puts.
+    const original = events.find(e => e.id === ev.id)
+    const frequencyChanged = !!ev.recurrenceId && !!original && (
+      original.recurrence !== ev.recurrence ||
+      (original.recurrenceNth ?? 0) !== (ev.recurrenceNth ?? 0) ||
+      (original.recurrenceWeekday ?? 0) !== (ev.recurrenceWeekday ?? 0)
+    )
+
+    let occurrences
+    let toDelete = []
+
+    if (ev.recurrence && ev.recurrence !== 'none' && (ev.recurrenceEnd || ev.repeatForever) && !ev.recurrenceId) {
+      // First-time series creation
+      occurrences = expandRecurring(ev)
+    } else if (frequencyChanged && ev.recurrenceId && (scope === 'future' || scope === 'all')) {
+      const seriesOccs = events.filter(e => !e.isShadow && e.recurrenceId === ev.recurrenceId)
+      let anchorDate = ev.date
+      if (scope === 'all') {
+        const sorted = [...seriesOccs].sort((a, b) => a.date.localeCompare(b.date))
+        anchorDate = sorted[0]?.date ?? ev.date
+        toDelete = [...seriesOccs]
+      } else {
+        toDelete = seriesOccs.filter(e => e.date >= ev.date)
+      }
+      // Pick a fresh version suffix that doesn't collide with prior regens.
+      let maxVersion = 1
+      for (const occ of seriesOccs) {
+        const m = occ.id.match(/_v(\d+)/)
+        if (m) {
+          const v = parseInt(m[1], 10)
+          if (v > maxVersion) maxVersion = v
+        }
+      }
+      const newRootId = ev.recurrenceId + '_v' + (maxVersion + 1)
+      const template = { ...ev, id: newRootId, date: anchorDate, recurrenceId: '' }
+      occurrences = expandRecurring(template).map(o => ({ ...o, recurrenceId: ev.recurrenceId }))
+    } else if ((scope === 'future' || scope === 'all') && ev.recurrenceId) {
+      // Non-frequency-change edit on a series — PROPAGATE patch.
+      const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
+                         ...(options.propagateGroups ? ['groups','invitees'] : []),
+                         'color','desc','location','recurrence','recurrenceEnd',
+                         'repeatForever','recurrenceNth','recurrenceWeekday','editPermission']
+      const patch = {}
+      for (const k of PROPAGATE) patch[k] = ev[k]
+      occurrences = events
+        .filter(e => e.recurrenceId === ev.recurrenceId && (scope === 'all' || e.date >= ev.date))
+        .map(e => ({ ...e, ...patch }))
+    } else {
+      occurrences = [ev]
+    }
     const withAuthor = occurrences.map(occ => ({
       ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? ''
     }))
@@ -839,6 +876,10 @@ export default function App ({ db, notifs, sync }) {
     // await them on the hot path. All persistence happens fire-and-forget below.
     setEvents(prev => {
       let next = [...prev]
+      if (toDelete.length > 0) {
+        const delIds = new Set(toDelete.map(e => e.id))
+        next = next.filter(e => !delIds.has(e.id))
+      }
       if (_prevDate && _prevDate !== ev.date) {
         next = next.filter(e => !(e.id === ev.id && e.date === _prevDate))
       }
@@ -858,6 +899,16 @@ export default function App ({ db, notifs, sync }) {
     // read before the writes commit and miss the just-saved reminders.
     if (db) {
       ;(async () => {
+        // Tombstone old occurrences from a frequency-change regeneration
+        // (TODO #80) BEFORE putting the new ones, so peers process the deletes
+        // first. The new occurrences live under versioned ids that don't
+        // collide with the tombstoned old ones.
+        for (const occ of toDelete) {
+          await db.deleteEvent(occ.date, occ.id).catch(e => console.warn('[REGEN-DEL-ERR]', e?.message))
+          for (const gid of occ.groups ?? []) {
+            sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '', occ.recurrenceId ?? '', occ.title ?? '').catch(() => {})
+          }
+        }
         if (_prevDate && _prevDate !== ev.date) {
           await db.deleteEvent(_prevDate, ev.id).catch(() => {})
         }
@@ -877,8 +928,8 @@ export default function App ({ db, notifs, sync }) {
           for (const gid of occ.groups ?? []) {
             sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
           }
-          const original = events.find(e => e.id === occ.id)
-          const removedGroups = (original?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
+          const existingOcc = events.find(e => e.id === occ.id)
+          const removedGroups = (existingOcc?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
           for (const gid of removedGroups) {
             sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
           }
@@ -4219,59 +4270,57 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                 </div>
               )}
               {(modal.mode === 'create' || !ev.recurrenceId) && (
-                <>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Recurring</span>
-                    <Toggle val={!!ev.recurrence && ev.recurrence !== 'none'} accent={th.accent}
-                      onChange={v => {
-                        if (v) {
-                          set('recurrence', 'daily')
-                          if (!ev.recurrenceEnd && ev.date) {
-                            const [y,m,d] = ev.date.split('-').map(Number)
-                            const end = new Date(y+1, m-1, d)
-                            const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
-                            set('recurrenceEnd', fmt(end))
-                          }
-                        } else {
-                          set('recurrence', 'none')
-                        }
-                      }} />
-                  </div>
-                  {ev.recurrence && ev.recurrence !== 'none' && (
-                    <div><Label th={th}>Frequency</Label>
-                      <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
-                        onChange={e => {
-                          const val = e.target.value
-                          set('recurrence', val)
-                          if (val === 'monthly-nth' && ev.date) {
-                            const d = new Date(ev.date + 'T12:00:00')
-                            const weekday = d.getDay()
-                            let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
-                            while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
-                            set('recurrenceNth', nth)
-                            set('recurrenceWeekday', weekday)
-                          }
-                        }}>
-                        <option value="daily">Daily</option>
-                        <option value="weekly">Weekly</option>
-                        <option value="biweekly">Every 2 weeks</option>
-                        <option value="monthly">Monthly (same date)</option>
-                        <option value="monthly-nth">Monthly (same weekday)</option>
-                        <option value="yearly">Yearly</option>
-                      </select>
-                    </div>
-                  )}
-                </>
-              )}
-              {/* Repeat-forever toggle — visible for both create-mode and edit-series-occurrence
-                  (TODO #82 Phase 3). Series-level flag, propagated via the saveEvent
-                  scope='future' PROPAGATE list. */}
-              {ev.recurrence && ev.recurrence !== 'none' && (
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Repeat forever</span>
-                  <Toggle val={!!ev.repeatForever} accent={th.accent}
-                    onChange={v => set('repeatForever', v)} />
+                  <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Recurring</span>
+                  <Toggle val={!!ev.recurrence && ev.recurrence !== 'none'} accent={th.accent}
+                    onChange={v => {
+                      if (v) {
+                        set('recurrence', 'daily')
+                        if (!ev.recurrenceEnd && ev.date) {
+                          const [y,m,d] = ev.date.split('-').map(Number)
+                          const end = new Date(y+1, m-1, d)
+                          const fmt = dt => String(dt.getFullYear()) + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0')
+                          set('recurrenceEnd', fmt(end))
+                        }
+                      } else {
+                        set('recurrence', 'none')
+                      }
+                    }} />
                 </div>
+              )}
+              {/* Frequency, Repeat forever — visible for create AND edit-series-occurrence.
+                  Frequency edits regenerate the series via versioned occurrence ids
+                  (TODO #80). Repeat forever is a series-level flag (TODO #82 Phase 3). */}
+              {ev.recurrence && ev.recurrence !== 'none' && (
+                <>
+                  <div><Label th={th}>Frequency</Label>
+                    <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
+                      onChange={e => {
+                        const val = e.target.value
+                        set('recurrence', val)
+                        if (val === 'monthly-nth' && ev.date) {
+                          const d = new Date(ev.date + 'T12:00:00')
+                          const weekday = d.getDay()
+                          let nth = 0; const tmp = new Date(d.getFullYear(), d.getMonth(), 1)
+                          while (tmp <= d) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+                          set('recurrenceNth', nth)
+                          set('recurrenceWeekday', weekday)
+                        }
+                      }}>
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Every 2 weeks</option>
+                      <option value="monthly">Monthly (same date)</option>
+                      <option value="monthly-nth">Monthly (same weekday)</option>
+                      <option value="yearly">Yearly</option>
+                    </select>
+                  </div>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                    <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Repeat forever</span>
+                    <Toggle val={!!ev.repeatForever} accent={th.accent}
+                      onChange={v => set('repeatForever', v)} />
+                  </div>
+                </>
               )}
               {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && !ev.repeatForever && (
                 <div><Label th={th}>Repeat until</Label>
