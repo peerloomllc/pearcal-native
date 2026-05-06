@@ -13,6 +13,12 @@ const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const {
+  computeReminderFireTime,
+  computeStartFireTime,
+  buildReminderBody,
+  buildStartBody,
+} = require('./lib/reminders.js')
+const {
   markerKey: migrationMarkerKey,
   buildMarker: buildMigrationMarker,
   verifyMarker: verifyMigrationMarker,
@@ -194,6 +200,7 @@ async function handle (method, args) {
     case 'foregroundSync':     return foregroundSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
+    case 'computeUpcomingReminders': return computeUpcomingReminders(args[0])
     case 'getRsvp':          return getRsvp(args[0], args[1])
     case 'listRsvps':        return listRsvps(args[0])
     case 'listMyRsvps':      return listMyRsvps()
@@ -948,6 +955,65 @@ async function putReminders (eventId, reminders) {
   const id = reminderKeyId(eventId)
   await db.put('reminders:' + id, reminders)
   await personalBaseAppendReminders(id, reminders).catch(() => {})
+}
+
+// Top-K next firings across all events. The RN shell calls this on boot,
+// foreground, and after each save/delete, then schedules into a fixed
+// alarm-id range so the iOS 64-slot quota stays honored even with thousands
+// of recurring-series occurrences. See TODO #82 Phase 2.
+async function computeUpcomingReminders (K) {
+  const k = Number.isFinite(K) && K > 0 ? K : 50
+  const profile = await getProfile().catch(() => null)
+  const myId = profile?.id
+  const now = Date.now()
+  const triples = []
+
+  // Cache per-series reminders so a 500-occurrence run only reads them once.
+  const reminderCache = new Map()
+  async function remindersFor (ev) {
+    const key = reminderKeyId(ev.id)
+    if (reminderCache.has(key)) return reminderCache.get(key)
+    const r = await getReminders(ev.id).catch(() => [])
+    reminderCache.set(key, r || [])
+    return r || []
+  }
+
+  for await (const { value: ev } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!ev || ev.isShadow) continue
+
+    if (myId) {
+      const rsvpNode = await db.get(NS.rsvp + ev.id + ':' + myId).catch(() => null)
+      if (rsvpNode?.value?.status === 'declined') continue
+    }
+
+    const reminders = await remindersFor(ev)
+    for (const r of reminders) {
+      const fireAt = computeReminderFireTime(ev, r)
+      if (fireAt && fireAt > now) {
+        triples.push({
+          eventId: ev.id,
+          fireAt,
+          title:   ev.title,
+          body:    buildReminderBody(ev, r),
+          tab:     'calendar',
+        })
+      }
+    }
+
+    const startMs = computeStartFireTime(ev)
+    if (startMs && startMs > now) {
+      triples.push({
+        eventId: ev.id,
+        fireAt:  startMs,
+        title:   (ev.title || 'Event') + ' is starting now',
+        body:    buildStartBody(ev),
+        tab:     'calendar',
+      })
+    }
+  }
+
+  triples.sort((a, b) => a.fireAt - b.fireAt)
+  return triples.slice(0, k)
 }
 
 async function localDeleteEvent (date, id) {
