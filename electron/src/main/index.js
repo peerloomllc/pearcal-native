@@ -26,6 +26,7 @@ const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require('electr
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
 const { scheduleForEvent: scheduleForEventOnBoot } = require('./shell-handlers')
+const updateChecker = require('./update-checker')
 
 // Single instance — the second invocation should focus the existing window
 // (and forward any pearcal:// URL it was launched with) instead of opening
@@ -87,6 +88,8 @@ app.whenReady().then(() => {
   // to fire-and-forget here.
   rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
   scheduleNextRehydration()
+
+  updateChecker.start({ getMainWindow: () => mainWindow })
 })
 
 // Rehydration window. setTimeout's max delay is 2^31-1 ms (~24.8 days);

@@ -38,6 +38,57 @@ ipcRenderer.on('bare-event', (_event, msg) => {
   }
 })
 
+// Update banner — main fires 'update-available' when GitHub Releases reports
+// a newer tag than app.getVersion(). Notify-only: Download opens the release
+// page in the OS browser (no in-place upgrade until builds are signed).
+ipcRenderer.on('update-available', (_event, info) => {
+  if (!info || typeof info !== 'object') return
+  if (document.getElementById('pearcal-update-banner')) return
+  const render = () => _renderUpdateBanner(info)
+  if (document.body) render()
+  else window.addEventListener('DOMContentLoaded', render, { once: true })
+})
+
+function _renderUpdateBanner ({ version, htmlUrl }) {
+  const bar = document.createElement('div')
+  bar.id = 'pearcal-update-banner'
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:12px;font:13px -apple-system,system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.4);z-index:99998;border-bottom:1px solid #334155;'
+
+  const msg = document.createElement('span')
+  msg.textContent = 'PearCal ' + String(version) + ' is available.'
+  msg.style.flex = '1'
+  bar.appendChild(msg)
+
+  const mkBtn = (label, primary) => {
+    const b = document.createElement('button')
+    b.textContent = label
+    b.style.cssText = 'border:none;border-radius:6px;padding:6px 12px;font:13px -apple-system,system-ui,sans-serif;cursor:pointer;' + (primary
+      ? 'background:#10b981;color:#0f172a;font-weight:600;'
+      : 'background:#334155;color:#e2e8f0;')
+    return b
+  }
+
+  const download = mkBtn('Download', true)
+  download.onclick = () => {
+    ipcRenderer.invoke('update:open', htmlUrl).catch(() => {})
+    bar.remove()
+  }
+
+  const skip = mkBtn('Skip this version', false)
+  skip.onclick = () => {
+    ipcRenderer.invoke('update:skip', version).catch(() => {})
+    bar.remove()
+  }
+
+  const later = mkBtn('Later', false)
+  later.onclick = () => bar.remove()
+
+  bar.appendChild(download)
+  bar.appendChild(skip)
+  bar.appendChild(later)
+  document.body.appendChild(bar)
+}
+
 // Toast channel — main sends short feedback strings (e.g. after nativeShare
 // copies to clipboard). Render a transient bottom-center pill so the user
 // gets the same feedback they'd get from a mobile share sheet pop.
