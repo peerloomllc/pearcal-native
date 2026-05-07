@@ -305,11 +305,20 @@ async function handleNotification (msg: any, webViewRef: any) {
           '10080': '1 wk', '20160': '2 wk',
           '-1': 'Morning of', '-2': 'Day before',
         }
+        // Custom intervals (TODO #83 Part B) — fall back to a derived
+        // short form like "3 day" / "90 min" instead of the raw `${n}min`.
+        function deriveLabel (m: number): string {
+          if (!Number.isFinite(m) || m <= 0) return ''
+          if (m % 10080 === 0) { const w = m / 10080; return w + (w === 1 ? ' wk' : ' wks') }
+          if (m % 1440 === 0)  { const d = m / 1440;  return d + (d === 1 ? ' day' : ' days') }
+          if (m % 60 === 0)    { const h = m / 60;    return h + (h === 1 ? ' hr' : ' hrs') }
+          return m + ' min'
+        }
         for (let i = 0; i < Math.min(reminders.length, 3); i++) {
           const reminder = reminders[i]
           const fireAt = calcReminderFireTime(ev, reminder)
           if (!fireAt || fireAt <= Date.now()) continue
-          const label = OPTION_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
+          const label = OPTION_LABELS[String(reminder)] ?? deriveLabel(reminder)
           const body = ev.allDay
             ? 'All day · ' + label
             : label + ' · ' + formatTime12h(ev.start) + '–' + formatTime12h(ev.end)

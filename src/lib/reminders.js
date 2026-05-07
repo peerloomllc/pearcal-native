@@ -12,8 +12,14 @@
 const MORNING_OF = -1
 const DAY_BEFORE = -2
 
+// Custom-interval helpers (TODO #83 Part B). UI shows users a unit picker
+// (minutes / hours / days / weeks) and persists the resolved minute count.
+const UNIT_MULTIPLIER = { minutes: 1, hours: 60, days: 1440, weeks: 10080 }
+const MAX_REMINDER_MINUTES = 525600 // 1 year
+
 // Notification body labels keyed by the stored numeric reminder value. The
-// fallback for unknown positive minutes is `${n}min` — ugly but functional.
+// fallback for unknown positive minutes routes through `deriveReminderLabel`
+// so custom intervals render readably (e.g. "3 hr" instead of "180min").
 const OPTION_LABELS = {
   '5':     '5 min',
   '10':    '10 min',
@@ -26,6 +32,17 @@ const OPTION_LABELS = {
   '20160': '2 wk',
   '-1':    'Morning of',
   '-2':    'Day before',
+}
+
+// Derive a readable short label from an arbitrary minute count. Used as the
+// fallback in `buildReminderBody` for any value not in OPTION_LABELS — e.g.
+// custom intervals from #83 Part B (3 days = "3 day", 90 minutes = "90 min").
+function deriveReminderLabel (m) {
+  if (!Number.isFinite(m) || m <= 0) return ''
+  if (m % 10080 === 0) { const w = m / 10080; return w + (w === 1 ? ' wk' : ' wks') }
+  if (m % 1440 === 0)  { const d = m / 1440;  return d + (d === 1 ? ' day' : ' days') }
+  if (m % 60 === 0)    { const h = m / 60;    return h + (h === 1 ? ' hr' : ' hrs') }
+  return m + ' min'
 }
 
 function formatTime12h (t) {
@@ -66,7 +83,7 @@ function computeStartFireTime (ev) {
 }
 
 function buildReminderBody (ev, reminder) {
-  const label = OPTION_LABELS[String(reminder)] ?? (reminder > 0 ? reminder + 'min' : '')
+  const label = OPTION_LABELS[String(reminder)] ?? deriveReminderLabel(reminder)
   if (ev.allDay) return 'All day · ' + label
   return label + ' · ' + formatTime12h(ev.start) + '–' + formatTime12h(ev.end)
 }
@@ -79,6 +96,9 @@ module.exports = {
   MORNING_OF,
   DAY_BEFORE,
   OPTION_LABELS,
+  UNIT_MULTIPLIER,
+  MAX_REMINDER_MINUTES,
+  deriveReminderLabel,
   computeReminderFireTime,
   computeStartFireTime,
   buildReminderBody,
