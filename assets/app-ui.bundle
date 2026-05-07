@@ -21270,6 +21270,25 @@
       }
     );
   }
+  var REMINDER_UNIT_MULTIPLIER = { minutes: 1, hours: 60, days: 1440, weeks: 10080 };
+  var REMINDER_MAX_MINUTES = 525600;
+  function isPresetReminder(v) {
+    return REMINDER_OPTIONS.some((o35) => o35.value === v);
+  }
+  function deriveCustomAmountFromMinutes(m3) {
+    if (!Number.isFinite(m3) || m3 <= 0) return 1;
+    if (m3 % 10080 === 0) return m3 / 10080;
+    if (m3 % 1440 === 0) return m3 / 1440;
+    if (m3 % 60 === 0) return m3 / 60;
+    return m3;
+  }
+  function deriveCustomUnitFromMinutes(m3) {
+    if (!Number.isFinite(m3) || m3 <= 0) return "hours";
+    if (m3 % 10080 === 0) return "weeks";
+    if (m3 % 1440 === 0) return "days";
+    if (m3 % 60 === 0) return "hours";
+    return "minutes";
+  }
   function RemindersEditor({ th, reminders, setReminders }) {
     const FONT2 = "Geist, system-ui, sans-serif";
     const inp = {
@@ -21285,55 +21304,133 @@
       appearance: "none",
       boxSizing: "border-box"
     };
+    const [customMode, setCustomMode] = (0, import_react7.useState)(
+      () => reminders.map((v) => !isPresetReminder(v))
+    );
+    (0, import_react7.useEffect)(() => {
+      setCustomMode(
+        (prev) => prev.length === reminders.length ? prev : reminders.map((v) => !isPresetReminder(v))
+      );
+    }, [reminders.length]);
+    const [amountDraft, setAmountDraft] = (0, import_react7.useState)({});
     function addReminder() {
       if (reminders.length >= 3) return;
       const next = REMINDER_OPTIONS.find((o35) => !reminders.includes(o35.value));
-      if (next) setReminders([...reminders, next.value]);
+      if (next) {
+        setReminders([...reminders, next.value]);
+        setCustomMode([...customMode, false]);
+      }
     }
     function removeReminder(idx) {
       setReminders(reminders.filter((_, i2) => i2 !== idx));
+      setCustomMode(customMode.filter((_, i2) => i2 !== idx));
     }
     function updateReminder(idx, value) {
       const updated = [...reminders];
       updated[idx] = value;
       setReminders(updated);
     }
+    function handleSelectChange(idx, raw) {
+      if (raw === "__custom__") {
+        setCustomMode(customMode.map((v, i2) => i2 === idx ? true : v));
+        updateReminder(idx, 180);
+      } else {
+        setCustomMode(customMode.map((v, i2) => i2 === idx ? false : v));
+        updateReminder(idx, Number(raw));
+      }
+    }
+    function handleAmountInput(idx, raw, unit) {
+      setAmountDraft((prev) => ({ ...prev, [idx]: raw }));
+      if (raw === "") return;
+      const n17 = parseInt(raw, 10);
+      if (!Number.isFinite(n17) || n17 < 1) return;
+      const minutes = Math.min(REMINDER_MAX_MINUTES, n17 * REMINDER_UNIT_MULTIPLIER[unit]);
+      updateReminder(idx, minutes);
+    }
+    function handleAmountBlur(idx) {
+      setAmountDraft((prev) => {
+        if (!(idx in prev)) return prev;
+        const next = { ...prev };
+        delete next[idx];
+        return next;
+      });
+    }
+    function handleUnitChange(idx, amount, unit) {
+      const minutes = Math.min(REMINDER_MAX_MINUTES, amount * REMINDER_UNIT_MULTIPLIER[unit]);
+      updateReminder(idx, minutes);
+    }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-      reminders.map((val, idx) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "select",
-          {
-            style: { ...inp, flex: 1 },
-            value: val,
-            onChange: (e58) => updateReminder(idx, Number(e58.target.value)),
-            children: REMINDER_OPTIONS.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "option",
+      reminders.map((val, idx) => {
+        const inCustom = customMode[idx];
+        const amount = inCustom ? deriveCustomAmountFromMinutes(val) : 1;
+        const unit = inCustom ? deriveCustomUnitFromMinutes(val) : "hours";
+        return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }, children: [
+          inCustom ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              "input",
               {
-                value: opt.value,
-                disabled: opt.value !== val && reminders.includes(opt.value),
-                children: opt.label
+                type: "number",
+                min: 1,
+                max: REMINDER_MAX_MINUTES,
+                inputMode: "numeric",
+                style: { ...inp, flex: "0 0 80px" },
+                value: amountDraft[idx] !== void 0 ? amountDraft[idx] : String(amount),
+                onChange: (e58) => handleAmountInput(idx, e58.target.value, unit),
+                onBlur: () => handleAmountBlur(idx)
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "select",
+              {
+                style: { ...inp, flex: 1 },
+                value: unit,
+                onChange: (e58) => handleUnitChange(idx, amount, e58.target.value),
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "minutes", children: "min before" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "hours", children: "hr before" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "days", children: "day before" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "weeks", children: "wk before" })
+                ]
+              }
+            )
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "select",
+            {
+              style: { ...inp, flex: 1 },
+              value: val,
+              onChange: (e58) => handleSelectChange(idx, e58.target.value),
+              children: [
+                REMINDER_OPTIONS.map((opt) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "option",
+                  {
+                    value: opt.value,
+                    disabled: opt.value !== val && reminders.includes(opt.value),
+                    children: opt.label
+                  },
+                  opt.value
+                )),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "__custom__", children: "Custom\u2026" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            "button",
+            {
+              onClick: () => removeReminder(idx),
+              style: {
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: th.muted,
+                fontSize: 18,
+                padding: "0 4px",
+                lineHeight: 1
               },
-              opt.value
-            ))
-          }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            onClick: () => removeReminder(idx),
-            style: {
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: th.muted,
-              fontSize: 18,
-              padding: "0 4px",
-              lineHeight: 1
-            },
-            children: "\xD7"
-          }
-        )
-      ] }, idx)),
+              children: "\xD7"
+            }
+          )
+        ] }, idx);
+      }),
       reminders.length < 3 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "button",
         {

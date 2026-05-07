@@ -3847,6 +3847,30 @@ function EventCard ({ ev, th, onClick, compact, isPast, use24h, myRsvpStatus, my
 
 // ─── Event Modal ──────────────────────────────────────────────────────────────
 
+// Custom-interval helpers (TODO #83 Part B). Mirror of `src/lib/reminders.js`
+// constants — duplicated here to avoid pulling another import into App.jsx
+// just for two literals.
+const REMINDER_UNIT_MULTIPLIER = { minutes: 1, hours: 60, days: 1440, weeks: 10080 }
+const REMINDER_MAX_MINUTES = 525600 // 1 year
+
+function isPresetReminder (v) {
+  return REMINDER_OPTIONS.some(o => o.value === v)
+}
+function deriveCustomAmountFromMinutes (m) {
+  if (!Number.isFinite(m) || m <= 0) return 1
+  if (m % 10080 === 0) return m / 10080
+  if (m % 1440 === 0)  return m / 1440
+  if (m % 60 === 0)    return m / 60
+  return m
+}
+function deriveCustomUnitFromMinutes (m) {
+  if (!Number.isFinite(m) || m <= 0) return 'hours'
+  if (m % 10080 === 0) return 'weeks'
+  if (m % 1440 === 0)  return 'days'
+  if (m % 60 === 0)    return 'hours'
+  return 'minutes'
+}
+
 function RemindersEditor ({ th, reminders, setReminders }) {
   const FONT = 'Geist, system-ui, sans-serif'
   const inp = {
@@ -3855,14 +3879,40 @@ function RemindersEditor ({ th, reminders, setReminders }) {
     color: th.text.color, fontFamily: FONT, appearance: 'none', boxSizing: 'border-box',
   }
 
+  // Per-slot custom-mode flag. Once a slot is in custom mode, typing a value
+  // that happens to match a preset (e.g. 60) doesn't visually flip it back to
+  // the dropdown — the inputs stay so the user can keep editing. Re-derived
+  // when the reminders prop's length changes (event switch, async load).
+  const [customMode, setCustomMode] = useState(() =>
+    reminders.map(v => !isPresetReminder(v))
+  )
+  useEffect(() => {
+    setCustomMode(prev =>
+      prev.length === reminders.length
+        ? prev
+        : reminders.map(v => !isPresetReminder(v))
+    )
+  }, [reminders.length])
+
+  // Per-slot draft text for the custom amount input. Lets the user clear
+  // the field and type a new value (e.g. clear "3" and type "45") without
+  // the controlled input snapping back to the previous stored value mid-key.
+  // When draft is undefined the input is governed by the derived stored
+  // value; when defined (incl. empty string) the draft wins.
+  const [amountDraft, setAmountDraft] = useState({})
+
   function addReminder () {
     if (reminders.length >= 3) return
     const next = REMINDER_OPTIONS.find(o => !reminders.includes(o.value))
-    if (next) setReminders([...reminders, next.value])
+    if (next) {
+      setReminders([...reminders, next.value])
+      setCustomMode([...customMode, false])
+    }
   }
 
   function removeReminder (idx) {
     setReminders(reminders.filter((_, i) => i !== idx))
+    setCustomMode(customMode.filter((_, i) => i !== idx))
   }
 
   function updateReminder (idx, value) {
@@ -3871,28 +3921,88 @@ function RemindersEditor ({ th, reminders, setReminders }) {
     setReminders(updated)
   }
 
+  function handleSelectChange (idx, raw) {
+    if (raw === '__custom__') {
+      // Default custom value: 3 hours (avoids matching any current preset).
+      setCustomMode(customMode.map((v, i) => i === idx ? true : v))
+      updateReminder(idx, 180)
+    } else {
+      setCustomMode(customMode.map((v, i) => i === idx ? false : v))
+      updateReminder(idx, Number(raw))
+    }
+  }
+
+  function handleAmountInput (idx, raw, unit) {
+    // Always track the raw text so a transient empty value renders correctly.
+    setAmountDraft(prev => ({ ...prev, [idx]: raw }))
+    if (raw === '') return  // empty mid-typing — leave stored value alone
+    const n = parseInt(raw, 10)
+    if (!Number.isFinite(n) || n < 1) return  // wait for a valid digit run
+    const minutes = Math.min(REMINDER_MAX_MINUTES, n * REMINDER_UNIT_MULTIPLIER[unit])
+    updateReminder(idx, minutes)
+  }
+
+  function handleAmountBlur (idx) {
+    // On blur, drop the draft so the input falls back to the canonical value
+    // (e.g. snaps from "" back to whatever was stored).
+    setAmountDraft(prev => {
+      if (!(idx in prev)) return prev
+      const next = { ...prev }
+      delete next[idx]
+      return next
+    })
+  }
+
+  function handleUnitChange (idx, amount, unit) {
+    const minutes = Math.min(REMINDER_MAX_MINUTES, amount * REMINDER_UNIT_MULTIPLIER[unit])
+    updateReminder(idx, minutes)
+  }
+
   return (
     <div>
-      {reminders.map((val, idx) => (
-        <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-          <select
-            style={{ ...inp, flex: 1 }}
-            value={val}
-            onChange={e => updateReminder(idx, Number(e.target.value))}>
-            {REMINDER_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}
-                disabled={opt.value !== val && reminders.includes(opt.value)}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <button onClick={() => removeReminder(idx)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer',
-              color: th.muted, fontSize: 18, padding: '0 4px', lineHeight: 1 }}>
-            ×
-          </button>
-        </div>
-      ))}
+      {reminders.map((val, idx) => {
+        const inCustom = customMode[idx]
+        const amount = inCustom ? deriveCustomAmountFromMinutes(val) : 1
+        const unit   = inCustom ? deriveCustomUnitFromMinutes(val)   : 'hours'
+        return (
+          <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+            {inCustom ? (
+              <>
+                <input type="number" min={1} max={REMINDER_MAX_MINUTES} inputMode="numeric"
+                  style={{ ...inp, flex: '0 0 80px' }}
+                  value={amountDraft[idx] !== undefined ? amountDraft[idx] : String(amount)}
+                  onChange={e => handleAmountInput(idx, e.target.value, unit)}
+                  onBlur={() => handleAmountBlur(idx)} />
+                <select style={{ ...inp, flex: 1 }} value={unit}
+                  onChange={e => handleUnitChange(idx, amount, e.target.value)}>
+                  <option value="minutes">min before</option>
+                  <option value="hours">hr before</option>
+                  <option value="days">day before</option>
+                  <option value="weeks">wk before</option>
+                </select>
+              </>
+            ) : (
+              <select
+                style={{ ...inp, flex: 1 }}
+                value={val}
+                onChange={e => handleSelectChange(idx, e.target.value)}>
+                {REMINDER_OPTIONS.map(opt => (
+                  <option key={opt.value} value={opt.value}
+                    disabled={opt.value !== val && reminders.includes(opt.value)}>
+                    {opt.label}
+                  </option>
+                ))}
+                <option value="__custom__">Custom…</option>
+              </select>
+            )}
+            <button onClick={() => removeReminder(idx)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer',
+                color: th.muted, fontSize: 18, padding: '0 4px', lineHeight: 1 }}>
+              ×
+            </button>
+          </div>
+        )
+      })}
       {reminders.length < 3 && (
         <button onClick={addReminder}
           style={{ background: 'none', border: `1px dashed ${th.border}`, borderRadius: 10,
