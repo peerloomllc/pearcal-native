@@ -2150,6 +2150,17 @@ function getCanadaHolidays (year) {
   ]
 }
 
+function getBitcoinHolidays (year) {
+  function pad (n) { return String(n).padStart(2, '0') }
+  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
+  return [
+    { title: 'Genesis Block Day',      date: ymd(year,  1,  3) },
+    { title: 'Hal Finney Day',         date: ymd(year,  1, 12) },
+    { title: 'Bitcoin Pizza Day',      date: ymd(year,  5, 22) },
+    { title: 'Bitcoin Whitepaper Day', date: ymd(year, 10, 31) },
+  ]
+}
+
 function getUKHolidays (year) {
   function pad (n) { return String(n).padStart(2, '0') }
   function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
@@ -6874,15 +6885,20 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         const slug = t => t.replace(/\s+/g, '-').toLowerCase()
         const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
         const allCountries = [
-          { code:'us', flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
-          { code:'ca', flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
-          { code:'uk', flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
+          { code:'us',  flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
+          { code:'ca',  flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
+          { code:'uk',  flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
+          { code:'btc', flag:'₿',  label:'Bitcoin',        fn: getBitcoinHolidays,
+            color:'#F7931A', desc:'Bitcoin Holiday' },
         ]
         // Toggle state tracked explicitly in profile to avoid shared-ID false positives
         const activeCountries = new Set(profile?.holidayCountries ?? [])
 
         async function toggleCountry (code, fn, on) {
           setHolidayWorking(true)
+          const meta = allCountries.find(c => c.code === code)
+          const color = meta?.color ?? '#CF3535'
+          const desc  = meta?.desc  ?? 'Public Holiday'
           const newActive = new Set(activeCountries)
           if (on) {
             newActive.add(code)
@@ -6897,8 +6913,8 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 const ev = {
                   id, title: h.title, date: h.date, allDay: true,
                   start: '00:00', end: '00:00', reminder: -1,
-                  groups: [], invitees: [], color: '#CF3535',
-                  desc: 'Public Holiday', location: '',
+                  groups: [], invitees: [], color,
+                  desc, location: '',
                   creatorId: 'system', recurrence: 'none',
                   recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,
                   editPermission: 'everyone', updatedAt: Date.now(),
@@ -6944,10 +6960,10 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             <div style={{ marginBottom:12,
               opacity: holidayWorking ? 0.6 : 1, transition:'opacity 0.2s' }}>
               <div style={{ padding:'14px 16px' }}>
-                {allCountries.map(({ code, flag, label, fn }, i) => (
+                {allCountries.map(({ code, flag, label, fn, color: flagColor }, i) => (
                   <div key={code} style={{ display:'flex', alignItems:'center', gap:10,
                     padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${th.border}` : 'none' }}>
-                    <span style={{ fontSize:20 }}>{flag}</span>
+                    <span style={{ fontSize:20, color: flagColor }}>{flag}</span>
                     <div style={{ flex:1 }}>
                       <div style={{ fontSize:13, fontWeight:300, ...th.text }}>{label}</div>
                       <div style={{ fontSize:11, color:th.muted, fontWeight:300 }}>

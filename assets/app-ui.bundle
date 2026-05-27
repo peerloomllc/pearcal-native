@@ -18800,6 +18800,20 @@
       { title: "Boxing Day", date: observed(year, 12, 26) }
     ];
   }
+  function getBitcoinHolidays(year) {
+    function pad(n17) {
+      return String(n17).padStart(2, "0");
+    }
+    function ymd(y, m3, d) {
+      return `${y}-${pad(m3)}-${pad(d)}`;
+    }
+    return [
+      { title: "Genesis Block Day", date: ymd(year, 1, 3) },
+      { title: "Hal Finney Day", date: ymd(year, 1, 12) },
+      { title: "Bitcoin Pizza Day", date: ymd(year, 5, 22) },
+      { title: "Bitcoin Whitepaper Day", date: ymd(year, 10, 31) }
+    ];
+  }
   function getUKHolidays(year) {
     function pad(n17) {
       return String(n17).padStart(2, "0");
@@ -25562,11 +25576,22 @@ ${link}`;
           const allCountries = [
             { code: "us", flag: "\u{1F1FA}\u{1F1F8}", label: "United States", fn: getUSFederalHolidays },
             { code: "ca", flag: "\u{1F1E8}\u{1F1E6}", label: "Canada", fn: getCanadaHolidays },
-            { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays }
+            { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays },
+            {
+              code: "btc",
+              flag: "\u20BF",
+              label: "Bitcoin",
+              fn: getBitcoinHolidays,
+              color: "#F7931A",
+              desc: "Bitcoin Holiday"
+            }
           ];
           const activeCountries = new Set(profile?.holidayCountries ?? []);
           async function toggleCountry(code, fn, on) {
             setHolidayWorking(true);
+            const meta = allCountries.find((c8) => c8.code === code);
+            const color = meta?.color ?? "#CF3535";
+            const desc = meta?.desc ?? "Public Holiday";
             const newActive = new Set(activeCountries);
             if (on) {
               newActive.add(code);
@@ -25587,8 +25612,8 @@ ${link}`;
                     reminder: -1,
                     groups: [],
                     invitees: [],
-                    color: "#CF3535",
-                    desc: "Public Holiday",
+                    color,
+                    desc,
                     location: "",
                     creatorId: "system",
                     recurrence: "none",
@@ -25640,14 +25665,14 @@ ${link}`;
               opacity: holidayWorking ? 0.6 : 1,
               transition: "opacity 0.2s"
             }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px" }, children: [
-              allCountries.map(({ code, flag, label, fn }, i2) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
+              allCountries.map(({ code, flag, label, fn, color: flagColor }, i2) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
                 padding: "10px 0",
                 borderBottom: i2 < allCountries.length - 1 ? `1px solid ${th.border}` : "none"
               }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 20 }, children: flag }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 20, color: flagColor }, children: flag }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: label }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300 }, children: [
