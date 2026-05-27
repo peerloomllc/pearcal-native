@@ -200,7 +200,7 @@ async function handle (method, args) {
     case 'foregroundSync':     return foregroundSync()
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
-    case 'computeUpcomingReminders': return computeUpcomingReminders(args[0])
+    case 'computeUpcomingReminders': return computeUpcomingReminders(args[0], args[1])
     case 'getRsvp':          return getRsvp(args[0], args[1])
     case 'listRsvps':        return listRsvps(args[0])
     case 'listMyRsvps':      return listMyRsvps()
@@ -968,7 +968,7 @@ async function putReminders (eventId, reminders) {
 // foreground, and after each save/delete, then schedules into a fixed
 // alarm-id range so the iOS 64-slot quota stays honored even with thousands
 // of recurring-series occurrences. See TODO #82 Phase 2.
-async function computeUpcomingReminders (K) {
+async function computeUpcomingReminders (K, tzName) {
   const k = Number.isFinite(K) && K > 0 ? K : 50
   const profile = await getProfile().catch(() => null)
   const myId = profile?.id
@@ -995,7 +995,7 @@ async function computeUpcomingReminders (K) {
 
     const reminders = await remindersFor(ev)
     for (const r of reminders) {
-      const fireAt = computeReminderFireTime(ev, r)
+      const fireAt = computeReminderFireTime(ev, r, tzName)
       if (fireAt && fireAt > now) {
         triples.push({
           eventId: ev.id,
@@ -1007,7 +1007,7 @@ async function computeUpcomingReminders (K) {
       }
     }
 
-    const startMs = computeStartFireTime(ev)
+    const startMs = computeStartFireTime(ev, tzName)
     if (startMs && startMs > now) {
       triples.push({
         eventId: ev.id,

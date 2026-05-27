@@ -108,10 +108,20 @@ const db = {
 // saves (e.g. user creates event → immediately edits) collapse into one pass
 // that runs against the final state, instead of two interleaving passes that
 // race over the same fixed alarm-ID range.
+//
+// Every reconcile pass forwards the WebView's current IANA TZ to the bare
+// worklet. Chromium refreshes its TZ when the OS changes, but the bare
+// worklet's V8 caches the system TZ at engine init and never updates — so
+// without an explicit `tzName` the worklet would keep computing fireAt
+// against the zone the app launched in, even after the user crosses
+// timezones. The explicit name lets the worklet route date math through
+// Intl (ICU static tzdata), bypassing the cache entirely.
 let _reconcileTimer = null
 async function _runReconcile () {
   try {
-    const triples = await window.__pearDB.call('computeUpcomingReminders', 50)
+    let tzName = null
+    try { tzName = Intl.DateTimeFormat().resolvedOptions().timeZone } catch (_) {}
+    const triples = await window.__pearDB.call('computeUpcomingReminders', 50, tzName)
     await window.__pearDB.call('reconcileSchedule', triples)
   } catch (e) {
     console.warn('[notifs.reconcile]', e?.message)
@@ -142,6 +152,13 @@ if (typeof document !== 'undefined') {
     }
   })
 }
+
+// Timezone-change reconcile. RN shell forwards Android's ACTION_TIMEZONE_CHANGED
+// / ACTION_TIME_CHANGED broadcasts here so we re-derive fireAt against the new
+// local zone — without this, AlarmManager keeps firing at the absolute UTC ms
+// computed in the previous zone, which shows up as alarms 1 hour off the
+// expected wall-clock after a flight.
+window.__pearOnTimezoneChange = () => { notifs.reconcile() }
 
 const sync = {
   createGroup: (name, meta) => window.__pearDB.call('createGroup', name, meta),

@@ -6,7 +6,7 @@ const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
   if (!isFatal && error?.message?.includes('keep awake')) return
   originalHandler?.(error, isFatal)
 })
-import { View, Text, Image, StyleSheet, NativeModules, Platform, BackHandler, AppState, Animated, Easing } from 'react-native'
+import { View, Text, Image, StyleSheet, NativeModules, Platform, BackHandler, AppState, Animated, Easing, DeviceEventEmitter } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -479,6 +479,22 @@ export default function Root () {
     }, 2000)
     return () => clearInterval(interval)
   }, [dbReady])
+
+  // Reconcile alarms when the device's timezone changes. Events are stored as
+  // wall-clock (date + "HH:mm") and turned into absolute UTC ms at schedule time
+  // via `new Date(y,mo,d,h,m).getTime()` — that math is TZ-sensitive, so a
+  // pending AlarmManager alarm armed in one zone fires at the wrong wall-clock
+  // after the user crosses zones. Android NotificationsModule emits this event
+  // on ACTION_TIMEZONE_CHANGED / ACTION_TIME_CHANGED.
+  useEffect(() => {
+    if (!dbReady || !webViewReady) return
+    const sub = DeviceEventEmitter.addListener('pearcalTimezoneChanged', () => {
+      webViewRef.current?.injectJavaScript(
+        'if (window.__pearOnTimezoneChange) { window.__pearOnTimezoneChange(); } true;'
+      )
+    })
+    return () => sub.remove()
+  }, [dbReady, webViewReady])
 
   // Inject pending invite link when WebView, DB, and WebView DOM are all ready.
   // Device-pair URLs (pearcal://pair?...) bypass the WebView and go straight to
