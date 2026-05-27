@@ -55,31 +55,58 @@ function formatTime12h (t) {
   return h12 + ':' + (mStr ?? '00') + ampm
 }
 
-function computeReminderFireTime (ev, reminder) {
+// Convert a wall-clock y/mo/d/h/m in `tzName` to an absolute UTC epoch ms.
+// Uses Intl (ICU static tzdata) when `tzName` is supplied — that path is
+// immune to V8's cached system-TZ, which is the root cause of the
+// crossed-timezones-alerts-off-by-an-hour bug: bare worklet's V8 snapshots
+// the OS TZ at engine init and never refreshes, so `new Date(y,mo-1,d,h,m)`
+// keeps interpreting wall-clock against the wrong zone after a flight.
+function _wallClockToUtcMs (y, mo, d, h, m, tzName) {
+  if (!tzName) return new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+  const target = Date.UTC(y, mo - 1, d, h, m, 0)
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tzName, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  })
+  let guess = target
+  for (let i = 0; i < 3; i++) {
+    const parts = {}
+    for (const p of fmt.formatToParts(new Date(guess))) parts[p.type] = p.value
+    const hh = (+parts.hour) % 24 // Intl can emit "24" for midnight in en-US
+    const got = Date.UTC(+parts.year, +parts.month - 1, +parts.day, hh, +parts.minute, +parts.second)
+    const diff = target - got
+    if (diff === 0) return guess
+    guess += diff
+  }
+  return guess
+}
+
+function computeReminderFireTime (ev, reminder, tzName) {
   if (!ev || !ev.date) return null
   const [y, mo, d] = ev.date.split('-').map(Number)
   if (!y || !mo || !d) return null
   if (reminder === MORNING_OF) {
-    return new Date(y, mo - 1, d, 9, 0, 0, 0).getTime()
+    return _wallClockToUtcMs(y, mo, d, 9, 0, tzName)
   }
   if (reminder === DAY_BEFORE) {
-    return new Date(y, mo - 1, d - 1, 9, 0, 0, 0).getTime()
+    return _wallClockToUtcMs(y, mo, d - 1, 9, 0, tzName)
   }
   let h = 9, m = 0
   if (!ev.allDay && ev.start) {
     const parts = ev.start.split(':').map(Number)
     h = parts[0]; m = parts[1]
   }
-  const eventStartMs = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+  const eventStartMs = _wallClockToUtcMs(y, mo, d, h, m, tzName)
   return eventStartMs - reminder * 60 * 1000
 }
 
-function computeStartFireTime (ev) {
+function computeStartFireTime (ev, tzName) {
   if (!ev || !ev.date || ev.allDay || !ev.start) return null
   const [y, mo, d] = ev.date.split('-').map(Number)
   const [h, m] = ev.start.split(':').map(Number)
   if (!y || !mo || !d || isNaN(h)) return null
-  return new Date(y, mo - 1, d, h, m, 0, 0).getTime()
+  return _wallClockToUtcMs(y, mo, d, h, m, tzName)
 }
 
 function buildReminderBody (ev, reminder) {

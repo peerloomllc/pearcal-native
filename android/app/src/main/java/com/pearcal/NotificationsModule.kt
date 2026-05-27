@@ -2,11 +2,14 @@ package com.pearcal
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Build
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 @ReactModule(name = NotificationsModule.NAME)
 class NotificationsModule(reactContext: ReactApplicationContext) :
@@ -14,12 +17,49 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
 
     companion object {
         const val NAME = "PearCalNotifications"
+        const val TZ_EVENT = "pearcalTimezoneChanged"
     }
 
     override fun getName() = NAME
 
     private val alarmMgr get() =
         reactApplicationContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+    // Wall-clock event semantics: a "9 AM" event should stay at 9 AM wherever
+    // the user flies. AlarmManager.RTC_WAKEUP fires at an absolute UTC instant,
+    // so a stale fireAt set in a previous TZ will fire at the wrong wall-clock
+    // after the device crosses zones. Wake the JS reconcile pass on TZ change
+    // so it recomputes fireAt against the new local zone. ACTION_TIME_CHANGED
+    // covers manual clock edits / DST corrections that bypass TZ broadcasts.
+    private val tzReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            val rnCtx = reactApplicationContext
+            if (!rnCtx.hasActiveCatalystInstance()) return
+            try {
+                rnCtx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit(TZ_EVENT, null)
+            } catch (_: Exception) { /* RN not ready; visibilitychange will catch it */ }
+        }
+    }
+
+    init {
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+            addAction(Intent.ACTION_TIME_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            reactContext.registerReceiver(tzReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            reactContext.registerReceiver(tzReceiver, filter)
+        }
+        reactContext.addLifecycleEventListener(object : LifecycleEventListener {
+            override fun onHostResume() {}
+            override fun onHostPause() {}
+            override fun onHostDestroy() {
+                try { reactContext.unregisterReceiver(tzReceiver) } catch (_: Exception) {}
+            }
+        })
+    }
 
     @ReactMethod
     fun schedule(opts: ReadableMap, promise: Promise) {
