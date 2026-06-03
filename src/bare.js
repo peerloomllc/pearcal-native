@@ -1540,6 +1540,11 @@ async function _joinGroupImpl (group) {
   // Multi-device membership log: record that this identity is in this group
   // so sibling devices discover it via the personal base (Phase 5).
   await personalBaseAddGroup(group).catch(() => {})
+  // Multi-device write redundancy (Phase A): advertise this device's per-group
+  // writer key so sibling devices that are writers here can cross-grant it.
+  // No-op if the personal base isn't writable yet — the redundancy sweep
+  // re-publishes once it becomes writable.
+  await personalBaseAddGroupWriter(group.id, writerKey).catch(() => {})
 }
 
 async function leaveGroup (groupId) {
@@ -1556,6 +1561,8 @@ async function leaveGroup (groupId) {
   // Personal-base mirror: if multi-device is on, drop this group from the
   // personal base's group-membership log so sibling devices also leave.
   await personalBaseRemoveGroup(groupId).catch(() => {})
+  // Drop this device's group-writer advertisement (Phase A) too.
+  await personalBaseRemoveGroupWriter(groupId).catch(() => {})
 }
 
 // ── Personal Autobase (multi-device identity, TODO #11 Phase 3) ──────────────
@@ -1723,6 +1730,35 @@ function makePersonalApply () {
         continue
       }
 
+      // Per-group writer-key advertisements for multi-device write redundancy
+      // (Phase A). Each device publishes its OWN per-group Autobase writer key
+      // here so sibling devices that are already writers on the group can grant
+      // it write access ("cross-grant") — no external group member needed to
+      // re-authorize a wiped/late-paired device. Authorial gate mirrors
+      // deviceMeta: node.from.key (the Autobase-attested author) must equal the
+      // row's personalWriterKey; value fields are untrusted for the gate. db.put
+      // only (no view.put) to dodge the truncate-vs-prologue rebase crash, same
+      // as the deviceMeta branch. LWW by updatedAt against the local mirror.
+      if (val.op === 'put' && val.type === 'deviceGroupWriter' && val.key && val.value) {
+        const rowWriter = val.value.personalWriterKey
+        const fromKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
+        if (!rowWriter || !fromKey || rowWriter !== fromKey) continue
+        if (val.key !== 'deviceGroupWriter:' + val.value.groupId + ':' + rowWriter) continue
+        const prevDb = (await db.get(val.key).catch(() => null))?.value
+        if ((val.value.updatedAt ?? 0) < (prevDb?.updatedAt ?? 0)) continue
+        await db.put(val.key, val.value).catch(() => {})
+        // A sibling advertised its group writer key — grant it now if we're a
+        // writer on that group. Fire-and-forget; the periodic sweep also covers
+        // the case where this device isn't a writer yet but becomes one later.
+        maybeCrossGrantGroupWriter(val.value.groupId, val.value.groupWriterKey, rowWriter)
+          .catch(e => console.warn('[xgrant] apply-trigger error:', e?.message))
+        continue
+      }
+      if (val.op === 'del' && val.type === 'deviceGroupWriter' && val.key) {
+        await db.del(val.key).catch(() => {})
+        continue
+      }
+
       // Group membership records for multi-device discovery (Phase 5). Records
       // which groups this identity is in so a paired secondary can iterate
       // them on boot. Stored under `personalGroups:{groupId}` in local DB.
@@ -1850,6 +1886,13 @@ async function ensurePersonalBase () {
     setTimeout(() => {
       seedDeviceMetaIfNeeded().catch(e => console.warn('[personal] deviceMeta seed:', e.message))
     }, 2500)
+    // Phase A: converge group-writer redundancy soon after the base opens so a
+    // primary (already writable) publishes + cross-grants without waiting a full
+    // realtime-tick interval. Deferred past the deviceMeta seed to stay clear of
+    // the same post-open append race. No-op while still read-only (secondary).
+    setTimeout(() => {
+      runGroupWriterRedundancyTick().catch(e => console.warn('[xgrant] open sweep:', e.message))
+    }, 3500)
     // Drop personal-base groupMembership entries pointing at groups this device
     // was kicked from or has locally deleted. Without this sweep, kicks that
     // landed before the live self-kick path existed (or during sync replay)
@@ -2054,6 +2097,86 @@ async function personalBaseRemoveGroup (groupId) {
   catch (e) { console.warn('[personal] del group failed:', e.message) }
 }
 
+// ── Multi-device group-writer redundancy (Phase A) ───────────────────────────
+// Publishes THIS device's per-group Autobase writer key into the personal base
+// so sibling devices (same identity = same mnemonic) that are already writers
+// on the group can grant it write access. Makes linked devices functional write
+// backups and lets one of the user's own devices re-authorize a wiped sibling
+// without an external group member coming online. Keyed by the device's
+// personal writer key so siblings never overwrite each other's rows. No-op
+// until the personal base is writable; re-published by the periodic sweep once
+// it is. Idempotent — skips when the published key is already current.
+async function personalBaseAddGroupWriter (groupId, groupWriterKey) {
+  if (!personalBase?.writable) return
+  if (!groupId || !groupWriterKey) return
+  const personalWriterKey = b4a.toString(personalBase.local.key, 'hex')
+  const key = 'deviceGroupWriter:' + groupId + ':' + personalWriterKey
+  const prev = (await db.get(key).catch(() => null))?.value
+  if (prev && prev.groupWriterKey === groupWriterKey) return
+  const value = { groupId, groupWriterKey, personalWriterKey, updatedAt: Date.now() }
+  try { await personalBase.append({ op: 'put', type: 'deviceGroupWriter', key, value }) }
+  catch (e) { console.warn('[personal] append deviceGroupWriter failed:', e.message) }
+}
+
+// Drop this device's group-writer advertisement when it leaves/loses a group.
+async function personalBaseRemoveGroupWriter (groupId) {
+  if (!personalBase?.writable) return
+  const personalWriterKey = b4a.toString(personalBase.local.key, 'hex')
+  const key = 'deviceGroupWriter:' + groupId + ':' + personalWriterKey
+  try { await personalBase.append({ op: 'del', type: 'deviceGroupWriter', key }) }
+  catch (e) { console.warn('[personal] del deviceGroupWriter failed:', e.message) }
+}
+
+// Grant a sibling device's per-group writer key write access on the group's
+// Autobase. Safe without an extra identity proof: the sibling key was read from
+// OUR personal base, which only our own devices can write to (apply gate). Still
+// honors kick state — never re-grants a blocked writer or a group we were
+// kicked from — and is idempotent via the durable knownWriter index.
+async function maybeCrossGrantGroupWriter (groupId, groupWriterKey, siblingPersonalKey) {
+  if (!groupId || !groupWriterKey) return
+  const myPersonalKey = personalBase?.local?.key
+    ? b4a.toString(personalBase.local.key, 'hex') : null
+  // Our own row is granted via the normal owner / writer-announce path.
+  if (siblingPersonalKey && myPersonalKey && siblingPersonalKey === myPersonalKey) return
+  const base = bases.get(groupId)
+  if (!base) return            // group not open on this device
+  if (!base.writable) return   // we're not a writer here — can't grant anyone
+  const blockedFromGroup = await db.get('blockedFromGroup:' + groupId).catch(() => null)
+  if (blockedFromGroup?.value) return
+  const blockedWriter = await db.get('blockedWriter:' + groupId + ':' + groupWriterKey).catch(() => null)
+  if (blockedWriter?.value) return
+  const knownKey = 'knownWriter:' + groupId + ':' + groupWriterKey
+  const already = await db.get(knownKey).catch(() => null)
+  if (already?.value) return
+  try {
+    await base.append({ addWriter: groupWriterKey })
+    await db.put(knownKey, { ts: Date.now() }).catch(() => {})
+    console.log('[xgrant] granted sibling writer', groupWriterKey.slice(0, 16) + '…', 'on group', groupId)
+  } catch (e) {
+    console.warn('[xgrant] addWriter failed for', groupId, e?.message)
+  }
+}
+
+// Periodic convergence sweep. (1) Re-publishes this device's open group writer
+// keys — covers a freshly-paired secondary whose personal base wasn't writable
+// when joinGroup ran and became writable later. (2) Cross-grants every sibling's
+// advertised writer key on the groups we're a writer of. Piggybacks the existing
+// realtime sync tick so there's no extra timer.
+async function runGroupWriterRedundancyTick () {
+  if (!personalBase?.writable) return
+  for (const [groupId, base] of bases) {
+    const gw = base?.local?.key ? b4a.toString(base.local.key, 'hex') : null
+    if (gw) await personalBaseAddGroupWriter(groupId, gw).catch(() => {})
+  }
+  for await (const { value } of db.createReadStream({
+    gt: 'deviceGroupWriter:', lt: 'deviceGroupWriter:\xff'
+  })) {
+    if (!value?.groupId || !value?.groupWriterKey) continue
+    await maybeCrossGrantGroupWriter(value.groupId, value.groupWriterKey, value.personalWriterKey)
+      .catch(() => {})
+  }
+}
+
 // Drop stale personalGroups pointers (groups this device was kicked from or
 // has locally deleted) so paired siblings don't auto-join into ghost groups.
 // Runs on every personal-base open; only acts when this device is writable, so
@@ -2082,6 +2205,9 @@ async function cleanupStalePersonalGroups () {
     const probablyLocallyDeleted = !!seen?.value && !localGroup?.value
     if (definitelyStale || probablyLocallyDeleted) {
       await personalBaseRemoveGroup(groupId)
+      // Phase A: also retract this device's group-writer advertisement so
+      // siblings stop trying to cross-grant a group we've left/been kicked from.
+      await personalBaseRemoveGroupWriter(groupId).catch(() => {})
       dropped++
     }
   }
@@ -5425,6 +5551,9 @@ async function runRealtimeSyncTick () {
       await base.update()
     } catch (e) { console.warn('[RT-TICK] group', groupId, 'error:', e?.message) }
   }
+  // Multi-device write-redundancy convergence (Phase A): re-publish our group
+  // writer keys + cross-grant siblings on groups we're a writer of.
+  await runGroupWriterRedundancyTick().catch(() => {})
 }
 function startRealtimeSyncTick () {
   if (_realtimeSyncTimer) return
