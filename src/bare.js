@@ -727,6 +727,12 @@ async function putEvent (event) {
   // Mirror to personal base if this is a personal-scope event (no groups) and
   // multi-device is enabled. No-op otherwise.
   await personalBaseAppendEvent(toStore).catch(() => {})
+  // Consolidation marker (TODO #11 backup-integrity): record that this device's
+  // own core already carries this event version, so runPersonalConsolidation
+  // won't redundantly re-publish events we authored. Personal-scope only.
+  if (!(toStore.groups && toStore.groups.length)) {
+    await db.put('consolidated:' + event.id, { updatedAt: toStore.updatedAt }).catch(() => {})
+  }
   scheduleWidgetCacheRefresh()
   return event
 }
@@ -1893,6 +1899,12 @@ async function ensurePersonalBase () {
     setTimeout(() => {
       runGroupWriterRedundancyTick().catch(e => console.warn('[xgrant] open sweep:', e.message))
     }, 3500)
+    // Backup-integrity (TODO #11): consolidate sibling-authored events into the
+    // primary's core shortly after open, so a re-paired device gets them without
+    // waiting a full realtime-tick interval. No-op on non-primary / read-only.
+    setTimeout(() => {
+      runPersonalConsolidation(true).catch(e => console.warn('[consolidate] open sweep:', e.message))
+    }, 4500)
     // Drop personal-base groupMembership entries pointing at groups this device
     // was kicked from or has locally deleted. Without this sweep, kicks that
     // landed before the live self-kick path existed (or during sync replay)
@@ -2045,6 +2057,46 @@ async function personalBaseAppendEvent (event) {
   const key = NS.events + event.date + ':' + event.id
   try { await personalBase.append({ op: 'put', type: 'event', key, value: event }) }
   catch (e) { console.warn('[personal] append event failed:', e.message) }
+}
+
+// Consolidation sweep (TODO #11 backup-integrity). Re-publishes personal events
+// that arrived from OTHER devices into THIS device's own writer core. Why: when
+// a sibling device is wiped, its writer core is no longer fully re-served over
+// the swarm, so a freshly-paired device can't reconstruct it and never sees that
+// sibling's events — even though a surviving device still has them in its local
+// mirror (verified 2026-06-03: a manual event re-save fixed it; an in-process
+// Autobase harness could NOT reproduce it, confirming it's a real-swarm
+// gone-writer-core delivery gap, not an Autobase-logic bug). Re-authoring from
+// the local mirror into a live, reliably-replicated core sidesteps that.
+//
+// Gated to the personal-base creator/primary (local.key === base.key) so the
+// consolidated copy lives on the natural durable hub and storage stays bounded
+// (one extra copy on the primary, not N copies across every device). Idempotent
+// via `consolidated:{id}` = the event version last re-published; own-authored
+// events are pre-marked in putEvent so only sibling-originated versions get
+// re-published.
+let _lastConsolidationTs = 0
+async function runPersonalConsolidation (force = false) {
+  if (!personalBase?.writable) return
+  if (!b4a.equals(personalBase.local.key, personalBase.key)) return // primary only
+  // Throttle the full local-DB scan: the realtime tick fires every 15s but
+  // consolidation only needs to chase newly-arrived sibling events, so cap it.
+  const now = Date.now()
+  if (!force && now - _lastConsolidationTs < 60000) return
+  _lastConsolidationTs = now
+  let n = 0
+  for await (const { value: ev } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!ev?.id || !ev?.date) continue
+    if (ev.groups && ev.groups.length) continue // group-scope lives in group bases
+    const marker = (await db.get('consolidated:' + ev.id).catch(() => null))?.value
+    if ((marker?.updatedAt ?? -1) >= (ev.updatedAt ?? 0)) continue
+    try {
+      await personalBase.append({ op: 'put', type: 'event', key: NS.events + ev.date + ':' + ev.id, value: ev })
+      await db.put('consolidated:' + ev.id, { updatedAt: ev.updatedAt ?? 0 }).catch(() => {})
+      n++
+    } catch (e) { console.warn('[consolidate] append failed for', ev.id, e.message) }
+  }
+  if (n) console.log('[consolidate] re-published', n, 'personal event(s) into primary core')
 }
 
 async function personalBaseDeleteEvent (date, eventId) {
@@ -5554,6 +5606,9 @@ async function runRealtimeSyncTick () {
   // Multi-device write-redundancy convergence (Phase A): re-publish our group
   // writer keys + cross-grant siblings on groups we're a writer of.
   await runGroupWriterRedundancyTick().catch(() => {})
+  // Backup-integrity (TODO #11): primary re-publishes sibling-authored personal
+  // events into its own core so re-paired devices reliably recover them.
+  await runPersonalConsolidation().catch(() => {})
 }
 function startRealtimeSyncTick () {
   if (_realtimeSyncTimer) return
