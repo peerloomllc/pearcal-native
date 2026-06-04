@@ -2556,6 +2556,10 @@ async function closePersonalBase () {
 //
 // Single-use: handshake is consumed on first valid hello. 15-min expiry.
 const PAIR_EXPIRY_MS    = 15 * 60 * 1000
+// Phase B: how long the primary keeps the pair session alive after `complete`
+// to receive + grant the secondary's per-group writer keys, and how long the
+// secondary waits for the ack before giving up (falls back to Phase A / C).
+const GROUP_WRITERS_WAIT_MS = 15 * 1000
 const PAIR_CHANNEL_PROTO = 'pearcal/device-pair'
 const PAIR_CHANNEL_ID    = Buffer.from('pearcal-device-pair-v1')
 let _pairSession = null
@@ -2598,6 +2602,7 @@ function _hex32 () {
 function _clearPairSession () {
   if (!_pairSession) return
   if (_pairSession.expiryTimer) clearTimeout(_pairSession.expiryTimer)
+  if (_pairSession.groupWritersTimer) clearTimeout(_pairSession.groupWritersTimer)
   const topic = _pairSession.topicBuf
   _pairSession = null
   if (topic && swarm) swarm.leave(topic).catch(() => {})
@@ -2948,13 +2953,66 @@ async function _handlePairPersonalWriter (parsed, replySend) {
     replySend({ type: 'complete' })
     _emitPair('pairingCompleted', { role: 'primary' })
     send({ type: 'event', event: 'linkedDevicesChanged', data: null })
-    _clearPairSession()
+    // Phase B: pairing is functionally done, but keep the session briefly to
+    // receive the secondary's per-group writer keys and grant them immediately
+    // (deterministic fan-out). If the message never arrives — secondary on an
+    // older build, dropped connection, crash — Phase A cross-grant and the
+    // writer-announce path still authorize the device, so this is best-effort.
+    if (_pairSession) {
+      const sess = _pairSession
+      sess.phase = 'awaitingGroupWriters'
+      sess.groupWritersTimer = setTimeout(() => {
+        if (_pairSession === sess) {
+          console.log('[pair] groupWriters wait timed out; clearing session')
+          _clearPairSession()
+        }
+      }, GROUP_WRITERS_WAIT_MS)
+    }
   } catch (e) {
     console.error('[pair] personalWriter handler error:', e.message)
     replySend({ type: 'error', reason: 'primary_addwriter_error', message: e.message })
     _emitPair('pairingFailed', { reason: 'primary_addwriter_error', message: e.message })
     _clearPairSession()
   }
+}
+
+// Phase B: primary grants the secondary's per-group writer keys the moment they
+// arrive, so a freshly-paired device is a writer on every group the primary
+// belongs to without waiting for cross-grant convergence or a writer-announce
+// round-trip. Only grants on groups the primary is itself a writer of; honors
+// kick blocks; idempotent via knownWriter. Acks so the secondary can stop.
+async function _handlePairGroupWriters (parsed, replySend) {
+  if (_pairSession?.role !== 'primary') return
+  const writers = Array.isArray(parsed.writers) ? parsed.writers : []
+  console.log('[pair] received groupWriters for', writers.length, 'groups')
+  const granted = []
+  for (const w of writers) {
+    const groupId = w?.groupId
+    const writerKey = w?.writerKey
+    if (!groupId || !/^[0-9a-f]{64}$/i.test(writerKey ?? '')) continue
+    const base = bases.get(groupId)
+    if (!base?.writable) continue   // can't grant on a group we're not a writer of
+    const blocked = await db.get('blockedWriter:' + groupId + ':' + writerKey).catch(() => null)
+    if (blocked?.value) continue
+    const knownKey = 'knownWriter:' + groupId + ':' + writerKey
+    if ((await db.get(knownKey).catch(() => null))?.value) { granted.push(groupId); continue }
+    try {
+      await base.append({ addWriter: writerKey })
+      await db.put(knownKey, { ts: Date.now() }).catch(() => {})
+      granted.push(groupId)
+      console.log('[pair] fan-out addWriter on group', groupId, 'for', writerKey.slice(0, 16) + '…')
+    } catch (e) { console.warn('[pair] fan-out addWriter error for', groupId, e.message) }
+  }
+  try { replySend({ type: 'groupWritersAck', granted }) } catch (e) {}
+  _clearPairSession()
+}
+
+// Secondary: primary acked the group-writer fan-out. Nothing to apply locally
+// (the grants ride each group's Autobase); just close out the session.
+function _handlePairGroupWritersAck (parsed) {
+  if (_pairSession?.role !== 'secondary') return
+  console.log('[pair] groupWriters granted on', (parsed?.granted ?? []).length, 'groups')
+  _clearPairSession()
 }
 
 // Shared: seed local group records + start joinGroup for each entry in a
@@ -2997,7 +3055,7 @@ async function _seedGroupsFromPair (groups) {
 // Secondary: handle complete from primary. Persist group records + kick off
 // joinGroup for each so Hyperswarm topics come online and writer-announce
 // admission grants addWriter per group.
-async function _handlePairComplete () {
+async function _handlePairComplete (replySend) {
   if (_pairSession?.role !== 'secondary') return
   const groups = _pairSession.groupsReceived ?? []
   const resolve = _pairSession.resolve
@@ -3010,13 +3068,65 @@ async function _handlePairComplete () {
     // timer or a manual rename. No-op if already seeded.
     seedDeviceMetaIfNeeded().catch(e => console.warn('[pair] secondary deviceMeta seed:', e.message))
     _emitPair('pairingCompleted', { role: 'secondary', groups: newCount })
+    // Resolve the consumePairLink promise now — pairing is done from the user's
+    // perspective regardless of the Phase B fan-out below.
     resolve?.({ ok: true, groups: newCount })
+    // Phase B (best-effort): once our group bases open, send their writer keys
+    // so the primary grants us write access immediately. The session is cleared
+    // by the ack handler or the fallback timer inside _sendGroupWritersToPrimary
+    // — NOT here, so the round-trip can complete.
+    if (typeof replySend === 'function') {
+      _sendGroupWritersToPrimary(groups, replySend)
+        .catch(e => console.warn('[pair] groupWriters send error:', e.message))
+    } else {
+      _clearPairSession()
+    }
+    return
   } catch (e) {
     console.error('[pair] complete handler error:', e.message)
     _emitPair('pairingFailed', { reason: 'secondary_complete_error', message: e.message })
     _pairSession?.reject?.(e)
-  } finally {
     _clearPairSession()
+  }
+}
+
+// Phase B (secondary): wait for each group's Autobase to open (joinGroup runs
+// async from _seedGroupsFromPair), then send our per-group writer keys to the
+// primary so it can grant them immediately. Best-effort: a fallback timer
+// clears the session if the ack never comes, so a lost message can't leave the
+// session dangling. Pairing success does not depend on this completing.
+async function _sendGroupWritersToPrimary (groups, replySend) {
+  const sess = _pairSession
+  if (sess) {
+    sess.groupWritersTimer = setTimeout(() => {
+      if (_pairSession === sess) {
+        console.log('[pair] groupWriters ack timed out; clearing session')
+        _clearPairSession()
+      }
+    }, GROUP_WRITERS_WAIT_MS)
+  }
+  try {
+    const writers = []
+    for (const g of (groups ?? [])) {
+      if (!g?.id) continue
+      // joinGroup opens the base asynchronously; poll briefly for it.
+      let base = bases.get(g.id)
+      for (let i = 0; i < 30 && !base; i++) {
+        await new Promise(r => setTimeout(r, 150))
+        base = bases.get(g.id)
+      }
+      const key = base?.local?.key ? b4a.toString(base.local.key, 'hex') : null
+      if (key) writers.push({ groupId: g.id, writerKey: key })
+    }
+    if (writers.length && _pairSession === sess) {
+      replySend({ type: 'groupWriters', writers })
+      console.log('[pair] sent groupWriters for', writers.length, 'groups')
+    } else if (_pairSession === sess) {
+      _clearPairSession()  // nothing to send
+    }
+  } catch (e) {
+    console.warn('[pair] groupWriters build error:', e.message)
+    if (_pairSession === sess) _clearPairSession()
   }
 }
 
@@ -5695,6 +5805,30 @@ async function runRealtimeSyncTick () {
   // Backup-integrity (TODO #11): primary re-publishes sibling-authored personal
   // events into its own core so re-paired devices reliably recover them.
   await runPersonalConsolidation().catch(() => {})
+  // Liveness retry (Phase C): keep re-announcing on groups where we're still
+  // read-only until some authorized writer grants us. Self-heals a device that
+  // missed its grant window (no writer online when it first announced).
+  await reannounceUnwritableGroups().catch(() => {})
+}
+
+// Phase C: re-broadcast our writer-announce on every group where this device is
+// still read-only, so an authorized writer that comes online later (or that was
+// connected before our identity proof was ready) grants us. Cheap: small
+// messages to currently-connected peers only; no-op once writable. Complements
+// Phase A (cross-grant via personal base) — both push a stuck device toward
+// write access through independent transports (group topic vs. personal topic).
+async function reannounceUnwritableGroups () {
+  let profile = null
+  for (const [groupId, base] of bases) {
+    try {
+      if (base.writable) continue
+      const writerKey = base.local?.key ? b4a.toString(base.local.key, 'hex') : null
+      if (!writerKey) continue
+      if (!profile) profile = await getProfile().catch(() => null)
+      const announceBuf = await buildWriterAnnounce(groupId, writerKey, profile?.id)
+      for (const ch of activeChannels) { try { ch.send(announceBuf) } catch (e) {} }
+    } catch (e) { /* per-group best-effort */ }
+  }
 }
 function startRealtimeSyncTick () {
   if (_realtimeSyncTimer) return
@@ -6263,7 +6397,9 @@ async function _doInit (dir, attempt = 0) {
             if (parsed.type === 'hello')               await _handlePairHello(parsed, replySend)
             else if (parsed.type === 'granted')        await _handlePairGranted(parsed, replySend)
             else if (parsed.type === 'personalWriter') await _handlePairPersonalWriter(parsed, replySend)
-            else if (parsed.type === 'complete')       await _handlePairComplete()
+            else if (parsed.type === 'complete')       await _handlePairComplete(replySend)
+            else if (parsed.type === 'groupWriters')   await _handlePairGroupWriters(parsed, replySend)
+            else if (parsed.type === 'groupWritersAck') _handlePairGroupWritersAck(parsed)
             else if (parsed.type === 'error') {
               console.warn('[pair] peer error:', parsed.reason, parsed.message)
               _emitPair('pairingFailed', { reason: parsed.reason ?? 'peer_error', message: parsed.message })
