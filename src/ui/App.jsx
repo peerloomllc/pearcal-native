@@ -185,7 +185,21 @@ function isShadowHidden (e, allEvents, myId) {
   // Hide a shadow only when its source event is locally present — otherwise
   // (e.g. after mnemonic-restore, where the forwarder's source events haven't
   // been recovered) the shadow is the only visible proxy and must render.
-  return allEvents.some(x => !x.isShadow && x.id === e.sourceEventId)
+  if (allEvents.some(x => !x.isShadow && x.id === e.sourceEventId)) return true
+  // Robustness for linked-device sync timing. Paired devices share one identity,
+  // so e.creatorId === myId on every one of my devices. If my source event has
+  // reached this device under a transiently different row/id (e.g. it arrived
+  // over the personal base while the shadow arrived over the group base), the
+  // id match above misses it and the detail-less shadow renders next to the
+  // real event — the "same event, one with a location and one without"
+  // duplicate. Fall back to a content match so my own busy-time shadow is
+  // suppressed whenever the underlying event is already visible here. A
+  // genuinely absent source (mnemonic-restore) matches nothing, so the shadow
+  // still renders as the sole proxy.
+  if (e.creatorId && e.creatorId === myId && allEvents.some(x =>
+        !x.isShadow && x.title === e.title && x.date === e.date &&
+        x.start === e.start && x.end === e.end)) return true
+  return false
 }
 
 // Agenda inclusion: Day-tab dayEvents and Month-tab cards share this rule.
@@ -4037,10 +4051,16 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
   const [myForwards, setMyForwards] = useState(() => {
     if (!profile?.id) return []
     const myId = profile.id
-    if (modal.mode === 'create' && groups.length === 1
-        && !(modal.event.groups ?? []).includes(groups[0].id)) {
-      return [groups[0].id]
-    }
+    // NOTE: do NOT auto-arm a busy-time forward on create. A single-group
+    // account previously defaulted myForwards to [groups[0].id], which — unless
+    // the user also tapped the group under "Invite" — saved the event as a
+    // PERSONAL event (groups:[]) plus a detail-less busy-time SHADOW in the
+    // group. The personal source syncs over the multi-device personal base while
+    // the shadow syncs over the reliable group base, so on a paired sibling the
+    // two desync and the shadow (no location/desc) renders next to the real
+    // event: "the same event, one with a location and one without." Sharing is
+    // now explicit via "Invite" (a true group event over the group base);
+    // busy-time forwarding stays an opt-in for forwarding into OTHER groups.
     const srcIds = modal.event.recurrenceId
       ? new Set(events.filter(e => !e.isShadow && e.recurrenceId === modal.event.recurrenceId).map(e => e.id))
       : new Set([modal.event.id])

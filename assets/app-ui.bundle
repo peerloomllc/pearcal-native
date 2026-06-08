@@ -16684,7 +16684,9 @@
   }
   function isShadowHidden(e58, allEvents, myId) {
     if (!e58.isShadow) return false;
-    return allEvents.some((x) => !x.isShadow && x.id === e58.sourceEventId);
+    if (allEvents.some((x) => !x.isShadow && x.id === e58.sourceEventId)) return true;
+    if (e58.creatorId && e58.creatorId === myId && allEvents.some((x) => !x.isShadow && x.title === e58.title && x.date === e58.date && x.start === e58.start && x.end === e58.end)) return true;
+    return false;
   }
   function isInAgenda(e58, myId) {
     if (!e58.invitees || e58.invitees.length === 0) return true;
@@ -21473,9 +21475,6 @@
     const [myForwards, setMyForwards] = (0, import_react7.useState)(() => {
       if (!profile?.id) return [];
       const myId = profile.id;
-      if (modal.mode === "create" && groups.length === 1 && !(modal.event.groups ?? []).includes(groups[0].id)) {
-        return [groups[0].id];
-      }
       const srcIds = modal.event.recurrenceId ? new Set(events.filter((e58) => !e58.isShadow && e58.recurrenceId === modal.event.recurrenceId).map((e58) => e58.id)) : /* @__PURE__ */ new Set([modal.event.id]);
       const targets = /* @__PURE__ */ new Set();
       for (const e58 of events) {
