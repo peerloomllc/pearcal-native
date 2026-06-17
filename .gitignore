@@ -48,6 +48,9 @@ app-example
 # Local release scripts, TODO, and completed items
 scripts/release.sh
 scripts/ios-appstore.sh
+# Local Windows build tooling (machine/VM-specific; mirrors PearGuard)
+electron/scripts/build-windows.sh
+electron/scripts/windows-remote-build.ps1
 TODO.md
 DONE.md
 
