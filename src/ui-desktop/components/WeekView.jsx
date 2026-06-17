@@ -3,6 +3,7 @@
 
 import { useMemo, useRef } from 'react'
 import { derivedEventColors, leftStripeStyle, formatTime, expandRecurring } from '../../ui-shared/index.js'
+import { buildRowItems, packLanes } from '../lib/multiDayLanes.js'
 import { useDragCreate, fromMinHHMM } from '../hooks/useDragCreate.js'
 import { useDragEvent } from '../hooks/useDragEvent.js'
 import { DragPreview } from './DragPreview.jsx'
@@ -208,46 +209,66 @@ export function WeekView ({ tokens, events, groupsById, myRsvps, selectedDate, s
 }
 
 function AllDayRow ({ tokens, days, today, events, groupsById, myRsvps, interactions }) {
-  const perDay = days.map(d => eventsForDate(events, d).filter(e => e.allDay))
-  if (perDay.every(arr => arr.length === 0)) return null
+  // Multi-day all-day events render as a single bar spanning their columns
+  // (lane-packed) rather than a chip repeated in every day column.
+  const lanes = useMemo(
+    () => packLanes(buildRowItems(events.filter(e => e.allDay), days)),
+    [events, days.join(',')]
+  )
+  if (lanes.length === 0) return null
   return (
     <div style={{
-      display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px repeat(7, 1fr)',
+      display: 'grid', gridTemplateColumns: HOUR_PAD_LEFT + 'px 1fr',
       borderBottom: `1px solid ${tokens.border}`, background: tokens.bg,
       minHeight: 28,
       // Match the header + timeline scrollbar-gutter so columns align.
       paddingRight: 8,
     }}>
       <div />
-      {perDay.map((evs, i) => (
-        <div key={i} style={{
-          padding: '4px 6px', borderLeft: `1px solid ${tokens.border}`,
-          background: days[i] === today ? tokens.surface : 'transparent',
-          display: 'flex', flexDirection: 'column', gap: 2,
-        }}>
-          {evs.map(ev => {
-            const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
-            const declined = myRsvps[ev.id] === 'declined'
-            return (
-              <div key={ev.id} data-event-id={ev.id}
-                onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
-                onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
-                style={{
-                  padding: '2px 6px',
-                  background: tokens.surface, border: `1px solid ${tokens.border}`,
-                  borderRadius: 3, fontSize: 11, fontWeight: 500,
-                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                  opacity: declined ? 0.45 : 1,
-                  textDecoration: declined ? 'line-through' : 'none',
-                  cursor: 'pointer',
-                  ...leftStripeStyle(colors, 3),
-                }}>
-                {ev.title}
-              </div>
-            )
-          })}
+      <div style={{ position: 'relative', minHeight: 28 }}>
+        {/* Column backgrounds (borders + today wash) behind the lanes. */}
+        <div style={{ position: 'absolute', inset: 0, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+          {days.map((d, i) => (
+            <div key={i} style={{
+              borderLeft: `1px solid ${tokens.border}`,
+              background: d === today ? tokens.surface : 'transparent',
+            }} />
+          ))}
         </div>
-      ))}
+        <div style={{ position: 'relative', padding: '4px 0', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {lanes.map((lane, li) => (
+            <div key={li} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+              {lane.map(seg => {
+                const ev = seg.ev
+                const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
+                const declined = myRsvps[ev.id] === 'declined'
+                return (
+                  <div key={ev.id} data-event-id={ev.id}
+                    onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
+                    onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
+                    style={{
+                      gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`,
+                      margin: '0 4px', padding: '2px 6px',
+                      background: tokens.surface, border: `1px solid ${tokens.border}`,
+                      borderTopLeftRadius: seg.continuesLeft ? 0 : 3,
+                      borderBottomLeftRadius: seg.continuesLeft ? 0 : 3,
+                      borderTopRightRadius: seg.continuesRight ? 0 : 3,
+                      borderBottomRightRadius: seg.continuesRight ? 0 : 3,
+                      fontSize: 11, fontWeight: 500,
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                      opacity: declined ? 0.45 : 1,
+                      textDecoration: declined ? 'line-through' : 'none',
+                      cursor: 'pointer',
+                      ...leftStripeStyle(colors, 3),
+                    }}>
+                    {seg.continuesLeft ? '◂ ' : ''}{ev.title}
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

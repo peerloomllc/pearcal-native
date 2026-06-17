@@ -4,10 +4,15 @@
 // setMode at the App level via the prop).
 
 import { useMemo } from 'react'
-import { derivedEventColors, expandRecurring } from '../../ui-shared/index.js'
+import { derivedEventColors } from '../../ui-shared/index.js'
+import { buildRowItems, packLanes, overflowByColumn } from '../lib/multiDayLanes.js'
 
 const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
-const MAX_CHIPS_PER_CELL = 3
+// Vertical budget per week-row: a day-number header, then up to this many
+// event lanes, then a per-day "+N more" overflow line.
+const MAX_LANES = 3
+const DAYNUM_H = 20
+const LANE_H = 17
 
 function fmt (y, m, d) {
   return y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0')
@@ -16,27 +21,6 @@ function fmt (y, m, d) {
 function todayLocal () {
   const t = new Date()
   return fmt(t.getFullYear(), t.getMonth(), t.getDate())
-}
-
-function eventsForDate (events, dateStr) {
-  const out = []
-  for (const ev of events) {
-    if (ev.recurrence && ev.recurrence !== 'none' && ev.recurrenceEnd && !ev.recurrenceId) {
-      for (const occ of expandRecurring(ev)) if (occ.date === dateStr) out.push(occ)
-    } else if (ev.date === dateStr) {
-      out.push(ev)
-    }
-    if (ev.endDate && ev.date !== dateStr && dateStr >= ev.date && dateStr <= ev.endDate) {
-      if (!out.some(e => e.id === ev.id)) out.push(ev)
-    }
-  }
-  // All-day events first, then sorted by start time
-  out.sort((a, b) => {
-    if (a.allDay && !b.allDay) return -1
-    if (!a.allDay && b.allDay) return 1
-    return (a.start ?? '').localeCompare(b.start ?? '')
-  })
-  return out
 }
 
 function eventGroups (ev, groupsById) {
@@ -96,86 +80,122 @@ export function MonthView ({ tokens, events, groupsById, myRsvps, selectedDate, 
       {/* 6-row grid */}
       <div style={{ flex: 1, display: 'grid', gridTemplateRows: 'repeat(6, 1fr)', overflow: 'hidden' }}>
         {Array.from({ length: 6 }, (_, row) => (
-          <div key={row} style={{
-            display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)',
-            borderBottom: row < 5 ? `1px solid ${tokens.border}` : 'none',
-            minHeight: 0,
-          }}>
-            {cells.slice(row * 7, row * 7 + 7).map((cell, col) => (
-              <Cell key={cell.date} tokens={tokens} cell={cell}
-                    today={today} selectedDate={selectedDate}
-                    events={eventsForDate(events, cell.date)}
-                    groupsById={groupsById} myRsvps={myRsvps}
-                    borderLeft={col > 0}
-                    interactions={interactions}
-                    onClick={() => { setSelectedDate(cell.date); setMode?.('day') }} />
-            ))}
-          </div>
+          <WeekRow key={row} tokens={tokens}
+                   cells={cells.slice(row * 7, row * 7 + 7)}
+                   today={today} selectedDate={selectedDate}
+                   events={events} groupsById={groupsById} myRsvps={myRsvps}
+                   lastRow={row === 5} interactions={interactions}
+                   onDayClick={d => { setSelectedDate(d); setMode?.('day') }} />
         ))}
       </div>
     </div>
   )
 }
 
-function Cell ({ tokens, cell, today, selectedDate, events, groupsById, myRsvps, borderLeft, onClick, interactions }) {
-  const isToday = cell.date === today
-  const isSelected = cell.date === selectedDate
-  const visible = events.slice(0, MAX_CHIPS_PER_CELL)
-  const overflow = events.length - visible.length
+// One week (7 day cells). Renders two stacked layers: a background grid of
+// clickable day cells (day number + today/selected wash + empty-slot context
+// menu), and an absolutely-positioned overlay of event lanes. Multi-day events
+// occupy a single bar spanning their columns instead of repeating per cell.
+function WeekRow ({ tokens, cells, today, selectedDate, events, groupsById, myRsvps, lastRow, onDayClick, interactions }) {
+  const rowDates = cells.map(c => c.date)
+  const { lanes, overflow } = useMemo(() => {
+    const items = buildRowItems(events, rowDates)
+    const packed = packLanes(items)
+    return { lanes: packed, overflow: overflowByColumn(packed, MAX_LANES, rowDates.length) }
+  }, [events, rowDates.join(',')])
 
-  function onCellContextMenu (e) {
+  const visibleLanes = lanes.slice(0, MAX_LANES)
+
+  function onCellContextMenu (date, e) {
     if (e.target.closest('[data-event-id]')) return
     e.preventDefault()
-    interactions.onSlotContextMenu?.(cell.date, '', e.clientX, e.clientY)
+    interactions.onSlotContextMenu?.(date, '', e.clientX, e.clientY)
   }
 
   return (
-    <div data-clickable onClick={onClick} onContextMenu={onCellContextMenu}
-      style={{
-        borderLeft: borderLeft ? `1px solid ${tokens.border}` : 'none',
-        padding: '4px 6px', overflow: 'hidden',
-        // Today highlight matches the Week view's today column color
-        // (tokens.surface). Selected cell uses the same shade so Today
-        // and selected feel consistent — Selected is reinforced by the
-        // bolder day-number text.
-        background: isToday || isSelected ? tokens.surface : 'transparent',
-        cursor: 'pointer',
-        display: 'flex', flexDirection: 'column', gap: 2, minHeight: 0,
-      }}>
-      <div style={{
-        fontSize: 12, fontWeight: isToday ? 600 : 400,
-        color: cell.inMonth ? (isToday ? tokens.accent : tokens.text) : tokens.muted,
-        fontVariantNumeric: 'tabular-nums', flexShrink: 0,
-      }}>
-        {cell.day}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 1, overflow: 'hidden', flex: 1, minHeight: 0 }}>
-        {visible.map(ev => {
-          const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
-          const declined = myRsvps[ev.id] === 'declined'
+    <div style={{
+      position: 'relative',
+      borderBottom: lastRow ? 'none' : `1px solid ${tokens.border}`,
+      overflow: 'hidden', minHeight: 0,
+    }}>
+      {/* Background: clickable day cells */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: '100%' }}>
+        {cells.map((cell, col) => {
+          const isToday = cell.date === today
+          const isSelected = cell.date === selectedDate
           return (
-            <div key={ev.id} data-event-id={ev.id}
-              onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
-              onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
+            <div key={cell.date} data-clickable
+              onClick={() => onDayClick(cell.date)}
+              onContextMenu={(e) => onCellContextMenu(cell.date, e)}
               style={{
-                fontSize: 11, padding: '1px 6px',
-                background: colors[0] ?? tokens.muted,
-                color: tokens.bg,
-                borderRadius: 2,
-                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                opacity: declined ? 0.5 : 1,
-                textDecoration: declined ? 'line-through' : 'none',
-                cursor: 'pointer',
+                borderLeft: col > 0 ? `1px solid ${tokens.border}` : 'none',
+                padding: '4px 6px', cursor: 'pointer', minHeight: 0,
+                background: isToday || isSelected ? tokens.surface : 'transparent',
               }}>
-              {ev.title}
+              <div style={{
+                fontSize: 12, fontWeight: isToday ? 600 : 400,
+                color: cell.inMonth ? (isToday ? tokens.accent : tokens.text) : tokens.muted,
+                fontVariantNumeric: 'tabular-nums',
+              }}>
+                {cell.day}
+              </div>
             </div>
           )
         })}
-        {overflow > 0 && (
-          <div style={{ fontSize: 10, color: tokens.muted, padding: '0 6px' }}>
-            +{overflow} more
+      </div>
+
+      {/* Overlay: spanning event lanes + per-day overflow. pointerEvents:none
+          lets clicks on empty space fall through to the day cells below; bars
+          and "+N more" re-enable their own pointer events. */}
+      <div style={{
+        position: 'absolute', top: DAYNUM_H, left: 0, right: 0, bottom: 0,
+        pointerEvents: 'none',
+      }}>
+        {visibleLanes.map((lane, li) => (
+          <div key={li} style={{
+            display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', height: LANE_H, marginBottom: 1,
+          }}>
+            {lane.map(seg => {
+              const ev = seg.ev
+              const colors = derivedEventColors(ev, eventGroups(ev, groupsById))
+              const declined = myRsvps[ev.id] === 'declined'
+              return (
+                <div key={ev.id} data-event-id={ev.id}
+                  onClick={(e) => { e.stopPropagation(); interactions.onEventClick?.(ev, e.clientX, e.clientY) }}
+                  onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
+                  style={{
+                    gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`,
+                    margin: '0 3px', pointerEvents: 'auto',
+                    fontSize: 11, lineHeight: `${LANE_H}px`, padding: '0 6px',
+                    background: colors[0] ?? tokens.muted,
+                    color: tokens.bg,
+                    borderTopLeftRadius: seg.continuesLeft ? 0 : 2,
+                    borderBottomLeftRadius: seg.continuesLeft ? 0 : 2,
+                    borderTopRightRadius: seg.continuesRight ? 0 : 2,
+                    borderBottomRightRadius: seg.continuesRight ? 0 : 2,
+                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    opacity: declined ? 0.5 : 1,
+                    textDecoration: declined ? 'line-through' : 'none',
+                    cursor: 'pointer',
+                  }}>
+                  {seg.continuesLeft ? '◂ ' : ''}{ev.title}
+                </div>
+              )
+            })}
           </div>
-        )}
+        ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)' }}>
+          {overflow.map((n, col) => n > 0 ? (
+            <div key={col} data-clickable
+              onClick={(e) => { e.stopPropagation(); onDayClick(rowDates[col]) }}
+              style={{
+                gridColumn: `${col + 1} / ${col + 2}`, pointerEvents: 'auto',
+                fontSize: 10, color: tokens.muted, padding: '0 6px', cursor: 'pointer',
+              }}>
+              +{n} more
+            </div>
+          ) : null)}
+        </div>
       </div>
     </div>
   )
