@@ -155,6 +155,12 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
     }
     const opts = {}
     if (mode === 'edit' && initial?.date && initial.date !== date) opts._prevDate = initial.date
+    // New events inherit the profile's default reminder (matches mobile). The
+    // negative fixed-time options aren't auto-applied — only real offsets.
+    if (mode === 'create') {
+      const dr = typeof profile?.defaultReminder === 'number' ? profile.defaultReminder : 15
+      if (dr > 0) opts.reminders = [dr]
+    }
     onSave(ev, opts)
   }
 

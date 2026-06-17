@@ -8,6 +8,7 @@
 // on sibling-device sync, never on local writes.
 
 import { useEffect, useState } from 'react'
+import { HOLIDAY_COUNTRIES, holidayEventId } from '../../ui-shared/index.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -19,10 +20,29 @@ const WEEK_STARTS = [
   { value: 1, label: 'Monday' },
 ]
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpenLinkedDevices, onClose }) {
+// Mirrors the mobile reminder options (src/ui/App.jsx). The two negatives are
+// fixed-time reminders rather than minute offsets; bare interprets them.
+const MORNING_OF = -1
+const DAY_BEFORE = -2
+const REMINDER_OPTIONS = [
+  { label: '5 min before',      value: 5 },
+  { label: '10 min before',     value: 10 },
+  { label: '15 min before',     value: 15 },
+  { label: '30 min before',     value: 30 },
+  { label: '1 hour before',     value: 60 },
+  { label: '2 hours before',    value: 120 },
+  { label: 'Morning of (9 AM)', value: MORNING_OF },
+  { label: 'Day before (9 AM)', value: DAY_BEFORE },
+  { label: '1 day before',      value: 1440 },
+  { label: '1 week before',     value: 10080 },
+  { label: '2 weeks before',    value: 20160 },
+]
+
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onClose }) {
   const [phrase,   setPhrase]   = useState(null)         // null = hidden, '' = loading, '...' = revealed
   const [phraseErr, setPhraseErr] = useState('')
   const [phraseCopied, setPhraseCopied] = useState(false)
+  const [holidayWorking, setHolidayWorking] = useState(false)
   // Mnemonic restore lives in bare (db.restoreMnemonic), but the mobile
   // app doesn't expose a settings-time restore yet — restore there only
   // runs during onboarding. Hide the desktop UI until parity lands.
@@ -88,6 +108,72 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
     persist({ dark: next })
   }
 
+  // Holiday subscriptions. Mirrors the mobile toggle (src/ui/App.jsx): on,
+  // import this + next year's dates as personal all-day events (skipping any
+  // already present by shared ID or date+title); off, remove only the dates no
+  // other still-active calendar needs. Holiday events are local/personal, so
+  // they go through db.putEvent / db.localDeleteEvent — not group sync.
+  const activeCountries = new Set(profile?.holidayCountries ?? [])
+  async function toggleCountry (code, fn, on) {
+    setHolidayWorking(true)
+    const meta = HOLIDAY_COUNTRIES.find(c => c.code === code)
+    const color = meta?.color ?? '#CF3535'
+    const colors = meta?.colors ?? []
+    const desc  = meta?.desc  ?? 'Public Holiday'
+    const thisYear = new Date().getFullYear()
+    const newActive = new Set(activeCountries)
+    try {
+      if (on) {
+        newActive.add(code)
+        const existingIds = new Set((events ?? []).map(e => e.id))
+        const existingKeys = new Set((events ?? []).map(e => e.date + '|' + e.title))
+        for (const yr of [thisYear, thisYear + 1]) {
+          for (const h of fn(yr)) {
+            const id = holidayEventId(h)
+            const key = h.date + '|' + h.title
+            if (existingIds.has(id) || existingKeys.has(key)) continue
+            const ev = {
+              id, title: h.title, date: h.date, allDay: true,
+              start: '00:00', end: '00:00', reminder: -1,
+              groups: [], invitees: [], color, colors, desc, location: '',
+              creatorId: 'system', recurrence: 'none',
+              recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,
+              editPermission: 'everyone', updatedAt: Date.now(),
+            }
+            await db?.putEvent(ev).catch(() => {})
+            setEvents?.(prev => prev.find(e => e.id === ev.id) ? prev : [...prev, ev])
+            existingIds.add(id)
+            existingKeys.add(key)
+          }
+        }
+      } else {
+        newActive.delete(code)
+        // Keep IDs still needed by other still-active countries
+        const keepIds = new Set()
+        for (const { code: otherCode, fn: otherFn } of HOLIDAY_COUNTRIES) {
+          if (otherCode === code || !newActive.has(otherCode)) continue
+          for (const yr of [thisYear, thisYear + 1]) {
+            for (const h of otherFn(yr)) keepIds.add(holidayEventId(h))
+          }
+        }
+        for (const yr of [thisYear, thisYear + 1]) {
+          for (const h of fn(yr)) {
+            const id = holidayEventId(h)
+            if (keepIds.has(id)) continue
+            const ev = (events ?? []).find(e => e.id === id)
+            if (ev) {
+              await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
+              setEvents?.(prev => prev.filter(e => e.id !== id))
+            }
+          }
+        }
+      }
+      await updateProfile({ holidayCountries: [...newActive] }).catch(() => {})
+    } finally {
+      setHolidayWorking(false)
+    }
+  }
+
   const label = {
     fontSize: 11, fontWeight: 600, color: tokens.muted,
     textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 7,
@@ -101,6 +187,12 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
     borderRadius: 5, cursor: 'pointer',
     fontFamily: tokens.font, border: `1px solid ${tokens.border}`,
     background: tokens.bg, color: tokens.text,
+  }
+  const selectStyle = {
+    padding: '6px 10px', fontSize: 13, fontWeight: 400,
+    borderRadius: 5, border: `1px solid ${tokens.border}`,
+    background: tokens.bg, color: tokens.text, fontFamily: tokens.font,
+    cursor: 'pointer', outline: 'none',
   }
 
   return (
@@ -170,6 +262,55 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, onOpe
               ))}
             </div>
           </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Reminders</div>
+          <div style={row}>
+            <div style={{ flex: 1, fontSize: 13 }}>Default reminder</div>
+            <select
+              value={profile?.defaultReminder ?? 15}
+              onChange={e => persist({ defaultReminder: Number(e.target.value) })}
+              style={selectStyle}>
+              <option value={0}>None</option>
+              {REMINDER_OPTIONS.map(r => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 2 }}>
+            Applied to new events you create on this device.
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Holidays</div>
+          <div style={{ opacity: holidayWorking ? 0.6 : 1, transition: 'opacity 0.2s' }}>
+            {HOLIDAY_COUNTRIES.map(({ code, flag, label: cLabel, fn, color: flagColor }, i) => {
+              const thisYear = new Date().getFullYear()
+              return (
+                <div key={code} style={{
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0',
+                  borderBottom: i < HOLIDAY_COUNTRIES.length - 1 ? `1px solid ${tokens.border}` : 'none',
+                }}>
+                  <span style={{ fontSize: 18, color: flagColor }}>{flag}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13 }}>{cLabel}</div>
+                    <div style={{ fontSize: 11, color: tokens.muted }}>
+                      {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
+                    </div>
+                  </div>
+                  <ToggleSwitch tokens={tokens} value={activeCountries.has(code)}
+                    onChange={v => { if (!holidayWorking) toggleCountry(code, fn, v) }} />
+                </div>
+              )
+            })}
+          </div>
+          {activeCountries.size > 0 && (
+            <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+              Added to your personal calendar. Toggle off to remove.
+            </div>
+          )}
         </div>
 
         <div style={{ marginBottom: 18 }}>

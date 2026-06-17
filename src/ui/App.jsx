@@ -22,6 +22,7 @@ import {
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
   formatTime, formatRelativeTime, todayStr, dateStr,
+  getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   useProfile, useRsvps, useGroups, useEvents,
   emitter, Tour,
 } from '../ui-shared/index.js'
@@ -2063,154 +2064,6 @@ function compressAvatar (file) {
 }
 
 // ─── Calendar Tab ─────────────────────────────────────────────────────────────
-
-// ─── Holiday Helpers ──────────────────────────────────────────────────────────
-function computeEaster (year) {
-  const a = year % 19
-  const b = Math.floor(year / 100)
-  const c = year % 100
-  const d = Math.floor(b / 4)
-  const e = b % 4
-  const f = Math.floor((b + 8) / 25)
-  const g = Math.floor((b - f + 1) / 3)
-  const h = (19 * a + b - d - g + 15) % 30
-  const i = Math.floor(c / 4)
-  const k = c % 4
-  const l = (32 + 2 * e + 2 * i - h - k) % 7
-  const m = Math.floor((a + 11 * h + 22 * l) / 451)
-  const month = Math.floor((h + l - 7 * m + 114) / 31)
-  const day = ((h + l - 7 * m + 114) % 31) + 1
-  return { month, day }
-}
-
-
-
-// ─── US Federal Holidays ──────────────────────────────────────────────────────
-function getUSFederalHolidays (year) {
-  function pad (n) { return String(n).padStart(2, '0') }
-  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
-  // Observed date: Sat→Fri, Sun→Mon
-  function observed (y, m, d) {
-    const dow = new Date(y, m - 1, d).getDay()
-    if (dow === 6) return ymd(y, m, d - 1)
-    if (dow === 0) return ymd(y, m, d + 1)
-    return ymd(y, m, d)
-  }
-  // Nth weekday of month: e.g. nthWeekday(year,1,1,3) = 3rd Monday of Jan
-  function nthWeekday (y, m, weekday, n) {
-    let d = 1
-    const first = new Date(y, m - 1, 1).getDay()
-    d += (weekday - first + 7) % 7
-    d += (n - 1) * 7
-    return ymd(y, m, d)
-  }
-  // Last weekday of month
-  function lastWeekday (y, m, weekday) {
-    const last = new Date(y, m, 0).getDate()
-    const lastDow = new Date(y, m - 1, last).getDay()
-    const d = last - ((lastDow - weekday + 7) % 7)
-    return ymd(y, m, d)
-  }
-  return [
-    { title: "New Year's Day",               date: observed(year, 1,  1)  },
-    { title: 'Martin Luther King Jr. Day',   date: nthWeekday(year, 1, 1, 3) },
-    { title: "Presidents' Day",              date: nthWeekday(year, 2, 1, 3) },
-    { title: 'Memorial Day',                 date: lastWeekday(year, 5, 1)   },
-    { title: 'Juneteenth',                   date: observed(year, 6, 19) },
-    { title: 'Independence Day',             date: observed(year, 7,  4) },
-    { title: 'Labor Day',                    date: nthWeekday(year, 9, 1, 1) },
-    { title: 'Columbus Day',                 date: nthWeekday(year, 10, 1, 2)},
-    { title: 'Veterans Day',                 date: observed(year, 11, 11) },
-    { title: 'Thanksgiving Day',             date: nthWeekday(year, 11, 4, 4)},
-    { title: 'Christmas Day',                date: observed(year, 12, 25) },
-  ]
-}
-
-function getCanadaHolidays (year) {
-  function pad (n) { return String(n).padStart(2, '0') }
-  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
-  function observed (y, m, d) {
-    const dow = new Date(y, m - 1, d).getDay()
-    if (dow === 6) return ymd(y, m, d - 1)
-    if (dow === 0) return ymd(y, m, d + 1)
-    return ymd(y, m, d)
-  }
-  function nthWeekday (y, m, weekday, n) {
-    const first = new Date(y, m - 1, 1).getDay()
-    let d = 1 + (weekday - first + 7) % 7 + (n - 1) * 7
-    return ymd(y, m, d)
-  }
-  const { month: em, day: ed } = computeEaster(year)
-  const easter = new Date(year, em - 1, ed)
-  function easterOffset (days) {
-    const d = new Date(easter); d.setDate(d.getDate() + days)
-    return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate())
-  }
-  function victoriaDay () {
-    const dow = new Date(year, 4, 24).getDay()
-    return ymd(year, 5, 24 - ((dow - 1 + 7) % 7))
-  }
-  return [
-    { title: "New Year's Day",                            date: observed(year, 1,  1)  },
-    { title: 'Good Friday',                               date: easterOffset(-2)       },
-    { title: 'Victoria Day',                              date: victoriaDay()          },
-    { title: 'Canada Day',                                date: observed(year, 7,  1)  },
-    { title: 'Labour Day',                                date: nthWeekday(year, 9, 1, 1) },
-    { title: 'National Day for Truth and Reconciliation', date: observed(year, 9, 30)  },
-    { title: 'Thanksgiving',                              date: nthWeekday(year, 10, 1, 2) },
-    { title: 'Remembrance Day',                           date: observed(year, 11, 11) },
-    { title: 'Christmas Day',                             date: observed(year, 12, 25) },
-    { title: 'Boxing Day',                                date: observed(year, 12, 26) },
-  ]
-}
-
-function getBitcoinHolidays (year) {
-  function pad (n) { return String(n).padStart(2, '0') }
-  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
-  return [
-    { title: 'Genesis Block Day',      date: ymd(year,  1,  3) },
-    { title: 'Hal Finney Day',         date: ymd(year,  1, 12) },
-    { title: 'Bitcoin Pizza Day',      date: ymd(year,  5, 22) },
-    { title: 'Bitcoin Whitepaper Day', date: ymd(year, 10, 31) },
-  ]
-}
-
-function getUKHolidays (year) {
-  function pad (n) { return String(n).padStart(2, '0') }
-  function ymd (y, m, d) { return `${y}-${pad(m)}-${pad(d)}` }
-  function observed (y, m, d) {
-    const dow = new Date(y, m - 1, d).getDay()
-    if (dow === 6) return ymd(y, m, d - 1)
-    if (dow === 0) return ymd(y, m, d + 1)
-    return ymd(y, m, d)
-  }
-  function nthWeekday (y, m, weekday, n) {
-    const first = new Date(y, m - 1, 1).getDay()
-    let d = 1 + (weekday - first + 7) % 7 + (n - 1) * 7
-    return ymd(y, m, d)
-  }
-  function lastWeekday (y, m, weekday) {
-    const last = new Date(y, m, 0).getDate()
-    const lastDow = new Date(y, m - 1, last).getDay()
-    return ymd(y, m, last - ((lastDow - weekday + 7) % 7))
-  }
-  const { month: em, day: ed } = computeEaster(year)
-  const easter = new Date(year, em - 1, ed)
-  function easterOffset (days) {
-    const d = new Date(easter); d.setDate(d.getDate() + days)
-    return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate())
-  }
-  return [
-    { title: "New Year's Day",          date: observed(year, 1, 1)     },
-    { title: 'Good Friday',             date: easterOffset(-2)         },
-    { title: 'Easter Monday',           date: easterOffset(1)          },
-    { title: 'Early May Bank Holiday',  date: nthWeekday(year, 5, 1, 1)},
-    { title: 'Spring Bank Holiday',     date: lastWeekday(year, 5, 1)  },
-    { title: 'Summer Bank Holiday',     date: lastWeekday(year, 8, 1)  },
-    { title: 'Christmas Day',           date: observed(year, 12, 25)   },
-    { title: 'Boxing Day',              date: observed(year, 12, 26)   },
-  ]
-}
 
 // ─── Week View ───────────────────────────────────────────────────────────────
 function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, todayStr, dateStr,
@@ -6904,13 +6757,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         const thisYear = new Date().getFullYear()
         const slug = t => t.replace(/\s+/g, '-').toLowerCase()
         const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
-        const allCountries = [
-          { code:'us',  flag:'🇺🇸', label:'United States', fn: getUSFederalHolidays },
-          { code:'ca',  flag:'🇨🇦', label:'Canada',         fn: getCanadaHolidays   },
-          { code:'uk',  flag:'🇬🇧', label:'United Kingdom', fn: getUKHolidays       },
-          { code:'btc', flag:'₿',  label:'Bitcoin',        fn: getBitcoinHolidays,
-            color:'#F7931A', desc:'Bitcoin Holiday' },
-        ]
+        const allCountries = HOLIDAY_COUNTRIES
         // Toggle state tracked explicitly in profile to avoid shared-ID false positives
         const activeCountries = new Set(profile?.holidayCountries ?? [])
 
@@ -6918,6 +6765,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           setHolidayWorking(true)
           const meta = allCountries.find(c => c.code === code)
           const color = meta?.color ?? '#CF3535'
+          const colors = meta?.colors ?? []
           const desc  = meta?.desc  ?? 'Public Holiday'
           const newActive = new Set(activeCountries)
           if (on) {
@@ -6933,7 +6781,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 const ev = {
                   id, title: h.title, date: h.date, allDay: true,
                   start: '00:00', end: '00:00', reminder: -1,
-                  groups: [], invitees: [], color,
+                  groups: [], invitees: [], color, colors,
                   desc, location: '',
                   creatorId: 'system', recurrence: 'none',
                   recurrenceId: '', recurrenceEnd: '', recurrenceNth: 0, recurrenceWeekday: 0,

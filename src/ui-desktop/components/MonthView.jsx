@@ -4,7 +4,7 @@
 // setMode at the App level via the prop).
 
 import { useMemo } from 'react'
-import { derivedEventColors } from '../../ui-shared/index.js'
+import { derivedEventColors, leftStripeStyle } from '../../ui-shared/index.js'
 import { buildRowItems, packLanes, overflowByColumn } from '../lib/multiDayLanes.js'
 
 const DOW_FULL = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat']
@@ -165,18 +165,24 @@ function WeekRow ({ tokens, cells, today, selectedDate, events, groupsById, myRs
                   onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
                   style={{
                     gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`,
-                    margin: '0 3px', pointerEvents: 'auto',
-                    fontSize: 11, lineHeight: `${LANE_H}px`, padding: '0 6px',
-                    background: colors[0] ?? tokens.muted,
-                    color: tokens.bg,
-                    borderTopLeftRadius: seg.continuesLeft ? 0 : 2,
-                    borderBottomLeftRadius: seg.continuesLeft ? 0 : 2,
-                    borderTopRightRadius: seg.continuesRight ? 0 : 2,
-                    borderBottomRightRadius: seg.continuesRight ? 0 : 2,
+                    margin: '0 3px', pointerEvents: 'auto', boxSizing: 'border-box',
+                    fontSize: 11, lineHeight: `${LANE_H - 2}px`, padding: '0 6px 0 8px',
+                    // Color lives in a left-edge stripe over a solid surface so
+                    // the title stays legible (multi-color events like US
+                    // holidays' red/white/blue show all segments in the stripe).
+                    // Matches the Day/Week event treatment.
+                    background: tokens.surface,
+                    border: `1px solid ${tokens.border}`,
+                    color: tokens.text,
+                    borderTopLeftRadius: seg.continuesLeft ? 0 : 3,
+                    borderBottomLeftRadius: seg.continuesLeft ? 0 : 3,
+                    borderTopRightRadius: seg.continuesRight ? 0 : 3,
+                    borderBottomRightRadius: seg.continuesRight ? 0 : 3,
                     whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     opacity: declined ? 0.5 : 1,
                     textDecoration: declined ? 'line-through' : 'none',
                     cursor: 'pointer',
+                    ...leftStripeStyle(colors, 3),
                   }}>
                   {seg.continuesLeft ? '◂ ' : ''}{ev.title}
                 </div>
