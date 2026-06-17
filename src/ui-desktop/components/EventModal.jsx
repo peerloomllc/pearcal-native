@@ -98,9 +98,16 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
     setStart(newStart)
     setEnd(fromMin(toMin(newStart) + oldDuration))
   }
+  // All-day events may span multiple days. We store the inclusive end day in
+  // `endDate`; '' means single-day. Only surfaced for all-day, non-recurring
+  // events (matches the mobile UI).
+  const [endDate,  setEndDate]  = useState(initial?.endDate ?? '')
   const [groupIds, setGroupIds] = useState(initial?.groups ?? [])
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
+
+  const isRecurring = !!initial?.recurrenceId || (initial?.recurrence ?? 'none') !== 'none'
+  const showEndDate = allDay && !isRecurring
 
   const titleRef = useRef(null)
   useEffect(() => { titleRef.current?.focus() }, [])
@@ -141,11 +148,19 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       recurrenceNth:     initial?.recurrenceNth ?? 0,
       recurrenceWeekday: initial?.recurrenceWeekday ?? 0,
       editPermission:    initial?.editPermission ?? 'creator',
-      endDate:           initial?.endDate ?? '',
+      // Persist the chosen end day only for multi-day all-day events; a timed
+      // event or a single-day all-day event clears it back to ''.
+      endDate:           (showEndDate && endDate && endDate !== date) ? endDate : '',
       rsvpEnabled:       initial?.rsvpEnabled ?? false,
     }
     const opts = {}
     if (mode === 'edit' && initial?.date && initial.date !== date) opts._prevDate = initial.date
+    // New events inherit the profile's default reminder (matches mobile). The
+    // negative fixed-time options aren't auto-applied — only real offsets.
+    if (mode === 'create') {
+      const dr = typeof profile?.defaultReminder === 'number' ? profile.defaultReminder : 15
+      if (dr > 0) opts.reminders = [dr]
+    }
     onSave(ev, opts)
   }
 
@@ -235,6 +250,15 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
               <div style={label}>End</div>
               <TimeSelect tokens={tokens} value={end} use24h={use24h} onChange={setEnd} />
             </div>
+          </div>
+        )}
+
+        {showEndDate && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>End date</div>
+            <input type="date" value={endDate || date} min={date}
+                   onChange={e => setEndDate(e.target.value === date ? '' : e.target.value)}
+                   style={inputBase} />
           </div>
         )}
 

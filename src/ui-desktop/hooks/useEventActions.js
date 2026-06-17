@@ -13,7 +13,22 @@ export function useEventActions ({ db, notifs, sync, profile, events, setEvents 
 
   const saveEvent = useCallback((ev, opts = {}) => {
     const { _prevDate } = opts
-    const reminders = opts.reminders ?? []
+    // opts.reminders is set on create (the profile default). On edit it's
+    // undefined: re-read any existing reminders so the notification gets
+    // rescheduled against the event's new time instead of silently dropped.
+    const explicitReminders = opts.reminders
+
+    async function applyReminders (occ) {
+      let reminders = explicitReminders
+      if (reminders === undefined) {
+        reminders = await db.getReminders(occ.id).catch(() => [])
+      }
+      await notifs?.cancelForEvent(occ.id).catch(() => {})
+      if (reminders && reminders.length) {
+        await db.putReminders(occ.id, reminders).catch(() => {})
+        await notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+      }
+    }
 
     // Expand recurring events into individual occurrences (new series only —
     // edit-an-occurrence stays a single record).
@@ -46,9 +61,7 @@ export function useEventActions ({ db, notifs, sync, profile, events, setEvents 
     }
     for (const occ of withAuthor) {
       db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
-      if (reminders.length) db.putReminders(occ.id, reminders).catch(() => {})
-      notifs?.cancelForEvent(occ.id).catch(() => {})
-      if (reminders.length) notifs?.scheduleForEvent(occ, reminders).catch(() => {})
+      applyReminders(occ)
       const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
       for (const gid of occ.groups ?? []) {
         sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))

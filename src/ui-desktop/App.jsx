@@ -589,6 +589,8 @@ export default function App ({ db, notifs, sync }) {
           updateProfile={updateProfile}
           db={db}
           sync={sync}
+          events={events}
+          setEvents={setEvents}
           onOpenLinkedDevices={openLinkedDevices}
           onClose={() => setSettingsOpen(false)}
         />

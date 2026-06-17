@@ -23,6 +23,15 @@ export {
   FOREVER_INITIAL_WINDOW_MONTHS,
 } from './lib/recurring.js'
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
+export {
+  computeEaster,
+  getUSFederalHolidays,
+  getCanadaHolidays,
+  getBitcoinHolidays,
+  getUKHolidays,
+  HOLIDAY_COUNTRIES,
+  holidayEventId,
+} from './lib/holidays.js'
 
 export { useProfile } from './hooks/useProfile.js'
 export { useRsvps } from './hooks/useRsvps.js'
