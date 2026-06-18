@@ -242,10 +242,14 @@ function queueSyncNotify (data: any) {
     tab:   data?.tab   ?? '',
     groupSettingsId: data?.groupSettingsId,
   })
-  // Bypass the coalesce window for one-off important alerts (rejoin requests, etc).
-  // Otherwise Android doze / backgrounded setTimeout throttling can delay the post
-  // by minutes, and the owner misses the cue that someone is waiting.
-  if (data?.immediate) {
+  // Bypass the coalesce window for one-off important alerts (rejoin requests, etc),
+  // AND whenever we're not in the foreground. The coalesce relies on a JS
+  // setTimeout, but RN freezes JS timers while the app is backgrounded — so a
+  // deferred flush never runs until the app is foregrounded again, which is
+  // exactly why background sync notifications didn't fire until you opened the
+  // app (#100). Posting synchronously here works because the syncNotify handler
+  // itself still runs in the background (the worklet keeps applying remote ops).
+  if (data?.immediate || AppState.currentState !== 'active') {
     if (_syncNotifyTimer) { clearTimeout(_syncNotifyTimer); _syncNotifyTimer = null }
     flushSyncNotify()
     return
@@ -876,6 +880,19 @@ webViewRef.current?.injectJavaScript(
       if (state === 'active' && dbReadyRef.current) {
         sendToWorklet({ method: 'foregroundSync', id: -98, args: [] })
         sendToWorklet({ method: 'refreshWidgetCache', id: -97, args: [] })
+      } else if (state === 'background' && Platform.OS === 'android') {
+        // react-native-bare-kit registers a global AppState listener that
+        // suspend()s the worklet on 'background' (node_modules/react-native-bare-kit
+        // /index.js: AppState 'change' → update('background') → suspend()). That
+        // freezes the Bare event loop — the 15s sync tick stops, remote group ops
+        // stop replicating/applying, and no syncNotify fires until the next
+        // foreground catch-up (#100). We run BareService (a foreground service) +
+        // a wake lock specifically to keep syncing in the background, so undo the
+        // auto-suspend by resuming. Deferred to the next tick so it lands after
+        // BareKit's synchronous suspend handler (which is registered earlier, at
+        // module import, and so fires first). Android only — iOS genuinely
+        // suspends the process in the background and has no foreground-service path.
+        setTimeout(() => { try { _worklet?.resume() } catch (e) {} }, 0)
       }
     })
     return () => sub.remove()
