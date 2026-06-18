@@ -313,39 +313,6 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           )}
         </div>
 
-        <div style={{ marginBottom: 18 }}>
-          <div style={label}>Recovery phrase</div>
-          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
-            Twelve words that recover your identity on a new device. Anyone with this phrase can impersonate you.
-            Write it down somewhere safe; do not share it.
-          </div>
-          {phrase != null && phrase !== '' && (
-            <div style={{
-              padding: '10px 12px', borderRadius: 5,
-              background: tokens.bg, border: `1px solid ${tokens.border}`,
-              fontFamily: 'ui-monospace, monospace', fontSize: 13,
-              lineHeight: 1.7, marginBottom: 8, userSelect: 'text',
-            }}>{phrase}</div>
-          )}
-          {phraseErr && (
-            <div style={{ fontSize: 12, color: '#C0504A', marginBottom: 8 }}>{phraseErr}</div>
-          )}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={revealPhrase}
-                    disabled={phrase === ''}
-                    style={{ ...btnBase, flex: 1, opacity: phrase === '' ? 0.5 : 1 }}>
-              {phrase === ''      ? 'Loading…'
-               : phrase != null   ? 'Hide phrase'
-               :                    'Reveal phrase'}
-            </button>
-            {phrase && (
-              <button onClick={copyPhrase} style={{ ...btnBase, flex: 1 }}>
-                {phraseCopied ? '✓ Copied' : 'Copy phrase'}
-              </button>
-            )}
-          </div>
-        </div>
-
         {onOpenLinkedDevices && (
           <div style={{ marginBottom: 18 }}>
             <div style={label}>Linked devices</div>
