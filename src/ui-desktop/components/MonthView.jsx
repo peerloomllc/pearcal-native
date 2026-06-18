@@ -165,6 +165,13 @@ function WeekRow ({ tokens, cells, today, selectedDate, events, groupsById, myRs
                   onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
                   style={{
                     gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`,
+                    // Pin to row 1: segments carry an explicit gridColumn but no
+                    // gridRow, so when a lane's cards aren't in ascending column
+                    // order (e.g. an all-day holiday sorts ahead of earlier-column
+                    // single-day events), grid's sparse auto-flow wraps the
+                    // out-of-order cards into a 2nd implicit row, splitting the
+                    // fixed LANE_H in half and squishing every chip to a sliver.
+                    gridRow: 1,
                     margin: '0 3px', pointerEvents: 'auto', boxSizing: 'border-box',
                     fontSize: 11, lineHeight: `${LANE_H - 2}px`, padding: '0 6px 0 8px',
                     // Color lives in a left-edge stripe over a solid surface so
