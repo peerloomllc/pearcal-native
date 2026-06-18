@@ -248,6 +248,10 @@ function AllDayRow ({ tokens, days, today, events, groupsById, myRsvps, interact
                     onContextMenu={(e) => { e.stopPropagation(); e.preventDefault(); interactions.onEventContextMenu?.(ev, e.clientX, e.clientY) }}
                     style={{
                       gridColumn: `${seg.startCol + 1} / ${seg.endCol + 2}`,
+                      // Pin to row 1 so out-of-column-order cards (e.g. an all-day
+                      // holiday packed ahead of earlier-column events) don't get
+                      // wrapped into a 2nd implicit grid row. See MonthView.
+                      gridRow: 1,
                       margin: '0 4px', padding: '2px 6px',
                       background: tokens.surface, border: `1px solid ${tokens.border}`,
                       borderTopLeftRadius: seg.continuesLeft ? 0 : 3,
