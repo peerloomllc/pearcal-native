@@ -106,8 +106,51 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
 
-  const isRecurring = !!initial?.recurrenceId || (initial?.recurrence ?? 'none') !== 'none'
+  // Recurrence (parity with mobile — TODO #102). "Custom…" is a UI mode stored
+  // as a unit cadence + recurrenceInterval. Editing an existing occurrence
+  // prompts for scope (this / future / all) before saving.
+  const [recurrence,   setRecurrence]   = useState(initial?.recurrence ?? 'none')
+  const [recInterval,  setRecInterval]  = useState(initial?.recurrenceInterval ?? 1)
+  const [recEnd,       setRecEnd]       = useState(initial?.recurrenceEnd ?? '')
+  const [repeatForever, setRepeatForever] = useState(!!initial?.repeatForever)
+  const [recNth,       setRecNth]       = useState(initial?.recurrenceNth ?? 0)
+  const [recWeekday,   setRecWeekday]   = useState(initial?.recurrenceWeekday ?? 0)
+  const [customMode,   setCustomMode]   = useState((initial?.recurrenceInterval ?? 1) > 1)
+  const [intervalDraft, setIntervalDraft] = useState(null)
+  const [scopePrompt,  setScopePrompt]  = useState(null)  // pending {ev, opts} for a series edit
+
+  const isRecurring = recurrence !== 'none'
   const showEndDate = allDay && !isRecurring
+
+  function defaultRecEnd () {
+    if (!date) return ''
+    const [y, m, d] = date.split('-').map(Number)
+    const end = new Date(y + 1, m - 1, d)
+    return String(end.getFullYear()) + '-' + String(end.getMonth() + 1).padStart(2, '0') + '-' + String(end.getDate()).padStart(2, '0')
+  }
+  function handleFreqChange (val) {
+    if (val === 'custom') {
+      setCustomMode(true)
+      if (!['daily', 'weekly', 'monthly', 'yearly'].includes(recurrence)) setRecurrence('daily')
+      if (!(recInterval > 1)) setRecInterval(2)
+      setIntervalDraft(null)
+      if (!recEnd && !repeatForever) setRecEnd(defaultRecEnd())
+      return
+    }
+    setCustomMode(false)
+    setIntervalDraft(null)
+    if (val === 'none') { setRecurrence('none'); return }
+    setRecInterval(1)
+    setRecurrence(val)
+    if (!recEnd && !repeatForever) setRecEnd(defaultRecEnd())
+    if (val === 'monthly-nth' && date) {
+      const dt = new Date(date + 'T12:00:00')
+      const weekday = dt.getDay()
+      let nth = 0; const tmp = new Date(dt.getFullYear(), dt.getMonth(), 1)
+      while (tmp <= dt) { if (tmp.getDay() === weekday) nth++; tmp.setDate(tmp.getDate() + 1) }
+      setRecNth(nth); setRecWeekday(weekday)
+    }
+  }
 
   const titleRef = useRef(null)
   useEffect(() => { titleRef.current?.focus() }, [])
@@ -142,11 +185,13 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       color:       initial?.color ?? '',
       colors:      initial?.colors ?? [],
       creatorId:   initial?.creatorId ?? profile?.id ?? 'unknown',
-      recurrence:        initial?.recurrence ?? 'none',
+      recurrence,
       recurrenceId:      initial?.recurrenceId ?? '',
-      recurrenceEnd:     initial?.recurrenceEnd ?? '',
-      recurrenceNth:     initial?.recurrenceNth ?? 0,
-      recurrenceWeekday: initial?.recurrenceWeekday ?? 0,
+      recurrenceEnd:     recurrence === 'none' ? '' : (repeatForever ? '' : recEnd),
+      recurrenceNth:     recNth,
+      recurrenceWeekday: recWeekday,
+      recurrenceInterval: recurrence === 'none' ? 1 : recInterval,
+      repeatForever:     recurrence === 'none' ? false : repeatForever,
       editPermission:    initial?.editPermission ?? 'creator',
       // Persist the chosen end day only for multi-day all-day events; a timed
       // event or a single-day all-day event clears it back to ''.
@@ -161,6 +206,9 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       const dr = typeof profile?.defaultReminder === 'number' ? profile.defaultReminder : 15
       if (dr > 0) opts.reminders = [dr]
     }
+    // Editing one occurrence of a series → ask whether to apply to this / future
+    // / all before committing (the chosen scope drives regeneration upstream).
+    if (mode === 'edit' && initial?.recurrenceId) { setScopePrompt({ ev, opts }); return }
     onSave(ev, opts)
   }
 
@@ -262,6 +310,69 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
           </div>
         )}
 
+        {/* Recurrence (parity with mobile — TODO #102) */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={label}>Repeat</div>
+          <select value={customMode ? 'custom' : recurrence}
+                  onChange={e => handleFreqChange(e.target.value)} style={inputBase}>
+            <option value="none">Does not repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekly">Weekly</option>
+            <option value="biweekly">Every 2 weeks</option>
+            <option value="monthly">Monthly (same date)</option>
+            <option value="monthly-nth">Monthly (same weekday)</option>
+            <option value="yearly">Yearly</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </div>
+
+        {customMode && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Every</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="number" min="1" max="999" inputMode="numeric"
+                     style={{ ...inputBase, width: 90 }}
+                     value={intervalDraft != null ? intervalDraft : String(recInterval)}
+                     onChange={e => {
+                       const raw = e.target.value
+                       setIntervalDraft(raw)
+                       const parsed = parseInt(raw, 10)
+                       if (Number.isFinite(parsed) && parsed >= 1) setRecInterval(Math.min(999, parsed))
+                     }}
+                     onBlur={() => {
+                       const parsed = parseInt(intervalDraft ?? '', 10)
+                       setRecInterval(Number.isFinite(parsed) ? Math.max(1, Math.min(999, parsed)) : 1)
+                       setIntervalDraft(null)
+                     }} />
+              <select value={recurrence} onChange={e => setRecurrence(e.target.value)}
+                      style={{ ...inputBase, flex: 1 }}>
+                <option value="daily">{recInterval === 1 ? 'day' : 'days'}</option>
+                <option value="weekly">{recInterval === 1 ? 'week' : 'weeks'}</option>
+                <option value="monthly">{recInterval === 1 ? 'month' : 'months'}</option>
+                <option value="yearly">{recInterval === 1 ? 'year' : 'years'}</option>
+              </select>
+            </div>
+          </div>
+        )}
+
+        {isRecurring && (
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13,
+                            color: tokens.text, cursor: 'pointer', marginBottom: repeatForever ? 0 : 8 }}>
+              <input type="checkbox" checked={repeatForever}
+                     onChange={e => setRepeatForever(e.target.checked)} />
+              Repeat forever
+            </label>
+            {!repeatForever && (
+              <>
+                <div style={label}>Repeat until</div>
+                <input type="date" value={recEnd} min={date}
+                       onChange={e => setRecEnd(e.target.value)} style={inputBase} />
+              </>
+            )}
+          </div>
+        )}
+
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Groups</div>
           {groups.length === 0 && (
@@ -317,6 +428,34 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
             cursor:  (!title.trim() || !date) ? 'default' : 'pointer',
           }}>{mode === 'edit' ? 'Save' : 'Create'}</button>
         </div>
+
+        {/* Series-edit scope chooser (parity with mobile's bottom sheet) */}
+        {scopePrompt && (
+          <div onClick={() => setScopePrompt(null)}
+               style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 110,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div onClick={e => e.stopPropagation()}
+                 style={{ background: tokens.surface, border: `1px solid ${tokens.border}`,
+                          borderRadius: 10, padding: 20, width: 320, maxWidth: '90vw',
+                          boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+              <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>Apply changes to…</div>
+              <div style={{ fontSize: 12, color: tokens.muted, marginBottom: 14 }}>
+                This is a repeating event.
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[['one', 'This event only'], ['future', 'This and following events'], ['all', 'All events in the series']].map(([s, lbl]) => (
+                  <button key={s}
+                          onClick={() => { const p = scopePrompt; setScopePrompt(null); onSave(p.ev, { ...p.opts, scope: s }) }}
+                          style={{ ...btnBase, textAlign: 'left', padding: '9px 12px' }}>
+                    {lbl}
+                  </button>
+                ))}
+                <button onClick={() => setScopePrompt(null)}
+                        style={{ ...btnBase, textAlign: 'center', marginTop: 4, opacity: 0.7 }}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -14738,10 +14738,11 @@
     return new Date(y, m3 - 1, d);
   };
   function stepRecurrenceDate(cur, ev2) {
-    if (ev2.recurrence === "daily") cur.setDate(cur.getDate() + 1);
-    else if (ev2.recurrence === "weekly") cur.setDate(cur.getDate() + 7);
+    const n17 = Math.max(1, Math.floor(Number(ev2.recurrenceInterval)) || 1);
+    if (ev2.recurrence === "daily") cur.setDate(cur.getDate() + n17);
+    else if (ev2.recurrence === "weekly") cur.setDate(cur.getDate() + 7 * n17);
     else if (ev2.recurrence === "biweekly") cur.setDate(cur.getDate() + 14);
-    else if (ev2.recurrence === "monthly") cur.setMonth(cur.getMonth() + 1);
+    else if (ev2.recurrence === "monthly") cur.setMonth(cur.getMonth() + n17);
     else if (ev2.recurrence === "monthly-nth") {
       cur.setDate(1);
       cur.setMonth(cur.getMonth() + 1);
@@ -14755,7 +14756,7 @@
         }
         cur.setDate(cur.getDate() + 1);
       }
-    } else if (ev2.recurrence === "yearly") cur.setFullYear(cur.getFullYear() + 1);
+    } else if (ev2.recurrence === "yearly") cur.setFullYear(cur.getFullYear() + n17);
   }
   function expandRecurring(ev2) {
     if (!ev2.recurrence || ev2.recurrence === "none") return [ev2];
@@ -14803,6 +14804,150 @@
   function dateStr(y, m3, d) {
     return `${y}-${String(m3 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
   }
+
+  // src/ui-shared/lib/holidays.js
+  function pad(n17) {
+    return String(n17).padStart(2, "0");
+  }
+  function ymd(y, m3, d) {
+    return `${y}-${pad(m3)}-${pad(d)}`;
+  }
+  function computeEaster(year) {
+    const a38 = year % 19;
+    const b = Math.floor(year / 100);
+    const c8 = year % 100;
+    const d = Math.floor(b / 4);
+    const e58 = b % 4;
+    const f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3);
+    const h2 = (19 * a38 + b - d - g + 15) % 30;
+    const i2 = Math.floor(c8 / 4);
+    const k = c8 % 4;
+    const l7 = (32 + 2 * e58 + 2 * i2 - h2 - k) % 7;
+    const m3 = Math.floor((a38 + 11 * h2 + 22 * l7) / 451);
+    const month = Math.floor((h2 + l7 - 7 * m3 + 114) / 31);
+    const day = (h2 + l7 - 7 * m3 + 114) % 31 + 1;
+    return { month, day };
+  }
+  function getUSFederalHolidays(year) {
+    function observed(y, m3, d) {
+      const dow = new Date(y, m3 - 1, d).getDay();
+      if (dow === 6) return ymd(y, m3, d - 1);
+      if (dow === 0) return ymd(y, m3, d + 1);
+      return ymd(y, m3, d);
+    }
+    function nthWeekday(y, m3, weekday, n17) {
+      let d = 1;
+      const first = new Date(y, m3 - 1, 1).getDay();
+      d += (weekday - first + 7) % 7;
+      d += (n17 - 1) * 7;
+      return ymd(y, m3, d);
+    }
+    function lastWeekday(y, m3, weekday) {
+      const last = new Date(y, m3, 0).getDate();
+      const lastDow = new Date(y, m3 - 1, last).getDay();
+      const d = last - (lastDow - weekday + 7) % 7;
+      return ymd(y, m3, d);
+    }
+    return [
+      { title: "New Year's Day", date: observed(year, 1, 1) },
+      { title: "Martin Luther King Jr. Day", date: nthWeekday(year, 1, 1, 3) },
+      { title: "Presidents' Day", date: nthWeekday(year, 2, 1, 3) },
+      { title: "Memorial Day", date: lastWeekday(year, 5, 1) },
+      { title: "Juneteenth", date: observed(year, 6, 19) },
+      { title: "Independence Day", date: observed(year, 7, 4) },
+      { title: "Labor Day", date: nthWeekday(year, 9, 1, 1) },
+      { title: "Columbus Day", date: nthWeekday(year, 10, 1, 2) },
+      { title: "Veterans Day", date: observed(year, 11, 11) },
+      { title: "Thanksgiving Day", date: nthWeekday(year, 11, 4, 4) },
+      { title: "Christmas Day", date: observed(year, 12, 25) }
+    ];
+  }
+  function getCanadaHolidays(year) {
+    function observed(y, m3, d) {
+      const dow = new Date(y, m3 - 1, d).getDay();
+      if (dow === 6) return ymd(y, m3, d - 1);
+      if (dow === 0) return ymd(y, m3, d + 1);
+      return ymd(y, m3, d);
+    }
+    function nthWeekday(y, m3, weekday, n17) {
+      const first = new Date(y, m3 - 1, 1).getDay();
+      let d = 1 + (weekday - first + 7) % 7 + (n17 - 1) * 7;
+      return ymd(y, m3, d);
+    }
+    const { month: em, day: ed } = computeEaster(year);
+    const easter = new Date(year, em - 1, ed);
+    function easterOffset(days) {
+      const d = new Date(easter);
+      d.setDate(d.getDate() + days);
+      return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+    function victoriaDay() {
+      const dow = new Date(year, 4, 24).getDay();
+      return ymd(year, 5, 24 - (dow - 1 + 7) % 7);
+    }
+    return [
+      { title: "New Year's Day", date: observed(year, 1, 1) },
+      { title: "Good Friday", date: easterOffset(-2) },
+      { title: "Victoria Day", date: victoriaDay() },
+      { title: "Canada Day", date: observed(year, 7, 1) },
+      { title: "Labour Day", date: nthWeekday(year, 9, 1, 1) },
+      { title: "National Day for Truth and Reconciliation", date: observed(year, 9, 30) },
+      { title: "Thanksgiving", date: nthWeekday(year, 10, 1, 2) },
+      { title: "Remembrance Day", date: observed(year, 11, 11) },
+      { title: "Christmas Day", date: observed(year, 12, 25) },
+      { title: "Boxing Day", date: observed(year, 12, 26) }
+    ];
+  }
+  function getBitcoinHolidays(year) {
+    return [
+      { title: "Genesis Block Day", date: ymd(year, 1, 3) },
+      { title: "Hal Finney Day", date: ymd(year, 1, 12) },
+      { title: "Bitcoin Pizza Day", date: ymd(year, 5, 22) },
+      { title: "Bitcoin Whitepaper Day", date: ymd(year, 10, 31) }
+    ];
+  }
+  function getUKHolidays(year) {
+    function observed(y, m3, d) {
+      const dow = new Date(y, m3 - 1, d).getDay();
+      if (dow === 6) return ymd(y, m3, d - 1);
+      if (dow === 0) return ymd(y, m3, d + 1);
+      return ymd(y, m3, d);
+    }
+    function nthWeekday(y, m3, weekday, n17) {
+      const first = new Date(y, m3 - 1, 1).getDay();
+      let d = 1 + (weekday - first + 7) % 7 + (n17 - 1) * 7;
+      return ymd(y, m3, d);
+    }
+    function lastWeekday(y, m3, weekday) {
+      const last = new Date(y, m3, 0).getDate();
+      const lastDow = new Date(y, m3 - 1, last).getDay();
+      return ymd(y, m3, last - (lastDow - weekday + 7) % 7);
+    }
+    const { month: em, day: ed } = computeEaster(year);
+    const easter = new Date(year, em - 1, ed);
+    function easterOffset(days) {
+      const d = new Date(easter);
+      d.setDate(d.getDate() + days);
+      return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+    return [
+      { title: "New Year's Day", date: observed(year, 1, 1) },
+      { title: "Good Friday", date: easterOffset(-2) },
+      { title: "Easter Monday", date: easterOffset(1) },
+      { title: "Early May Bank Holiday", date: nthWeekday(year, 5, 1, 1) },
+      { title: "Spring Bank Holiday", date: lastWeekday(year, 5, 1) },
+      { title: "Summer Bank Holiday", date: lastWeekday(year, 8, 1) },
+      { title: "Christmas Day", date: observed(year, 12, 25) },
+      { title: "Boxing Day", date: observed(year, 12, 26) }
+    ];
+  }
+  var HOLIDAY_COUNTRIES = [
+    { code: "us", flag: "\u{1F1FA}\u{1F1F8}", label: "United States", fn: getUSFederalHolidays, color: "#B22234", colors: ["#B22234", "#FFFFFF", "#3C3B6E"] },
+    { code: "ca", flag: "\u{1F1E8}\u{1F1E6}", label: "Canada", fn: getCanadaHolidays },
+    { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays },
+    { code: "btc", flag: "\u20BF", label: "Bitcoin", fn: getBitcoinHolidays, color: "#F7931A", desc: "Bitcoin Holiday" }
+  ];
 
   // src/ui-shared/hooks/useProfile.js
   var import_react = __toESM(require_react());
@@ -17309,12 +17454,13 @@
       const { _prevDate, _myForwards, ...evClean } = ev2;
       ev2 = evClean;
       const original = events.find((e58) => e58.id === ev2.id);
-      const frequencyChanged = !!ev2.recurrenceId && !!original && (original.recurrence !== ev2.recurrence || (original.recurrenceNth ?? 0) !== (ev2.recurrenceNth ?? 0) || (original.recurrenceWeekday ?? 0) !== (ev2.recurrenceWeekday ?? 0));
+      const frequencyChanged = !!ev2.recurrenceId && !!original && (original.recurrence !== ev2.recurrence || (original.recurrenceNth ?? 0) !== (ev2.recurrenceNth ?? 0) || (original.recurrenceWeekday ?? 0) !== (ev2.recurrenceWeekday ?? 0) || (original.recurrenceInterval ?? 1) !== (ev2.recurrenceInterval ?? 1));
+      const endChanged = !!ev2.recurrenceId && !!original && ((original.recurrenceEnd ?? "") !== (ev2.recurrenceEnd ?? "") || !!original.repeatForever !== !!ev2.repeatForever);
       let occurrences;
       let toDelete = [];
       if (ev2.recurrence && ev2.recurrence !== "none" && (ev2.recurrenceEnd || ev2.repeatForever) && !ev2.recurrenceId) {
         occurrences = expandRecurring(ev2);
-      } else if (frequencyChanged && ev2.recurrenceId && (scope === "future" || scope === "all")) {
+      } else if ((frequencyChanged || endChanged) && ev2.recurrenceId && (scope === "future" || scope === "all")) {
         const seriesOccs = events.filter((e58) => !e58.isShadow && e58.recurrenceId === ev2.recurrenceId);
         let anchorDate = ev2.date;
         if (scope === "all") {
@@ -17352,6 +17498,7 @@
           "repeatForever",
           "recurrenceNth",
           "recurrenceWeekday",
+          "recurrenceInterval",
           "editPermission"
         ];
         const patch = {};
@@ -17450,6 +17597,7 @@
             recurrenceEnd: occ.recurrenceEnd ?? "",
             recurrenceNth: occ.recurrenceNth ?? 0,
             recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+            recurrenceInterval: occ.recurrenceInterval ?? 1,
             groups: [gid],
             invitees: [],
             creatorId: myId,
@@ -17598,6 +17746,7 @@
           recurrenceEnd: src.recurrenceEnd ?? "",
           recurrenceNth: src.recurrenceNth ?? 0,
           recurrenceWeekday: src.recurrenceWeekday ?? 0,
+          recurrenceInterval: src.recurrenceInterval ?? 1,
           color: src.color,
           updatedByName: myName,
           updatedById: myId
@@ -17846,6 +17995,7 @@
         recurrenceEnd: "",
         recurrenceNth: 0,
         recurrenceWeekday: 0,
+        recurrenceInterval: 1,
         editPermission: "creator",
         endDate: "",
         rsvpEnabled: false
@@ -17961,82 +18111,6 @@
           textAlign: "center",
           lineHeight: 1.5
         }, children: "You were removed from this group and cannot rejoin with this link." }),
-        (() => {
-          if (!ready || !profile || backupNudgeDismissed) return null;
-          if (!backupStatus?.local || backupStatus.platformSynced) return null;
-          let sharedGroupCount = 0;
-          const seen = /* @__PURE__ */ new Set();
-          for (const e58 of events) {
-            if (e58?.creatorId !== profile.id) continue;
-            if (!Array.isArray(e58?.groups)) continue;
-            for (const gid of e58.groups) {
-              if (!seen.has(gid)) {
-                seen.add(gid);
-                sharedGroupCount++;
-              }
-            }
-            if (sharedGroupCount >= 1) break;
-          }
-          if (sharedGroupCount < 1) return null;
-          const dismiss = () => {
-            try {
-              localStorage.setItem("pearcal:backupNudgeDismissed", "1");
-            } catch {
-            }
-            setBackupNudgeDismissed(true);
-          };
-          return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-            position: "fixed",
-            top: "calc(var(--safe-area-top) + 8px)",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "calc(100% - 32px)",
-            maxWidth: 398,
-            background: th.card?.background ?? "var(--color-card)",
-            border: `1px solid ${th.border}`,
-            borderRadius: "var(--radius-lg)",
-            padding: "10px 12px",
-            fontSize: 12,
-            fontWeight: 300,
-            zIndex: 400,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            ...th.text
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { flex: 1, lineHeight: 1.4 }, children: "Back up your recovery phrase so you don't lose access." }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "button",
-              {
-                onClick: () => {
-                  dismiss();
-                  setFocusBackup((n17) => n17 + 1);
-                  goTab("profile");
-                },
-                style: { ...th.pillBtn, fontSize: 11, padding: "5px 10px", fontWeight: 300 },
-                children: "Back up"
-              }
-            ),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "button",
-              {
-                onClick: dismiss,
-                "aria-label": "Dismiss",
-                style: {
-                  background: "none",
-                  border: "none",
-                  color: th.muted,
-                  cursor: "pointer",
-                  fontFamily: FONT,
-                  padding: 4,
-                  fontSize: 14,
-                  lineHeight: 1
-                },
-                children: "\u2715"
-              }
-            )
-          ] });
-        })(),
         syncingGroups.size > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
           position: "fixed",
           top: "calc(var(--safe-area-top) + 8px)",
@@ -18702,160 +18776,6 @@
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-  }
-  function computeEaster(year) {
-    const a38 = year % 19;
-    const b = Math.floor(year / 100);
-    const c8 = year % 100;
-    const d = Math.floor(b / 4);
-    const e58 = b % 4;
-    const f = Math.floor((b + 8) / 25);
-    const g = Math.floor((b - f + 1) / 3);
-    const h2 = (19 * a38 + b - d - g + 15) % 30;
-    const i2 = Math.floor(c8 / 4);
-    const k = c8 % 4;
-    const l7 = (32 + 2 * e58 + 2 * i2 - h2 - k) % 7;
-    const m3 = Math.floor((a38 + 11 * h2 + 22 * l7) / 451);
-    const month = Math.floor((h2 + l7 - 7 * m3 + 114) / 31);
-    const day = (h2 + l7 - 7 * m3 + 114) % 31 + 1;
-    return { month, day };
-  }
-  function getUSFederalHolidays(year) {
-    function pad(n17) {
-      return String(n17).padStart(2, "0");
-    }
-    function ymd(y, m3, d) {
-      return `${y}-${pad(m3)}-${pad(d)}`;
-    }
-    function observed(y, m3, d) {
-      const dow = new Date(y, m3 - 1, d).getDay();
-      if (dow === 6) return ymd(y, m3, d - 1);
-      if (dow === 0) return ymd(y, m3, d + 1);
-      return ymd(y, m3, d);
-    }
-    function nthWeekday(y, m3, weekday, n17) {
-      let d = 1;
-      const first = new Date(y, m3 - 1, 1).getDay();
-      d += (weekday - first + 7) % 7;
-      d += (n17 - 1) * 7;
-      return ymd(y, m3, d);
-    }
-    function lastWeekday(y, m3, weekday) {
-      const last = new Date(y, m3, 0).getDate();
-      const lastDow = new Date(y, m3 - 1, last).getDay();
-      const d = last - (lastDow - weekday + 7) % 7;
-      return ymd(y, m3, d);
-    }
-    return [
-      { title: "New Year's Day", date: observed(year, 1, 1) },
-      { title: "Martin Luther King Jr. Day", date: nthWeekday(year, 1, 1, 3) },
-      { title: "Presidents' Day", date: nthWeekday(year, 2, 1, 3) },
-      { title: "Memorial Day", date: lastWeekday(year, 5, 1) },
-      { title: "Juneteenth", date: observed(year, 6, 19) },
-      { title: "Independence Day", date: observed(year, 7, 4) },
-      { title: "Labor Day", date: nthWeekday(year, 9, 1, 1) },
-      { title: "Columbus Day", date: nthWeekday(year, 10, 1, 2) },
-      { title: "Veterans Day", date: observed(year, 11, 11) },
-      { title: "Thanksgiving Day", date: nthWeekday(year, 11, 4, 4) },
-      { title: "Christmas Day", date: observed(year, 12, 25) }
-    ];
-  }
-  function getCanadaHolidays(year) {
-    function pad(n17) {
-      return String(n17).padStart(2, "0");
-    }
-    function ymd(y, m3, d) {
-      return `${y}-${pad(m3)}-${pad(d)}`;
-    }
-    function observed(y, m3, d) {
-      const dow = new Date(y, m3 - 1, d).getDay();
-      if (dow === 6) return ymd(y, m3, d - 1);
-      if (dow === 0) return ymd(y, m3, d + 1);
-      return ymd(y, m3, d);
-    }
-    function nthWeekday(y, m3, weekday, n17) {
-      const first = new Date(y, m3 - 1, 1).getDay();
-      let d = 1 + (weekday - first + 7) % 7 + (n17 - 1) * 7;
-      return ymd(y, m3, d);
-    }
-    const { month: em, day: ed } = computeEaster(year);
-    const easter = new Date(year, em - 1, ed);
-    function easterOffset(days) {
-      const d = new Date(easter);
-      d.setDate(d.getDate() + days);
-      return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
-    }
-    function victoriaDay() {
-      const dow = new Date(year, 4, 24).getDay();
-      return ymd(year, 5, 24 - (dow - 1 + 7) % 7);
-    }
-    return [
-      { title: "New Year's Day", date: observed(year, 1, 1) },
-      { title: "Good Friday", date: easterOffset(-2) },
-      { title: "Victoria Day", date: victoriaDay() },
-      { title: "Canada Day", date: observed(year, 7, 1) },
-      { title: "Labour Day", date: nthWeekday(year, 9, 1, 1) },
-      { title: "National Day for Truth and Reconciliation", date: observed(year, 9, 30) },
-      { title: "Thanksgiving", date: nthWeekday(year, 10, 1, 2) },
-      { title: "Remembrance Day", date: observed(year, 11, 11) },
-      { title: "Christmas Day", date: observed(year, 12, 25) },
-      { title: "Boxing Day", date: observed(year, 12, 26) }
-    ];
-  }
-  function getBitcoinHolidays(year) {
-    function pad(n17) {
-      return String(n17).padStart(2, "0");
-    }
-    function ymd(y, m3, d) {
-      return `${y}-${pad(m3)}-${pad(d)}`;
-    }
-    return [
-      { title: "Genesis Block Day", date: ymd(year, 1, 3) },
-      { title: "Hal Finney Day", date: ymd(year, 1, 12) },
-      { title: "Bitcoin Pizza Day", date: ymd(year, 5, 22) },
-      { title: "Bitcoin Whitepaper Day", date: ymd(year, 10, 31) }
-    ];
-  }
-  function getUKHolidays(year) {
-    function pad(n17) {
-      return String(n17).padStart(2, "0");
-    }
-    function ymd(y, m3, d) {
-      return `${y}-${pad(m3)}-${pad(d)}`;
-    }
-    function observed(y, m3, d) {
-      const dow = new Date(y, m3 - 1, d).getDay();
-      if (dow === 6) return ymd(y, m3, d - 1);
-      if (dow === 0) return ymd(y, m3, d + 1);
-      return ymd(y, m3, d);
-    }
-    function nthWeekday(y, m3, weekday, n17) {
-      const first = new Date(y, m3 - 1, 1).getDay();
-      let d = 1 + (weekday - first + 7) % 7 + (n17 - 1) * 7;
-      return ymd(y, m3, d);
-    }
-    function lastWeekday(y, m3, weekday) {
-      const last = new Date(y, m3, 0).getDate();
-      const lastDow = new Date(y, m3 - 1, last).getDay();
-      return ymd(y, m3, last - (lastDow - weekday + 7) % 7);
-    }
-    const { month: em, day: ed } = computeEaster(year);
-    const easter = new Date(year, em - 1, ed);
-    function easterOffset(days) {
-      const d = new Date(easter);
-      d.setDate(d.getDate() + days);
-      return ymd(d.getFullYear(), d.getMonth() + 1, d.getDate());
-    }
-    return [
-      { title: "New Year's Day", date: observed(year, 1, 1) },
-      { title: "Good Friday", date: easterOffset(-2) },
-      { title: "Easter Monday", date: easterOffset(1) },
-      { title: "Early May Bank Holiday", date: nthWeekday(year, 5, 1, 1) },
-      { title: "Spring Bank Holiday", date: lastWeekday(year, 5, 1) },
-      { title: "Summer Bank Holiday", date: lastWeekday(year, 8, 1) },
-      { title: "Christmas Day", date: observed(year, 12, 25) },
-      { title: "Boxing Day", date: observed(year, 12, 26) }
-    ];
   }
   function WeekView({
     th,
@@ -21472,6 +21392,8 @@
     const [ev2, setEv] = (0, import_react7.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v) => setEv((e58) => ({ ...e58, [k]: v }));
+    const [customMode, setCustomMode] = (0, import_react7.useState)(() => (modal.event?.recurrenceInterval ?? 1) > 1);
+    const [intervalDraft, setIntervalDraft] = (0, import_react7.useState)(null);
     const [myForwards, setMyForwards] = (0, import_react7.useState)(() => {
       if (!profile?.id) return [];
       const myId = profile.id;
@@ -21927,8 +21849,11 @@
                     val: !!ev2.recurrence && ev2.recurrence !== "none",
                     accent: th.accent,
                     onChange: (v) => {
+                      setCustomMode(false);
+                      setIntervalDraft(null);
                       if (v) {
                         set("recurrence", "daily");
+                        set("recurrenceInterval", 1);
                         if (!ev2.recurrenceEnd && ev2.date) {
                           const [y, m3, d] = ev2.date.split("-").map(Number);
                           const end = new Date(y + 1, m3 - 1, d);
@@ -21949,10 +21874,20 @@
                     "select",
                     {
                       style: { ...inp, appearance: "none" },
-                      value: ev2.recurrence,
+                      value: customMode ? "custom" : ev2.recurrence,
                       onChange: (e58) => {
                         const val = e58.target.value;
+                        if (val === "custom") {
+                          setCustomMode(true);
+                          if (!["daily", "weekly", "monthly", "yearly"].includes(ev2.recurrence)) set("recurrence", "daily");
+                          if (!((ev2.recurrenceInterval ?? 1) > 1)) set("recurrenceInterval", 2);
+                          setIntervalDraft(null);
+                          return;
+                        }
+                        setCustomMode(false);
                         set("recurrence", val);
+                        set("recurrenceInterval", 1);
+                        setIntervalDraft(null);
                         if (val === "monthly-nth" && ev2.date) {
                           const d = /* @__PURE__ */ new Date(ev2.date + "T12:00:00");
                           const weekday = d.getDay();
@@ -21972,11 +21907,56 @@
                         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "biweekly", children: "Every 2 weeks" }),
                         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "monthly", children: "Monthly (same date)" }),
                         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "monthly-nth", children: "Monthly (same weekday)" }),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "yearly", children: "Yearly" })
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "yearly", children: "Yearly" }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "custom", children: "Custom\u2026" })
                       ]
                     }
                   )
                 ] }),
+                customMode && (() => {
+                  const n17 = ev2.recurrenceInterval ?? 1;
+                  return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Label, { th, children: "Every" }),
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                        "input",
+                        {
+                          type: "number",
+                          min: "1",
+                          max: "999",
+                          inputMode: "numeric",
+                          style: { ...inp, width: 90 },
+                          value: intervalDraft != null ? intervalDraft : String(n17),
+                          onChange: (e58) => {
+                            const raw = e58.target.value;
+                            setIntervalDraft(raw);
+                            const parsed = parseInt(raw, 10);
+                            if (Number.isFinite(parsed) && parsed >= 1) set("recurrenceInterval", Math.min(999, parsed));
+                          },
+                          onBlur: () => {
+                            const parsed = parseInt(intervalDraft ?? "", 10);
+                            set("recurrenceInterval", Number.isFinite(parsed) ? Math.max(1, Math.min(999, parsed)) : 1);
+                            setIntervalDraft(null);
+                          }
+                        }
+                      ),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                        "select",
+                        {
+                          style: { ...inp, appearance: "none", flex: 1 },
+                          value: ev2.recurrence,
+                          onChange: (e58) => set("recurrence", e58.target.value),
+                          children: [
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "daily", children: n17 === 1 ? "day" : "days" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "weekly", children: n17 === 1 ? "week" : "weeks" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "monthly", children: n17 === 1 ? "month" : "months" }),
+                            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("option", { value: "yearly", children: n17 === 1 ? "year" : "years" })
+                          ]
+                        }
+                      )
+                    ] })
+                  ] });
+                })(),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: "Repeat forever" }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -21989,7 +21969,7 @@
                   )
                 ] })
               ] }),
-              (modal.mode === "create" || !ev2.recurrenceId) && ev2.recurrence && ev2.recurrence !== "none" && !ev2.repeatForever && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
+              ev2.recurrence && ev2.recurrence !== "none" && !ev2.repeatForever && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Label, { th, children: "Repeat until" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "input",
@@ -25572,24 +25552,13 @@ ${link}`;
           const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
           const slug = (t7) => t7.replace(/\s+/g, "-").toLowerCase();
           const makeId = (h2) => "holiday-" + h2.date + "-" + slug(h2.title);
-          const allCountries = [
-            { code: "us", flag: "\u{1F1FA}\u{1F1F8}", label: "United States", fn: getUSFederalHolidays },
-            { code: "ca", flag: "\u{1F1E8}\u{1F1E6}", label: "Canada", fn: getCanadaHolidays },
-            { code: "uk", flag: "\u{1F1EC}\u{1F1E7}", label: "United Kingdom", fn: getUKHolidays },
-            {
-              code: "btc",
-              flag: "\u20BF",
-              label: "Bitcoin",
-              fn: getBitcoinHolidays,
-              color: "#F7931A",
-              desc: "Bitcoin Holiday"
-            }
-          ];
+          const allCountries = HOLIDAY_COUNTRIES;
           const activeCountries = new Set(profile?.holidayCountries ?? []);
           async function toggleCountry(code, fn, on) {
             setHolidayWorking(true);
             const meta = allCountries.find((c8) => c8.code === code);
             const color = meta?.color ?? "#CF3535";
+            const colors = meta?.colors ?? [];
             const desc = meta?.desc ?? "Public Holiday";
             const newActive = new Set(activeCountries);
             if (on) {
@@ -25612,6 +25581,7 @@ ${link}`;
                     groups: [],
                     invitees: [],
                     color,
+                    colors,
                     desc,
                     location: "",
                     creatorId: "system",
@@ -25729,114 +25699,6 @@ ${link}`;
         overflow: "hidden",
         transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
       }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { ref: backupRowRef, style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "RECOVERY PHRASE" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 12 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-            padding: "14px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between"
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text, flex: 1, minWidth: 0 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-                "Back up to ",
-                backupPlatformLabel ?? "cloud"
-              ] }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 2 }, children: !backupStatus ? "\u2026" : backupStatus.platform == null ? "Not available on this device" : backupStatus.platformSynced ? `Synced to ${backupPlatformLabel}` : backupStatus.enabled ? `Will sync to ${backupPlatformLabel}` : "Saved on this device only" })
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              Toggle,
-              {
-                val: !!backupStatus?.enabled,
-                onChange: () => {
-                  window.__pearSync?.haptic("light");
-                  toggleBackup();
-                },
-                accent: th.accent
-              }
-            )
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { padding: "0 16px 14px" }, children: mnemonicReveal == null ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "button",
-            {
-              onClick: revealMnemonic,
-              disabled: mnemonicBusy,
-              style: {
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                width: "100%",
-                padding: "12px 14px",
-                borderRadius: 10,
-                cursor: "pointer",
-                border: `1px solid ${th.border}`,
-                background: "transparent",
-                fontFamily: FONT,
-                opacity: mnemonicBusy ? 0.5 : 1
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, ...th.text }, children: mnemonicBusy ? "Loading\u2026" : "Show recovery phrase" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted }, children: "12 words that restore your identity on a new device" })
-                ] }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s4, { size: 16, weight: "thin", color: "var(--color-muted)" })
-              ]
-            }
-          ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { border: `1px solid ${th.border}`, borderRadius: 10, padding: "14px" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-              fontSize: 13,
-              fontWeight: 400,
-              letterSpacing: "0.02em",
-              fontFamily: "monospace",
-              color: th.text.color,
-              wordBreak: "break-word",
-              marginBottom: 12,
-              lineHeight: 1.6
-            }, children: mnemonicReveal || "(no mnemonic saved \u2014 reinstall required)" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  onClick: copyMnemonic,
-                  disabled: !mnemonicReveal,
-                  style: { ...th.pillBtn, fontSize: 12, padding: "6px 14px", fontWeight: 300 },
-                  children: mnemonicCopied ? "Copied \u2713" : "Copy"
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  onClick: shareMnemonic,
-                  disabled: !mnemonicReveal,
-                  style: { ...th.pillBtn, fontSize: 12, padding: "6px 14px", fontWeight: 300 },
-                  children: "Save"
-                }
-              ),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "button",
-                {
-                  onClick: () => {
-                    setMnemonicReveal(null);
-                    setMnemonicCopied(false);
-                  },
-                  style: {
-                    fontSize: 12,
-                    padding: "6px 14px",
-                    borderRadius: 8,
-                    border: `1px solid ${th.border}`,
-                    background: "transparent",
-                    color: th.muted,
-                    cursor: "pointer",
-                    fontWeight: 300,
-                    fontFamily: FONT
-                  },
-                  children: "Hide"
-                }
-              )
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: th.muted, marginTop: 10, lineHeight: 1.4 }, children: "Keep these 12 words somewhere safe. Anyone with them can restore your identity and rejoin your groups." })
-          ] }) })
-        ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEVICES" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -26739,233 +26601,7 @@ ${link}`;
             },
             onClose: () => setIcsImport(null)
           }
-        ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          marginTop: 16,
-          marginBottom: 8
-        }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", margin: 0 }, children: "BLIND PEER" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-            fontSize: 10,
-            fontWeight: 500,
-            padding: "1px 6px",
-            borderRadius: 4,
-            background: blindPeerKey ? "#2E7D3220" : "transparent",
-            color: blindPeerKey ? "#2E7D32" : th.muted
-          }, children: blindPeerKey ? "Active" : "Not configured" })
-        ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "div",
-            {
-              onClick: () => setSeedPeerInfoOpen((o35) => !o35),
-              style: { fontSize: 12, fontWeight: 400, color: th.accent, cursor: "pointer", marginBottom: 10, textAlign: "center" },
-              children: seedPeerInfoOpen ? "Hide info" : "What is this?"
-            }
-          ),
-          seedPeerInfoOpen && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-            fontSize: 12,
-            fontWeight: 300,
-            color: th.muted,
-            lineHeight: 1.6,
-            marginBottom: 14,
-            padding: "10px 12px",
-            borderRadius: 8,
-            background: th.inputBg,
-            border: `1px solid ${th.border}`
-          }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { style: { margin: "0 0 8px" }, children: [
-              "A ",
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("b", { children: "blind peer" }),
-              " is a server that keeps your calendar data available for syncing, even when your phone is offline."
-            ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("p", { style: { margin: "0 0 8px" }, children: "You only need this if you share calendars with other people and want always-on sync availability." }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("p", { style: { margin: 0 }, children: [
-              "You can run your own blind peer server using",
-              " ",
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "a",
-                {
-                  href: "https://github.com/holepunchto/blind-peer-cli",
-                  target: "_blank",
-                  rel: "noopener noreferrer",
-                  style: { fontFamily: "monospace", fontSize: 11, color: th.accent },
-                  onClick: (e58) => {
-                    e58.preventDefault();
-                    window.__pearSync?.openURL("https://github.com/holepunchto/blind-peer-cli");
-                  },
-                  children: "blind-peer-cli"
-                }
-              ),
-              " ",
-              "on any computer that stays online (e.g. a home server or VPS). Paste the server's public key below to connect."
-            ] })
-          ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "input",
-            {
-              value: seedPeerInput,
-              onChange: (e58) => {
-                setSeedPeerInput(e58.target.value);
-                setSeedPeerError(null);
-              },
-              placeholder: "Paste z32 public key...",
-              style: {
-                width: "100%",
-                padding: "10px 12px",
-                borderRadius: 10,
-                fontSize: 12,
-                fontWeight: 300,
-                fontFamily: "monospace",
-                border: `1px solid ${th.border}`,
-                background: th.inputBg,
-                color: th.text.color,
-                outline: "none",
-                boxSizing: "border-box"
-              }
-            }
-          ),
-          seedPeerError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: "#D45F7A", fontWeight: 300, marginTop: 6 }, children: seedPeerError }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, marginTop: 10, justifyContent: "center" }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "button",
-              {
-                onClick: async () => {
-                  const key = seedPeerInput.trim();
-                  if (!key || key.length !== 52) {
-                    setSeedPeerError("Key must be a 52-character z32 string");
-                    return;
-                  }
-                  setSeedPeerSaving(true);
-                  setSeedPeerError(null);
-                  try {
-                    await db2.setBlindPeerKey(key);
-                    setBlindPeerKey(key);
-                    setSeedPeerSaved(true);
-                    setTimeout(() => setSeedPeerSaved(false), 2e3);
-                  } catch (e58) {
-                    setSeedPeerError(e58.message || "Failed to save");
-                  }
-                  setSeedPeerSaving(false);
-                },
-                disabled: seedPeerSaving || !seedPeerInput.trim(),
-                style: {
-                  ...th.pillBtn,
-                  fontSize: 12,
-                  padding: "6px 16px",
-                  fontWeight: 300,
-                  width: 100,
-                  opacity: seedPeerSaving || !seedPeerInput.trim() ? 0.5 : 1
-                },
-                children: seedPeerSaving ? "Saving..." : seedPeerSaved ? "Saved" : "Save"
-              }
-            ),
-            blindPeerKey && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-              "button",
-              {
-                onClick: async () => {
-                  setSeedPeerSaving(true);
-                  try {
-                    await db2.removeBlindPeerKey();
-                    setBlindPeerKey(null);
-                    setSeedPeerInput("");
-                    setSeedPeerError(null);
-                  } catch (e58) {
-                    setSeedPeerError(e58.message || "Failed to remove");
-                  }
-                  setSeedPeerSaving(false);
-                },
-                disabled: seedPeerSaving,
-                style: {
-                  ...th.pillBtn,
-                  fontSize: 12,
-                  padding: "6px 16px",
-                  fontWeight: 300,
-                  width: 100,
-                  border: "1px solid #D45F7A",
-                  background: "transparent",
-                  color: "#D45F7A",
-                  opacity: seedPeerSaving ? 0.5 : 1
-                },
-                children: "Remove"
-              }
-            )
-          ] })
-        ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-          fontSize: 11,
-          fontWeight: 300,
-          color: th.muted,
-          letterSpacing: "0.08em",
-          textAlign: "center",
-          marginTop: 16,
-          marginBottom: 8
-        }, children: "IDENTITY ID" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px", textAlign: "center" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "div",
-            {
-              onClick: () => {
-                navigator.clipboard?.writeText(identityId);
-                window.__pearSync?.haptic("light");
-              },
-              style: {
-                fontSize: 10,
-                color: th.muted,
-                fontWeight: 300,
-                wordBreak: "break-all",
-                fontFamily: "monospace",
-                lineHeight: 1.5,
-                cursor: "pointer",
-                padding: "8px 12px",
-                background: th.inputBg,
-                borderRadius: 8,
-                border: `1px solid ${th.border}`
-              },
-              children: identityId
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Same on all your paired devices \u2014 tap to copy" })
-        ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-          fontSize: 11,
-          fontWeight: 300,
-          color: th.muted,
-          letterSpacing: "0.08em",
-          textAlign: "center",
-          marginTop: 16,
-          marginBottom: 8
-        }, children: "PUBLIC KEY" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px", textAlign: "center" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-            "div",
-            {
-              onClick: () => {
-                navigator.clipboard?.writeText(publicKey);
-                window.__pearSync?.haptic("light");
-              },
-              style: {
-                fontSize: 10,
-                color: th.muted,
-                fontWeight: 300,
-                wordBreak: "break-all",
-                fontFamily: "monospace",
-                lineHeight: 1.5,
-                cursor: "pointer",
-                padding: "8px 12px",
-                background: th.inputBg,
-                borderRadius: 8,
-                border: `1px solid ${th.border}`
-              },
-              children: publicKey
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 10, color: th.muted, fontWeight: 300, marginTop: 6 }, children: "Unique per device \u2014 tap to copy" })
-        ] }) })
+        )
       ] }),
       pairHost && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         PairingHostModal,
