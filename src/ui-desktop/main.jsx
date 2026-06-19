@@ -112,6 +112,10 @@ const db = {
   listLinkedDevices:    ()  => window.__pearDB.call('listLinkedDevices'),
   setDeviceNickname:    (n) => window.__pearDB.call('setDeviceNickname', n),
   removeDeviceFromList: (k) => window.__pearDB.call('removeDeviceFromList', k),
+  // Desktop-only login-item control (TODO #103), intercepted in
+  // electron/src/main/shell-handlers.js. Both resolve to the applied boolean.
+  getLaunchAtLogin:     ()  => window.__pearDB.call('desktopGetLaunchAtLogin'),
+  setLaunchAtLogin:     (b) => window.__pearDB.call('desktopSetLaunchAtLogin', b),
 }
 
 const notifs = {

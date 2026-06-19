@@ -9,6 +9,12 @@
 
 const { ipcRenderer } = require('electron')
 
+// Let the shared UI bundle (src/ui/App.jsx) detect desktop. Mobile sets this
+// via injectedJavaScriptBeforeContentLoaded (app/index.tsx); on Electron the
+// preload is the equivalent pre-content hook. Used to gate desktop-only
+// settings like "Launch at startup".
+window.__pearPlatform = 'desktop'
+
 window.ReactNativeWebView = {
   postMessage (jsonStr) {
     let msg

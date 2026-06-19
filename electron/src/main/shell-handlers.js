@@ -196,8 +196,84 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
       // launch. For now this is a no-op — same as mobile (its native
       // AlarmManager state survives process restart on the OS side).
       return { handled: true, result: null }
+
+    case 'desktopGetLaunchAtLogin':
+      // Opt-in "Launch at startup" (TODO #103). Default off — desktop
+      // reminders are in-memory setTimeout handles that die with the process,
+      // so they only fire after reboot if the app is auto-started.
+      try {
+        return { handled: true, result: _getLaunchAtLogin() }
+      } catch (e) {
+        return { handled: true, result: false }
+      }
+
+    case 'desktopSetLaunchAtLogin':
+      try {
+        return { handled: true, result: _setLaunchAtLogin(!!args?.[0]) }
+      } catch (e) {
+        console.error('[shell] setLaunchAtLogin failed:', e?.message ?? e)
+        return { handled: true, result: false }
+      }
   }
   return { handled: false }
+}
+
+// ── Launch-at-startup ───────────────────────────────────────────────────────
+// macOS/Windows have a working app.{get,set}LoginItemSettings (verified). On
+// Linux those are no-ops (the API is macOS/Windows only), so we manage a
+// freedesktop autostart .desktop file by hand. Both helpers return the actual
+// post-write state so the renderer toggle reflects truth.
+
+function _linuxAutostartFile () {
+  const cfg = process.env.XDG_CONFIG_HOME || path.join(require('os').homedir(), '.config')
+  return path.join(cfg, 'autostart', 'pearcal.desktop')
+}
+
+// Resolve the stable executable to relaunch at login. For an AppImage,
+// process.execPath is an ephemeral /tmp/.mount_* path that won't exist next
+// login — $APPIMAGE is the real .AppImage location. For .deb/.rpm installs
+// (and on mac/win) execPath is already stable and $APPIMAGE is undefined.
+function _autostartExec () {
+  const exe = process.env.APPIMAGE || process.execPath
+  return /\s/.test(exe) ? '"' + exe + '"' : exe
+}
+
+function _getLaunchAtLogin () {
+  if (process.platform === 'linux') {
+    try { fs.accessSync(_linuxAutostartFile()); return true } catch (_) { return false }
+  }
+  try { return !!app.getLoginItemSettings().openAtLogin } catch (_) { return false }
+}
+
+function _setLaunchAtLogin (enable) {
+  if (process.platform === 'linux') {
+    const file = _linuxAutostartFile()
+    if (!enable) {
+      try { fs.rmSync(file, { force: true }) } catch (_) {}
+      return false
+    }
+    const entry = [
+      '[Desktop Entry]',
+      'Type=Application',
+      'Name=PearCal',
+      'Exec=' + _autostartExec(),
+      'Icon=pearcal',
+      'Terminal=false',
+      'X-GNOME-Autostart-enabled=true',
+      ''
+    ].join('\n')
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, entry)
+    return true
+  }
+  // macOS / Windows: openAsHidden starts minimized to the tray on login
+  // (macOS), matching the existing close-to-tray behavior.
+  app.setLoginItemSettings({
+    openAtLogin: enable,
+    openAsHidden: enable,
+    path: process.env.APPIMAGE || process.execPath
+  })
+  try { return !!app.getLoginItemSettings().openAtLogin } catch (_) { return enable }
 }
 
 async function _saveBlob (parentWindow, defaultName, content) {

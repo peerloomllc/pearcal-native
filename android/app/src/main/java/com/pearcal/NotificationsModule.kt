@@ -64,33 +64,18 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
     @ReactMethod
     fun schedule(opts: ReadableMap, promise: Promise) {
         try {
-            val notifId = opts.getInt("id")
-            val fireAt  = opts.getDouble("fireAt").toLong()
-            val title   = opts.getString("title") ?: ""
-            val body    = opts.getString("body") ?: ""
-            val eventId = if (opts.hasKey("eventId")) opts.getString("eventId") ?: "" else ""
-
-            val tab = if (opts.hasKey("tab")) opts.getString("tab") ?: "" else ""
-            val intent = Intent(reactApplicationContext, NotificationReceiver::class.java).apply {
-                putExtra("notifId", notifId)
-                putExtra("title",   title)
-                putExtra("body",    body)
-                putExtra("eventId", eventId)
-                putExtra("tab",     tab)
-            }
-            val pending = PendingIntent.getBroadcast(
-                reactApplicationContext, notifId, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            val r = ReminderStore.Reminder(
+                id      = opts.getInt("id"),
+                fireAt  = opts.getDouble("fireAt").toLong(),
+                title   = opts.getString("title") ?: "",
+                body    = opts.getString("body") ?: "",
+                eventId = if (opts.hasKey("eventId")) opts.getString("eventId") ?: "" else "",
+                tab     = if (opts.hasKey("tab")) opts.getString("tab") ?: "" else ""
             )
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmMgr.canScheduleExactAlarms()) {
-                // Fallback to inexact alarm (within ~1 minute window)
-                alarmMgr.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pending)
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, fireAt, pending)
-            } else {
-                alarmMgr.setExact(AlarmManager.RTC_WAKEUP, fireAt, pending)
-            }
+            // Arm the alarm and persist it so BootReceiver can replay it after a
+            // reboot / app update (AlarmManager clears all alarms on both).
+            ReminderStore.arm(reactApplicationContext, r)
+            ReminderStore.put(reactApplicationContext, r)
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("SCHEDULE_ERROR", e.message)
@@ -106,6 +91,8 @@ class NotificationsModule(reactContext: ReactApplicationContext) :
                 PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
             )
             pending?.let { alarmMgr.cancel(it) }
+            // Drop the persisted mirror so it isn't replayed on next reboot.
+            ReminderStore.remove(reactApplicationContext, notifId)
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("CANCEL_ERROR", e.message)
