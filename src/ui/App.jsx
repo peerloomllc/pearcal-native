@@ -838,7 +838,16 @@ export default function App ({ db, notifs, sync }) {
     const frequencyChanged = !!ev.recurrenceId && !!original && (
       original.recurrence !== ev.recurrence ||
       (original.recurrenceNth ?? 0) !== (ev.recurrenceNth ?? 0) ||
-      (original.recurrenceWeekday ?? 0) !== (ev.recurrenceWeekday ?? 0)
+      (original.recurrenceWeekday ?? 0) !== (ev.recurrenceWeekday ?? 0) ||
+      (original.recurrenceInterval ?? 1) !== (ev.recurrenceInterval ?? 1)
+    )
+    // End-date / repeat-forever change on a series (TODO #102 follow-up). Like a
+    // frequency change, this can't be a metadata patch — extending the end must
+    // ADD occurrences and shortening must DROP them — so route it through the
+    // same tombstone-and-regenerate path below.
+    const endChanged = !!ev.recurrenceId && !!original && (
+      (original.recurrenceEnd ?? '') !== (ev.recurrenceEnd ?? '') ||
+      !!original.repeatForever !== !!ev.repeatForever
     )
 
     let occurrences
@@ -847,7 +856,7 @@ export default function App ({ db, notifs, sync }) {
     if (ev.recurrence && ev.recurrence !== 'none' && (ev.recurrenceEnd || ev.repeatForever) && !ev.recurrenceId) {
       // First-time series creation
       occurrences = expandRecurring(ev)
-    } else if (frequencyChanged && ev.recurrenceId && (scope === 'future' || scope === 'all')) {
+    } else if ((frequencyChanged || endChanged) && ev.recurrenceId && (scope === 'future' || scope === 'all')) {
       const seriesOccs = events.filter(e => !e.isShadow && e.recurrenceId === ev.recurrenceId)
       let anchorDate = ev.date
       if (scope === 'all') {
@@ -874,7 +883,7 @@ export default function App ({ db, notifs, sync }) {
       const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
                          ...(options.propagateGroups ? ['groups','invitees'] : []),
                          'color','desc','location','recurrence','recurrenceEnd',
-                         'repeatForever','recurrenceNth','recurrenceWeekday','editPermission']
+                         'repeatForever','recurrenceNth','recurrenceWeekday','recurrenceInterval','editPermission']
       const patch = {}
       for (const k of PROPAGATE) patch[k] = ev[k]
       occurrences = events
@@ -998,6 +1007,7 @@ export default function App ({ db, notifs, sync }) {
           recurrenceEnd: occ.recurrenceEnd ?? '',
           recurrenceNth: occ.recurrenceNth ?? 0,
           recurrenceWeekday: occ.recurrenceWeekday ?? 0,
+          recurrenceInterval: occ.recurrenceInterval ?? 1,
           groups: [gid],
           invitees: [],
           creatorId: myId,
@@ -1167,6 +1177,7 @@ export default function App ({ db, notifs, sync }) {
         recurrenceEnd: src.recurrenceEnd ?? '',
         recurrenceNth: src.recurrenceNth ?? 0,
         recurrenceWeekday: src.recurrenceWeekday ?? 0,
+        recurrenceInterval: src.recurrenceInterval ?? 1,
         color: src.color,
         updatedByName: myName,
         updatedById: myId,
@@ -1413,7 +1424,7 @@ export default function App ({ db, notifs, sync }) {
     setModal({ mode:'create', event:{
       id: 'e' + Date.now(), title:'', date: date || selectedDate,
       allDay:false, start:defaultStart, end:defaultEnd, reminder: 0,
-      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, editPermission:'creator', endDate:'', rsvpEnabled:false,
+      groups:[], invitees:[], color:'#6C9BF5', desc:'', location:'', meetingLink:'', creatorId: profile?.id ?? 'unknown', recurrence:'none', recurrenceId:'', recurrenceEnd:'', recurrenceNth:0, recurrenceWeekday:0, recurrenceInterval:1, editPermission:'creator', endDate:'', rsvpEnabled:false,
     }})
   }
 
@@ -3857,6 +3868,14 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
 
+  // "Custom…" recurrence (TODO #102): a UI mode where the user picks
+  // "Every N days/weeks/months/years". Stored as a normal unit cadence +
+  // recurrenceInterval, so an event opened with interval > 1 starts in custom
+  // mode. intervalDraft holds the raw input text so the number field can be
+  // cleared and retyped without the controlled value snapping back mid-edit.
+  const [customMode, setCustomMode] = useState(() => (modal.event?.recurrenceInterval ?? 1) > 1)
+  const [intervalDraft, setIntervalDraft] = useState(null)
+
   // Per-user busy-time forwards for this event, derived ONCE on modal open
   // from existing shadows I authored. Frozen in initialForwardsRef so the
   // dirty comparison doesn't shift if events update in the background.
@@ -4227,8 +4246,11 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                   <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Recurring</span>
                   <Toggle val={!!ev.recurrence && ev.recurrence !== 'none'} accent={th.accent}
                     onChange={v => {
+                      setCustomMode(false)
+                      setIntervalDraft(null)
                       if (v) {
                         set('recurrence', 'daily')
+                        set('recurrenceInterval', 1)
                         if (!ev.recurrenceEnd && ev.date) {
                           const [y,m,d] = ev.date.split('-').map(Number)
                           const end = new Date(y+1, m-1, d)
@@ -4247,10 +4269,24 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
               {ev.recurrence && ev.recurrence !== 'none' && (
                 <>
                   <div><Label th={th}>Frequency</Label>
-                    <select style={{ ...inp, appearance:'none' }} value={ev.recurrence}
+                    <select style={{ ...inp, appearance:'none' }} value={customMode ? 'custom' : ev.recurrence}
                       onChange={e => {
                         const val = e.target.value
+                        if (val === 'custom') {
+                          // Enter Custom mode. Stored as a unit cadence +
+                          // interval; default to "every 2 <current unit>" so it
+                          // reads as a real custom value (interval 1 would just
+                          // collapse back to the matching preset on reopen).
+                          setCustomMode(true)
+                          if (!['daily','weekly','monthly','yearly'].includes(ev.recurrence)) set('recurrence', 'daily')
+                          if (!((ev.recurrenceInterval ?? 1) > 1)) set('recurrenceInterval', 2)
+                          setIntervalDraft(null)
+                          return
+                        }
+                        setCustomMode(false)
                         set('recurrence', val)
+                        set('recurrenceInterval', 1)   // presets are interval-1
+                        setIntervalDraft(null)
                         if (val === 'monthly-nth' && ev.date) {
                           const d = new Date(ev.date + 'T12:00:00')
                           const weekday = d.getDay()
@@ -4266,8 +4302,40 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                       <option value="monthly">Monthly (same date)</option>
                       <option value="monthly-nth">Monthly (same weekday)</option>
                       <option value="yearly">Yearly</option>
+                      <option value="custom">Custom…</option>
                     </select>
                   </div>
+                  {/* Custom interval — "every N days/weeks/months/years" (TODO #102) */}
+                  {customMode && (() => {
+                    const n = ev.recurrenceInterval ?? 1
+                    return (
+                      <div><Label th={th}>Every</Label>
+                        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                          <input type="number" min="1" max="999" inputMode="numeric"
+                            style={{ ...inp, width:90 }}
+                            value={intervalDraft != null ? intervalDraft : String(n)}
+                            onChange={e => {
+                              const raw = e.target.value
+                              setIntervalDraft(raw)
+                              const parsed = parseInt(raw, 10)
+                              if (Number.isFinite(parsed) && parsed >= 1) set('recurrenceInterval', Math.min(999, parsed))
+                            }}
+                            onBlur={() => {
+                              const parsed = parseInt(intervalDraft ?? '', 10)
+                              set('recurrenceInterval', Number.isFinite(parsed) ? Math.max(1, Math.min(999, parsed)) : 1)
+                              setIntervalDraft(null)
+                            }} />
+                          <select style={{ ...inp, appearance:'none', flex:1 }} value={ev.recurrence}
+                            onChange={e => set('recurrence', e.target.value)}>
+                            <option value="daily">{n === 1 ? 'day' : 'days'}</option>
+                            <option value="weekly">{n === 1 ? 'week' : 'weeks'}</option>
+                            <option value="monthly">{n === 1 ? 'month' : 'months'}</option>
+                            <option value="yearly">{n === 1 ? 'year' : 'years'}</option>
+                          </select>
+                        </div>
+                      </div>
+                    )
+                  })()}
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <span style={{ fontSize:14, fontWeight:300, ...th.text }}>Repeat forever</span>
                     <Toggle val={!!ev.repeatForever} accent={th.accent}
@@ -4275,7 +4343,10 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
                   </div>
                 </>
               )}
-              {(modal.mode === 'create' || !ev.recurrenceId) && ev.recurrence && ev.recurrence !== 'none' && !ev.repeatForever && (
+              {/* Repeat until — editable for new events AND existing series
+                  (TODO #102 follow-up). Editing it on a series and applying to
+                  future/all regenerates occurrences via the endChanged path. */}
+              {ev.recurrence && ev.recurrence !== 'none' && !ev.repeatForever && (
                 <div><Label th={th}>Repeat until</Label>
                   <input type="date" style={inp} value={ev.recurrenceEnd ?? ''}
                     onChange={e => set('recurrenceEnd', e.target.value)} />

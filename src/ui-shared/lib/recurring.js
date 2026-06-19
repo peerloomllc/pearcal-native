@@ -12,11 +12,19 @@ const _parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(
 
 // Step a Date in place by one cadence unit. Mutates `cur`. Pulled out so
 // the boot-time tail-extension reuses the same step logic.
+//
+// The "Custom…" recurrence option (TODO #102) stores its cadence as one of the
+// existing units (daily/weekly/monthly/yearly) plus `recurrenceInterval` (N),
+// so "every 10 days" is recurrence:'daily', interval:10. Absent/<1 intervals
+// fall back to 1, so events authored before the field existed — and peers on
+// older builds — behave exactly as before. `biweekly` keeps its fixed 14-day
+// step (a convenience preset that predates the interval field).
 export function stepRecurrenceDate (cur, ev) {
-  if (ev.recurrence === 'daily')         cur.setDate(cur.getDate() + 1)
-  else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7)
+  const n = Math.max(1, Math.floor(Number(ev.recurrenceInterval)) || 1)
+  if (ev.recurrence === 'daily')         cur.setDate(cur.getDate() + n)
+  else if (ev.recurrence === 'weekly')   cur.setDate(cur.getDate() + 7 * n)
   else if (ev.recurrence === 'biweekly') cur.setDate(cur.getDate() + 14)
-  else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + 1)
+  else if (ev.recurrence === 'monthly')  cur.setMonth(cur.getMonth() + n)
   else if (ev.recurrence === 'monthly-nth') {
     cur.setDate(1); cur.setMonth(cur.getMonth() + 1)
     const wd = ev.recurrenceWeekday ?? 0; const nth = ev.recurrenceNth ?? 1
@@ -26,7 +34,7 @@ export function stepRecurrenceDate (cur, ev) {
       cur.setDate(cur.getDate() + 1)
     }
   }
-  else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + 1)
+  else if (ev.recurrence === 'yearly')   cur.setFullYear(cur.getFullYear() + n)
 }
 
 export function expandRecurring (ev) {
