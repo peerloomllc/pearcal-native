@@ -95,6 +95,71 @@ function _renderUpdateBanner ({ version, htmlUrl }) {
   document.body.appendChild(bar)
 }
 
+// In-place auto-update (NSIS / AppImage). electron-updater downloads in the
+// background; show progress, then a "Restart now" banner. Shares the banner id
+// with the notify path — only one updater runs per platform, so they never
+// collide.
+function _updateBar () {
+  let bar = document.getElementById('pearcal-update-banner')
+  if (!bar) {
+    bar = document.createElement('div')
+    bar.id = 'pearcal-update-banner'
+    bar.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#1e293b;color:#e2e8f0;padding:10px 16px;display:flex;align-items:center;gap:12px;font:13px -apple-system,system-ui,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,0.4);z-index:99998;border-bottom:1px solid #334155;'
+    const attach = () => document.body.appendChild(bar)
+    if (document.body) attach()
+    else window.addEventListener('DOMContentLoaded', attach, { once: true })
+  }
+  return bar
+}
+
+function _updBtn (label, primary) {
+  const b = document.createElement('button')
+  b.textContent = label
+  b.style.cssText = 'border:none;border-radius:6px;padding:6px 12px;font:13px -apple-system,system-ui,sans-serif;cursor:pointer;' + (primary
+    ? 'background:#10b981;color:#0f172a;font-weight:600;'
+    : 'background:#334155;color:#e2e8f0;')
+  return b
+}
+
+ipcRenderer.on('update-can-download', (_event, info) => {
+  if (document.getElementById('pearcal-update-banner')) return
+  const bar = _updateBar()
+  bar.textContent = ''
+  const msg = document.createElement('span')
+  msg.textContent = 'PearCal ' + String(info?.version ?? '') + ' is available.'
+  msg.style.flex = '1'
+  bar.appendChild(msg)
+  const download = _updBtn('Download', true)
+  download.onclick = () => {
+    ipcRenderer.invoke('update:download').catch(() => {})
+    bar.textContent = 'Downloading PearCal ' + String(info?.version ?? '') + '…'
+  }
+  const later = _updBtn('Later', false)
+  later.onclick = () => bar.remove()
+  bar.appendChild(download)
+  bar.appendChild(later)
+})
+
+ipcRenderer.on('update-progress', (_event, info) => {
+  const bar = document.getElementById('pearcal-update-banner')
+  if (bar && !bar.querySelector('button')) bar.textContent = 'Downloading update… ' + (info?.percent ?? 0) + '%'
+})
+
+ipcRenderer.on('update-ready', (_event, info) => {
+  const bar = _updateBar()
+  bar.textContent = ''
+  const msg = document.createElement('span')
+  msg.textContent = 'PearCal ' + String(info?.version ?? '') + ' is ready — restart to finish.'
+  msg.style.flex = '1'
+  bar.appendChild(msg)
+  const restart = _updBtn('Restart now', true)
+  restart.onclick = () => ipcRenderer.invoke('update:install').catch(() => {})
+  const later = _updBtn('Later', false)
+  later.onclick = () => bar.remove()
+  bar.appendChild(restart)
+  bar.appendChild(later)
+})
+
 // Toast channel — main sends short feedback strings (e.g. after nativeShare
 // copies to clipboard). Render a transient bottom-center pill so the user
 // gets the same feedback they'd get from a mobile share sheet pop.

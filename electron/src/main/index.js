@@ -27,6 +27,15 @@ const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
 const { scheduleForEvent: scheduleForEventOnBoot } = require('./shell-handlers')
 const updateChecker = require('./update-checker')
+const autoUpdater = require('./auto-updater')
+
+// Targets that can update themselves in place: NSIS (Windows) and AppImage
+// (Linux, identified by the $APPIMAGE env the runtime sets). Everything else —
+// .deb, the unsigned/un-notarized Mac .dmg, and the unpackaged dev build —
+// uses the notify-and-link checker instead.
+const SUPPORTS_IN_PLACE_UPDATE =
+  process.platform === 'win32' ||
+  (process.platform === 'linux' && !!process.env.APPIMAGE)
 
 // Single instance — the second invocation should focus the existing window
 // (and forward any pearcal:// URL it was launched with) instead of opening
@@ -89,7 +98,11 @@ app.whenReady().then(() => {
   rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
   scheduleNextRehydration()
 
-  updateChecker.start({ getMainWindow: () => mainWindow })
+  if (SUPPORTS_IN_PLACE_UPDATE) {
+    autoUpdater.start({ getMainWindow: () => mainWindow })
+  } else {
+    updateChecker.start({ getMainWindow: () => mainWindow })
+  }
 })
 
 // Rehydration window. setTimeout's max delay is 2^31-1 ms (~24.8 days);
