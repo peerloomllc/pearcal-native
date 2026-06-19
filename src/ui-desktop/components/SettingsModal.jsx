@@ -54,12 +54,33 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
   const [dark,      setDark]      = useState(profile?.dark      ?? true)
   const [saving,    setSaving]    = useState(false)
   const [saved,     setSaved]     = useState(false)
+  // Launch-at-startup (TODO #103). Desktop reminders are in-memory timers that
+  // die with the process, so they only fire after a reboot if the app is
+  // auto-started at login. Default off; the truth lives in the OS login-item,
+  // read here on open via db.getLaunchAtLogin (electron main intercept).
+  const [launchAtLogin, setLaunchAtLogin] = useState(false)
 
   useEffect(() => {
     function onKey (e) { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  useEffect(() => {
+    let alive = true
+    db?.getLaunchAtLogin?.().then(v => { if (alive) setLaunchAtLogin(!!v) }).catch(() => {})
+    return () => { alive = false }
+  }, [db])
+
+  async function handleLaunchAtLoginChange (next) {
+    setLaunchAtLogin(next)  // optimistic
+    try {
+      const applied = await db?.setLaunchAtLogin?.(next)
+      if (typeof applied === 'boolean') setLaunchAtLogin(applied)
+    } catch (e) {
+      setLaunchAtLogin(!next)  // revert on failure
+    }
+  }
 
   // Save-on-change so the modal feels native — same pattern as macOS
   // System Settings. The "Saved" pill flashes for 1.5s after each write.
@@ -280,6 +301,13 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
           <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 2 }}>
             Applied to new events you create on this device.
+          </div>
+          <div style={row}>
+            <div style={{ flex: 1, fontSize: 13 }}>Launch at startup</div>
+            <ToggleSwitch tokens={tokens} value={launchAtLogin} onChange={handleLaunchAtLoginChange} />
+          </div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 2 }}>
+            Opens PearCal to the tray when you log in, so reminders still fire after a restart.
           </div>
         </div>
 
