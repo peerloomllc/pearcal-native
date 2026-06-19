@@ -12,6 +12,7 @@ struct CachedEvent: Codable, Identifiable {
   let location: String?
   let color: String?
   let colors: [String]?   // 2–3 hex strip (e.g. US holiday red/white/blue) — TODO #104
+  let date: String?       // only set on `upcoming` rows (yyyy-MM-dd) — TODO #107
 }
 
 struct CachedPayload: Codable {
@@ -20,6 +21,7 @@ struct CachedPayload: Codable {
   let events: [CachedEvent]
   let slots: [[Int]]?
   let tomorrowFirst: CachedEvent?
+  let upcoming: [CachedEvent]?   // next few events on empty days, when enabled — TODO #107
   let use24h: Bool?
 }
 
@@ -127,6 +129,37 @@ private func eventTimeLabel(_ ev: CachedEvent, use24h: Bool?) -> String {
   return prettyTime(ev.start, use24h: use24h)
 }
 
+// Weekday + month/day for an "upcoming" row's date, e.g. "Sat · Jun 19".
+// Future days are distinguished by the date right in the row, so no separate
+// divider header is needed on the compact widget (TODO #107).
+private func upcomingDateLabel(_ dateStr: String?) -> String {
+  guard let dateStr = dateStr else { return "" }
+  let parser = DateFormatter()
+  parser.dateFormat = "yyyy-MM-dd"
+  parser.locale = Locale(identifier: "en_US_POSIX")
+  guard let d = parser.date(from: dateStr) else { return "" }
+  let out = DateFormatter()
+  out.dateFormat = "EEE · MMM d"
+  return out.string(from: d)
+}
+
+private func upcomingTimeLabel(_ ev: CachedEvent, use24h: Bool?) -> String {
+  let dl = upcomingDateLabel(ev.date)
+  if ev.allDay { return dl }
+  let t = prettyTime(ev.start, use24h: use24h)
+  return t.isEmpty ? dl : "\(dl) · \(t)"
+}
+
+@ViewBuilder
+private func upcomingRow(_ ev: CachedEvent, use24h: Bool?) -> some View {
+  HStack(alignment: .top, spacing: 6) {
+    colorBar(ev).frame(width: 3, height: 20)
+    Text(ev.title).font(.system(size: 13, weight: .medium)).foregroundColor(Theme.text).lineLimit(1)
+    Spacer()
+    Text(upcomingTimeLabel(ev, use24h: use24h)).font(.caption2).foregroundColor(Theme.accent)
+  }
+}
+
 private func minutesFromHHMM(_ s: String?) -> Int? {
   guard let s = s, s.contains(":") else { return nil }
   let parts = s.split(separator: ":")
@@ -175,22 +208,36 @@ struct SmallView: View {
 
   var body: some View {
     let events = entry.payload?.events ?? []
+    let upcoming = entry.payload?.upcoming ?? []
     let tomorrow = entry.payload?.tomorrowFirst
+    // Today first, then upcoming (TODO #107), within the small widget's budget.
+    let budget = 3
+    let shownToday = Array(events.prefix(budget))
+    let shownUpcoming = Array(upcoming.prefix(max(0, budget - shownToday.count)))
+    let remaining = events.count - shownToday.count
 
     VStack(alignment: .leading, spacing: 6) {
       Text(headerDateString()).font(.caption2).foregroundColor(Theme.subtle)
-      if let ev = events.first {
+      ForEach(Array(shownToday.enumerated()), id: \.offset) { _, ev in
         eventRow(ev, showTime: true)
-        if events.count > 1 {
-          Text("+\(events.count - 1) more").font(.caption2).foregroundColor(Theme.subtle)
+      }
+      if !shownUpcoming.isEmpty {
+        ForEach(Array(shownUpcoming.enumerated()), id: \.offset) { _, ev in
+          upcomingRow(ev, use24h: entry.payload?.use24h)
         }
-      } else if let t = tomorrow {
-        Spacer()
-        Text("TOMORROW").font(.caption2).foregroundColor(Theme.accent)
-        eventRow(t, showTime: true)
-      } else {
-        Spacer()
-        Text("No events today").font(.caption).foregroundColor(Theme.subtle)
+      }
+      if remaining > 0 && shownUpcoming.isEmpty {
+        Text("+\(remaining) more").font(.caption2).foregroundColor(Theme.subtle)
+      }
+      if shownToday.isEmpty && shownUpcoming.isEmpty {
+        if let t = tomorrow {
+          Spacer()
+          Text("TOMORROW").font(.caption2).foregroundColor(Theme.accent)
+          eventRow(t, showTime: true)
+        } else {
+          Spacer()
+          Text("No events today").font(.caption).foregroundColor(Theme.subtle)
+        }
       }
       Spacer(minLength: 0)
     }
@@ -219,12 +266,17 @@ struct MediumView: View {
   var body: some View {
     let allEvents = entry.payload?.events ?? []
     let allSlots: [[Int]] = entry.payload?.slots ?? allEvents.indices.map { [$0] }
-    let shownSlots = Array(allSlots.prefix(4))
-    let shownEventCount = shownSlots.reduce(0) { $0 + $1.count }
-    let remaining = allEvents.count - shownEventCount
+    let upcoming = entry.payload?.upcoming ?? []
     let tomorrow = entry.payload?.tomorrowFirst
     let nowMin = currentMinutes()
     let nextUp = findNextUp(allEvents, nowMin: nowMin)
+    // Today's events take rows first; upcoming (TODO #107) fills the rest of a
+    // fixed budget so a holiday today no longer hides what's coming up.
+    let rowBudget = 4
+    let shownSlots = Array(allSlots.prefix(rowBudget))
+    let shownEventCount = shownSlots.reduce(0) { $0 + $1.count }
+    let remaining = allEvents.count - shownEventCount
+    let shownUpcoming = Array(upcoming.prefix(max(0, rowBudget - shownSlots.count)))
 
     VStack(alignment: .leading, spacing: 6) {
       Text(headerDateString())
@@ -249,18 +301,26 @@ struct MediumView: View {
             )
           }
         }
-        if remaining > 0 {
-          Text("+\(remaining) more").font(.caption2).foregroundColor(Theme.subtle)
+      }
+      if !shownUpcoming.isEmpty {
+        ForEach(Array(shownUpcoming.enumerated()), id: \.offset) { _, ev in
+          upcomingRow(ev, use24h: entry.payload?.use24h)
         }
-      } else if let t = tomorrow {
-        Spacer()
-        Text("NOTHING TODAY — TOMORROW").font(.caption2).foregroundColor(Theme.accent)
-        row(t, isNextUp: false, isPast: false)
-        Spacer()
-      } else {
-        Spacer()
-        Text("No events today").font(.subheadline).foregroundColor(Theme.subtle)
-        Spacer()
+      }
+      if remaining > 0 && shownUpcoming.isEmpty {
+        Text("+\(remaining) more").font(.caption2).foregroundColor(Theme.subtle)
+      }
+      if allEvents.isEmpty && shownUpcoming.isEmpty {
+        if let t = tomorrow {
+          Spacer()
+          Text("NOTHING TODAY — TOMORROW").font(.caption2).foregroundColor(Theme.accent)
+          row(t, isNextUp: false, isPast: false)
+          Spacer()
+        } else {
+          Spacer()
+          Text("No events today").font(.subheadline).foregroundColor(Theme.subtle)
+          Spacer()
+        }
       }
       Spacer(minLength: 0)
     }

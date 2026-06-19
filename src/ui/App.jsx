@@ -6782,6 +6782,25 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
         </div>
       </div>
 
+      {/* Widget */}
+      <div style={{ fontSize:11, fontWeight:300, color:th.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        WIDGET
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
+          justifyContent:'space-between' }}>
+          <div style={{ flex:1, paddingRight:12 }}>
+            <div style={{ fontSize:13, fontWeight:300, ...th.text }}>Show upcoming events</div>
+            <div style={{ fontSize:11, color:th.muted, fontWeight:300, marginTop:2 }}>
+              On empty days, list the next few events instead of just tomorrow
+            </div>
+          </div>
+          <Toggle val={profile?.widgetShowUpcoming === true}
+            onChange={v => { window.__pearSync?.haptic('light'); onUpdateProfile({ widgetShowUpcoming: v }) }}
+            accent={th.accent} />
+        </div>
+      </div>
+
       {/* Holidays */}
       {(() => {
         const thisYear = new Date().getFullYear()

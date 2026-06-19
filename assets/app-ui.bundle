@@ -25548,6 +25548,29 @@ ${link}`;
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Toggle, { val: use24h, onChange: (v) => onUpdateProfile({ use24h: v }), accent: th.accent })
         ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: th.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "WIDGET" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
+          padding: "14px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, paddingRight: 12 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, ...th.text }, children: "Show upcoming events" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: th.muted, fontWeight: 300, marginTop: 2 }, children: "On empty days, list the next few events instead of just tomorrow" })
+          ] }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+            Toggle,
+            {
+              val: profile?.widgetShowUpcoming === true,
+              onChange: (v) => {
+                window.__pearSync?.haptic("light");
+                onUpdateProfile({ widgetShowUpcoming: v });
+              },
+              accent: th.accent
+            }
+          )
+        ] }) }),
         (() => {
           const thisYear = (/* @__PURE__ */ new Date()).getFullYear();
           const slug = (t7) => t7.replace(/\s+/g, "-").toLowerCase();
