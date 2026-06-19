@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.text.format.DateFormat
 import android.view.View
@@ -95,7 +96,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         views.setViewVisibility(rowIds[i], View.VISIBLE)
                         views.setTextViewText(timeIds[i], e.timeLabel)
                         views.setTextViewText(titleIds[i], e.title)
-                        views.setInt(colorIds[i], "setBackgroundColor", e.color)
+                        applyColorBar(views, colorIds[i], e)
 
                         val isPast = !e.allDay && e.endMin != null && e.endMin < nowMin
                         val isNextUp = nextUpSet.contains(leftIdx)
@@ -114,7 +115,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                             views.setViewVisibility(locationIds[i], View.GONE)
                             views.setViewVisibility(rightColorIds[i], View.VISIBLE)
                             views.setViewVisibility(rightTitleIds[i], View.VISIBLE)
-                            views.setInt(rightColorIds[i], "setBackgroundColor", e2.color)
+                            applyColorBar(views, rightColorIds[i], e2)
                             views.setTextViewText(rightTitleIds[i], e2.title)
                             val isPastR = !e2.allDay && e2.endMin != null && e2.endMin < nowMin
                             val isNextUpR = nextUpSet.contains(rightIdx)
@@ -158,6 +159,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val title: String,
             val location: String?,
             val color: Int,
+            val colors: List<Int>?,   // 2–3 entry strip (e.g. US holiday) — TODO #104
             val allDay: Boolean,
             val startMin: Int?,
             val endMin: Int?,
@@ -187,8 +189,12 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         val location = if (o.isNull("location")) null else o.optString("location", "").ifEmpty { null }
                         val timeLabel = if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
                         val color = parseColor(o.optString("color", ""))
+                        val colorsArr = o.optJSONArray("colors")
+                        val colors: List<Int>? = if (colorsArr != null && colorsArr.length() > 1) {
+                            (0 until minOf(colorsArr.length(), 3)).map { parseColor(colorsArr.optString(it, "")) }
+                        } else null
                         list.add(EventRow(
-                            timeLabel, title, location, color, allDay,
+                            timeLabel, title, location, color, colors, allDay,
                             parseMinutes(start), parseMinutes(end)
                         ))
                     }
@@ -234,6 +240,25 @@ class DailyWidgetReceiver : AppWidgetProvider() {
         private fun parseColor(s: String): Int {
             if (s.isEmpty()) return Color.parseColor(COLOR_DEFAULT_EVENT)
             return try { Color.parseColor(s) } catch (e: Exception) { Color.parseColor(COLOR_DEFAULT_EVENT) }
+        }
+
+        // Paint an event's color bar: a stacked-segment strip (e.g. US holiday
+        // red/white/blue) when it has a 2–3 colour `colors` list, else a solid
+        // fill. The strip is a 1×N bitmap stretched by the ImageView's fitXY
+        // scaleType to fill the bar. (TODO #104)
+        private fun applyColorBar(views: RemoteViews, viewId: Int, e: EventRow) {
+            val cs = e.colors
+            if (cs != null && cs.size >= 2) {
+                views.setImageViewBitmap(viewId, stripBitmap(cs))
+            } else {
+                views.setInt(viewId, "setBackgroundColor", e.color)
+            }
+        }
+
+        private fun stripBitmap(colors: List<Int>): Bitmap {
+            val bmp = Bitmap.createBitmap(1, colors.size, Bitmap.Config.ARGB_8888)
+            for (i in colors.indices) bmp.setPixel(0, i, colors[i])
+            return bmp
         }
 
         private fun parseMinutes(s: String): Int? {
