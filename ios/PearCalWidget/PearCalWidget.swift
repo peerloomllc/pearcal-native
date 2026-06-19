@@ -11,6 +11,7 @@ struct CachedEvent: Codable, Identifiable {
   let end: String?
   let location: String?
   let color: String?
+  let colors: [String]?   // 2–3 hex strip (e.g. US holiday red/white/blue) — TODO #104
 }
 
 struct CachedPayload: Codable {
@@ -104,6 +105,23 @@ private func swatch(_ hex: String?) -> Color {
                blue: Double(n & 0xFF) / 255.0)
 }
 
+// The event's color bar. With a 2–3 entry `colors` strip (subscribed holidays
+// like US federal days) it paints stacked segments; otherwise a solid swatch.
+// Caller applies the .frame — TODO #104.
+@ViewBuilder
+private func colorBar(_ ev: CachedEvent) -> some View {
+  if let cs = ev.colors, cs.count >= 2 {
+    VStack(spacing: 0) {
+      ForEach(Array(cs.prefix(3).enumerated()), id: \.offset) { _, hex in
+        Rectangle().fill(swatch(hex))
+      }
+    }
+    .clipShape(RoundedRectangle(cornerRadius: 2))
+  } else {
+    RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color))
+  }
+}
+
 private func eventTimeLabel(_ ev: CachedEvent, use24h: Bool?) -> String {
   if ev.allDay { return "All day" }
   return prettyTime(ev.start, use24h: use24h)
@@ -182,7 +200,7 @@ struct SmallView: View {
   @ViewBuilder
   private func eventRow(_ ev: CachedEvent, showTime: Bool) -> some View {
     HStack(alignment: .top, spacing: 6) {
-      RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color)).frame(width: 3)
+      colorBar(ev).frame(width: 3)
       VStack(alignment: .leading, spacing: 2) {
         Text(ev.title).font(.system(size: 14, weight: .semibold)).foregroundColor(Theme.text).lineLimit(2)
         if showTime {
@@ -262,7 +280,7 @@ struct MediumView: View {
     let hasLoc = !(ev.location ?? "").isEmpty
     VStack(alignment: .leading, spacing: 1) {
       HStack(spacing: 8) {
-        RoundedRectangle(cornerRadius: 2).fill(swatch(ev.color)).frame(width: 3, height: 20)
+        colorBar(ev).frame(width: 3, height: 20)
         Text(ev.title).font(.system(size: 13, weight: .medium)).foregroundColor(tColor).lineLimit(1)
         Spacer()
         Text(eventTimeLabel(ev, use24h: entry.payload?.use24h)).font(.caption2).foregroundColor(timeColor)
@@ -285,9 +303,9 @@ struct MediumView: View {
     let bColor = titleColor(isNextUp: rightNextUp, isPast: rightPast)
     let timeColor: Color = (leftNextUp || rightNextUp) ? Theme.accent : Theme.muted
     HStack(spacing: 6) {
-      RoundedRectangle(cornerRadius: 2).fill(swatch(a.color)).frame(width: 3, height: 20)
+      colorBar(a).frame(width: 3, height: 20)
       Text(a.title).font(.system(size: 13, weight: .medium)).foregroundColor(aColor).lineLimit(1)
-      RoundedRectangle(cornerRadius: 2).fill(swatch(b.color)).frame(width: 3, height: 20).padding(.leading, 2)
+      colorBar(b).frame(width: 3, height: 20).padding(.leading, 2)
       Text(b.title).font(.system(size: 13, weight: .medium)).foregroundColor(bColor).lineLimit(1)
       Spacer()
       Text(eventTimeLabel(a, use24h: entry.payload?.use24h)).font(.caption2).foregroundColor(timeColor)

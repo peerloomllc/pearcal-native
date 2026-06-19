@@ -19,6 +19,13 @@ function tomorrowDateString () {
 }
 
 function normalize (value) {
+  // `colors` (2–3 hex entries) paints a segmented strip in the widget — used by
+  // subscribed holidays like US federal days (red/white/blue). Emit it only when
+  // there's a real strip; single-color events keep `color`, and older widget
+  // binaries that don't read `colors` fall back to it. (TODO #104)
+  const strip = Array.isArray(value.colors) && value.colors.length > 1
+    ? value.colors.slice(0, 3)
+    : null
   return {
     id: value.id,
     title: value.title || '',
@@ -27,6 +34,7 @@ function normalize (value) {
     end: value.end || null,
     location: value.location || null,
     color: (value.colors && value.colors[0]) || value.color || null,
+    colors: strip,
   }
 }
 
