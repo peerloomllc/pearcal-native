@@ -121,6 +121,32 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
     return out
   })()
 
+  // RSVP (TODO #108). Creator toggles "request RSVP" and sees the roster;
+  // invitees see a going/declined control. Loaded once on open (matches mobile).
+  const isEventCreator = !initial?.creatorId || initial.creatorId === profile?.id
+  const [rsvpEnabled,  setRsvpEnabled]  = useState(!!initial?.rsvpEnabled)
+  const [myRsvp,       setMyRsvp]       = useState(null)   // own response (non-creator)
+  const [rsvpList,     setRsvpList]     = useState([])     // all responses (creator)
+  const [rsvpExpanded, setRsvpExpanded] = useState(false)
+
+  useEffect(() => {
+    if (mode !== 'edit' || !initial?.id || !rsvpEnabled || !db) return
+    let alive = true
+    if (isEventCreator) {
+      Promise.resolve(db.listRsvps?.(initial.id)).then(r => { if (alive && Array.isArray(r)) setRsvpList(r) }).catch(() => {})
+    } else if (profile?.id) {
+      Promise.resolve(db.getRsvp?.(initial.id, profile.id)).then(r => { if (alive) setMyRsvp(r?.status ?? 'pending') }).catch(() => {})
+    }
+    return () => { alive = false }
+  }, [mode, initial?.id, rsvpEnabled, isEventCreator, db, profile?.id])
+
+  async function respondRsvp (status) {
+    if (!db || mode !== 'edit' || !initial?.id || !profile?.id) return
+    setMyRsvp(status)
+    try { await db.putRsvp?.(initial.id, profile.id, status, initial.groups ?? []) }
+    catch (e) { console.warn('[RSVP-ERR]', e?.message) }
+  }
+
   // Recurrence (parity with mobile — TODO #102). "Custom…" is a UI mode stored
   // as a unit cadence + recurrenceInterval. Editing an existing occurrence
   // prompts for scope (this / future / all) before saving.
@@ -212,7 +238,8 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       // Persist the chosen end day only for multi-day all-day events; a timed
       // event or a single-day all-day event clears it back to ''.
       endDate:           (showEndDate && endDate && endDate !== date) ? endDate : '',
-      rsvpEnabled:       initial?.rsvpEnabled ?? false,
+      // Only the creator of a group event controls RSVP; otherwise preserve.
+      rsvpEnabled:       (isEventCreator && groupIds.length) ? rsvpEnabled : (initial?.rsvpEnabled ?? false),
     }
     // Only write the async-loaded fields once they've actually loaded, so a
     // fast save can't blank them. `privateNote` rides on the event; the bare
@@ -284,6 +311,54 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
           <input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)}
                  placeholder="Event title" style={inputBase} />
         </div>
+
+        {/* RSVP — roster for the creator, response control for invitees (TODO #108) */}
+        {mode === 'edit' && rsvpEnabled && isEventCreator && (() => {
+          const going    = rsvpList.filter(r => r.status === 'going')
+          const declined = rsvpList.filter(r => r.status === 'declined')
+          const respIds  = new Set(rsvpList.map(r => r.memberId))
+          const pending  = inviteCandidates.filter(m => !respIds.has(m.id))
+          const nameFor  = id => inviteCandidates.find(m => m.id === id)?.name || id.slice(0, 6)
+          return (
+            <div onClick={() => setRsvpExpanded(e => !e)} style={{
+              cursor: 'pointer', marginBottom: 12, padding: '8px 12px',
+              border: `1px solid ${tokens.border}`, borderRadius: 6, fontSize: 13,
+              display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              <div style={{ display: 'flex', gap: 12 }}>
+                <span><span style={{ color: '#5DBF8A' }}>✓</span> {going.length} going</span>
+                <span><span style={{ color: '#C0504A' }}>✗</span> {declined.length} declined</span>
+                <span style={{ color: tokens.muted }}>? {pending.length} pending</span>
+              </div>
+              {rsvpExpanded && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, color: tokens.muted }}>
+                  {going.length > 0 && <div><span style={{ color: '#5DBF8A' }}>✓</span> {going.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                  {declined.length > 0 && <div><span style={{ color: '#C0504A' }}>✗</span> {declined.map(r => nameFor(r.memberId)).join(', ')}</div>}
+                  {pending.length > 0 && <div>? {pending.map(m => m.name).join(', ')}</div>}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
+        {mode === 'edit' && rsvpEnabled && !isEventCreator && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Your response</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['going', 'Going'], ['declined', 'Decline']].map(([val, lbl]) => {
+                const sel = myRsvp === val
+                const col = val === 'going' ? '#5DBF8A' : '#C0504A'
+                return (
+                  <button key={val} onClick={() => respondRsvp(val)} style={{
+                    ...btnBase, flex: 1, padding: '8px 0',
+                    background: sel ? col : tokens.bg, color: sel ? tokens.bg : tokens.text,
+                    borderColor: sel ? col : tokens.border,
+                  }}>{lbl}</button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
           <div style={{ flex: 1 }}>
@@ -469,6 +544,15 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
               <option value="everyone">Anyone in the group</option>
             </select>
           </div>
+        )}
+
+        {/* Request RSVP — group events, creator only (TODO #108) */}
+        {groupIds.length > 0 && isEventCreator && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                          fontSize: 13, color: tokens.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={rsvpEnabled} onChange={e => setRsvpEnabled(e.target.checked)} />
+            Request RSVP from invitees
+          </label>
         )}
 
         <div style={{ marginBottom: 12 }}>
