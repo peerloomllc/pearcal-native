@@ -70,7 +70,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val rightColorIds = arrayOf(R.id.widget_color_right_0, R.id.widget_color_right_1, R.id.widget_color_right_2, R.id.widget_color_right_3, R.id.widget_color_right_4)
             val rightTitleIds = arrayOf(R.id.widget_title_right_0, R.id.widget_title_right_1, R.id.widget_title_right_2, R.id.widget_title_right_3, R.id.widget_title_right_4)
 
-            if (cache.events.isEmpty()) {
+            if (cache.events.isEmpty() && cache.upcoming.isEmpty()) {
                 views.setViewVisibility(R.id.widget_empty_container, View.VISIBLE)
                 if (cache.tomorrowPreview != null) {
                     views.setViewVisibility(R.id.widget_tomorrow, View.VISIBLE)
@@ -86,61 +86,79 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 val slots = cache.slots
                 val nowMin = currentMinutes()
                 val nextUpSet = findNextUp(events, nowMin)
-                val shownSlots = minOf(slots.size, ROW_COUNT)
+                // Today's events claim rows first; "show upcoming" rows (#107)
+                // then fill whatever remains (with their date where time goes).
+                val todaySlots = minOf(slots.size, ROW_COUNT)
                 var eventsShown = 0
-                for (i in 0 until ROW_COUNT) {
-                    if (i < shownSlots) {
-                        val slot = slots[i]
-                        val leftIdx = slot[0]
-                        val e = events[leftIdx]
-                        views.setViewVisibility(rowIds[i], View.VISIBLE)
-                        views.setTextViewText(timeIds[i], e.timeLabel)
-                        views.setTextViewText(titleIds[i], e.title)
-                        applyColorBar(views, colorIds[i], e)
+                var rowIdx = 0
+                while (rowIdx < todaySlots) {
+                    val slot = slots[rowIdx]
+                    val leftIdx = slot[0]
+                    val e = events[leftIdx]
+                    views.setViewVisibility(rowIds[rowIdx], View.VISIBLE)
+                    views.setTextViewText(timeIds[rowIdx], e.timeLabel)
+                    views.setTextViewText(titleIds[rowIdx], e.title)
+                    applyColorBar(views, colorIds[rowIdx], e)
 
-                        val isPast = !e.allDay && e.endMin != null && e.endMin < nowMin
-                        val isNextUp = nextUpSet.contains(leftIdx)
-                        val titleColor = when {
-                            isPast -> Color.parseColor(COLOR_MUTED)
-                            isNextUp -> Color.parseColor(COLOR_ACCENT)
+                    val isPast = !e.allDay && e.endMin != null && e.endMin < nowMin
+                    val isNextUp = nextUpSet.contains(leftIdx)
+                    val titleColor = when {
+                        isPast -> Color.parseColor(COLOR_MUTED)
+                        isNextUp -> Color.parseColor(COLOR_ACCENT)
+                        else -> Color.parseColor(COLOR_TEXT)
+                    }
+                    val timeColor = if (isNextUp) Color.parseColor(COLOR_ACCENT) else Color.parseColor(COLOR_MUTED)
+                    views.setTextColor(titleIds[rowIdx], titleColor)
+                    views.setTextColor(timeIds[rowIdx], timeColor)
+
+                    if (slot.size >= 2) {
+                        val rightIdx = slot[1]
+                        val e2 = events[rightIdx]
+                        views.setViewVisibility(locationIds[rowIdx], View.GONE)
+                        views.setViewVisibility(rightColorIds[rowIdx], View.VISIBLE)
+                        views.setViewVisibility(rightTitleIds[rowIdx], View.VISIBLE)
+                        applyColorBar(views, rightColorIds[rowIdx], e2)
+                        views.setTextViewText(rightTitleIds[rowIdx], e2.title)
+                        val isPastR = !e2.allDay && e2.endMin != null && e2.endMin < nowMin
+                        val isNextUpR = nextUpSet.contains(rightIdx)
+                        val titleColorR = when {
+                            isPastR -> Color.parseColor(COLOR_MUTED)
+                            isNextUpR -> Color.parseColor(COLOR_ACCENT)
                             else -> Color.parseColor(COLOR_TEXT)
                         }
-                        val timeColor = if (isNextUp) Color.parseColor(COLOR_ACCENT) else Color.parseColor(COLOR_MUTED)
-                        views.setTextColor(titleIds[i], titleColor)
-                        views.setTextColor(timeIds[i], timeColor)
-
-                        if (slot.size >= 2) {
-                            val rightIdx = slot[1]
-                            val e2 = events[rightIdx]
-                            views.setViewVisibility(locationIds[i], View.GONE)
-                            views.setViewVisibility(rightColorIds[i], View.VISIBLE)
-                            views.setViewVisibility(rightTitleIds[i], View.VISIBLE)
-                            applyColorBar(views, rightColorIds[i], e2)
-                            views.setTextViewText(rightTitleIds[i], e2.title)
-                            val isPastR = !e2.allDay && e2.endMin != null && e2.endMin < nowMin
-                            val isNextUpR = nextUpSet.contains(rightIdx)
-                            val titleColorR = when {
-                                isPastR -> Color.parseColor(COLOR_MUTED)
-                                isNextUpR -> Color.parseColor(COLOR_ACCENT)
-                                else -> Color.parseColor(COLOR_TEXT)
-                            }
-                            views.setTextColor(rightTitleIds[i], titleColorR)
-                        } else {
-                            views.setViewVisibility(rightColorIds[i], View.GONE)
-                            views.setViewVisibility(rightTitleIds[i], View.GONE)
-                            if (e.location.isNullOrEmpty()) {
-                                views.setViewVisibility(locationIds[i], View.GONE)
-                            } else {
-                                views.setViewVisibility(locationIds[i], View.VISIBLE)
-                                views.setTextViewText(locationIds[i], e.location)
-                                val locColor = if (isPast) Color.parseColor("#5A554E") else Color.parseColor(COLOR_MUTED)
-                                views.setTextColor(locationIds[i], locColor)
-                            }
-                        }
-                        eventsShown += slot.size
+                        views.setTextColor(rightTitleIds[rowIdx], titleColorR)
                     } else {
-                        views.setViewVisibility(rowIds[i], View.GONE)
+                        views.setViewVisibility(rightColorIds[rowIdx], View.GONE)
+                        views.setViewVisibility(rightTitleIds[rowIdx], View.GONE)
+                        if (e.location.isNullOrEmpty()) {
+                            views.setViewVisibility(locationIds[rowIdx], View.GONE)
+                        } else {
+                            views.setViewVisibility(locationIds[rowIdx], View.VISIBLE)
+                            views.setTextViewText(locationIds[rowIdx], e.location)
+                            val locColor = if (isPast) Color.parseColor("#5A554E") else Color.parseColor(COLOR_MUTED)
+                            views.setTextColor(locationIds[rowIdx], locColor)
+                        }
                     }
+                    eventsShown += slot.size
+                    rowIdx++
+                }
+                // Upcoming events fill the remaining rows.
+                for (e in cache.upcoming) {
+                    if (rowIdx >= ROW_COUNT) break
+                    views.setViewVisibility(rowIds[rowIdx], View.VISIBLE)
+                    views.setTextViewText(timeIds[rowIdx], e.timeLabel)
+                    views.setTextViewText(titleIds[rowIdx], e.title)
+                    applyColorBar(views, colorIds[rowIdx], e)
+                    views.setTextColor(titleIds[rowIdx], Color.parseColor(COLOR_TEXT))
+                    views.setTextColor(timeIds[rowIdx], Color.parseColor(COLOR_ACCENT))
+                    views.setViewVisibility(rightColorIds[rowIdx], View.GONE)
+                    views.setViewVisibility(rightTitleIds[rowIdx], View.GONE)
+                    views.setViewVisibility(locationIds[rowIdx], View.GONE)
+                    rowIdx++
+                }
+                while (rowIdx < ROW_COUNT) {
+                    views.setViewVisibility(rowIds[rowIdx], View.GONE)
+                    rowIdx++
                 }
                 val overflow = events.size - eventsShown
                 if (overflow > 0) {
@@ -165,7 +183,12 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val endMin: Int?,
         )
 
-        private data class WidgetCache(val events: List<EventRow>, val slots: List<List<Int>>, val tomorrowPreview: String?)
+        private data class WidgetCache(
+            val events: List<EventRow>,
+            val slots: List<List<Int>>,
+            val tomorrowPreview: String?,
+            val upcoming: List<EventRow> = emptyList(),
+        )
 
         private fun readCache(context: Context): WidgetCache {
             val file = File(File(context.filesDir, "widget"), "today.json")
@@ -180,24 +203,14 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 val arr = json.optJSONArray("events")
                 val list = ArrayList<EventRow>(arr?.length() ?: 0)
                 if (arr != null) {
-                    for (i in 0 until arr.length()) {
-                        val o = arr.getJSONObject(i)
-                        val title = o.optString("title", "").ifEmpty { "(Untitled)" }
-                        val allDay = o.optBoolean("allDay", false)
-                        val start = o.optString("start", "")
-                        val end = o.optString("end", "")
-                        val location = if (o.isNull("location")) null else o.optString("location", "").ifEmpty { null }
-                        val timeLabel = if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
-                        val color = parseColor(o.optString("color", ""))
-                        val colorsArr = o.optJSONArray("colors")
-                        val colors: List<Int>? = if (colorsArr != null && colorsArr.length() > 1) {
-                            (0 until minOf(colorsArr.length(), 3)).map { parseColor(colorsArr.optString(it, "")) }
-                        } else null
-                        list.add(EventRow(
-                            timeLabel, title, location, color, colors, allDay,
-                            parseMinutes(start), parseMinutes(end)
-                        ))
-                    }
+                    for (i in 0 until arr.length()) list.add(parseEventRow(arr.getJSONObject(i), use24h, upcoming = false))
+                }
+                // "Show upcoming events" rows (TODO #107) — only present when the
+                // setting is on and today is empty; weekday label replaces time.
+                val upArr = json.optJSONArray("upcoming")
+                val upList = ArrayList<EventRow>(upArr?.length() ?: 0)
+                if (upArr != null) {
+                    for (i in 0 until upArr.length()) upList.add(parseEventRow(upArr.getJSONObject(i), use24h, upcoming = true))
                 }
                 val slotsArr = json.optJSONArray("slots")
                 val slotList = ArrayList<List<Int>>()
@@ -213,10 +226,39 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 }
                 val tomorrow = json.optJSONObject("tomorrowFirst")
                 val preview = if (tomorrow != null) formatTomorrowPreview(tomorrow, use24h) else null
-                WidgetCache(list, slotList, preview)
+                WidgetCache(list, slotList, preview, upList)
             } catch (e: Exception) {
                 WidgetCache(emptyList(), emptyList(), null)
             }
+        }
+
+        private fun parseEventRow(o: JSONObject, use24h: Boolean, upcoming: Boolean): EventRow {
+            val title = o.optString("title", "").ifEmpty { "(Untitled)" }
+            val allDay = o.optBoolean("allDay", false)
+            val start = o.optString("start", "")
+            val end = o.optString("end", "")
+            val location = if (o.isNull("location")) null else o.optString("location", "").ifEmpty { null }
+            val color = parseColor(o.optString("color", ""))
+            val colorsArr = o.optJSONArray("colors")
+            val colors: List<Int>? = if (colorsArr != null && colorsArr.length() > 1) {
+                (0 until minOf(colorsArr.length(), 3)).map { parseColor(colorsArr.optString(it, "")) }
+            } else null
+            val timeLabel = if (upcoming) {
+                val dl = upcomingDateLabel(o.optString("date", ""))
+                if (allDay || start.isEmpty()) dl else "$dl · ${prettyTime(start, use24h)}"
+            } else {
+                if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
+            }
+            return EventRow(timeLabel, title, location, color, colors, allDay, parseMinutes(start), parseMinutes(end))
+        }
+
+        // Weekday + month/day for upcoming rows, e.g. "Sat · Jun 19" (TODO #107).
+        private fun upcomingDateLabel(dateStr: String): String {
+            if (dateStr.isEmpty()) return ""
+            return try {
+                val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr) ?: return ""
+                SimpleDateFormat("EEE · MMM d", Locale.getDefault()).format(d)
+            } catch (e: Exception) { "" }
         }
 
         private fun formatTomorrowPreview(o: JSONObject, use24h: Boolean): String {
@@ -251,6 +293,10 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             if (cs != null && cs.size >= 2) {
                 views.setImageViewBitmap(viewId, stripBitmap(cs))
             } else {
+                // Clear any strip bitmap a prior render left on this ImageView —
+                // otherwise a reused row (e.g. a holiday was here last update)
+                // keeps the red/white/blue strip under a solid colour. (TODO #107)
+                views.setImageViewBitmap(viewId, null)
                 views.setInt(viewId, "setBackgroundColor", e.color)
             }
         }

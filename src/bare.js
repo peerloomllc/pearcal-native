@@ -802,6 +802,7 @@ async function refreshWidgetCache () {
     isInvitedToEvent,
     ownedGroupIds,
     use24h: profile?.use24h,
+    widgetShowUpcoming: profile?.widgetShowUpcoming,
   })
   send({ type: 'event', event: 'widgetCache', data: payload })
   scheduleMorningDigest().catch(e => console.warn('morning digest refresh:', e.message))
