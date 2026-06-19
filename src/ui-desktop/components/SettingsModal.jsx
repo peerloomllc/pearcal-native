@@ -9,6 +9,7 @@
 
 import { useEffect, useState } from 'react'
 import { HOLIDAY_COUNTRIES, holidayEventId } from '../../ui-shared/index.js'
+import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -20,23 +21,6 @@ const WEEK_STARTS = [
   { value: 1, label: 'Monday' },
 ]
 
-// Mirrors the mobile reminder options (src/ui/App.jsx). The two negatives are
-// fixed-time reminders rather than minute offsets; bare interprets them.
-const MORNING_OF = -1
-const DAY_BEFORE = -2
-const REMINDER_OPTIONS = [
-  { label: '5 min before',      value: 5 },
-  { label: '10 min before',     value: 10 },
-  { label: '15 min before',     value: 15 },
-  { label: '30 min before',     value: 30 },
-  { label: '1 hour before',     value: 60 },
-  { label: '2 hours before',    value: 120 },
-  { label: 'Morning of (9 AM)', value: MORNING_OF },
-  { label: 'Day before (9 AM)', value: DAY_BEFORE },
-  { label: '1 day before',      value: 1440 },
-  { label: '1 week before',     value: 10080 },
-  { label: '2 weeks before',    value: 20160 },
-]
 
 export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onClose }) {
   const [phrase,   setPhrase]   = useState(null)         // null = hidden, '' = loading, '...' = revealed

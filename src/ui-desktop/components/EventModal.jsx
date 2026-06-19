@@ -6,6 +6,7 @@
 // expose UI to change them yet).
 
 import { useEffect, useRef, useState } from 'react'
+import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 
 function makeEventId () {
   return 'e' + Date.now() + Math.floor(Math.random() * 1000)
@@ -41,44 +42,12 @@ function defaultsFor (initialStart) {
   }
 }
 
-// Modal layout — width and viewport guard rails. Used both for the
-// centered fallback and the anchor-positioned variant so the popover
-// can never be clipped off-screen.
-const MODAL_WIDTH    = 460
-const MODAL_GAP_PX   = 16
-const MODAL_MARGIN   = 16
+// Modal layout — width and viewport margin. The modal is always centered
+// (TODO #109), so it needs no anchor-position math.
+const MODAL_WIDTH  = 460
+const MODAL_MARGIN = 16
 
-// Compute the popover position adjacent to the anchor, preferring the
-// right side. Falls back to the left if right would overflow; clamps
-// vertically so the panel never lands outside the viewport. Returns
-// null when the anchor itself doesn't fit either side — caller falls
-// back to a centered modal in that case.
-function computeAnchorPosition (anchor) {
-  if (!anchor) return null
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  // Estimate panel height — actual height varies by content (50% of the
-  // form is conditionally rendered by allDay), so cap at 90vh and let
-  // the inner scroll handle anything that would clip.
-  const estH = Math.min(560, vh - MODAL_MARGIN * 2)
-
-  let left
-  if (anchor.x + MODAL_GAP_PX + MODAL_WIDTH + MODAL_MARGIN <= vw) {
-    left = anchor.x + MODAL_GAP_PX
-  } else if (anchor.x - MODAL_GAP_PX - MODAL_WIDTH >= MODAL_MARGIN) {
-    left = anchor.x - MODAL_GAP_PX - MODAL_WIDTH
-  } else {
-    return null  // neither side fits; fall back to centered
-  }
-
-  // Center vertically on the anchor, then clamp.
-  let top = anchor.y - estH / 2
-  if (top < MODAL_MARGIN) top = MODAL_MARGIN
-  if (top + estH > vh - MODAL_MARGIN) top = vh - MODAL_MARGIN - estH
-  return { left, top }
-}
-
-export function EventModal ({ tokens, mode, initial, anchor, groups, profile, use24h, onSave, onDelete, onClose }) {
+export function EventModal ({ tokens, mode, initial, anchor, groups, profile, use24h, db, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
@@ -105,6 +74,52 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   const [groupIds, setGroupIds] = useState(initial?.groups ?? [])
   const [notes,    setNotes]    = useState(initial?.desc ?? '')
   const [location, setLocation] = useState(initial?.location ?? '')
+
+  // Parity fields (TODO #108) — previously preserved-but-not-editable.
+  const [meetingLink,    setMeetingLink]    = useState(initial?.meetingLink ?? '')
+  const [editPermission, setEditPermission] = useState(initial?.editPermission ?? 'creator')
+  const [invitees,       setInvitees]       = useState(initial?.invitees ?? [])
+  const [privateNote,    setPrivateNote]    = useState('')   // loaded async; personal, not synced
+  const [reminders,      setReminders]      = useState(() => {
+    // New events seed the profile default (matches mobile); editing loads the
+    // saved reminders via db below.
+    if (mode === 'create') {
+      const dr = typeof profile?.defaultReminder === 'number' ? profile.defaultReminder : 15
+      return dr > 0 ? [dr] : []
+    }
+    return []
+  })
+  // Guards against saving the async-loaded reminders/private-note before they
+  // arrive — otherwise a quick save would wipe existing values.
+  const [loaded, setLoaded] = useState(mode === 'create')
+
+  // Load saved reminders + private note for an existing event.
+  useEffect(() => {
+    if (mode !== 'edit' || !initial?.id || !db) { setLoaded(true); return }
+    let alive = true
+    Promise.allSettled([
+      Promise.resolve(db.getReminders?.(initial.id)).then(r => { if (alive && Array.isArray(r)) setReminders(r) }),
+      Promise.resolve(db.getPrivateNote?.(initial.id)).then(t => { if (alive && typeof t === 'string') setPrivateNote(t) }),
+    ]).then(() => { if (alive) setLoaded(true) })
+    return () => { alive = false }
+  }, [mode, initial?.id, db])
+
+  function toggleInvitee (uid) {
+    setInvitees(prev => prev.includes(uid) ? prev.filter(x => x !== uid) : [...prev, uid])
+  }
+  // Members across the selected groups (deduped, excluding myself) — the
+  // candidate invitee list. Empty invitees = visible to everyone in the group.
+  const inviteCandidates = (() => {
+    const seen = new Set(); const out = []
+    for (const gid of groupIds) {
+      const g = groups.find(x => x.id === gid)
+      for (const m of (g?.members ?? [])) {
+        if (m.id === profile?.id) continue
+        if (!seen.has(m.id)) { seen.add(m.id); out.push(m) }
+      }
+    }
+    return out
+  })()
 
   // Recurrence (parity with mobile — TODO #102). "Custom…" is a UI mode stored
   // as a unit cadence + recurrenceInterval. Editing an existing occurrence
@@ -178,10 +193,11 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       start: allDay ? '' : start,
       end:   allDay ? '' : end,
       groups: groupIds,
-      invitees: initial?.invitees ?? [],
+      // Invitees only meaningful for group events; drop them for personal ones.
+      invitees: groupIds.length ? invitees.filter(id => inviteCandidates.some(m => m.id === id)) : [],
       desc: notes,
       location,
-      meetingLink: initial?.meetingLink ?? '',
+      meetingLink: meetingLink.trim(),
       color:       initial?.color ?? '',
       colors:      initial?.colors ?? [],
       creatorId:   initial?.creatorId ?? profile?.id ?? 'unknown',
@@ -192,20 +208,19 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       recurrenceWeekday: recWeekday,
       recurrenceInterval: recurrence === 'none' ? 1 : recInterval,
       repeatForever:     recurrence === 'none' ? false : repeatForever,
-      editPermission:    initial?.editPermission ?? 'creator',
+      editPermission:    groupIds.length ? editPermission : 'creator',
       // Persist the chosen end day only for multi-day all-day events; a timed
       // event or a single-day all-day event clears it back to ''.
       endDate:           (showEndDate && endDate && endDate !== date) ? endDate : '',
       rsvpEnabled:       initial?.rsvpEnabled ?? false,
     }
-    const opts = {}
+    // Only write the async-loaded fields once they've actually loaded, so a
+    // fast save can't blank them. `privateNote` rides on the event; the bare
+    // worklet splits it into its own (un-synced) store on putEvent. Leaving it
+    // off the object entirely means putEvent won't touch the existing note.
+    if (loaded) ev.privateNote = privateNote
+    const opts = loaded ? { reminders } : {}
     if (mode === 'edit' && initial?.date && initial.date !== date) opts._prevDate = initial.date
-    // New events inherit the profile's default reminder (matches mobile). The
-    // negative fixed-time options aren't auto-applied — only real offsets.
-    if (mode === 'create') {
-      const dr = typeof profile?.defaultReminder === 'number' ? profile.defaultReminder : 15
-      if (dr > 0) opts.reminders = [dr]
-    }
     // Editing one occurrence of a series → ask whether to apply to this / future
     // / all before committing (the chosen scope drives regeneration upstream).
     if (mode === 'edit' && initial?.recurrenceId) { setScopePrompt({ ev, opts }); return }
@@ -241,25 +256,21 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   // the user resizes mid-modal, but for a single-shot popover the
   // initial calculation is good enough; recomputing on resize would
   // also fight the user's instinctive close-on-click-outside.
-  const anchorPos = computeAnchorPosition(anchor)
-  const overlayStyle = anchorPos
-    ? { position: 'fixed', inset: 0, background: 'transparent', zIndex: 100 }
-    : { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }
-  const panelStyle = anchorPos
-    ? {
-        position: 'fixed', top: anchorPos.top, left: anchorPos.left,
-        width: MODAL_WIDTH, maxHeight: '90vh', overflowY: 'auto',
-        background: tokens.surface, border: `1px solid ${tokens.border}`,
-        borderRadius: 10, padding: 20,
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-      }
-    : {
-        background: tokens.surface, border: `1px solid ${tokens.border}`,
-        borderRadius: 10, padding: 20, width: MODAL_WIDTH, maxWidth: '90vw',
-        maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
-      }
+  // Always a centered dialog (TODO #109). The modal grew tall enough — and its
+  // height now varies enough with content (recurrence, reminders, invitees…) —
+  // that anchoring it beside the clicked event reliably clipped against the
+  // window edge. Centering + a viewport-bounded maxHeight + inner scroll always
+  // fits, regardless of how the content expands.
+  const overlayStyle = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 100,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: MODAL_MARGIN,
+  }
+  const panelStyle = {
+    background: tokens.surface, border: `1px solid ${tokens.border}`,
+    borderRadius: 10, padding: 20, width: MODAL_WIDTH, maxWidth: '90vw',
+    maxHeight: `calc(100vh - ${MODAL_MARGIN * 2}px)`, overflowY: 'auto',
+    boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+  }
 
   return (
     <div onClick={onClose} style={overlayStyle}>
@@ -373,6 +384,30 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
           </div>
         )}
 
+        {/* Reminders (parity with mobile — TODO #108) */}
+        <div style={{ marginBottom: 12 }}>
+          <div style={label}>Reminders</div>
+          {reminders.map((r, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <select value={r}
+                      onChange={e => { const v = Number(e.target.value); setReminders(reminders.map((x, j) => j === i ? v : x)) }}
+                      style={{ ...inputBase, flex: 1 }}>
+                {REMINDER_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value} disabled={reminders.includes(o.value) && o.value !== r}>{o.label}</option>
+                ))}
+              </select>
+              <button onClick={() => setReminders(reminders.filter((_, j) => j !== i))}
+                      style={{ ...btnBase, padding: '0 12px' }}>×</button>
+            </div>
+          ))}
+          {reminders.length < 3 && REMINDER_OPTIONS.some(o => !reminders.includes(o.value)) && (
+            <button onClick={() => { const next = REMINDER_OPTIONS.find(o => !reminders.includes(o.value)); if (next) setReminders([...reminders, next.value]) }}
+                    style={{ ...btnBase, fontSize: 12, padding: '5px 10px' }}>
+              + Add reminder
+            </button>
+          )}
+        </div>
+
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Groups</div>
           {groups.length === 0 && (
@@ -400,17 +435,66 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
           </div>
         </div>
 
+        {/* Invitees + edit permission — group events only (TODO #108) */}
+        {groupIds.length > 0 && inviteCandidates.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Invite</div>
+            <div style={{ fontSize: 12, color: tokens.muted, marginBottom: 6 }}>
+              {invitees.length === 0 ? 'Everyone in the group is invited.' : 'Only the selected people are invited.'}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {inviteCandidates.map(m => {
+                const sel = invitees.includes(m.id)
+                return (
+                  <button key={m.id} onClick={() => toggleInvitee(m.id)} style={{
+                    padding: '4px 10px', borderRadius: 14, fontSize: 12, fontWeight: 500,
+                    cursor: 'pointer', fontFamily: tokens.font,
+                    background: sel ? tokens.accent : 'transparent',
+                    color: sel ? tokens.bg : tokens.text,
+                    border: `1px solid ${sel ? tokens.accent : tokens.border}`,
+                  }}>
+                    {m.name || m.id.slice(0, 6)}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {groupIds.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Who can edit</div>
+            <select value={editPermission} onChange={e => setEditPermission(e.target.value)} style={inputBase}>
+              <option value="creator">Only me</option>
+              <option value="everyone">Anyone in the group</option>
+            </select>
+          </div>
+        )}
+
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Location</div>
           <input value={location} onChange={e => setLocation(e.target.value)}
                  placeholder="Optional" style={inputBase} />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
+          <div style={label}>Meeting link</div>
+          <input value={meetingLink} onChange={e => setMeetingLink(e.target.value)}
+                 placeholder="Optional (https://…)" style={inputBase} />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
           <div style={label}>Notes</div>
           <textarea value={notes} onChange={e => setNotes(e.target.value)}
                     rows={3} placeholder="Optional"
                     style={{ ...inputBase, resize: 'vertical', minHeight: 60 }} />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <div style={label}>Private note</div>
+          <textarea value={privateNote} onChange={e => setPrivateNote(e.target.value)}
+                    rows={2} placeholder="Only visible to you, on this device"
+                    style={{ ...inputBase, resize: 'vertical', minHeight: 44 }} />
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

@@ -535,6 +535,7 @@ export default function App ({ db, notifs, sync }) {
           groups={groups}
           profile={profile}
           use24h={use24h}
+          db={db}
           onSave={(ev, opts) => { saveEvent(ev, opts); setModal(null) }}
           onDelete={(id) => { deleteEvent(id); setModal(null) }}
           onClose={() => setModal(null)}
