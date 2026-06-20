@@ -9,7 +9,12 @@
 // starts this on the supported, packaged targets.
 
 const { app, ipcMain } = require('electron')
-const { autoUpdater } = require('electron-updater')
+// Required lazily inside start() so platforms that never auto-update in place
+// (the unsigned Mac .dmg, .deb) don't pull electron-updater in at module load.
+// index.js requires this file on every platform but only calls start() on the
+// supported targets — a top-level require here would crash Mac at launch if the
+// dep were ever missing from the packed node_modules.
+let autoUpdater = null
 
 const INITIAL_DELAY_MS = 30 * 1000
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000   // every 6h while running
@@ -24,6 +29,8 @@ function _send (channel, payload) {
 
 function start ({ getMainWindow }) {
   _getMainWindow = getMainWindow
+
+  autoUpdater = require('electron-updater').autoUpdater
 
   // Ask before downloading: surface the available version and only fetch it
   // when the user clicks Download. Once downloaded, install on the next quit
