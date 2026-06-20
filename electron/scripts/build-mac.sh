@@ -56,11 +56,39 @@ ssh "$MAC_HOST" '
   set -euo pipefail
   export PATH="/opt/homebrew/bin:$PATH"
   export LANG=en_US.UTF-8
+  # NOTE: this whole remote script is wrapped in single quotes by the ssh call
+  # above, so these comments must contain NO apostrophes — an apostrophe would
+  # terminate the quoted string and mangle the rest of the script.
+  #
+  # electron-builder dmg-builder shells out to "python" (dmgbuild) while laying
+  # out the .dmg. Two traps here:
+  #   1. Modern macOS (12+) removed the unversioned /usr/bin/python, so a bare
+  #      "python" probe fails outright.
+  #   2. The Homebrew python@3.14 build ships a pyexpat linked against a newer
+  #      libexpat than the macOS system /usr/lib/libexpat.1.dylib, so the
+  #      dmgbuild "import plistlib" step dies with
+  #      "Symbol not found: _XML_SetAllocTrackerActivationThreshold" — which
+  #      cascades into the misleading "unable to execute hdiutil" retry loop
+  #      and kills the build.
+  # The Apple /usr/bin/python3 has a working pyexpat, so prefer it and shim BOTH
+  # python and python3 to it (ahead of Homebrew on PATH) for this build session
+  # only. Fall back to whatever python3 is on PATH if the system one is gone.
+  PY3="/usr/bin/python3"
+  [ -x "$PY3" ] || PY3="$(command -v python3 || true)"
+  if [ -n "$PY3" ]; then
+    SHIM_DIR="$(mktemp -d)"
+    ln -sf "$PY3" "$SHIM_DIR/python"
+    ln -sf "$PY3" "$SHIM_DIR/python3"
+    export PATH="$SHIM_DIR:$PATH"
+  fi
   security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain
   cd ~/peerloomllc/pearcal-native/electron
-  # Mac Mini keeps node_modules inside the project dir; reinstall if missing
-  # but otherwise reuse to keep iterations fast.
-  [ -d node_modules ] || npm install --no-audit --no-fund
+  # Mac Mini keeps node_modules inside the project dir. Always run npm install:
+  # it is near-instant when deps are already satisfied, and a plain
+  # "[ -d node_modules ] || npm install" guard silently ships a stale tree when
+  # package.json gains a new dep (e.g. electron-updater for #105 auto-update),
+  # producing a packaged app that throws "Cannot find module" at launch.
+  npm install --no-audit --no-fund
   # --mac without --arm64/--x64 builds for the current arch only; force a
   # universal-ish dual-arch dmg. electron-builder packs both into one .dmg.
   ./node_modules/.bin/electron-builder --mac --arm64 --x64 --publish never 2>&1 | tail -60
