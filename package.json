@@ -25,6 +25,7 @@
     "corestore": "^7.8.0",
     "expo": "^54.0.10",
     "expo-build-properties": "^1.0.9",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "^18.0.9",
     "expo-file-system": "~19.0.21",
     "expo-linking": "^8.0.8",
