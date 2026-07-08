@@ -14,6 +14,7 @@ import { Asset } from 'expo-asset'
 import Constants from 'expo-constants'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as SecureStore from 'expo-secure-store'
+import * as Clipboard from 'expo-clipboard'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
@@ -545,6 +546,24 @@ export default function Root () {
       }
       if (msg.method === 'openLightning') {
         PearCalDeepLink?.openLightning?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
+      if (msg.method === 'copyText') {
+        // navigator.clipboard is unreliable in the about:blank WebView, so
+        // copying routes through the shell via expo-clipboard.
+        const respond = (result: any) => {
+          webViewRef.current?.injectJavaScript(
+            'window.__pearResponse(' + JSON.stringify({ ...result, id: msg.id }) + ');true;'
+          )
+        }
+        const text = msg.args?.[0]
+        if (typeof text !== 'string' || text.length === 0) {
+          respond({ ok: false, error: 'text must be a non-empty string' })
+          return
+        }
+        Clipboard.setStringAsync(text)
+          .then(() => respond({ ok: true }))
+          .catch((err: any) => respond({ ok: false, error: err?.message ?? String(err) }))
         return
       }
       if (msg.method === 'exportIcs') {
