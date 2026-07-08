@@ -27,7 +27,7 @@ adb -s 4H65K7MFZXSCSWPR install -r android/app/build/outputs/apk/debug/app-debug
 
 **bare.js changes** (also rebuild UI after):
 ```bash
-node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
+node_modules/.bin/bare-pack --linked --defer fs --defer path src/bare.js -o assets/bare-universal.bundle
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
 cd android && ./gradlew assembleDebug && cd ..
@@ -84,8 +84,8 @@ ideviceinstaller install /tmp/PearCal-release.ipa
 
 **bare.js changes** (rebuild both bundles, then build iOS):
 ```bash
-node_modules/.bin/bare-pack --linked src/bare.js -o assets/bare-universal.bundle
-node_modules/.bin/bare-pack --host ios-arm64 --linked src/bare.js -o assets/bare-ios.bundle
+node_modules/.bin/bare-pack --linked --defer fs --defer path src/bare.js -o assets/bare-universal.bundle
+node_modules/.bin/bare-pack --host ios-arm64 --linked --defer fs --defer path src/bare.js -o assets/bare-ios.bundle
 cp assets/bare-ios.bundle assets/bare-ios-sim.bundle
 npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
