@@ -1,0 +1,13 @@
+## What's Changed
+
+### ✨ Improvements
+
+- custom interval recurrence + editable series end date
+- optional show-upcoming-events on the daily widget (toggle under Profile --> Personal settings)
+- in-place auto-update for NSIS + AppImage
+
+### 🐛 Bug Fixes
+
+- restore reminders after reboot and app update
+- event-editor field parity + centered modal (desktop)
+
