@@ -98,3 +98,21 @@ metadata/ios/screenshots/
 /electron/dist/
 /electron/src/renderer/app-ui-electron.js
 /electron/vendor/
+
+# Local per-machine config and Claude Code state (never commit)
+/scripts/app.conf
+/.claude/
+
+# Packaged release binaries (regenerable; uploaded to GitHub Releases)
+/pearcal-*.exe
+/pearcal-*.deb
+/pearcal-*.dmg
+/pearcal-*.AppImage
+/pearcal-*.aab
+/latest.yml
+/latest-linux.yml
+
+# Design docs / plans / research (kept local, per house style)
+/docs/research/
+/docs/superpowers/plans/
+/docs/sync-lessons-learned.md
