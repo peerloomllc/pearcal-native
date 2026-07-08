@@ -6,7 +6,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "bundle:bare": "bare-pack --linked src/bare.js -o assets/bare-universal.bundle",
+    "bundle:bare": "bare-pack --linked --defer fs --defer path src/bare.js -o assets/bare-universal.bundle",
     "bundle:ui": "esbuild src/ui/App.jsx --bundle --format=iife --global-name=PearCalApp --jsx-factory=React.createElement --jsx-fragment=React.Fragment --outfile=assets/app-ui.bundle",
     "postinstall": "patch-package"
   },
