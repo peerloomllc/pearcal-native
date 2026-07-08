@@ -9,5 +9,9 @@
     <item name="android:windowBackground">@color/iconBackground</item>
     <item name="android:statusBarColor">@color/iconBackground</item>
     <item name="android:navigationBarColor">@color/iconBackground</item>
+    <!-- Android 12+ system splash: without this the launcher icon renders on a
+         white background. Match the adaptive icon background so the icon sits
+         on near-black with no white border. -->
+    <item name="android:windowSplashScreenBackground" tools:targetApi="31">@color/iconBackground</item>
   </style>
 </resources>
