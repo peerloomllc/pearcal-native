@@ -6,7 +6,7 @@ const originalHandler = (global as any).ErrorUtils?.getGlobalHandler?.()
   if (!isFatal && error?.message?.includes('keep awake')) return
   originalHandler?.(error, isFatal)
 })
-import { View, Text, Image, StyleSheet, NativeModules, Platform, BackHandler, AppState, Animated, Easing, DeviceEventEmitter } from 'react-native'
+import { View, Text, StyleSheet, NativeModules, Platform, BackHandler, AppState, Animated, Easing, DeviceEventEmitter } from 'react-native'
 import { WebView } from 'react-native-webview'
 import { Worklet } from 'react-native-bare-kit'
 import b4a from 'b4a'
@@ -949,22 +949,22 @@ webViewRef.current?.injectJavaScript(
   )
 }
 
+// Fills the brief gap between the native splash and the WebView being ready.
+// The pear icon (frame-free) on the same dark background reads as a continuation
+// of the native splash; a gentle breathing pulse signals that it is still loading.
 function PearLoadingScreen() {
-  const pulseAnim = useRef(new Animated.Value(1)).current
-  const pulse = pulseAnim
+  const pulse = useRef(new Animated.Value(1)).current
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1.18, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1, duration: 800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1.06, duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 1100, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
     ).start()
   }, [])
   return (
     <View style={styles.center}>
       <Animated.Image source={require('../assets/images/icon.png')} style={[styles.icon, { transform: [{ scale: pulse }] }]} />
-      <Text style={styles.loadingText}>PearCal</Text>
-      <Text style={styles.loadingSubtext}>Starting up…</Text>
     </View>
   )
 }
@@ -972,9 +972,7 @@ function PearLoadingScreen() {
 const styles = StyleSheet.create({
   webview: { flex: 1, backgroundColor: '#111' },
   center:  { flex: 1, backgroundColor: '#111', alignItems: 'center', justifyContent: 'center', gap: 12 },
-  icon:        { width: 72, height: 72, borderRadius: 16 },
-  loadingText: { color: '#ccc', fontSize: 18, fontWeight: '300', letterSpacing: 2, marginTop: 8 },
-  loadingSubtext: { color: '#555', fontSize: 12, fontWeight: '300', letterSpacing: 1 },
+  icon:        { width: 96, height: 96, borderRadius: 21 },
   errorText:   { color: '#D45F7A', fontSize: 14 },
   errorDetail: { color: '#888', fontSize: 11, fontFamily: 'monospace', textAlign: 'center', padding: 16 },
 })

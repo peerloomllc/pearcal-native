@@ -18125,20 +18125,7 @@
         setShowDonationReminder(true);
       }
     }, [ready, profile?.onboardingComplete, profile?.donationReminderShown]);
-    if (!ready) return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-      fontFamily: FONT,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "100dvh",
-      background: "#111",
-      color: "#888",
-      flexDirection: "column",
-      gap: 16
-    }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PearIcon, { size: 36 }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, fontWeight: 300, letterSpacing: "0.06em" }, children: "Loading PearCal\u2026" })
-    ] });
+    if (!ready) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { minHeight: "100dvh", background: "#111" } });
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
       fontFamily: FONT,
       fontWeight: 300,

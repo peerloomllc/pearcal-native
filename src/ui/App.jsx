@@ -1506,12 +1506,11 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [ready, profile?.onboardingComplete, profile?.donationReminderShown])
 
+  // Plain dark screen while the WebView data loads. Matches the RN loading
+  // screen background (#111) so the handoff is seamless, with no second icon
+  // flashing between the native loading screen and the calendar.
   if (!ready) return (
-    <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
-      minHeight:'100dvh', background:'#111', color:'#888', flexDirection:'column', gap:16 }}>
-      <PearIcon size={36} />
-      <span style={{ fontSize:14, fontWeight:300, letterSpacing:'0.06em' }}>Loading PearCal…</span>
-    </div>
+    <div style={{ minHeight:'100dvh', background:'#111' }} />
   )
 
   // ─── Render ─────────────────────────────────────────────────────────────────
