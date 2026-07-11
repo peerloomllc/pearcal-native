@@ -26,8 +26,11 @@ const { PearCalBGSync } = NativeModules
 const { PearCalBlockStore } = NativeModules
 const { PearCalICloudKeychain } = NativeModules
 
+const { makeStartLock } = require('../src/lib/backendBootstrap')
+
 let _worklet: any = null
 let _workletStarted = false
+let _ensureWorkletStarted: null | (() => Promise<any>) = null
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
 const _eventHandlers = new Map<string, ((data: any) => void)[]>()
@@ -643,6 +646,12 @@ export default function Root () {
         sendToWorklet({ method: 'init', dataDir, platform: Platform.OS })
         return
       }
+      if (!_ensureWorkletStarted) {
+        // Memoized single-writer bring-up (proposal 2026-07-11 Part 5): the body
+        // runs exactly once even under a near-simultaneous re-entry, so the
+        // Autobase writer core is never opened twice. Body kept at its existing
+        // indent to keep the diff to the wrapper lines only.
+        _ensureWorkletStarted = makeStartLock(async () => {
       _workletStarted = true
       _worklet = new Worklet()
 
@@ -859,6 +868,9 @@ webViewRef.current?.injectJavaScript(
       })
 
       _worklet.start('/bare.bundle', source)
+        })
+      }
+      await _ensureWorkletStarted()
 
       // Initial check for link set before React loaded
       const { PearCalLink } = NativeModules
@@ -880,6 +892,7 @@ webViewRef.current?.injectJavaScript(
           try { _worklet?.terminate() } catch(e) {}
           _worklet = null
           _workletStarted = false
+          _ensureWorkletStarted = null
         }, 3000)
       }
     }
