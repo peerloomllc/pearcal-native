@@ -12,6 +12,10 @@ const bip39         = require('bip39-mnemonic')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
+const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
+const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
+const { writerRewindStatus } = require('./lib/rewindGuard.js')
+const { createStoreFlusher } = require('./lib/storeFlush.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -96,6 +100,130 @@ let buf = ''
 let _dbReady = false
 let _dbReadyResolve = null
 const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+
+// ── Reliability helpers (proposal 2026-07-11-reliability-helpers) ─────────────
+// safeAppend bounds every append so a wedged/forked base can't freeze the serial
+// IPC dispatcher; the conflict seatbelt keeps a fork from crash-looping the
+// worklet; the writer rewind guard stops a truncated writer core from
+// self-forking; the store flusher bounds the RocksDB WAL. Pure logic lives in
+// src/lib/{appendTimeout,conflictSeatbelt,rewindGuard,storeFlush}.js.
+let _lastConflictAt = 0                 // ts of the most recent hypercore 'conflict'; gates the seatbelt
+let _faultHandlersInstalled = false
+const _degradedBases = new WeakSet()    // bases whose append timed out or forked -> skip further appends
+const _rewoundBases = new WeakSet()     // log-once marker for a detected writer rewind
+
+const STORE_FLUSH_INTERVAL_MS = 5 * 60 * 1000
+let _storeFlushTimer = null
+let _durabilityFlushTimer = null
+const flushStore = createStoreFlusher({ getStore: () => store, warn: console.warn })
+
+// Coalesced flush shortly after a writer append, so the WAL-loss window a
+// force-kill can open stays small without flushing on every single write.
+function scheduleDurabilityFlush () {
+  if (_durabilityFlushTimer) return
+  _durabilityFlushTimer = setTimeout(() => {
+    _durabilityFlushTimer = null
+    flushStore('writer-append').catch(() => {})
+  }, 3000)
+  if (_durabilityFlushTimer && _durabilityFlushTimer.unref) _durabilityFlushTimer.unref()
+}
+
+// Interval flush so a busy device's first-ever flush is never the giant 64 MB
+// one whose cold-start replay trips Android's ANR watchdog. Unref'd.
+function startStoreFlushCadence () {
+  if (_storeFlushTimer) return
+  _storeFlushTimer = setInterval(() => { flushStore('interval').catch(() => {}) }, STORE_FLUSH_INTERVAL_MS)
+  if (_storeFlushTimer && _storeFlushTimer.unref) _storeFlushTimer.unref()
+}
+
+// Drop-in for `await base.append(op)`. Bounds the append (raceAppend) so it can
+// never wedge the dispatcher: on timeout it flags the base and skips further
+// appends to it, returning false. A normal rejection returns false too. Returns
+// true iff the row appended. Callers that ignored append's (void) return are
+// unaffected on the happy path and simply no longer hang on a corrupt base.
+async function safeAppend (base, op, label) {
+  if (!base) return false
+  if (_degradedBases.has(base)) return false
+  if (writerRewindBlocked(base)) return false   // never append past a truncated tip -> fork
+  const { ok, timedOut } = await raceAppend(base.append(op), APPEND_TIMEOUT_MS)
+  if (timedOut) {
+    _degradedBases.add(base)
+    console.warn('[bare] append timed out (' + (label || '') + '); base flagged, skipping further appends')
+  } else if (ok) {
+    scheduleDurabilityFlush()
+  }
+  return ok
+}
+
+// Synchronous, never-throws guard on the writer-append path. Blocks the append
+// when our own writer core (base.local) is shorter than the longest copy a
+// connected peer advertises for it -- which can only mean we were truncated
+// (WAL loss), since nobody else signs our core. Appending past that tip would
+// fork it, so we kick off a background download of the original tail and skip
+// this append; it self-clears once we catch up. No peer connected =
+// authoritative, proceed.
+function writerRewindBlocked (base) {
+  try {
+    const local = base && base.local
+    if (!local || !local.peers || local.peers.length === 0) return false
+    let networkLen = 0
+    for (const p of local.peers) { const rl = (p && p.remoteLength) || 0; if (rl > networkLen) networkLen = rl }
+    const status = writerRewindStatus({ localLength: local.length, networkLength: networkLen })
+    if (!status.behind) { _rewoundBases.delete(base); return false }
+    if (!_rewoundBases.has(base)) {
+      _rewoundBases.add(base)
+      console.warn('[bare] writer rewind detected, pulling tail', status.downloadFrom, '->', status.downloadTo)
+    }
+    try { local.download({ start: status.downloadFrom, end: status.downloadTo }) } catch (e) { /* best-effort */ }
+    return true
+  } catch (e) { return false } // a guard bug must never block all appends
+}
+
+// Post-conflict seatbelt. A hypercore fork tears down sessions and leaks a
+// 'Closed' rejection through the replicator; with no handler Bare aborts the
+// whole worklet (the 17x crash loop). Swallow ONLY a conflict's fallout inside
+// the grace window; fail fast on everything else so real bugs keep their stack.
+function onWorkletFault (err, kind) {
+  if (shouldSwallowFault(err, _lastConflictAt, Date.now())) {
+    console.warn('[bare] swallowed post-conflict ' + kind + ': ' + ((err && err.message) || err))
+    return
+  }
+  console.error('[bare] fatal ' + kind + ': ' + ((err && err.stack) || (err && err.message) || err))
+  if (typeof Bare !== 'undefined' && Bare.exit) { try { Bare.exit(1); return } catch (e) {} }
+  throw err
+}
+
+// Attach 'conflict' listeners to a base's writer + view Hypercore sessions so a
+// fork stamps _lastConflictAt (arming the seatbelt) and flags the base. Safe to
+// call repeatedly; fully defensive so a fork can't break the mount.
+function attachConflictListeners (base) {
+  if (!base) return
+  for (const core of [base.local, base.view]) {
+    try {
+      if (core && typeof core.on === 'function') {
+        core.on('conflict', () => { _lastConflictAt = Date.now(); _degradedBases.add(base) })
+      }
+    } catch (e) { /* never let listener wiring break a mount */ }
+  }
+}
+
+// Install the global seatbelt once. Bare.on catches the leaked rejection;
+// overriding console.log taps hypercore's '[hypercore] conflict detected in ...'
+// line so a REMOTE member's fork (which per-core listeners never see) also arms
+// the seatbelt. Guarded for the desktop Pear runtime where Bare is absent.
+function installFaultHandlers () {
+  if (_faultHandlersInstalled) return
+  _faultHandlersInstalled = true
+  if (typeof Bare !== 'undefined' && Bare.on) {
+    Bare.on('uncaughtException', (err) => onWorkletFault(err, 'uncaughtException'))
+    Bare.on('unhandledRejection', (err) => onWorkletFault(err, 'unhandledRejection'))
+  }
+  const _origConsoleLog = console.log.bind(console)
+  console.log = function (...consoleArgs) {
+    try { if (parseConflictLog(consoleArgs[0])) _lastConflictAt = Date.now() } catch (e) { /* logging must never throw */ }
+    return _origConsoleLog(...consoleArgs)
+  }
+}
 
 // ── Blind peering ────────────────────────────────────────────────────────────
 // Blind peer key is now user-configurable via Settings → Seed Peer.
@@ -400,7 +528,7 @@ async function appendGroupWithAvatarSplit (base, groupValue) {
   const { members, newHashes } = await splitMembersInline(groupValue.members, seen)
   for (const { hash, data } of newHashes) {
     const mimeMatch = /^data:([^;]+);/.exec(data)
-    await base.append({
+    await safeAppend(base, {
       op: 'put',
       type: 'avatar',
       key: NS.avatars + hash,
@@ -413,7 +541,7 @@ async function appendGroupWithAvatarSplit (base, groupValue) {
     })
   }
   const value = { ...groupValue, members, updatedAt: groupValue.updatedAt || Date.now() }
-  await base.append({ op: 'put', type: 'group', key: NS.groups + groupValue.id, value })
+  await safeAppend(base, { op: 'put', type: 'group', key: NS.groups + groupValue.id, value })
 }
 
 async function getPrivateNote (eventId) {
@@ -928,7 +1056,7 @@ async function putRsvp (eventId, memberId, status, groupIds = []) {
     const base = bases.get(gid)
     if (!base) continue
     try {
-      await base.append({ op: 'put', type: 'rsvp', key: NS.rsvp + eventId + ':' + memberId, value: record })
+      await safeAppend(base, { op: 'put', type: 'rsvp', key: NS.rsvp + eventId + ':' + memberId, value: record })
     } catch(e) { console.warn('[RSVP-SYNC-ERR]', e?.message) }
   }
   return record
@@ -1285,6 +1413,7 @@ async function createGroup (name, metadata) {
   // events so the runtime stays alive and other groups keep working.
   base.on('error', e => console.error('[group] base error (createGroup):', groupId, e?.message))
   await base.ready()
+  attachConflictListeners(base)
   const groupKey = b4a.toString(base.key, 'hex')
   const writerKey = b4a.toString(base.local.key, 'hex')
 
@@ -1324,8 +1453,9 @@ async function createGroup (name, metadata) {
   // Seed owner as writer + the group record into the Autobase view so
   // apply()'s non-null group check passes when joiners' broadcastSelf arrives.
   try {
-    await base.append({ addWriter: writerKey })
-    await db.put('knownWriter:' + groupId + ':' + writerKey, { ts: Date.now() }).catch(() => {})
+    if (await safeAppend(base, { addWriter: writerKey })) {
+      await db.put('knownWriter:' + groupId + ':' + writerKey, { ts: Date.now() }).catch(() => {})
+    }
     await appendGroupWithAvatarSplit(base, group)
   } catch (e) {
     console.warn('[createGroup] seed error:', e.message)
@@ -1380,6 +1510,7 @@ async function _joinGroupImpl (group) {
   // events so the runtime stays alive and other groups keep working.
   base.on('error', e => console.error('[group] base error (joinGroup):', group.id, e?.message))
   await base.ready()
+  attachConflictListeners(base)
 
   // Detect a pre-existing migration marker so we can immediately gate further
   // writes to this (old) base. The marker may have been written in a prior
@@ -1415,8 +1546,8 @@ async function _joinGroupImpl (group) {
         const knownKey = 'knownWriter:' + group.id + ':' + writerKey
         const already = await db.get(knownKey).catch(() => null)
         if (already) continue
-        base.append({ addWriter: writerKey })
-          .then(() => db.put(knownKey, { ts: Date.now() }).catch(() => {}))
+        safeAppend(base, { addWriter: writerKey })
+          .then((ok) => { if (ok) db.put(knownKey, { ts: Date.now() }).catch(() => {}) })
           .catch(e => console.error('[OWNER] pending addWriter error:', e.message))
       }
       pendingWriterAnnouncements.delete(group.id)
@@ -1894,6 +2025,7 @@ async function ensurePersonalBase () {
     // keeps their app session.
     base.on('error', e => console.error('[personal] base error:', e?.message))
     await base.ready()
+    attachConflictListeners(base)
     personalBase = base
     await joinPersonalSwarm()
     console.log('[personal] opened base', bootstrapHex.slice(0, 16) + '…', 'writable=' + base.writable)
@@ -1962,6 +2094,7 @@ async function enablePersonalSync () {
   })
   base.on('error', e => console.error('[personal] base error:', e?.message))
   await base.ready()
+  attachConflictListeners(base)
   const bootstrapHex = b4a.toString(base.key, 'hex')
   await db.put('personalMeta:bootstrap', { key: bootstrapHex, createdAt: Date.now() })
   personalBase = base
@@ -2003,7 +2136,7 @@ async function migratePersonalData () {
   for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
     if (value?.groups && value.groups.length > 0) continue
     if (value?.isShadow) continue
-    await personalBase.append({ op: 'put', type: 'event', key, value })
+    await safeAppend(personalBase, { op: 'put', type: 'event', key, value })
     eventCount++
   }
   // Deleted tombstones — each becomes a 'del event' op keyed by the tombstoned id
@@ -2011,22 +2144,22 @@ async function migratePersonalData () {
     const eid = key.slice(NS.deleted.length)
     const date = value?.date
     if (!eid || !date) continue
-    await personalBase.append({ op: 'del', type: 'event', key: NS.events + date + ':' + eid })
+    await safeAppend(personalBase, { op: 'del', type: 'event', key: NS.events + date + ':' + eid })
   }
   // Reminders
   for await (const { key, value } of db.createReadStream({ gt: 'reminders:', lt: 'reminders:\xff' })) {
-    await personalBase.append({ op: 'put', type: 'reminders', key, value })
+    await safeAppend(personalBase, { op: 'put', type: 'reminders', key, value })
     reminderCount++
   }
   // Private notes
   for await (const { key, value } of db.createReadStream({ gt: NS.privateNotes, lt: NS.privateNotes + '\xff' })) {
-    await personalBase.append({ op: 'put', type: 'note', key, value })
+    await safeAppend(personalBase, { op: 'put', type: 'note', key, value })
     noteCount++
   }
   // Group membership (one entry per group the user is currently in)
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
     if (!value?.id || !value?.groupKey) continue
-    await personalBase.append({ op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, joinedAt: value.joinedAt ?? Date.now() } })
+    await safeAppend(personalBase, { op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, joinedAt: value.joinedAt ?? Date.now() } })
     groupCount++
   }
   // Identity-scoped profile fields (name, avatar). Seed once so a sibling
@@ -2073,7 +2206,7 @@ async function personalBaseAppendEvent (event) {
   if (!personalBase?.writable) return
   if (event.groups && event.groups.length > 0) return // group-scope, not personal
   const key = NS.events + event.date + ':' + event.id
-  try { await personalBase.append({ op: 'put', type: 'event', key, value: event }) }
+  try { await safeAppend(personalBase, { op: 'put', type: 'event', key, value: event }) }
   catch (e) { console.warn('[personal] append event failed:', e.message) }
 }
 
@@ -2173,13 +2306,13 @@ async function runPersonalConsolidation (force = false) {
 async function personalBaseDeleteEvent (date, eventId) {
   if (!personalBase?.writable) return
   const key = NS.events + date + ':' + eventId
-  try { await personalBase.append({ op: 'del', type: 'event', key }) }
+  try { await safeAppend(personalBase, { op: 'del', type: 'event', key }) }
   catch (e) { console.warn('[personal] del event failed:', e.message) }
 }
 
 async function personalBaseAppendReminders (eventId, value) {
   if (!personalBase?.writable) return
-  try { await personalBase.append({ op: 'put', type: 'reminders', key: 'reminders:' + eventId, value }) }
+  try { await safeAppend(personalBase, { op: 'put', type: 'reminders', key: 'reminders:' + eventId, value }) }
   catch (e) { console.warn('[personal] append reminders failed:', e.message) }
 }
 
@@ -2189,7 +2322,7 @@ async function personalBaseAppendNote (eventId, value) {
   const op = value == null
     ? { op: 'del', type: 'note', key }
     : { op: 'put', type: 'note', key, value }
-  try { await personalBase.append(op) }
+  try { await safeAppend(personalBase, op) }
   catch (e) { console.warn('[personal] append/del note failed:', e.message) }
 }
 
@@ -2210,13 +2343,13 @@ async function personalBaseAddGroup (group) {
     ownerId:  group.ownerId,
     joinedAt: group.joinedAt ?? Date.now(),
   }
-  try { await personalBase.append({ op: 'put', type: 'groupMembership', key, value }) }
+  try { await safeAppend(personalBase, { op: 'put', type: 'groupMembership', key, value }) }
   catch (e) { console.warn('[personal] append group failed:', e.message) }
 }
 
 async function personalBaseRemoveGroup (groupId) {
   if (!personalBase?.writable) return
-  try { await personalBase.append({ op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
+  try { await safeAppend(personalBase, { op: 'del', type: 'groupMembership', key: 'personalGroups:' + groupId }) }
   catch (e) { console.warn('[personal] del group failed:', e.message) }
 }
 
@@ -2237,7 +2370,7 @@ async function personalBaseAddGroupWriter (groupId, groupWriterKey) {
   const prev = (await db.get(key).catch(() => null))?.value
   if (prev && prev.groupWriterKey === groupWriterKey) return
   const value = { groupId, groupWriterKey, personalWriterKey, updatedAt: Date.now() }
-  try { await personalBase.append({ op: 'put', type: 'deviceGroupWriter', key, value }) }
+  try { await safeAppend(personalBase, { op: 'put', type: 'deviceGroupWriter', key, value }) }
   catch (e) { console.warn('[personal] append deviceGroupWriter failed:', e.message) }
 }
 
@@ -2246,7 +2379,7 @@ async function personalBaseRemoveGroupWriter (groupId) {
   if (!personalBase?.writable) return
   const personalWriterKey = b4a.toString(personalBase.local.key, 'hex')
   const key = 'deviceGroupWriter:' + groupId + ':' + personalWriterKey
-  try { await personalBase.append({ op: 'del', type: 'deviceGroupWriter', key }) }
+  try { await safeAppend(personalBase, { op: 'del', type: 'deviceGroupWriter', key }) }
   catch (e) { console.warn('[personal] del deviceGroupWriter failed:', e.message) }
 }
 
@@ -2272,7 +2405,7 @@ async function maybeCrossGrantGroupWriter (groupId, groupWriterKey, siblingPerso
   const already = await db.get(knownKey).catch(() => null)
   if (already?.value) return
   try {
-    await base.append({ addWriter: groupWriterKey })
+    if (!(await safeAppend(base, { addWriter: groupWriterKey }))) return
     await db.put(knownKey, { ts: Date.now() }).catch(() => {})
     console.log('[xgrant] granted sibling writer', groupWriterKey.slice(0, 16) + '…', 'on group', groupId)
   } catch (e) {
@@ -2342,7 +2475,7 @@ async function cleanupStalePersonalGroups () {
 async function personalBaseAppendIdentityProfile ({ name, avatar, updatedAt }) {
   if (!personalBase?.writable) return
   try {
-    await personalBase.append({
+    await safeAppend(personalBase, {
       op: 'put', type: 'identityProfile', key: 'identityProfile',
       value: { name: name ?? '', avatar: avatar ?? '', updatedAt: updatedAt ?? Date.now() }
     })
@@ -2394,7 +2527,7 @@ async function personalBaseAppendDeviceMeta (patch) {
     updatedAt: Date.now(),
   }
   try {
-    await personalBase.append({ op: 'put', type: 'deviceMeta', key, value })
+    await safeAppend(personalBase, { op: 'put', type: 'deviceMeta', key, value })
   } catch (e) { console.warn('[personal] append deviceMeta failed:', e.message) }
 }
 
@@ -2518,7 +2651,7 @@ async function removeDeviceFromList (writerKey) {
   const localKey = personalBase?.local?.key ? b4a.toString(personalBase.local.key, 'hex') : null
   if (writerKey === localKey) return { ok: false, reason: 'cannot_remove_self' }
   try {
-    await personalBase.append({ op: 'del', type: 'deviceMeta', key: 'deviceMeta:' + writerKey })
+    await safeAppend(personalBase, { op: 'del', type: 'deviceMeta', key: 'deviceMeta:' + writerKey })
     return { ok: true }
   } catch (e) {
     return { ok: false, reason: e.message }
@@ -2938,7 +3071,7 @@ async function _handlePairPersonalWriter (parsed, replySend) {
       if (!opened) throw new Error('personal base not open on primary')
     }
     if (!personalBase.writable) throw new Error('personal base not writable on primary')
-    await personalBase.append({ addWriter: newDeviceKey })
+    await safeAppend(personalBase, { addWriter: newDeviceKey })
     console.log('[pair] addWriter on personal base:', newDeviceKey.slice(0, 16) + '…')
     // Local marker so listLinkedDevices can synthesise the new device's row
     // immediately, without waiting for the secondary's hypercore to open
@@ -2998,7 +3131,7 @@ async function _handlePairGroupWriters (parsed, replySend) {
     const knownKey = 'knownWriter:' + groupId + ':' + writerKey
     if ((await db.get(knownKey).catch(() => null))?.value) { granted.push(groupId); continue }
     try {
-      await base.append({ addWriter: writerKey })
+      if (!(await safeAppend(base, { addWriter: writerKey }))) continue
       await db.put(knownKey, { ts: Date.now() }).catch(() => {})
       granted.push(groupId)
       console.log('[pair] fan-out addWriter on group', groupId, 'for', writerKey.slice(0, 16) + '…')
@@ -3223,9 +3356,10 @@ async function commitRekey (oldGroupId) {
   const existing = await oldBase.view.get(mKey).catch(() => null)
   if (!existing) {
     const marker = buildMigrationMarker(descriptor, profile)
-    await oldBase.append({ op: 'put', type: 'migration', key: mKey, value: marker })
-    await oldBase.update()
-    markerWritten = true
+    if (await safeAppend(oldBase, { op: 'put', type: 'migration', key: mKey, value: marker })) {
+      await oldBase.update()
+      markerWritten = true
+    }
   }
   // Apply should have added groupId to migratedGroups by now; belt-and-suspenders:
   migratedGroups.add(oldGroupId)
@@ -3898,7 +4032,7 @@ async function syncPutEvent (groupId, event) {
   // Carry _prevDate in the value so receiving devices can clean up the old key
   const { privateNote, ...shared } = event
   const value = { ...shared, updatedAt: event.updatedAt || Date.now() }
-  await base.append({ op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
+  await safeAppend(base, { op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
 async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle) {
@@ -3907,7 +4041,7 @@ async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedBy
   const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
   if (recurrenceId) payload.recurrenceId = recurrenceId
   if (eventTitle) payload.eventTitle = eventTitle
-  await base.append(payload)
+  await safeAppend(base, payload)
 }
 
 async function syncPutGroup (group) {
@@ -3942,13 +4076,13 @@ async function syncMemberLeft (groupId, memberId) {
 async function syncPurgeMember (groupId, memberId) {
   const base = bases.get(groupId)
   if (!base) return
-  await base.append({ op: 'purgeMember', groupId, memberId, purgedAt: Date.now() })
+  await safeAppend(base, { op: 'purgeMember', groupId, memberId, purgedAt: Date.now() })
 }
 
 async function syncReinviteMember (groupId, memberId) {
   const base = bases.get(groupId)
   if (!base) return
-  await base.append({ op: 'reinviteMember', groupId, memberId, ts: Date.now() })
+  await safeAppend(base, { op: 'reinviteMember', groupId, memberId, ts: Date.now() })
 }
 
 // Phase 2 pending-rejoin queue. The writer-announce handler stores
@@ -4030,8 +4164,8 @@ async function approveRejoin (groupId, identityPublicKey) {
     await db.del('blockedWriter:' + groupId + ':' + pending.writerKey).catch(() => {})
     const alreadyGranted = await db.get('knownWriter:' + groupId + ':' + pending.writerKey).catch(() => null)
     if (!alreadyGranted && base) {
-      base.append({ addWriter: pending.writerKey })
-        .then(() => db.put('knownWriter:' + groupId + ':' + pending.writerKey, { ts: Date.now() }).catch(() => {}))
+      safeAppend(base, { addWriter: pending.writerKey })
+        .then((ok) => { if (ok) db.put('knownWriter:' + groupId + ':' + pending.writerKey, { ts: Date.now() }).catch(() => {}) })
         .catch(e => console.error('[APPROVE_REJOIN] addWriter error:', e.message))
     }
   }
@@ -4066,11 +4200,11 @@ async function transferOwnership (groupId, targetProfileId) {
   }
   const base = bases.get(groupId)
   if (!base) throw new Error('transferOwnership: group base not open')
-  await base.append({
+  if (!(await safeAppend(base, {
     promoteOwner: targetProfileId,
     promotedBy: profile.id,
     ts: Date.now(),
-  })
+  }))) throw new Error('transferOwnership: append failed')
   return { ok: true }
 }
 
@@ -4090,11 +4224,11 @@ async function claimOwnership (groupId) {
   }
   const base = bases.get(groupId)
   if (!base) throw new Error('claimOwnership: group base not open')
-  await base.append({
+  if (!(await safeAppend(base, {
     promoteOwner: profile.id,
     promotedBy: profile.id,
     ts: Date.now(),
-  })
+  }))) throw new Error('claimOwnership: append failed')
   return { ok: true }
 }
 
@@ -5879,6 +6013,7 @@ async function init (dir, opts = {}, attempt = 0) {
 async function _doInit (dir, attempt = 0) {
   try {
     dataDir = dir
+    installFaultHandlers()
     console.log('Init DB at', dataDir)
 
     // Main local DB
@@ -5890,6 +6025,7 @@ async function _doInit (dir, attempt = 0) {
     // Corestore for Autobase groups
     store = new Corestore(dataDir + '/store')
     await store.ready()
+    startStoreFlushCadence()
 
     // Hyperswarm
     swarm = new Hyperswarm()
@@ -6339,8 +6475,9 @@ async function _doInit (dir, attempt = 0) {
                   return
                 }
                 console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId, 'as', isOwner ? 'owner' : 'member')
-                base.append({ addWriter: writerKey })
-                  .then(async () => {
+                safeAppend(base, { addWriter: writerKey })
+                  .then(async (ok) => {
+                    if (!ok) return
                     // Persist so we skip redundant addWriter on future reconnects
                     await db.put(knownWriterKey, { ts: Date.now() }).catch(() => {})
                     // Wait briefly for joiner's broadcastSelf to arrive before rebroadcasting
