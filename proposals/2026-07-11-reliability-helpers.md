@@ -57,7 +57,7 @@ In `app/index.tsx`, replace the non-atomic `_workletStarted` boolean (`:30`, che
 - Mixed installs are safe in both directions. Rolling back to old code on any single device changes nothing other peers can observe.
 
 ## Verify
-Canonical gate first (`bundle:bare` + `bundle:ui` build clean; PearCal has no unit runner, so the helpers ship with their PearCircle test provenance). Then on-device (Pixel owner + TCL joiner + iPhone), install-over-top (never uninstall):
+Canonical gate first: `npm run verify` (brittle unit tests on the pure helpers — 30 tests / 60 asserts green as of the runner commit — then `bundle:bare` + `bundle:ui` build clean). Then on-device (Pixel owner + TCL joiner + iPhone), install-over-top (never uninstall):
 1. **Happy-path regression** — create group on Pixel, join from TCL and iPhone, add/edit/delete events, RSVP, pair a second device: all must behave exactly as master. No new latency on writes (safeAppend adds only a race wrapper).
 2. **Append timeout** — temporarily force one `safeAppend` to see a never-resolving `base.append` (mock). Confirm the dispatcher does NOT freeze: a following `getProfile`/`putEvent` IPC still returns, and the group is flagged for repair, `warn` logged.
 3. **Conflict seatbelt** — simulate a fork-conflict `'Closed'` rejection within the grace window (inject a rejected promise after stamping `_lastConflictAt`); confirm the worklet stays alive (no 17x relaunch). Then inject an UNRELATED rejection with no recent conflict; confirm it still aborts (fail-fast preserved).
