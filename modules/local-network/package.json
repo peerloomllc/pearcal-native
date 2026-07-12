@@ -1,0 +1,9 @@
+{
+  "name": "local-network",
+  "version": "1.0.0",
+  "description": "Trigger the iOS Local Network permission prompt so same-WiFi peers connect directly",
+  "main": "index.ts",
+  "license": "MIT",
+  "author": "PeerLoom",
+  "homepage": "https://peerloomllc.com"
+}

@@ -15,6 +15,7 @@ import Constants from 'expo-constants'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as SecureStore from 'expo-secure-store'
 import * as Clipboard from 'expo-clipboard'
+import { requestLocalNetworkPermission } from '../modules/local-network'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
@@ -612,6 +613,10 @@ export default function Root () {
       const dataUri = docDir + 'pearcal'
       await FileSystem.makeDirectoryAsync(dataUri, { intermediates: true }).catch(() => {})
       const dataDir = dataUri.replace(/^file:\/\//, '')
+
+      // Nudge iOS to show the Local Network prompt so same-WiFi peers connect
+      // directly (see modules/local-network). Fire-and-forget; no-op off iOS.
+      requestLocalNetworkPermission()
 
             // Request notification permission on first launch (Android 13+)
             if (Platform.OS === 'android') {
