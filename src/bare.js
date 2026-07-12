@@ -5991,6 +5991,55 @@ async function shutdown () {
   }
 }
 
+// ── Storage retention (TODO #112; backport of @peerloom/core engine.retain) ──
+// Prune old blocks from each base's input (writer) cores to bound append-only
+// growth. For each writer we clear [0, consumed - keepRecent): blocks Autobase
+// has already consumed into its persisted view, minus a recent buffer. Safe
+// because Autobase reloads its persisted view + system on restart (it never
+// re-reads these old input blocks), and a lagging/new peer re-downloads from a
+// peer or fast-forwards. clear() keeps each core's Merkle tree intact so it
+// stays valid (unlike core.purge(), which is broken on this stack); physical
+// disk frees as RocksDB compacts. Conservative + best-effort, local-only, no
+// wire change. Removes the disk-bloat reason for routine group rekeys.
+const RETENTION_INTERVAL_MS = 30 * 60 * 1000
+const RETENTION_KEEP_RECENT = 256
+let _retentionTimer = null
+
+async function retainBase (base, keepRecent = RETENTION_KEEP_RECENT) {
+  if (!base) return 0
+  try { await base.update() } catch (e) { /* best-effort */ }
+  let cleared = 0
+  const writers = []
+  try { for (const w of (base.activeWriters || base.writers || [])) if (w && w.core) writers.push(w) } catch (e) {}
+  for (const w of writers) {
+    const consumed = typeof w.length === 'number' ? w.length : 0
+    const upto = consumed - keepRecent
+    if (upto <= 0) continue
+    try { await w.core.clear(0, upto); cleared += upto } catch (e) { /* best-effort per writer */ }
+  }
+  return cleared
+}
+
+// Sweep retention across every mounted group base + the personal base. Serial +
+// best-effort so a slow/failing base never blocks the others.
+async function retentionSweep () {
+  let cleared = 0
+  for (const [, base] of bases) { try { cleared += await retainBase(base) } catch (e) {} }
+  if (personalBase) { try { cleared += await retainBase(personalBase) } catch (e) {} }
+  console.log('[retention] sweep done:', cleared, 'old blocks cleared across', bases.size, 'groups + personal')
+  return cleared
+}
+
+// Auto retention: an initial settle sweep, then on a fixed interval. Unref'd so
+// it never keeps the worklet alive on its own. Idempotent.
+function startRetention () {
+  if (_retentionTimer) return
+  const initial = setTimeout(() => { retentionSweep().catch(() => {}) }, Math.min(RETENTION_INTERVAL_MS, 15000))
+  if (initial && typeof initial.unref === 'function') initial.unref()
+  _retentionTimer = setInterval(() => { retentionSweep().catch(() => {}) }, RETENTION_INTERVAL_MS)
+  if (_retentionTimer && typeof _retentionTimer.unref === 'function') _retentionTimer.unref()
+}
+
 let _initPromise = null
 async function init (dir, opts = {}, attempt = 0) {
   // Backwards-compat: older RN shells may pass attempt as the second arg.
@@ -6797,6 +6846,7 @@ async function _doInit (dir, attempt = 0) {
     send({ type: 'event', event: 'ready' })
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
+    startRetention()   // TODO #112: bound append-only growth on a 30-min cadence
   } catch(e) {
     console.error('Init failed:', e.message)
     if (e.message && e.message.includes('lock') && attempt < 20) {
