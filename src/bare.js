@@ -2697,6 +2697,27 @@ const GROUP_WRITERS_WAIT_MS = 15 * 1000
 const PAIR_CHANNEL_PROTO = 'pearcal/device-pair'
 const PAIR_CHANNEL_ID    = Buffer.from('pearcal-device-pair-v1')
 let _pairSession = null
+// Live device-pair message channels (pairMsg), one per open connection, for
+// nudging the pairing `hello` over a REUSED connection (TODO #113).
+const _pairChannels = new Set()
+
+// Send the pairing `hello` over every currently-open device-pair channel. The
+// per-connection channel's onopen fires once, at connection-establishment time,
+// so a secondary whose connection to the primary already existed (e.g. a shared
+// group) had no _pairSession when its channel opened and so never sent hello -
+// the pair then stalled until an unrelated reconnect. consumePairLink calls
+// this right after arming the session so the hello still goes out over the
+// reused connection. Idempotent (the primary handshake-gates a duplicate hello);
+// no-op unless we are a secondary mid-pair.
+function broadcastPairHello () {
+  if (!(_pairSession && _pairSession.role === 'secondary' && !_pairSession.granted)) return
+  const hello = Buffer.from(JSON.stringify({
+    type: 'hello',
+    handshake: _pairSession.handshakeHex,
+    challenge: _pairSession.challengeHex,
+  }))
+  for (const pm of _pairChannels) { try { pm.send(hello) } catch (e) { /* channel closing */ } }
+}
 
 // Pair URL helpers inlined here so bare.js can build/parse without requiring
 // src/invite.js — that file uses ES `export` syntax for the UI side and can't
@@ -2844,6 +2865,9 @@ async function consumePairLink (url) {
     throw e
   }
   _emitPair('pairingStarted', _pairSessionSnapshot())
+  // Nudge the hello over any connection to the primary we ALREADY had open
+  // (reused connection); the fresh-connection path is covered by onopen (#113).
+  broadcastPairHello()
   return completionPromise
 }
 
@@ -6564,16 +6588,14 @@ async function _doInit (dir, attempt = 0) {
         id: PAIR_CHANNEL_ID,
         async onopen () {
           try {
-            if (_pairSession?.role === 'secondary' && !_pairSession.granted) {
-              pairMsg.send(Buffer.from(JSON.stringify({
-                type: 'hello',
-                handshake: _pairSession.handshakeHex,
-                challenge: _pairSession.challengeHex,
-              })))
-            }
+            // Register this channel so a pair session started LATER over this
+            // already-open connection can still nudge its hello (broadcastPairHello
+            // / consumePairLink, TODO #113); then cover the fresh-connection case.
+            if (pairMsg) _pairChannels.add(pairMsg)
+            broadcastPairHello()
           } catch (e) { console.warn('[pair] onopen error:', e.message) }
         },
-        onclose () {}
+        onclose () { if (pairMsg) _pairChannels.delete(pairMsg) }
       })
 
       const pairMsg = pairChannel ? pairChannel.addMessage({
