@@ -13,6 +13,7 @@ struct CachedEvent: Codable, Identifiable {
   let color: String?
   let colors: [String]?   // 2–3 hex strip (e.g. US holiday red/white/blue) — TODO #104
   let date: String?       // only set on `upcoming` rows (yyyy-MM-dd) — TODO #107
+  let carried: Bool?      // began yesterday, still running now — TODO #114
 }
 
 struct CachedPayload: Codable {
@@ -126,6 +127,11 @@ private func colorBar(_ ev: CachedEvent) -> some View {
 
 private func eventTimeLabel(_ ev: CachedEvent, use24h: Bool?) -> String {
   if ev.allDay { return "All day" }
+  // A carried row began yesterday, so its start time is not today's — labelling it
+  // "11:00 PM" would read as starting tonight. Show when it ends instead. (TODO #114)
+  if ev.carried == true, let end = ev.end, !end.isEmpty {
+    return "Until \(prettyTime(end, use24h: use24h))"
+  }
   return prettyTime(ev.start, use24h: use24h)
 }
 
@@ -172,11 +178,20 @@ private func currentMinutes() -> Int {
   return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
 }
 
-// An event whose end sorts before its start runs past midnight (10pm-12am, an
-// overnight shift). Unwrap it onto today's timeline so it isn't judged as having
-// ended at 00:00 and dimmed for the whole day.
+// Wall-clock start/end are stored against a single date, so an event whose end
+// sorts before its start runs past midnight (10pm-12am, an overnight shift).
+// Unwrap both ends onto *today's* timeline: one that started today ends tomorrow
+// (+1 day), while a carried one started yesterday and is still running (-1 day).
+// Without this it reads as having ended at 00:00 and is dimmed as past all day,
+// and never highlights while actually running.
+private func effectiveStartMin(_ e: CachedEvent) -> Int? {
+  guard let start = minutesFromHHMM(e.start) else { return nil }
+  return e.carried == true ? start - 1440 : start
+}
+
 private func effectiveEndMin(_ e: CachedEvent) -> Int? {
   guard let end = minutesFromHHMM(e.end) else { return nil }
+  if e.carried == true { return end }
   guard let start = minutesFromHHMM(e.start) else { return end }
   return end < start ? end + 1440 : end
 }
@@ -185,14 +200,15 @@ private func findNextUp(_ events: [CachedEvent], nowMin: Int) -> Set<Int> {
   var happening = Set<Int>()
   for (i, e) in events.enumerated() {
     if e.allDay { continue }
-    guard let startMin = minutesFromHHMM(e.start) else { continue }
+    guard let startMin = effectiveStartMin(e) else { continue }
     let endMin = effectiveEndMin(e) ?? (startMin + 30)
     if startMin <= nowMin && nowMin < endMin { happening.insert(i) }
   }
   if !happening.isEmpty { return happening }
   for (i, e) in events.enumerated() {
     if e.allDay { continue }
-    guard let startMin = minutesFromHHMM(e.start) else { continue }
+    guard let startMin = effectiveStartMin(e) else { continue }
+    // A carried event started before today began, so it is never "next up".
     if startMin >= nowMin { return [i] }
   }
   return []
