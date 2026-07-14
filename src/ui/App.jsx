@@ -404,6 +404,46 @@ function Button ({ variant = 'primary', style, children, ...rest }) {
   return <button style={{ ...base, ...variants[variant], ...style }} {...rest}>{children}</button>
 }
 
+// Collapsible row, ported from PearCircle's About accordion. The header is a
+// <button> rather than a <div> so the global capture-phase click listener fires
+// its haptic for free; a leading icon, a title, and a caret that rotates 90° when
+// open. The body animates on max-height instead of snapping.
+//
+// Sits on surface.elevated so an expanded row reads as lifted off the page —
+// that layer exists for exactly this and had no consumer until now.
+function Collapsible ({ title, icon: Icon, open, onToggle, maxHeight = 600, children }) {
+  return (
+    <div style={{
+      background: colors.surface.elevated, borderRadius: 'var(--radius-xl)',
+      marginBottom: 10, overflow: 'hidden',
+    }}>
+      <button onClick={onToggle} aria-expanded={open}
+        style={{
+          width: '100%', textAlign: 'left', background: 'transparent', border: 'none',
+          color: colors.text.primary, fontFamily: FONT, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '14px 16px',
+        }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, fontWeight: 400 }}>
+          {Icon && <Icon size={18} weight="thin" color={colors.text.secondary} />}
+          {title}
+        </span>
+        <CaretRight size={16} weight="thin" color={colors.text.muted}
+          style={{
+            transition: 'transform var(--duration-slow) var(--easing)',
+            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+          }} />
+      </button>
+      <div style={{
+        maxHeight: open ? maxHeight : 0, overflow: 'hidden',
+        transition: 'max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
+      }}>
+        <div style={{ padding: '0 16px 16px' }}>{children}</div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Root App ─────────────────────────────────────────────────────────────────
 export default function App ({ db, notifs, sync }) {
   const [dark,  setDark]  = useState(() => {
@@ -6127,7 +6167,13 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
     setLightningModal(true)
   }
 
-  const donateBody = { fontSize:13, fontWeight:300, color:colors.text.muted, lineHeight:'1.7' }
+  // Accordion: one section open at a time, all closed to start — the About tab is
+  // a reference surface, so it should open as a short scannable index rather than
+  // six screens of prose.
+  const [openSection, setOpenSection] = useState(null)
+  const toggleSection = (id) => setOpenSection(s => (s === id ? null : id))
+
+  const donateBody = { fontSize:13, color:colors.text.muted, lineHeight:'1.7' }
   const donateSecLabel = { fontSize:11, fontWeight:400, color:colors.text.muted, letterSpacing:'0.04em', margin:'20px 0 8px', textAlign:'center' }
   const donatePrimaryBtn = {
     ...pillBtn, width:'100%', padding:'14px 16px',
@@ -6146,25 +6192,23 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
         <div style={{ fontSize:12, color:colors.text.muted }}>Decentralized. Private. No servers.</div>
       </div>
 
-      {/* P2P explainer */}
-      <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-        <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
+      <Collapsible title="How it works" icon={Info}
+        open={openSection === 'how'} onToggle={() => toggleSection('how')}>
         <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
           No accounts. No subscriptions. No data collection.
         </div>
         <button onClick={() => sync?.openURL('https://pears.com/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           Learn about P2P <ArrowSquareOut size={14} weight="thin" />
         </button>
-      </div>
+      </Collapsible>
 
-      {/* Replay tour */}
       {onReplayTour && (
-        <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-          <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HELP</div>
+        <Collapsible title="Replay welcome tour" icon={ArrowsClockwise}
+          open={openSection === 'tour'} onToggle={() => toggleSection('tour')}>
           <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
             Walk through the calendar's main controls again — create flow, groups, profile, settings.
           </div>
@@ -6172,71 +6216,67 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
             style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
             Replay welcome tour
           </button>
-        </div>
+        </Collapsible>
       )}
 
-      {/* Donate */}
-      <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-        <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
+      <Collapsible title="Support development" icon={Lightning}
+        open={openSection === 'support'} onToggle={() => toggleSection('support')}>
         <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal is free and open source. If you receive value from it, please consider returning value.
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           <button onClick={handleDonate}
-            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, 
+            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <Lightning size={14} weight="thin" /> Donate BTC <Lightning size={14} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://buymeacoffee.com/peerloomllc')}
-            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, 
+            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <CurrencyDollar size={14} weight="thin" /> Donate USD <CurrencyDollar size={14} weight="thin" />
           </button>
         </div>
-      </div>
+      </Collapsible>
 
-      {/* Bitcoin learning card */}
-      <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-        <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>LEARN ABOUT BITCOIN</div>
+      <Collapsible title="Learn about Bitcoin" icon={BookOpen}
+        open={openSection === 'bitcoin'} onToggle={() => toggleSection('bitcoin')}>
         <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters.
         </div>
         <button onClick={() => sync?.openURL('https://nakamotoinstitute.org/crash-course/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           <BookOpen size={16} weight="thin" /> Bitcoin Crash Course <ArrowSquareOut size={14} weight="thin" />
         </button>
-      </div>
+      </Collapsible>
 
-      {/* Share App */}
-      <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-        <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SHARE THE APP</div>
+      <Collapsible title="Share the app" icon={ShareNetwork}
+        open={openSection === 'share'} onToggle={() => toggleSection('share')}>
         <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           Know someone who'd enjoy a private, serverless calendar? Share PearCal with them.
         </div>
         <button onClick={() => sync?.nativeShare('PearCal', 'Check out PearCal — a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14,
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           <ShareNetwork size={16} weight="thin" /> Share PearCal
         </button>
-      </div>
+      </Collapsible>
 
-      {/* Contact */}
-      <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
-        <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:10, letterSpacing:'0.04em', textAlign:'center' }}>CONTACT</div>
+      <Collapsible title="Contact" icon={EnvelopeSimple}
+        open={openSection === 'contact'} onToggle={() => toggleSection('contact')}>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => sync?.openURL('mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback')}
-            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, 
+            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <EnvelopeSimple size={14} weight="thin" /> Send Email <ArrowSquareOut size={13} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://github.com/peerloomllc/pearcal-native/issues')}
-            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, 
+            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13,
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <Bug size={14} weight="thin" /> Report Issue <ArrowSquareOut size={13} weight="thin" />
           </button>
         </div>
-      </div>
+      </Collapsible>
 
       {/* Lightning / on-chain donation chooser */}
       {lightningModal && (

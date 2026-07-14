@@ -17141,6 +17141,58 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     };
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { style: { ...base, ...variants[variant], ...style }, ...rest, children });
   }
+  function Collapsible({ title, icon: Icon, open, onToggle, maxHeight = 600, children }) {
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
+      background: colors.surface.elevated,
+      borderRadius: "var(--radius-xl)",
+      marginBottom: 10,
+      overflow: "hidden"
+    }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        "button",
+        {
+          onClick: onToggle,
+          "aria-expanded": open,
+          style: {
+            width: "100%",
+            textAlign: "left",
+            background: "transparent",
+            border: "none",
+            color: colors.text.primary,
+            fontFamily: FONT,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "14px 16px"
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { display: "flex", alignItems: "center", gap: 10, fontSize: 14, fontWeight: 400 }, children: [
+              Icon && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Icon, { size: 18, weight: "thin", color: colors.text.secondary }),
+              title
+            ] }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              s4,
+              {
+                size: 16,
+                weight: "thin",
+                color: colors.text.muted,
+                style: {
+                  transition: "transform var(--duration-slow) var(--easing)",
+                  transform: open ? "rotate(90deg)" : "rotate(0deg)"
+                }
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
+        maxHeight: open ? maxHeight : 0,
+        overflow: "hidden",
+        transition: "max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1)"
+      }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { padding: "0 16px 16px" }, children }) })
+    ] });
+  }
   function App({ db: db2, notifs: notifs2, sync: sync2 }) {
     const [dark, setDark] = (0, import_react7.useState)(() => {
       setTheme2(true);
@@ -24543,7 +24595,9 @@ ${link}`;
       setLnDetected(!!detected);
       setLightningModal(true);
     }
-    const donateBody = { fontSize: 13, fontWeight: 300, color: colors.text.muted, lineHeight: "1.7" };
+    const [openSection, setOpenSection] = (0, import_react7.useState)(null);
+    const toggleSection = (id) => setOpenSection((s11) => s11 === id ? null : id);
+    const donateBody = { fontSize: 13, color: colors.text.muted, lineHeight: "1.7" };
     const donateSecLabel = { fontSize: 11, fontWeight: 400, color: colors.text.muted, letterSpacing: "0.04em", margin: "20px 0 8px", textAlign: "center" };
     const donatePrimaryBtn = {
       ...pillBtn,
@@ -24570,188 +24624,234 @@ ${link}`;
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 18, fontWeight: 400, color: colors.text.primary }, children: "PearCal" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: "Decentralized. Private. No servers." })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "HOW IT WORKS" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol. Your calendar data never touches a server \u2014 it lives only on the devices in your groups. No accounts. No subscriptions. No data collection." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "button",
-          {
-            onClick: () => sync2?.openURL("https://pears.com/"),
-            style: {
-              ...pillBtn,
-              width: "100%",
-              padding: "10px",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8
-            },
-            children: [
-              "Learn about P2P ",
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 14, weight: "thin" })
-            ]
-          }
-        )
-      ] }),
-      onReplayTour && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "HELP" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Walk through the calendar's main controls again \u2014 create flow, groups, profile, settings." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-          "button",
-          {
-            onClick: onReplayTour,
-            style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14 },
-            children: "Replay welcome tour"
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "SUPPORT DEVELOPMENT" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal is free and open source. If you receive value from it, please consider returning value." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "button",
-            {
-              onClick: handleDonate,
-              style: {
-                ...pillBtn,
-                flex: 1,
-                minWidth: 120,
-                padding: "10px 8px",
-                fontSize: 13,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 14, weight: "thin" }),
-                " Donate BTC ",
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 14, weight: "thin" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "button",
-            {
-              onClick: () => sync2?.openURL("https://buymeacoffee.com/peerloomllc"),
-              style: {
-                ...pillBtn,
-                flex: 1,
-                minWidth: 120,
-                padding: "10px 8px",
-                fontSize: 13,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(m2, { size: 14, weight: "thin" }),
-                " Donate USD ",
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(m2, { size: 14, weight: "thin" })
-              ]
-            }
-          )
-        ] })
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "LEARN ABOUT BITCOIN" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "button",
-          {
-            onClick: () => sync2?.openURL("https://nakamotoinstitute.org/crash-course/"),
-            style: {
-              ...pillBtn,
-              width: "100%",
-              padding: "10px",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c, { size: 16, weight: "thin" }),
-              " Bitcoin Crash Course ",
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 14, weight: "thin" })
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "SHARE THE APP" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Know someone who'd enjoy a private, serverless calendar? Share PearCal with them." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "button",
-          {
-            onClick: () => sync2?.nativeShare("PearCal", "Check out PearCal \u2014 a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/"),
-            style: {
-              ...pillBtn,
-              width: "100%",
-              padding: "10px",
-              fontSize: 14,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 8
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n7, { size: 16, weight: "thin" }),
-              " Share PearCal"
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 10, letterSpacing: "0.04em", textAlign: "center" }, children: "CONTACT" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "button",
-            {
-              onClick: () => sync2?.openURL("mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback"),
-              style: {
-                ...pillBtn,
-                flex: 1,
-                padding: "10px 8px",
-                fontSize: 13,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(i, { size: 14, weight: "thin" }),
-                " Send Email ",
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 13, weight: "thin" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-            "button",
-            {
-              onClick: () => sync2?.openURL("https://github.com/peerloomllc/pearcal-native/issues"),
-              style: {
-                ...pillBtn,
-                flex: 1,
-                padding: "10px 8px",
-                fontSize: 13,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6
-              },
-              children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n2, { size: 14, weight: "thin" }),
-                " Report Issue ",
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 13, weight: "thin" })
-              ]
-            }
-          )
-        ] })
-      ] }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        Collapsible,
+        {
+          title: "How it works",
+          icon: c4,
+          open: openSection === "how",
+          onToggle: () => toggleSection("how"),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol. Your calendar data never touches a server \u2014 it lives only on the devices in your groups. No accounts. No subscriptions. No data collection." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                onClick: () => sync2?.openURL("https://pears.com/"),
+                style: {
+                  ...pillBtn,
+                  width: "100%",
+                  padding: "10px",
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8
+                },
+                children: [
+                  "Learn about P2P ",
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 14, weight: "thin" })
+                ]
+              }
+            )
+          ]
+        }
+      ),
+      onReplayTour && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        Collapsible,
+        {
+          title: "Replay welcome tour",
+          icon: m,
+          open: openSection === "tour",
+          onToggle: () => toggleSection("tour"),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Walk through the calendar's main controls again \u2014 create flow, groups, profile, settings." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              "button",
+              {
+                onClick: onReplayTour,
+                style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14 },
+                children: "Replay welcome tour"
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        Collapsible,
+        {
+          title: "Support development",
+          icon: c5,
+          open: openSection === "support",
+          onToggle: () => toggleSection("support"),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal is free and open source. If you receive value from it, please consider returning value." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "button",
+                {
+                  onClick: handleDonate,
+                  style: {
+                    ...pillBtn,
+                    flex: 1,
+                    minWidth: 120,
+                    padding: "10px 8px",
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 14, weight: "thin" }),
+                    " Donate BTC ",
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 14, weight: "thin" })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                "button",
+                {
+                  onClick: () => sync2?.openURL("https://buymeacoffee.com/peerloomllc"),
+                  style: {
+                    ...pillBtn,
+                    flex: 1,
+                    minWidth: 120,
+                    padding: "10px 8px",
+                    fontSize: 13,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6
+                  },
+                  children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(m2, { size: 14, weight: "thin" }),
+                    " Donate USD ",
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(m2, { size: 14, weight: "thin" })
+                  ]
+                }
+              )
+            ] })
+          ]
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        Collapsible,
+        {
+          title: "Learn about Bitcoin",
+          icon: c,
+          open: openSection === "bitcoin",
+          onToggle: () => toggleSection("bitcoin"),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                onClick: () => sync2?.openURL("https://nakamotoinstitute.org/crash-course/"),
+                style: {
+                  ...pillBtn,
+                  width: "100%",
+                  padding: "10px",
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c, { size: 16, weight: "thin" }),
+                  " Bitcoin Crash Course ",
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 14, weight: "thin" })
+                ]
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+        Collapsible,
+        {
+          title: "Share the app",
+          icon: n7,
+          open: openSection === "share",
+          onToggle: () => toggleSection("share"),
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Know someone who'd enjoy a private, serverless calendar? Share PearCal with them." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                onClick: () => sync2?.nativeShare("PearCal", "Check out PearCal \u2014 a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/"),
+                style: {
+                  ...pillBtn,
+                  width: "100%",
+                  padding: "10px",
+                  fontSize: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n7, { size: 16, weight: "thin" }),
+                  " Share PearCal"
+                ]
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        Collapsible,
+        {
+          title: "Contact",
+          icon: i,
+          open: openSection === "contact",
+          onToggle: () => toggleSection("contact"),
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                onClick: () => sync2?.openURL("mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback"),
+                style: {
+                  ...pillBtn,
+                  flex: 1,
+                  padding: "10px 8px",
+                  fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(i, { size: 14, weight: "thin" }),
+                  " Send Email ",
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 13, weight: "thin" })
+                ]
+              }
+            ),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+              "button",
+              {
+                onClick: () => sync2?.openURL("https://github.com/peerloomllc/pearcal-native/issues"),
+                style: {
+                  ...pillBtn,
+                  flex: 1,
+                  padding: "10px 8px",
+                  fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6
+                },
+                children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n2, { size: 14, weight: "thin" }),
+                  " Report Issue ",
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 13, weight: "thin" })
+                ]
+              }
+            )
+          ] })
+        }
+      ),
       lightningModal && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose: () => setLightningModal(false), zIndex: 300, closeRef: lsBsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 20px" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 18, fontWeight: 400, color: colors.text.primary, marginBottom: 8, textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 18, weight: "thin" }),
