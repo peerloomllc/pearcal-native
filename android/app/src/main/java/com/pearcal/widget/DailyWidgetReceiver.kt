@@ -100,7 +100,8 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                     views.setTextViewText(titleIds[rowIdx], e.title)
                     applyColorBar(views, colorIds[rowIdx], e)
 
-                    val isPast = !e.allDay && e.endMin != null && e.endMin < nowMin
+                    val endEff = effectiveEndMin(e)
+                    val isPast = !e.allDay && endEff != null && endEff < nowMin
                     val isNextUp = nextUpSet.contains(leftIdx)
                     val titleColor = when {
                         isPast -> Color.parseColor(COLOR_MUTED)
@@ -119,7 +120,8 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         views.setViewVisibility(rightTitleIds[rowIdx], View.VISIBLE)
                         applyColorBar(views, rightColorIds[rowIdx], e2)
                         views.setTextViewText(rightTitleIds[rowIdx], e2.title)
-                        val isPastR = !e2.allDay && e2.endMin != null && e2.endMin < nowMin
+                        val endEffR = effectiveEndMin(e2)
+                        val isPastR = !e2.allDay && endEffR != null && endEffR < nowMin
                         val isNextUpR = nextUpSet.contains(rightIdx)
                         val titleColorR = when {
                             isPastR -> Color.parseColor(COLOR_MUTED)
@@ -181,6 +183,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val allDay: Boolean,
             val startMin: Int?,
             val endMin: Int?,
+            val carried: Boolean = false,   // began yesterday, still running now (TODO #114)
         )
 
         private data class WidgetCache(
@@ -243,13 +246,19 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val colors: List<Int>? = if (colorsArr != null && colorsArr.length() > 1) {
                 (0 until minOf(colorsArr.length(), 3)).map { parseColor(colorsArr.optString(it, "")) }
             } else null
+            // A carried row began yesterday, so its start time is not today's —
+            // labelling it "11:00 PM" would read as starting tonight. Show when it
+            // ends instead. (TODO #114)
+            val carried = o.optBoolean("carried", false)
             val timeLabel = if (upcoming) {
                 val dl = upcomingDateLabel(o.optString("date", ""))
                 if (allDay || start.isEmpty()) dl else "$dl · ${prettyTime(start, use24h)}"
+            } else if (carried && end.isNotEmpty()) {
+                "Until ${prettyTime(end, use24h)}"
             } else {
                 if (allDay || start.isEmpty()) "All day" else prettyTime(start, use24h)
             }
-            return EventRow(timeLabel, title, location, color, colors, allDay, parseMinutes(start), parseMinutes(end))
+            return EventRow(timeLabel, title, location, color, colors, allDay, parseMinutes(start), parseMinutes(end), carried)
         }
 
         // Weekday + month/day for upcoming rows, e.g. "Sat · Jun 19" (TODO #107).
@@ -320,21 +329,42 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         }
 
+        // Wall-clock start/end are stored against a single date, so an event whose
+        // end sorts before its start runs past midnight (10pm-12am, an overnight
+        // shift). Unwrap both ends onto *today's* timeline: one that started today
+        // ends tomorrow (+1 day), while a carried one started yesterday and is still
+        // running (-1 day). Without this it reads as having ended at 00:00 and is
+        // greyed out as past all day, and never highlights while actually running.
+        private fun effectiveStartMin(e: EventRow): Int? {
+            val start = e.startMin ?: return null
+            return if (e.carried) start - 1440 else start
+        }
+
+        private fun effectiveEndMin(e: EventRow): Int? {
+            val end = e.endMin ?: return null
+            if (e.carried) return end
+            val start = e.startMin ?: return end
+            return if (end < start) end + 1440 else end
+        }
+
         private fun findNextUp(events: List<EventRow>, nowMin: Int): Set<Int> {
             // All events currently happening (start <= now < end) win; otherwise
             // the first event whose start is in the future. All-day events are skipped.
             val happening = HashSet<Int>()
             for (i in events.indices) {
                 val e = events[i]
-                if (e.allDay || e.startMin == null) continue
-                val endMin = e.endMin ?: (e.startMin + 30)
-                if (e.startMin <= nowMin && nowMin < endMin) happening.add(i)
+                if (e.allDay) continue
+                val startMin = effectiveStartMin(e) ?: continue
+                val endMin = effectiveEndMin(e) ?: (startMin + 30)
+                if (startMin <= nowMin && nowMin < endMin) happening.add(i)
             }
             if (happening.isNotEmpty()) return happening
             for (i in events.indices) {
                 val e = events[i]
-                if (e.allDay || e.startMin == null) continue
-                if (e.startMin >= nowMin) return setOf(i)
+                if (e.allDay) continue
+                val startMin = effectiveStartMin(e) ?: continue
+                // A carried event started before today began, so it is never "next up".
+                if (startMin >= nowMin) return setOf(i)
             }
             return emptySet()
         }

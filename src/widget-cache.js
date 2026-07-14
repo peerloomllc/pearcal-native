@@ -18,6 +18,19 @@ function tomorrowDateString () {
   return dateStringFor(d)
 }
 
+function yesterdayDateString () {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return dateStringFor(d)
+}
+
+// A timed event carries only wall-clock start/end against a single date, so an
+// end that sorts *before* its start means the event runs past midnight into the
+// next day (10pm-12am, a 23:00-07:00 shift).
+function wrapsPastMidnight (value) {
+  return !!(value.start && value.end && value.end < value.start)
+}
+
 function normalize (value) {
   // `colors` (2–3 hex entries) paints a segmented strip in the widget — used by
   // subscribed holidays like US federal days (red/white/blue). Emit it only when
@@ -47,7 +60,11 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
     if (value.isShadow) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
     if (nowHHMM && !value.allDay) {
-      const cutoff = value.end || value.start
+      // A wrapping event's end string is less than every clock time, so pruning
+      // on it would drop the event for its whole day. It stays live until the
+      // day is over — never prune it here. (Yesterday's copy of it is picked up
+      // separately by readCarriedEvents.)
+      const cutoff = wrapsPastMidnight(value) ? null : (value.end || value.start)
       if (cutoff && cutoff < nowHHMM) continue
     }
     const prev = byId.get(value.id)
@@ -60,6 +77,38 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
     return (a.start || '').localeCompare(b.start || '')
   })
   return out
+}
+
+// Yesterday's events that run past midnight and are *still* running right now.
+// A 23:00-07:00 shift is live at 00:30 today, but it is keyed under the date it
+// started, so today's key range alone would lose it the moment the day rolls
+// over. (TODO #114)
+async function readCarriedEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM }) {
+  const gt = 'events:' + date + ':'
+  const lt = 'events:' + date + ':\xff'
+  const byId = new Map()
+  for await (const { value } of db.createReadStream({ gt, lt })) {
+    if (value.isShadow) continue
+    if (value.allDay || !wrapsPastMidnight(value)) continue
+    if (!nowHHMM || value.end <= nowHHMM) continue  // already ended earlier today
+    if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    const prev = byId.get(value.id)
+    if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
+  }
+  const out = [...byId.values()].map(v => ({ ...normalize(v), carried: true }))
+  out.sort((a, b) => (a.start || '').localeCompare(b.start || ''))
+  return out
+}
+
+// A carried event began yesterday, so it precedes everything that starts today —
+// but all-day rows still head the list. The widgets read `carried` to label the
+// row by when it *ends* ("Until 7:00 AM") rather than by a start time that is no
+// longer today's.
+function mergeCarried (events, carried) {
+  if (carried.length === 0) return events
+  const firstTimed = events.findIndex(e => !e.allDay)
+  const cut = firstTimed === -1 ? events.length : firstTimed
+  return [...events.slice(0, cut), ...carried, ...events.slice(cut)]
 }
 
 // Next `limit` events on or after `fromDate`, in chronological order, each
@@ -93,7 +142,7 @@ function buildSlots (events) {
   while (i < events.length) {
     const a = events[i]
     const b = events[i + 1]
-    if (b && !a.allDay && !b.allDay && a.start && a.start === b.start) {
+    if (b && !a.allDay && !b.allDay && !a.carried && !b.carried && a.start && a.start === b.start) {
       slots.push([i, i + 1])
       i += 2
     } else {
@@ -108,7 +157,9 @@ async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupI
   const date = todayDateString()
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
-  const events = await readDayEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
+  const today = await readDayEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
+  const carried = await readCarriedEvents(db, yesterdayDateString(), { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
+  const events = mergeCarried(today, carried)
   const slots = buildSlots(events)
   let tomorrowFirst = null
   let upcoming = null
