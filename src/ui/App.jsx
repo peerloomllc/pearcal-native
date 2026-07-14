@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
@@ -74,7 +75,7 @@ function CopyField ({ th, sync, value, hint }) {
     try {
       const r = await sync?.copyText(value)
       if (r?.ok !== false) {
-        sync?.haptic('light')
+        sync?.haptic('success')
         setCopied(true)
         setTimeout(() => setCopied(false), 1600)
       }
@@ -91,7 +92,7 @@ function CopyField ({ th, sync, value, hint }) {
           flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
           fontFamily:'monospace', fontSize:13, ...th.text,
         }}>{value}</span>
-        <button onClick={copy} style={{
+        <button data-haptic="success" onClick={copy} style={{
           flexShrink:0, background:'transparent', border:'none', cursor:'pointer',
           fontFamily:FONT, fontSize:13, fontWeight:400,
           color: copied ? 'var(--color-success)' : th.accent,
@@ -109,6 +110,41 @@ function CopyField ({ th, sync, value, hint }) {
 
 function setTheme (dark) {
   applyTheme(dark ? 'dark' : 'light')
+}
+
+// ─── Back-gesture stack ───────────────────────────────────────────────────────
+// Every overlay registers a dismiss handler on mount; hardware Back and the edge
+// swipe unwind them deepest-first — the most recently mounted overlay is the one
+// actually on top, so it goes first. A handler consumes the gesture unless it
+// explicitly returns false.
+//
+// This replaces a hand-maintained if/else ladder in App that named thirteen
+// closeXxxRefs in a fixed order: every new overlay meant remembering to wire a
+// ref in at App level, and that order had to be kept in step with the z-index
+// stack by hand. BottomSheet registers itself, so all twelve sheets get Back for
+// free, and a sheet opened on top of the QR modal now dismisses before it —
+// which the fixed order got wrong.
+const _backStack = []
+
+function useBackHandler (active, onBack) {
+  const handler = useRef(onBack)
+  useEffect(() => { handler.current = onBack })
+  useEffect(() => {
+    if (!active) return
+    const entry = () => handler.current?.()
+    _backStack.push(entry)
+    return () => {
+      const i = _backStack.lastIndexOf(entry)
+      if (i !== -1) _backStack.splice(i, 1)
+    }
+  }, [active])
+}
+
+function runBackStack () {
+  for (let i = _backStack.length - 1; i >= 0; i--) {
+    if (_backStack[i]() !== false) return true
+  }
+  return false
 }
 
 function extractURLs (text) {
@@ -709,6 +745,9 @@ export default function App ({ db, notifs, sync }) {
   }, [events])
   useEffect(() => {
     backHandlerRef.current = () => {
+      // Overlays first, deepest-first. Sheets, the QR modal and the full grid all
+      // register themselves, so none of them is named here any more.
+      if (runBackStack()) return
       if (showOnboarding) {
         // Slide 0 sub-screens (restore menu / pair / manual phrase) get first
         // crack so back gesture unwinds them instead of noop-ing at step 0.
@@ -716,27 +755,11 @@ export default function App ({ db, notifs, sync }) {
         if (onboardStep > 0) { setOnboardStep(s => s - 1); return }
         return  // step 0 root — do nothing, don't exit
       }
-      if (closeAboutSheetRef.current?.()) return
-      if (qrGroup)      { setQrGroup(null);      return }
-      if (closeInviteSheetRef.current?.()) return
-      if (closeJoinSheetRef.current?.()) return
-      if (closePendingJoinRef.current?.()) return
-      if (closeInfoSheetRef.current?.()) return
-      if (closeConfirmSheetRef.current?.()) return
-      if (closeScopeSheetRef.current?.()) return
-      if (closeDeleteScopeSheetRef.current?.()) return
-      if (closeEventModalRef.current?.()) return
-      if (closeFullGridRef.current?.()) return
-      if (closeNewGroupSheetRef.current?.()) return
-      if (settingsGroup) {
-        if (closeGroupSettingsRef.current) { closeGroupSettingsRef.current(); return }
-        setSettingsGroup(null); return
-      }
       const prev = tabHistoryRef.current.pop()
       if (prev) { tabRef.current = prev; setTab(prev); return }
       window.ReactNativeWebView?.postMessage(JSON.stringify({ method: 'exitApp', id: -1 }))
     }
-  }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep, settingsGroup])
+  }, [showOnboarding, onboardStep])
   useEffect(() => { window.__pearBack = () => backHandlerRef.current?.() }, [])
   useEffect(() => { window.__pearSync = sync }, [sync])
   useEffect(() => {
@@ -1720,10 +1743,18 @@ export default function App ({ db, notifs, sync }) {
             }}
             closeRef={closeGroupSettingsRef}
             onRequestConfirm={req => {
+              // The confirm layers over the settings sheet (it already sits at a higher
+              // z-index), so Cancel and Back return you to settings rather than dropping
+              // you on the group list. The sheet is dismissed when the action is actually
+              // confirmed — the point at which it stops being valid — instead of up front
+              // when the confirm is merely raised.
+              const raise = (cfg) => setConfirmSheet({
+                ...cfg,
+                onConfirm: async () => { setSettingsGroup(null); return cfg.onConfirm?.() },
+              })
               if (req.type === 'deleteGroup') {
-                setSettingsGroup(null)
                 const otherCount = req.g.members.length - 1
-                setConfirmSheet({
+                raise({
                   title: 'Delete Group?',
                   message: otherCount > 0
                     ? `"${req.g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? '' : 's'}. This cannot be undone.`
@@ -1734,8 +1765,7 @@ export default function App ({ db, notifs, sync }) {
                   onConfirm: () => deleteGroup(req.g.id),
                 })
               } else if (req.type === 'leaveGroup') {
-                setSettingsGroup(null)
-                setConfirmSheet({
+                raise({
                   title: 'Leave Group?',
                   message: `You'll be removed from "${req.g.name}" and lose access to shared events.`,
                   icon: <SignOut size={36} weight="thin" color="var(--color-destructive)" />,
@@ -1744,8 +1774,7 @@ export default function App ({ db, notifs, sync }) {
                   onConfirm: () => deleteGroup(req.g.id, 'leave'),
                 })
               } else if (req.type === 'removeBrokenGroup') {
-                setSettingsGroup(null)
-                setConfirmSheet({
+                raise({
                   title: 'Remove Broken Group?',
                   message: `"${req.g.name}" will be removed from this device. Local data for this group is already unrecoverable. ${req.g.ownerId === profile?.id ? 'As the owner you will need to recreate the group to continue.' : 'You can rejoin from a fresh invite link.'}`,
                   icon: <Trash size={36} weight="thin" color="var(--color-destructive)" />,
@@ -1754,9 +1783,8 @@ export default function App ({ db, notifs, sync }) {
                   onConfirm: () => removeBrokenGroup(req.g.id),
                 })
               } else if (req.type === 'removeMember') {
-                setSettingsGroup(null)
                 const member = req.g.members.find(m => m.id === req.memberId)
-                setConfirmSheet({
+                raise({
                   title: `Remove ${member?.name ?? 'Member'}?`,
                   message: `They will be removed from "${req.g.name}" and lose access to shared events.`,
                   icon: <User size={36} weight="thin" color="var(--color-muted)" />,
@@ -1765,9 +1793,8 @@ export default function App ({ db, notifs, sync }) {
                   onConfirm: () => removeMember(req.g, req.memberId),
                 })
               } else if (req.type === 'purgeMember') {
-                setSettingsGroup(null)
                 const member = (req.g.removedMembers ?? []).find(m => (m.id ?? m) === req.memberId)
-                setConfirmSheet({
+                raise({
                   title: `Permanently delete ${member?.name ?? 'member'}?`,
                   message: `This will remove all traces of this member ID from all devices. They can still rejoin with a new invite.`,
                   icon: <Trash size={36} weight="thin" color="#D45F7A" />,
@@ -1788,8 +1815,7 @@ export default function App ({ db, notifs, sync }) {
                   },
                 })
               } else if (req.type === 'rekeyGroup') {
-                setSettingsGroup(null)
-                setConfirmSheet({
+                raise({
                   title: 'Rekey Group?',
                   message: `Rotates "${req.g.name}" onto a fresh group key to reclaim shared history storage. Members auto-migrate on their next sync. Old storage is retained for 14 days, then deleted automatically.`,
                   icon: <Trash size={36} weight="thin" color="var(--color-muted)" />,
@@ -1830,8 +1856,7 @@ export default function App ({ db, notifs, sync }) {
                   },
                 })
               } else if (req.type === 'transferOwnership') {
-                setSettingsGroup(null)
-                setConfirmSheet({
+                raise({
                   title: `Transfer ownership to ${req.targetName ?? 'this member'}?`,
                   message: `They will gain the ability to remove members and approve rejoins in "${req.g.name}". You will lose these privileges.`,
                   icon: <Crown size={36} weight="thin" color="var(--color-accent)" />,
@@ -1850,10 +1875,9 @@ export default function App ({ db, notifs, sync }) {
                   },
                 })
               } else if (req.type === 'claimOwnership') {
-                setSettingsGroup(null)
                 const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0
                 const days = Math.max(0, Math.floor((Date.now() - lastTs) / 86_400_000))
-                setConfirmSheet({
+                raise({
                   title: 'Claim ownership?',
                   message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? '' : 's'}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
                   icon: <Crown size={36} weight="thin" color="#E5864A" />,
@@ -2050,7 +2074,7 @@ function WeekView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate,
           const isSel = ds === selectedDate
           const isToday = ds === todayStr
           return (
-            <button key={ds} onClick={() => { window.__pearSync?.haptic('light'); setSelectedDate(ds) }}
+            <button key={ds} onClick={() => { setSelectedDate(ds) }}
               style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
                 padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
                 background: isSel ? th.accent : isToday ? th.accentFaint : 'transparent' }}>
@@ -2237,7 +2261,7 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
           const isSel = ds === selectedDate
           const isToday = ds === todayStr
           return (
-            <button key={ds} onClick={() => { window.__pearSync?.haptic('light'); setSelectedDate(ds) }}
+            <button key={ds} onClick={() => { setSelectedDate(ds) }}
               style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
                 padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
                 background: isSel ? th.accent : isToday ? th.accentFaint : 'transparent' }}>
@@ -2393,6 +2417,7 @@ function DayView ({ th, selectedDate, setSelectedDate, weekStart, eventsOnDate, 
 }
 
 function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
+  useBackHandler(true, onExit)
   useEffect(() => {
     if (!closeFullGridRef) return
     closeFullGridRef.current = () => { onExit(); return true }
@@ -2538,7 +2563,7 @@ function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeF
                   const isToday = cellDate === todayStr
                   const isPast = cellDate < todayStr
                   return (
-                    <button key={col} onClick={() => { window.__pearSync?.haptic('light'); onDayTap(cellDate) }}
+                    <button key={col} onClick={() => { onDayTap(cellDate) }}
                       style={{ border:'none', borderLeft: col === 0 ? 'none' : `1px solid ${th.border}`,
                         background:'transparent', padding:'4px 2px 2px', cursor:'pointer',
                         display:'flex', flexDirection:'column', alignItems:'stretch',
@@ -2604,7 +2629,6 @@ function FullGridView ({ th, weekStart, events, todayStr, filterGroupIds, closeF
         pointerEvents: todayVisible ? 'none' : 'auto',
         display:'flex', justifyContent:'center' }}>
         <button onClick={() => {
-          window.__pearSync?.haptic('light')
           const el = scrollRef.current?.querySelector(`[data-weekindex="${range.before}"]`)
           if (el && scrollRef.current) {
             const containerTop = scrollRef.current.getBoundingClientRect().top
@@ -2859,7 +2883,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
           const isPast  = ds < todayStr
           const isCur   = cell.type === 'cur'
           return (
-            <button key={ds + i} onClick={() => { window.__pearSync?.haptic('light'); setSelectedDate(ds); scrollToDate(ds) }}
+            <button key={ds + i} onClick={() => { setSelectedDate(ds); scrollToDate(ds) }}
               style={{ background:isSel ? th.accent : isToday ? th.accentFaint : 'none',
                 border:'none', borderRadius:10, padding:'6px 2px', cursor:'pointer',
                 display:'flex', flexDirection:'column', alignItems:'center', gap:2, fontFamily:FONT,
@@ -2893,7 +2917,7 @@ function CalendarTab ({ th, viewDate, setViewDate, calDays, selectedDate, setSel
             <span style={{ fontSize:11, color:th.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
         <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => { window.__pearSync?.haptic('light'); setFullGrid(true) }} style={{
+          <button onClick={() => { setFullGrid(true) }} style={{
             width: 36, height: 36, borderRadius: 10,
             background: 'var(--color-surface)',
             border: '1px solid var(--color-border)',
@@ -3498,11 +3522,14 @@ function PairingHostModal ({ th, data, error, onRegenerate, onCancel }) {
       ta.value = link; ta.style.position = 'fixed'; ta.style.opacity = '0'
       document.body.appendChild(ta); ta.select()
       document.execCommand('copy'); document.body.removeChild(ta)
-      window.__pearSync?.haptic('light')
+      window.__pearSync?.haptic('success')
     } catch {}
   }
   const isCompleted = data?.status === 'completed'
   const isExpired   = data?.expired === true
+  // Once pairing completes the modal is not dismissible by tapping the scrim, so
+  // Back must not dismiss it either.
+  useBackHandler(!isCompleted, onCancel)
   return (
     <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:9999,
       background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
@@ -3537,8 +3564,8 @@ function PairingHostModal ({ th, data, error, onRegenerate, onCancel }) {
               : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
             <div style={{ fontSize:10, color:th.muted, fontWeight:300, textAlign:'center',
               wordBreak:'break-all', fontFamily:'monospace', maxWidth:260, lineHeight:1.4 }}>{link}</div>
-            <button onClick={copyLink}
-              style={{ ...th.pillBtn, padding:'8px 20px', fontSize:12, fontWeight:300 }}>
+            <button data-haptic="success" onClick={copyLink}
+              style={{ ...th.pillBtn, padding:'8px 20px', fontSize:12 }}>
               Copy link
             </button>
           </>
@@ -3565,6 +3592,7 @@ function PairingHostModal ({ th, data, error, onRegenerate, onCancel }) {
 function QRModal ({ th, link, onClose }) {
   const canvasRef = useRef(null)
   const [qrError, setQrError] = useState(null)
+  useBackHandler(true, onClose)
   useEffect(() => {
     if (!canvasRef.current || !link) return
     try {
@@ -5150,7 +5178,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                   {g.brokenError}
                 </div>
               )}
-              <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeBrokenGroup', g }) }}
+              <button onClick={() => { onRequestConfirm({ type: 'removeBrokenGroup', g }) }}
                 style={{ background:'#D45F7A', border:'none', borderRadius:8, color:'#fff',
                   fontSize:13, padding:'8px 14px', cursor:'pointer', fontWeight:300, fontFamily:FONT,
                   display:'flex', alignItems:'center', gap:6 }}>
@@ -5373,7 +5401,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                     </div>
                     <div style={{ display:'flex', flexDirection:'row', gap:6, alignItems:'center' }}>
                       {isOwner && !isMe && !isMemberOwner && (
-                        <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: isMemberAdmin ? 'removeAdmin' : 'makeAdmin', g, memberId: m.id, memberName: m.nickname || m.name }) }}
+                        <button onClick={() => { onRequestConfirm({ type: isMemberAdmin ? 'removeAdmin' : 'makeAdmin', g, memberId: m.id, memberName: m.nickname || m.name }) }}
                           style={{ background:'transparent', border:`1px solid ${isMemberAdmin ? '#D45F7A44' : '#4CAF5044'}`, borderRadius:8,
                             color:isMemberAdmin ? '#D45F7A' : '#4CAF50', fontSize:11, padding:'4px 8px', cursor:'pointer',
                             fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:4 }}>
@@ -5381,7 +5409,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                         </button>
                       )}
                       {canRemove && (
-                        <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
+                        <button onClick={() => { onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
                           style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
                             color:'#D45F7A', fontSize:11, padding:'4px 8px', cursor:'pointer',
                             fontWeight:300, fontFamily:FONT }}>
@@ -5447,7 +5475,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                   </div>
 
                   {isOwner && nonOwnerMembers.length > 0 && !transferPicker && (
-                    <button onClick={() => { window.__pearSync?.haptic('light'); setTransferPicker(true) }}
+                    <button onClick={() => { setTransferPicker(true) }}
                       style={{ background:'transparent', border:`1px solid ${th.border}`, borderRadius:10,
                         color:th.text.color, fontSize:13, padding:'10px 14px', cursor:'pointer',
                         fontWeight:300, fontFamily:FONT, textAlign:'left',
@@ -5494,7 +5522,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                         The owner has been inactive for {ownerInactiveDays} day{ownerInactiveDays === 1 ? '' : 's'}.
                         If you can't reach them, you can claim ownership of this group.
                       </div>
-                      <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'claimOwnership', g }) }}
+                      <button onClick={() => { onRequestConfirm({ type: 'claimOwnership', g }) }}
                         style={{ background:'transparent', border:'1px solid #E5864A66', borderRadius:8,
                           color:'#E5864A', fontSize:13, padding:'6px 12px', cursor:'pointer',
                           fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:6 }}>
@@ -5557,7 +5585,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
               <>
                 {section('STORAGE')}
                 <div style={{ border:`1px solid ${th.border}`, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
-                  <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'rekeyGroup', g }) }}
+                  <button onClick={() => { onRequestConfirm({ type: 'rekeyGroup', g }) }}
                     style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                       fontFamily:FONT, color:th.text.color, fontSize:14, fontWeight:300, cursor:'pointer',
                       textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
@@ -5572,7 +5600,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
             {section('DANGER ZONE')}
             <div style={{ border:`1px solid #D45F7A44`, borderRadius:12, overflow:'hidden' }}>
               {!isOwner && (
-                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'leaveGroup', g }) }}
+                <button onClick={() => { onRequestConfirm({ type: 'leaveGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -5581,7 +5609,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
                 </button>
               )}
               {isOwner && (
-                <button onClick={() => { bsCloseRef.current?.(); onRequestConfirm({ type: 'deleteGroup', g }) }}
+                <button onClick={() => { onRequestConfirm({ type: 'deleteGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'#D45F7A11', border:'none',
                     fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
@@ -5942,6 +5970,10 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
   const touchStartY = useRef(null)
   const DURATION = 280
 
+  // Back dismisses the sheet with its slide-out, rather than snapping it away.
+  // close() already guards re-entry while closing, so a double-Back is a no-op.
+  useBackHandler(true, close)
+
   useEffect(() => {
     const id = setTimeout(() => setVisible(true), 20)
     return () => clearTimeout(id)
@@ -5965,7 +5997,10 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
 
   const translateY = (!visible || closing) ? '100%' : '0%'
 
-  return (
+  // Portal to <body>: a transformed ancestor becomes the containing block for a
+  // position:fixed child, which would clip the scrim and land the sheet short of
+  // the screen edge. Nested sheets (a confirm inside group settings) hit this.
+  return createPortal(
     <div style={{ position:'fixed', inset:0, zIndex, display:'flex', alignItems:'flex-end',
       justifyContent:'center', background: visible && !closing ? 'rgba(0,0,0,0.55)' : 'rgba(0,0,0,0)',
       transition:`background ${DURATION}ms ease` }}
@@ -5993,7 +6028,8 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
@@ -6695,7 +6731,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', gap:8 }}>
           {[['Sunday', 0], ['Monday', 1]].map(([label, val]) => (
-            <button key={val} onClick={() => { window.__pearSync?.haptic('light'); onUpdateProfile({ weekStart: val }) }}
+            <button key={val} onClick={() => { onUpdateProfile({ weekStart: val }) }}
               style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
                 cursor:'pointer', fontFamily:FONT,
                 border:'1.5px solid ' + (weekStart === val ? th.accent : th.border),
@@ -6747,7 +6783,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                   </div>
                 </div>
                 <Toggle val={digestEnabled}
-                  onChange={v => { window.__pearSync?.haptic('light'); onUpdateProfile({ digestEnabled: v }) }}
+                  onChange={v => { onUpdateProfile({ digestEnabled: v }) }}
                   accent={th.accent} />
               </div>
               {digestEnabled && (
@@ -6804,7 +6840,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             </div>
           </div>
           <Toggle val={profile?.widgetShowUpcoming === true}
-            onChange={v => { window.__pearSync?.haptic('light'); onUpdateProfile({ widgetShowUpcoming: v }) }}
+            onChange={v => { onUpdateProfile({ widgetShowUpcoming: v }) }}
             accent={th.accent} />
         </div>
       </div>
@@ -6934,7 +6970,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'0 16px 14px' }}>
-          <button onClick={() => { window.__pearSync?.haptic('light'); startDevicePairing() }}
+          <button onClick={() => { startDevicePairing() }}
             disabled={pairHostBusy || !!pairHost}
             style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
               padding:'12px 14px', borderRadius:10, cursor:'pointer',
@@ -7042,7 +7078,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                         {d.isThisDevice ? (
                           <CaretRight size={14} weight="thin" color="var(--color-muted)" />
                         ) : (
-                          <button onClick={e => { e.stopPropagation(); window.__pearSync?.haptic('light'); setRemoveConfirmKey(d.writerKey) }}
+                          <button onClick={e => { e.stopPropagation(); setRemoveConfirmKey(d.writerKey) }}
                             aria-label="Remove device"
                             style={{ background:'transparent', border:'none', padding:6,
                               cursor:'pointer', display:'flex', alignItems:'center',
@@ -7236,7 +7272,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                   cursor: reclaimBusy ? 'wait' : 'pointer', opacity: reclaimBusy ? 0.5 : 1 }}>
                 Cancel
               </button>
-              <button onClick={async () => {
+              <button data-haptic="medium" onClick={async () => {
                 window.__pearSync?.haptic('medium')
                 setReclaimBusy(true)
                 setReclaimResult(null)
@@ -7311,7 +7347,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                       cursor: sweepBusy ? 'wait' : 'pointer', opacity: sweepBusy ? 0.5 : 1 }}>
                     Cancel
                   </button>
-                  <button onClick={async () => {
+                  <button data-haptic="medium" onClick={async () => {
                     if (sweepReport.liveWithoutBase?.length > 0) return
                     if (sweepReport.personalWithoutBase) return
                     window.__pearSync?.haptic('medium')
@@ -7373,7 +7409,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', flexDirection:'column', gap:8 }}>
         <button onClick={async () => {
-          window.__pearSync?.haptic('light')
           try {
             const b = await sync.storageBreakdown()
             setReclaimResult({ breakdown: b })
@@ -7389,7 +7424,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           </div>
         </button>
         <button onClick={async () => {
-          window.__pearSync?.haptic('light')
           try {
             const a = await sync.analyzeStorage({ keepTail: 100 })
             setReclaimResult({ analyze: a })
@@ -7410,7 +7444,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
           return (
             <button onClick={() => {
               if (!enabled) return
-              window.__pearSync?.haptic('light')
               setRebuildConfirm(true)
             }} disabled={!enabled}
               style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
@@ -7440,7 +7473,6 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
             cores. */}
         {false && (
           <button onClick={async () => {
-            window.__pearSync?.haptic('light')
             setSweepBusy(true)
             setSweepResult(null)
             try {

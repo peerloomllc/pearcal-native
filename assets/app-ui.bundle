@@ -14531,6 +14531,7 @@
 
   // src/ui/App.jsx
   var import_react7 = __toESM(require_react());
+  var import_react_dom = __toESM(require_react_dom());
   var import_qrcode = __toESM(require_browser());
 
   // src/ui/fonts.js
@@ -16844,7 +16845,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       try {
         const r10 = await sync2?.copyText(value);
         if (r10?.ok !== false) {
-          sync2?.haptic("light");
+          sync2?.haptic("success");
           setCopied(true);
           setTimeout(() => setCopied(false), 1600);
         }
@@ -16873,7 +16874,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           fontSize: 13,
           ...th.text
         }, children: value }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: copy, style: {
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { "data-haptic": "success", onClick: copy, style: {
           flexShrink: 0,
           background: "transparent",
           border: "none",
@@ -16895,6 +16896,28 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   }
   function setTheme2(dark) {
     setTheme(dark ? "dark" : "light");
+  }
+  var _backStack = [];
+  function useBackHandler(active, onBack) {
+    const handler = (0, import_react7.useRef)(onBack);
+    (0, import_react7.useEffect)(() => {
+      handler.current = onBack;
+    });
+    (0, import_react7.useEffect)(() => {
+      if (!active) return;
+      const entry = () => handler.current?.();
+      _backStack.push(entry);
+      return () => {
+        const i2 = _backStack.lastIndexOf(entry);
+        if (i2 !== -1) _backStack.splice(i2, 1);
+      };
+    }, [active]);
+  }
+  function runBackStack() {
+    for (let i2 = _backStack.length - 1; i2 >= 0; i2--) {
+      if (_backStack[i2]() !== false) return true;
+    }
+    return false;
   }
   function extractURLs(text) {
     if (!text) return [];
@@ -17460,35 +17483,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }, [events]);
     (0, import_react7.useEffect)(() => {
       backHandlerRef.current = () => {
+        if (runBackStack()) return;
         if (showOnboarding) {
           if (closeOnboardSubModeRef.current?.()) return;
           if (onboardStep > 0) {
             setOnboardStep((s11) => s11 - 1);
             return;
           }
-          return;
-        }
-        if (closeAboutSheetRef.current?.()) return;
-        if (qrGroup) {
-          setQrGroup(null);
-          return;
-        }
-        if (closeInviteSheetRef.current?.()) return;
-        if (closeJoinSheetRef.current?.()) return;
-        if (closePendingJoinRef.current?.()) return;
-        if (closeInfoSheetRef.current?.()) return;
-        if (closeConfirmSheetRef.current?.()) return;
-        if (closeScopeSheetRef.current?.()) return;
-        if (closeDeleteScopeSheetRef.current?.()) return;
-        if (closeEventModalRef.current?.()) return;
-        if (closeFullGridRef.current?.()) return;
-        if (closeNewGroupSheetRef.current?.()) return;
-        if (settingsGroup) {
-          if (closeGroupSettingsRef.current) {
-            closeGroupSettingsRef.current();
-            return;
-          }
-          setSettingsGroup(null);
           return;
         }
         const prev = tabHistoryRef.current.pop();
@@ -17499,7 +17500,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         }
         window.ReactNativeWebView?.postMessage(JSON.stringify({ method: "exitApp", id: -1 }));
       };
-    }, [qrGroup, pendingJoin, closeAboutSheetRef, showOnboarding, onboardStep, settingsGroup]);
+    }, [showOnboarding, onboardStep]);
     (0, import_react7.useEffect)(() => {
       window.__pearBack = () => backHandlerRef.current?.();
     }, []);
@@ -18593,10 +18594,16 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           },
           closeRef: closeGroupSettingsRef,
           onRequestConfirm: (req) => {
+            const raise = (cfg) => setConfirmSheet({
+              ...cfg,
+              onConfirm: async () => {
+                setSettingsGroup(null);
+                return cfg.onConfirm?.();
+              }
+            });
             if (req.type === "deleteGroup") {
-              setSettingsGroup(null);
               const otherCount = req.g.members.length - 1;
-              setConfirmSheet({
+              raise({
                 title: "Delete Group?",
                 message: otherCount > 0 ? `"${req.g.name}" and all shared events will be permanently deleted for you and all ${otherCount} other member${otherCount === 1 ? "" : "s"}. This cannot be undone.` : `"${req.g.name}" and all its events will be permanently deleted. This cannot be undone.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
@@ -18605,8 +18612,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 onConfirm: () => deleteGroup(req.g.id)
               });
             } else if (req.type === "leaveGroup") {
-              setSettingsGroup(null);
-              setConfirmSheet({
+              raise({
                 title: "Leave Group?",
                 message: `You'll be removed from "${req.g.name}" and lose access to shared events.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c7, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
@@ -18615,8 +18621,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 onConfirm: () => deleteGroup(req.g.id, "leave")
               });
             } else if (req.type === "removeBrokenGroup") {
-              setSettingsGroup(null);
-              setConfirmSheet({
+              raise({
                 title: "Remove Broken Group?",
                 message: `"${req.g.name}" will be removed from this device. Local data for this group is already unrecoverable. ${req.g.ownerId === profile?.id ? "As the owner you will need to recreate the group to continue." : "You can rejoin from a fresh invite link."}`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-destructive)" }),
@@ -18625,9 +18630,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 onConfirm: () => removeBrokenGroup(req.g.id)
               });
             } else if (req.type === "removeMember") {
-              setSettingsGroup(null);
               const member = req.g.members.find((m3) => m3.id === req.memberId);
-              setConfirmSheet({
+              raise({
                 title: `Remove ${member?.name ?? "Member"}?`,
                 message: `They will be removed from "${req.g.name}" and lose access to shared events.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n9, { size: 36, weight: "thin", color: "var(--color-muted)" }),
@@ -18636,9 +18640,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 onConfirm: () => removeMember(req.g, req.memberId)
               });
             } else if (req.type === "purgeMember") {
-              setSettingsGroup(null);
               const member = (req.g.removedMembers ?? []).find((m3) => (m3.id ?? m3) === req.memberId);
-              setConfirmSheet({
+              raise({
                 title: `Permanently delete ${member?.name ?? "member"}?`,
                 message: `This will remove all traces of this member ID from all devices. They can still rejoin with a new invite.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 36, weight: "thin", color: "#D45F7A" }),
@@ -18659,8 +18662,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 }
               });
             } else if (req.type === "rekeyGroup") {
-              setSettingsGroup(null);
-              setConfirmSheet({
+              raise({
                 title: "Rekey Group?",
                 message: `Rotates "${req.g.name}" onto a fresh group key to reclaim shared history storage. Members auto-migrate on their next sync. Old storage is retained for 14 days, then deleted automatically.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 36, weight: "thin", color: "var(--color-muted)" }),
@@ -18701,8 +18703,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 }
               });
             } else if (req.type === "transferOwnership") {
-              setSettingsGroup(null);
-              setConfirmSheet({
+              raise({
                 title: `Transfer ownership to ${req.targetName ?? "this member"}?`,
                 message: `They will gain the ability to remove members and approve rejoins in "${req.g.name}". You will lose these privileges.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s7, { size: 36, weight: "thin", color: "var(--color-accent)" }),
@@ -18721,10 +18722,9 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 }
               });
             } else if (req.type === "claimOwnership") {
-              setSettingsGroup(null);
               const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0;
               const days = Math.max(0, Math.floor((Date.now() - lastTs) / 864e5));
-              setConfirmSheet({
+              raise({
                 title: "Claim ownership?",
                 message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? "" : "s"}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
                 icon: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s7, { size: 36, weight: "thin", color: "#E5864A" }),
@@ -18938,7 +18938,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               "button",
               {
                 onClick: () => {
-                  window.__pearSync?.haptic("light");
                   setSelectedDate(ds);
                 },
                 style: {
@@ -19175,7 +19174,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               "button",
               {
                 onClick: () => {
-                  window.__pearSync?.haptic("light");
                   setSelectedDate(ds);
                 },
                 style: {
@@ -19452,6 +19450,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     );
   }
   function FullGridView({ th, weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
+    useBackHandler(true, onExit);
     (0, import_react7.useEffect)(() => {
       if (!closeFullGridRef) return;
       closeFullGridRef.current = () => {
@@ -19619,7 +19618,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     "button",
                     {
                       onClick: () => {
-                        window.__pearSync?.haptic("light");
                         onDayTap(cellDate);
                       },
                       style: {
@@ -19731,7 +19729,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         display: "flex",
         justifyContent: "center"
       }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("button", { onClick: () => {
-        window.__pearSync?.haptic("light");
         const el = scrollRef.current?.querySelector(`[data-weekindex="${range.before}"]`);
         if (el && scrollRef.current) {
           const containerTop = scrollRef.current.getBoundingClientRect().top;
@@ -20074,7 +20071,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   "button",
                   {
                     onClick: () => {
-                      window.__pearSync?.haptic("light");
                       setSelectedDate(ds);
                       scrollToDate(ds);
                     },
@@ -20126,7 +20122,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => {
-              window.__pearSync?.haptic("light");
               setFullGrid(true);
             }, style: {
               width: 36,
@@ -20997,12 +20992,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         ta.select();
         document.execCommand("copy");
         document.body.removeChild(ta);
-        window.__pearSync?.haptic("light");
+        window.__pearSync?.haptic("success");
       } catch {
       }
     };
     const isCompleted = data?.status === "completed";
     const isExpired = data?.expired === true;
+    useBackHandler(!isCompleted, onCancel);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
       "div",
       {
@@ -21068,8 +21064,9 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "button",
                   {
+                    "data-haptic": "success",
                     onClick: copyLink,
-                    style: { ...th.pillBtn, padding: "8px 20px", fontSize: 12, fontWeight: 300 },
+                    style: { ...th.pillBtn, padding: "8px 20px", fontSize: 12 },
                     children: "Copy link"
                   }
                 )
@@ -21103,6 +21100,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   function QRModal({ th, link, onClose }) {
     const canvasRef = (0, import_react7.useRef)(null);
     const [qrError, setQrError] = (0, import_react7.useState)(null);
+    useBackHandler(true, onClose);
     (0, import_react7.useEffect)(() => {
       if (!canvasRef.current || !link) return;
       try {
@@ -23348,7 +23346,6 @@ ${link}`;
             "button",
             {
               onClick: () => {
-                bsCloseRef.current?.();
                 onRequestConfirm({ type: "removeBrokenGroup", g });
               },
               style: {
@@ -23746,7 +23743,6 @@ ${link}`;
                   "button",
                   {
                     onClick: () => {
-                      bsCloseRef.current?.();
                       onRequestConfirm({ type: isMemberAdmin ? "removeAdmin" : "makeAdmin", g, memberId: m3.id, memberName: m3.nickname || m3.name });
                     },
                     style: {
@@ -23774,7 +23770,6 @@ ${link}`;
                   "button",
                   {
                     onClick: () => {
-                      bsCloseRef.current?.();
                       onRequestConfirm({ type: "removeMember", g, memberId: m3.id });
                     },
                     style: {
@@ -23860,7 +23855,6 @@ ${link}`;
                 "button",
                 {
                   onClick: () => {
-                    window.__pearSync?.haptic("light");
                     setTransferPicker(true);
                   },
                   style: {
@@ -23954,7 +23948,6 @@ ${link}`;
                   "button",
                   {
                     onClick: () => {
-                      bsCloseRef.current?.();
                       onRequestConfirm({ type: "claimOwnership", g });
                     },
                     style: {
@@ -24036,7 +24029,6 @@ ${link}`;
               "button",
               {
                 onClick: () => {
-                  bsCloseRef.current?.();
                   onRequestConfirm({ type: "rekeyGroup", g });
                 },
                 style: {
@@ -24068,7 +24060,6 @@ ${link}`;
               "button",
               {
                 onClick: () => {
-                  bsCloseRef.current?.();
                   onRequestConfirm({ type: "leaveGroup", g });
                 },
                 style: {
@@ -24099,7 +24090,6 @@ ${link}`;
               "button",
               {
                 onClick: () => {
-                  bsCloseRef.current?.();
                   onRequestConfirm({ type: "deleteGroup", g });
                 },
                 style: {
@@ -24582,6 +24572,7 @@ ${link}`;
     const [closing, setClosing] = (0, import_react7.useState)(false);
     const touchStartY = (0, import_react7.useRef)(null);
     const DURATION = 280;
+    useBackHandler(true, close);
     (0, import_react7.useEffect)(() => {
       const id = setTimeout(() => setVisible(true), 20);
       return () => clearTimeout(id);
@@ -24606,60 +24597,63 @@ ${link}`;
       }
     }
     const translateY = !visible || closing ? "100%" : "0%";
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-      "div",
-      {
-        style: {
-          position: "fixed",
-          inset: 0,
-          zIndex,
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "center",
-          background: visible && !closing ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0)",
-          transition: `background ${DURATION}ms ease`
-        },
-        onClick: close,
-        children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
-          "div",
-          {
-            onClick: (e60) => e60.stopPropagation(),
-            style: {
-              width: "100%",
-              maxWidth: 430,
-              background: "var(--color-bg)",
-              borderRadius: "var(--radius-sheet) var(--radius-sheet) 0 0",
-              maxHeight: "80dvh",
-              overflowY: "auto",
-              overflowX: "hidden",
-              paddingBottom: "calc(32px + 53px + var(--safe-area-bottom))",
-              transform: `translateY(${translateY})`,
-              transition: `transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)`,
-              WebkitOverflowScrolling: "touch"
-            },
-            children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                "div",
-                {
-                  onTouchStart: onHandleTouchStart,
-                  onTouchMove: onHandleTouchMove,
-                  style: { display: "flex", justifyContent: "center", padding: "16px 0 8px", cursor: "pointer" },
-                  onClick: close,
-                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-                    width: 32,
-                    height: 3,
-                    borderRadius: 2,
-                    background: "var(--color-border)",
-                    margin: "12px auto 4px",
-                    flexShrink: 0
-                  } })
-                }
-              ),
-              children
-            ]
-          }
-        )
-      }
+    return (0, import_react_dom.createPortal)(
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+        "div",
+        {
+          style: {
+            position: "fixed",
+            inset: 0,
+            zIndex,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "center",
+            background: visible && !closing ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0)",
+            transition: `background ${DURATION}ms ease`
+          },
+          onClick: close,
+          children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+            "div",
+            {
+              onClick: (e60) => e60.stopPropagation(),
+              style: {
+                width: "100%",
+                maxWidth: 430,
+                background: "var(--color-bg)",
+                borderRadius: "var(--radius-sheet) var(--radius-sheet) 0 0",
+                maxHeight: "80dvh",
+                overflowY: "auto",
+                overflowX: "hidden",
+                paddingBottom: "calc(32px + 53px + var(--safe-area-bottom))",
+                transform: `translateY(${translateY})`,
+                transition: `transform ${DURATION}ms cubic-bezier(0.32,0.72,0,1)`,
+                WebkitOverflowScrolling: "touch"
+              },
+              children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "div",
+                  {
+                    onTouchStart: onHandleTouchStart,
+                    onTouchMove: onHandleTouchMove,
+                    style: { display: "flex", justifyContent: "center", padding: "16px 0 8px", cursor: "pointer" },
+                    onClick: close,
+                    children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
+                      width: 32,
+                      height: 3,
+                      borderRadius: 2,
+                      background: "var(--color-border)",
+                      margin: "12px auto 4px",
+                      flexShrink: 0
+                    } })
+                  }
+                ),
+                children
+              ]
+            }
+          )
+        }
+      ),
+      document.body
     );
   }
   function ImportIcsSheet({ th, events, filename, groups, existingEventIds, onImport, onClose }) {
@@ -25551,7 +25545,6 @@ ${link}`;
           "button",
           {
             onClick: () => {
-              window.__pearSync?.haptic("light");
               onUpdateProfile({ weekStart: val });
             },
             style: {
@@ -25620,7 +25613,6 @@ ${link}`;
                   {
                     val: digestEnabled,
                     onChange: (v2) => {
-                      window.__pearSync?.haptic("light");
                       onUpdateProfile({ digestEnabled: v2 });
                     },
                     accent: th.accent
@@ -25693,7 +25685,6 @@ ${link}`;
             {
               val: profile?.widgetShowUpcoming === true,
               onChange: (v2) => {
-                window.__pearSync?.haptic("light");
                 onUpdateProfile({ widgetShowUpcoming: v2 });
               },
               accent: th.accent
@@ -25857,7 +25848,6 @@ ${link}`;
             "button",
             {
               onClick: () => {
-                window.__pearSync?.haptic("light");
                 startDevicePairing();
               },
               disabled: pairHostBusy || !!pairHost,
@@ -26059,7 +26049,6 @@ ${link}`;
                       {
                         onClick: (e60) => {
                           e60.stopPropagation();
-                          window.__pearSync?.haptic("light");
                           setRemoveConfirmKey(d.writerKey);
                         },
                         "aria-label": "Remove device",
@@ -26344,6 +26333,7 @@ ${link}`;
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                       "button",
                       {
+                        "data-haptic": "medium",
                         onClick: async () => {
                           window.__pearSync?.haptic("medium");
                           setReclaimBusy(true);
@@ -26500,6 +26490,7 @@ ${link}`;
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                         "button",
                         {
+                          "data-haptic": "medium",
                           onClick: async () => {
                             if (sweepReport.liveWithoutBase?.length > 0) return;
                             if (sweepReport.personalWithoutBase) return;
@@ -26601,7 +26592,6 @@ ${link}`;
             "button",
             {
               onClick: async () => {
-                window.__pearSync?.haptic("light");
                 try {
                   const b = await sync2.storageBreakdown();
                   setReclaimResult({ breakdown: b });
@@ -26632,7 +26622,6 @@ ${link}`;
             "button",
             {
               onClick: async () => {
-                window.__pearSync?.haptic("light");
                 try {
                   const a39 = await sync2.analyzeStorage({ keepTail: 100 });
                   setReclaimResult({ analyze: a39 });
@@ -26667,7 +26656,6 @@ ${link}`;
               {
                 onClick: () => {
                   if (!enabled) return;
-                  window.__pearSync?.haptic("light");
                   setRebuildConfirm(true);
                 },
                 disabled: !enabled,
@@ -27207,9 +27195,10 @@ ${link}`;
     return buildReinviteLink(group, publicKey);
   };
   document.addEventListener("click", (e60) => {
-    if (e60.target.closest("button")) {
-      window.__pearSync?.haptic("light");
-    }
+    const btn2 = e60.target.closest?.("button");
+    if (!btn2 || btn2.disabled) return;
+    if (btn2.dataset?.haptic) return;
+    window.__pearSync?.haptic("light");
   }, true);
   window.__pearEvent_handlers = window.__pearEvent_handlers || {};
   var _origPearEvent = window.__pearEvent;
