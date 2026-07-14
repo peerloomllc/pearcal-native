@@ -102,7 +102,7 @@ function CopyField ({ sync, value, hint }) {
         </button>
       </div>
       {hint && (
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, margin:'4px 0 0', lineHeight:1.5, textAlign:'center' }}>{hint}</div>
+        <div style={{ fontSize:12, color:colors.text.muted, margin:'4px 0 0', lineHeight:1.5, textAlign:'center' }}>{hint}</div>
       )}
     </div>
   )
@@ -1449,7 +1449,7 @@ export default function App ({ db, notifs, sync }) {
     <div style={{ fontFamily:FONT, display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100dvh', background:'#111', color:'#D45F7A', flexDirection:'column', gap:12, padding:24 }}>
       <span style={{ fontSize:32 }}>⚠️</span>
-      <span style={{ fontSize:16, fontWeight:300 }}>Failed to load PearCal</span>
+      <span style={{ fontSize:16 }}>Failed to load PearCal</span>
       <span style={{ fontSize:12, color:'#888', fontFamily:'monospace' }}>{error}</span>
     </div>
   )
@@ -1472,7 +1472,7 @@ export default function App ({ db, notifs, sync }) {
 
   // ─── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div style={{ fontFamily:FONT, fontWeight:300, height:'100dvh', background: colors.surface.base,
+    <div style={{ fontFamily:FONT, height:'100dvh', background: colors.surface.base,
       display:'flex', flexDirection:'column', alignItems:'center', overflow:'hidden' }}>
       <div style={{ width:'100%', maxWidth:430, height:'100dvh', display:'flex', flexDirection:'column', background: colors.surface.base,
         paddingTop:'var(--sat)', paddingBottom:'var(--sab)' }}>
@@ -1495,7 +1495,7 @@ export default function App ({ db, notifs, sync }) {
               left:'50%', transform:'translateX(-50%)',
               width:'calc(100% - 32px)', maxWidth:398,
               background:'var(--color-destructive)', color:'#fff', borderRadius:'var(--radius-lg)',
-              padding:'12px 16px', fontSize:13, fontWeight:300, zIndex:400,
+              padding:'12px 16px', fontSize:13, zIndex:400,
               textAlign:'center', lineHeight:1.5 }}>
               You were removed from this group and cannot rejoin with this link.
             </div>
@@ -1506,7 +1506,7 @@ export default function App ({ db, notifs, sync }) {
               background:colors.surface.card ?? 'var(--color-surface-card)',
               border:`1px solid ${colors.border}`,
               borderRadius:'var(--radius-lg)',
-              padding:'6px 12px', fontSize:12, fontWeight:300, zIndex:400,
+              padding:'6px 12px', fontSize:12, zIndex:400,
               display:'flex', alignItems:'center', gap:8,
               color: colors.text.primary }}>
               <Spinner size={12} /> Syncing…
@@ -1926,7 +1926,7 @@ export default function App ({ db, notifs, sync }) {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 // ─── Shared sub-components ────────────────────────────────────────────────────
 function Label ({ children }) {
-  return <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, marginBottom:4, letterSpacing:'0.04em' }}>{children}</div>
+  return <div style={{ fontSize:12, color:colors.text.muted, marginBottom:4, letterSpacing:'0.04em' }}>{children}</div>
 }
 
 function Toggle ({ val, onChange, accent }) {
@@ -1943,8 +1943,8 @@ function Toggle ({ val, onChange, accent }) {
 function InfoRow ({ label, val }) {
   return (
     <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:`1px solid ${colors.border}` }}>
-      <span style={{ fontSize:13, color:colors.text.muted, fontWeight:300 }}>{label}</span>
-      <span style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>{val}</span>
+      <span style={{ fontSize:13, color:colors.text.muted }}>{label}</span>
+      <span style={{ fontSize:13, color: colors.text.primary }}>{val}</span>
     </div>
   )
 }
@@ -1975,7 +1975,7 @@ function MemberAvatar ({ avatar, avatarHash, name = '?', color = '#6C9BF5', size
         overflow:'hidden', flexShrink:0 }}>
         {isPhoto
           ? <img src={avatar} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-          : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{avatar || '?'}</span>
+          : <span style={{ color:'#fff', fontSize, lineHeight:1 }}>{avatar || '?'}</span>
         }
       </div>
     )
@@ -1998,7 +1998,7 @@ function MemberAvatarByHash ({ avatarHash, fallback, name, color, size, fontSize
       overflow:'hidden', flexShrink:0 }}>
       {isPhoto
         ? <img src={resolved} alt={name} style={{ width:'100%', height:'100%', objectFit:'cover' }} />
-        : <span style={{ color:'#fff', fontWeight:300, fontSize, lineHeight:1 }}>{fallback || '?'}</span>
+        : <span style={{ color:'#fff', fontSize, lineHeight:1 }}>{fallback || '?'}</span>
       }
     </div>
   )
@@ -2097,7 +2097,7 @@ function WeekView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, tod
               style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
                 padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
                 background: isSel ? colors.primary : isToday ? colors.accentFaint : 'transparent' }}>
-              <span style={{ fontSize:11, fontWeight:300,
+              <span style={{ fontSize:11, 
                 color: isSel ? '#fff' : colors.text.muted }}>{DAYS[d.getDay()].slice(0,1)}</span>
               <span style={{ fontSize:14, fontWeight: isSel || isToday ? 400 : 300,
                 color: isSel ? '#fff' : isToday ? colors.primary : colors.text.primary }}>{d.getDate()}</span>
@@ -2111,11 +2111,11 @@ function WeekView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, tod
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
           scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
           <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
-            fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.03em' }}>
+            fontSize:11, color:colors.text.muted, letterSpacing:'0.03em' }}>
             <FunnelSimple size={12} weight="bold" /> Group Filter
           </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
-            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            flexShrink:0, fontSize:12, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? colors.primary : colors.border),
             background: filterGroupIds.size === 0 ? colors.primary : 'transparent',
             color: filterGroupIds.size === 0 ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -2127,7 +2127,7 @@ function WeekView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, tod
               next.has(g.id) ? next.delete(g.id) : next.add(g.id)
               return next
             })} style={{
-              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              flexShrink:0, fontSize:12, padding:'4px 12px',
               borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : colors.border),
               background: filterGroupIds.has(g.id) ? g.color : 'transparent',
               color: filterGroupIds.has(g.id) ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -2171,7 +2171,7 @@ function WeekView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, tod
                   { weekday:'long', month:'short', day:'numeric' }).toUpperCase()}
               </div>
               {dayEvents.length === 0 ? (
-                <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, padding:'8px 0', fontStyle:'italic' }}>
+                <div style={{ fontSize:13, color:colors.text.muted, padding:'8px 0', fontStyle:'italic' }}>
                   No events
                 </div>
               ) : dayEvents.map((ev, i) => (
@@ -2284,7 +2284,7 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
               style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2,
                 padding:'6px 0', borderRadius:10, border:'none', cursor:'pointer', fontFamily:FONT,
                 background: isSel ? colors.primary : isToday ? colors.accentFaint : 'transparent' }}>
-              <span style={{ fontSize:11, fontWeight:300,
+              <span style={{ fontSize:11, 
                 color: isSel ? '#fff' : colors.text.muted }}>{DAYS[d.getDay()].slice(0,1)}</span>
               <span style={{ fontSize:14, fontWeight: isSel || isToday ? 400 : 300,
                 color: isSel ? '#fff' : isToday ? colors.primary : colors.text.primary }}>{d.getDate()}</span>
@@ -2298,11 +2298,11 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
           scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
           <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
-            fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.03em' }}>
+            fontSize:11, color:colors.text.muted, letterSpacing:'0.03em' }}>
             <FunnelSimple size={12} weight="bold" /> Group Filter
           </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
-            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            flexShrink:0, fontSize:12, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? colors.primary : colors.border),
             background: filterGroupIds.size === 0 ? colors.primary : 'transparent',
             color: filterGroupIds.size === 0 ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -2314,7 +2314,7 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
               next.has(g.id) ? next.delete(g.id) : next.add(g.id)
               return next
             })} style={{
-              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              flexShrink:0, fontSize:12, padding:'4px 12px',
               borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : colors.border),
               background: filterGroupIds.has(g.id) ? g.color : 'transparent',
               color: filterGroupIds.has(g.id) ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -2339,13 +2339,13 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
                 opacity: isShadow ? 0.6 : 1, fontStyle: isShadow ? 'italic' : 'normal',
                 backgroundColor: (cs[0] ?? ev.color) + '22',
                 ...leftStripeStyle(cs, 3) }}>
-              <span style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>{ev.title}
+              <span style={{ fontSize:13, color: colors.text.primary }}>{ev.title}
                 {isShadow && creatorName ? <span style={{ color:colors.text.muted }}> — {creatorName}</span> : null}
               </span>
             </div>
           )})}
           {allDayEvents.length > 3 && (
-            <span style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>+{allDayEvents.length - 3} more</span>
+            <span style={{ fontSize:12, color:colors.text.muted }}>+{allDayEvents.length - 3} more</span>
           )}
         </div>
       )}
@@ -2358,7 +2358,7 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
               style={{ position:'absolute', top: h * HOUR_H, left:0, right:0, height: HOUR_H,
                 borderBottom: `1px solid ${colors.border}`, cursor:'pointer',
                 display:'flex', alignItems:'flex-start' }}>
-              <span style={{ fontSize:11, fontWeight:300, color:colors.text.muted, width:48,
+              <span style={{ fontSize:11, color:colors.text.muted, width:48,
                 textAlign:'right', paddingRight:8, paddingTop:2, flexShrink:0 }}>
                 {formatHour(h)}
               </span>
@@ -2388,14 +2388,14 @@ function DayView ({ selectedDate, setSelectedDate, weekStart, eventsOnDate, toda
                   <div style={{ fontSize:12, fontWeight:400, color: colors.text.primary, lineHeight:'1.3' }}>{ev.title}
                     {isShadow && creatorName ? <span style={{ color:colors.text.muted, fontWeight:300 }}> — {creatorName}</span> : null}
                   </div>
-                  <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>
+                  <div style={{ fontSize:11, color:colors.text.muted }}>
                     {formatTime(ev.start, use24h)}{ev.end ? ` – ${formatTime(ev.end, use24h)}` : ''}
                   </div>
                   {ev.meetingLink && (
                     <div onClick={e2 => { e2.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
                       style={{ display:'flex', alignItems:'center', gap:3, marginTop:2, cursor:'pointer', minWidth:0 }}>
                       <ArrowSquareOut size={10} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
-                      <span style={{ fontSize:10, fontWeight:300, color:colors.primary, textDecoration:'underline',
+                      <span style={{ fontSize:10, color:colors.primary, textDecoration:'underline',
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {ev.meetingLink.trim().replace(/^https?:\/\//, '')}
                       </span>
@@ -2547,12 +2547,12 @@ function FullGridView ({ weekStart, events, todayStr, filterGroupIds, closeFullG
       <div style={{ padding:'12px 16px 8px', display:'flex', alignItems:'center', gap:8,
         borderBottom:`1px solid ${colors.border}`, flexShrink:0 }}>
         <button onClick={onExit} style={iconBtn}><ArrowLeft size={18} weight="thin" /></button>
-        <span style={{ fontWeight:300, fontSize:15, color: colors.text.primary }}>Full-Month Grid</span>
+        <span style={{ fontSize:15, color: colors.text.primary }}>Full-Month Grid</span>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', padding:'6px 8px',
         borderBottom:`1px solid ${colors.border}`, flexShrink:0 }}>
         {dayHeaders.map(d => (
-          <div key={d} style={{ textAlign:'center', fontSize:11, fontWeight:300, color:colors.text.muted }}>{d}</div>
+          <div key={d} style={{ textAlign:'center', fontSize:11, color:colors.text.muted }}>{d}</div>
         ))}
       </div>
       <div ref={scrollRef} onScroll={onScroll}
@@ -2811,7 +2811,7 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
           {/* Month picker */}
           <div style={{ position:'relative' }}>
             <button onClick={() => { setShowMonthPicker(v => !v); setShowYearPicker(false) }}
-              style={{ ...iconBtn, fontWeight:300, fontSize:17, padding:'4px 8px',
+              style={{ ...iconBtn, fontSize:17, padding:'4px 8px',
                 border:`1px solid ${showMonthPicker ? colors.primary : colors.border}`, borderRadius:8 }}>
               {MONTHS[m]} ▾
             </button>
@@ -2829,7 +2829,7 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
           {/* Year picker */}
           <div style={{ position:'relative' }}>
             <button onClick={() => { setShowYearPicker(v => !v); setShowMonthPicker(false) }}
-              style={{ ...iconBtn, fontWeight:300, fontSize:17, padding:'4px 8px',
+              style={{ ...iconBtn, fontSize:17, padding:'4px 8px',
                 border:`1px solid ${showYearPicker ? colors.primary : colors.border}`, borderRadius:8 }}>
               {y} ▾
             </button>
@@ -2846,7 +2846,7 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
           </div>
         </div>
         ) : (
-        <span style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>
+        <span style={{ fontSize:17, color: colors.text.primary }}>
           {calView === 'day'
             ? new Date(selectedDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'short', day:'numeric' })
             : (() => {
@@ -2888,7 +2888,7 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
       {/* Day headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', marginBottom:4 }}>
         {[...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)].map(d => (
-          <div key={d} style={{ textAlign:'center', fontSize:12, fontWeight:300, color:colors.text.muted, padding:'4px 0' }}>{d}</div>
+          <div key={d} style={{ textAlign:'center', fontSize:12, color:colors.text.muted, padding:'4px 0' }}>{d}</div>
         ))}
       </div>
 
@@ -2961,11 +2961,11 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
         <div style={{ display:'flex', gap:6, overflowX:'auto', padding:'0 16px 10px',
           scrollbarWidth:'none', flexShrink:0, alignItems:'center' }}>
           <span style={{ flexShrink:0, display:'flex', alignItems:'center', gap:3,
-            fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.03em' }}>
+            fontSize:11, color:colors.text.muted, letterSpacing:'0.03em' }}>
             <FunnelSimple size={12} weight="bold" /> Group Filter
           </span>
           <button onClick={() => setFilterGroupIds(new Set())} style={{
-            flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+            flexShrink:0, fontSize:12, padding:'4px 12px',
             borderRadius:20, border:'1.5px solid ' + (filterGroupIds.size === 0 ? colors.primary : colors.border),
             background: filterGroupIds.size === 0 ? colors.primary : 'transparent',
             color: filterGroupIds.size === 0 ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -2977,7 +2977,7 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
               next.has(g.id) ? next.delete(g.id) : next.add(g.id)
               return next
             })} style={{
-              flexShrink:0, fontSize:12, fontWeight:300, padding:'4px 12px',
+              flexShrink:0, fontSize:12, padding:'4px 12px',
               borderRadius:20, border:'1.5px solid ' + (filterGroupIds.has(g.id) ? g.color : colors.border),
               background: filterGroupIds.has(g.id) ? g.color : 'transparent',
               color: filterGroupIds.has(g.id) ? '#fff' : colors.text.muted, cursor:'pointer' }}>
@@ -3119,22 +3119,22 @@ function DonationReminderModal ({ sync, onDonate, onDismiss }) {
         display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
         <div style={{ fontSize:52 }}>⚡</div>
         <div style={{ fontSize:20, fontWeight:400, color: colors.text.primary }}>Enjoying PearCal?</div>
-        <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, lineHeight:'1.7' }}>
+        <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.7' }}>
           PearCal is free and open source with no ads or subscriptions. If you've received value from it, consider returning value to support development.
         </div>
         <button onClick={onDonate}
-          style={{ ...pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:'13px', fontSize:15, 
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           Donate
         </button>
         <button onClick={onDismiss}
           style={{ background:'none', border:'none', color:colors.text.muted, fontSize:13,
-            fontWeight:300, cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
+            cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
           Maybe later
         </button>
         <button onClick={onDismiss}
           style={{ background:'none', border:'none', color:colors.text.muted, fontSize:13,
-            fontWeight:300, cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
+            cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
           Already donated ✓
         </button>
       </div>
@@ -3293,30 +3293,30 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
       <div key="0-pair" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
         <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Pair with another device</div>
-        <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
+        <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
           On your other device, open PearCal → Profile → Devices → Add a device, then scan or paste the pairing code here.
         </div>
         {restoreMode === 'pair-waiting' ? (
-          <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', padding:'8px 0' }}>
+          <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', padding:'8px 0' }}>
             Connecting to your other device…
           </div>
         ) : (
           <>
             <button onClick={startPairScan}
-              style={{ ...pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300,
+              style={{ ...pillBtn, padding:'12px 24px', fontSize:15, 
                 width:'100%', maxWidth:260, boxSizing:'border-box' }}>
               Scan QR code
             </button>
-            <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300, marginTop:4 }}>or paste the link</div>
+            <div style={{ fontSize:12, color:colors.text.muted, marginTop:4 }}>or paste the link</div>
             <textarea value={pairInput} onChange={e => { setPairInput(e.target.value); setRestoreError('') }}
               placeholder="pearcal://pair?topic=…"
               rows={2}
               style={{ background:colors.surface.input, border:`1px solid ${colors.border}`, borderRadius:10,
-                padding:'10px 12px', color:colors.text.primary, fontSize:13, fontWeight:300,
+                padding:'10px 12px', color:colors.text.primary, fontSize:13, 
                 fontFamily:'monospace', width:'100%', maxWidth:260, boxSizing:'border-box',
                 outline:'none', resize:'none', lineHeight:'1.4' }} />
             <button onClick={submitPairPaste} disabled={!pairInput.trim()}
-              style={{ ...pillBtn, padding:'12px 24px', fontSize:15, fontWeight:300,
+              style={{ ...pillBtn, padding:'12px 24px', fontSize:15, 
                 width:'100%', maxWidth:260, boxSizing:'border-box',
                 opacity: !pairInput.trim() ? 0.4 : 1 }}>
               Pair
@@ -3324,7 +3324,7 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           </>
         )}
         {restoreError && (
-          <div style={{ fontSize:13, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:300 }}>
+          <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', maxWidth:300 }}>
             {restoreError}
           </div>
         )}
@@ -3338,7 +3338,7 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           }}
           disabled={restoreMode === 'pair-waiting'}
           style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT,
-            fontSize:13, fontWeight:300, cursor:'pointer', padding:4,
+            fontSize:13, cursor:'pointer', padding:4,
             opacity: restoreMode === 'pair-waiting' ? 0.4 : 1 }}>
           Back
         </button>
@@ -3347,16 +3347,16 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
       <div key={0} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
         <PearIcon size={56} />
         <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Welcome to PearCal</div>
-        <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
+        <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
           A private shared calendar that works without servers, accounts, or subscriptions.
         </div>
         <button onClick={() => { setSlideDir(1); setStep(1) }}
-          style={{ ...pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
+          style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:8 }}>
           Get Started
         </button>
         <button onClick={() => setRestoreMode('pair')}
           style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT,
-            fontSize:13, fontWeight:300, cursor:'pointer', padding:4, textDecoration:'underline' }}>
+            fontSize:13, cursor:'pointer', padding:4, textDecoration:'underline' }}>
           I already use PearCal
         </button>
       </div>
@@ -3366,14 +3366,14 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     <div key={1} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <ShareNetwork size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>No servers. No accounts.</div>
-      <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
+      <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', lineHeight:'1.6', maxWidth:290 }}>
         PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server — it lives only on the devices you share it with.
       </div>
-      <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
+      <div style={{ fontSize:13, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
         Share invite links or QR codes to connect with group members.
       </div>
       <button onClick={() => { setSlideDir(1); setStep(2) }}
-        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:8 }}>
+        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:8 }}>
         Next
       </button>
     </div>,
@@ -3382,17 +3382,17 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     <div key={2} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <User size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>What's your name?</div>
-      <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
+      <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
         This is how you'll appear to group members in shared groups.
       </div>
       <input value={name} onChange={e => setName(e.target.value)}
         placeholder="Your name"
         style={{ background:colors.surface.input, border:`1px solid ${colors.border}`, borderRadius:10,
-          padding:'12px 16px', color:colors.text.primary, fontSize:16, fontWeight:300,
+          padding:'12px 16px', color:colors.text.primary, fontSize:16, 
           fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none', textAlign:'center' }} />
 
       <button onClick={saveName} disabled={!name.trim() || name.trim().toLowerCase() === 'my name' || saving}
-        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300,
+        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, 
           opacity: name.trim() && name.trim().toLowerCase() !== 'my name' ? 1 : 0.4 }}>
         {saving ? 'Saving…' : 'Continue'}
       </button>
@@ -3402,25 +3402,25 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     <div key={3} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:20, flex:1, justifyContent:'center' }}>
       <div style={{ width:96, height:96, borderRadius:'50%', background:profile?.color ?? '#6C9BF5',
         display:'flex', alignItems:'center', justifyContent:'center',
-        fontSize:40, color:'#fff', fontWeight:300, overflow:'hidden',
+        fontSize:40, color:'#fff', overflow:'hidden',
         opacity: photoSaving ? 0.5 : 1, transition:'opacity 0.2s' }}>
         {hasPhoto
           ? <img src={profile.avatar} alt="avatar" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
           : (profile?.name ?? '?').slice(0,1).toUpperCase()}
       </div>
       <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Add a photo</div>
-      <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
+      <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
         Optional — helps group members recognise you in shared groups.
       </div>
       <input ref={fileRef} type="file" accept="image/*" style={{ display:'none' }} onChange={handlePhotoChange} />
       <button onClick={() => sync?.takePhoto?.()} disabled={photoSaving}
-        style={{ ...pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300,
+        style={{ ...pillBtn, padding:'12px 20px', fontSize:15, 
           display:'flex', alignItems:'center', justifyContent:'center', gap:6,
           width:'100%', maxWidth:200, boxSizing:'border-box' }}>
         <Image size={18} weight="thin" /> Photo
       </button>
       <button onClick={() => { setSlideDir(1); setStep(4) }}
-        style={{ ...pillBtn, padding:'12px 20px', fontSize:15, fontWeight:300,
+        style={{ ...pillBtn, padding:'12px 20px', fontSize:15, 
           width:'100%', maxWidth:200, boxSizing:'border-box' }}>
         {hasPhoto ? 'Continue' : 'Skip'}
       </button>
@@ -3433,11 +3433,11 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
       <div style={{ display:'flex', flexDirection:'column', gap:16, width:'100%', maxWidth:300 }}>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <Users size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
-          <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, lineHeight:'1.6' }}>
+          <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.6' }}>
             Use the{' '}
             <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
               background:'var(--color-surface)', border:'1px solid var(--color-border)',
-              borderRadius:12, padding:'3px 10px', fontSize:12, fontWeight:300, color:'var(--color-text)' }}>
+              borderRadius:12, padding:'3px 10px', fontSize:12, color:'var(--color-text)' }}>
               <UserPlus size={13} weight="thin" /> Join Group
             </span>
             {' '}and{' '}
@@ -3451,13 +3451,13 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <ShareNetwork size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
-          <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, lineHeight:'1.6' }}>
+          <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.6' }}>
             Share the invite link or QR code from a group to let others join.
           </div>
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <CalendarBlank size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
-          <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, lineHeight:'1.6' }}>
+          <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.6' }}>
             Tap any day on the calendar, hit the{' '}
             <span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center',
               verticalAlign:'middle', width:22, height:22, borderRadius:6,
@@ -3469,20 +3469,20 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
         </div>
         <div style={{ display:'flex', gap:14, alignItems:'flex-start' }}>
           <UploadSimple size={22} weight="thin" color="var(--color-muted)" style={{ flexShrink:0 }} />
-          <div style={{ fontSize:14, fontWeight:300, color:colors.text.muted, lineHeight:'1.6' }}>
+          <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.6' }}>
             Have events in another calendar? Import them from the{' '}
             <span style={{ color: colors.text.primary, fontWeight:400 }}>Profile</span> tab under Settings.
           </div>
         </div>
       </div>
       {backupToastText && (
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, textAlign:'center',
+        <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center',
           maxWidth:300, lineHeight:'1.5', marginTop:4 }}>
           {backupToastText}
         </div>
       )}
       <button onClick={() => { onComplete?.() }}
-        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, fontWeight:300, marginTop:4 }}>
+        style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:4 }}>
         Let's go!
       </button>
     </div>
@@ -3560,28 +3560,28 @@ function PairingHostModal ({ data, error, onRegenerate, onCancel }) {
           {isCompleted ? 'Device paired' : 'Add a device'}
         </div>
         {isCompleted ? (
-          <div style={{ fontSize:13, color:colors.text.muted, fontWeight:300, textAlign:'center', padding:'20px 0' }}>
+          <div style={{ fontSize:13, color:colors.text.muted, textAlign:'center', padding:'20px 0' }}>
             The other device is now linked to your identity.
           </div>
         ) : isExpired ? (
           <>
-            <div style={{ fontSize:13, color:colors.text.muted, fontWeight:300, textAlign:'center', lineHeight:1.5 }}>
+            <div style={{ fontSize:13, color:colors.text.muted, textAlign:'center', lineHeight:1.5 }}>
               This pairing link expired. Generate a new one and scan it within 15 minutes.
             </div>
             <button onClick={onRegenerate}
-              style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300 }}>
+              style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
               Generate new link
             </button>
           </>
         ) : (
           <>
-            <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300, textAlign:'center', maxWidth:260 }}>
+            <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center', maxWidth:260 }}>
               On the other device, open PearCal and tap <b>I already use PearCal → Pair with another device</b>.
             </div>
             {qrError
               ? <div style={{ fontSize:11, color:'red' }}>QR error: {qrError}</div>
               : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
-            <div style={{ fontSize:10, color:colors.text.muted, fontWeight:300, textAlign:'center',
+            <div style={{ fontSize:10, color:colors.text.muted, textAlign:'center',
               wordBreak:'break-all', fontFamily:'monospace', maxWidth:260, lineHeight:1.4 }}>{link}</div>
             <button data-haptic="success" onClick={copyLink}
               style={{ ...pillBtn, padding:'8px 20px', fontSize:12 }}>
@@ -3590,7 +3590,7 @@ function PairingHostModal ({ data, error, onRegenerate, onCancel }) {
           </>
         )}
         {error && !isCompleted && (
-          <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, textAlign:'center', maxWidth:260 }}>
+          <div style={{ fontSize:12, color:'#e67b7b', textAlign:'center', maxWidth:260 }}>
             {error}
           </div>
         )}
@@ -3598,7 +3598,7 @@ function PairingHostModal ({ data, error, onRegenerate, onCancel }) {
           <button onClick={onCancel}
             style={{ background:'none', border:`1px solid ${colors.border}`,
               color:colors.text.muted, fontFamily:FONT, padding:'8px 20px',
-              fontSize:13, fontWeight:300, cursor:'pointer', borderRadius:8,
+              fontSize:13, cursor:'pointer', borderRadius:8,
               width:'100%' }}>
             Cancel
           </button>
@@ -3631,7 +3631,7 @@ function QRModal ({ link, onClose }) {
         {qrError
           ? <div style={{ fontSize:11, color:'red' }}>QR error: {qrError}</div>
           : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
-        <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, textAlign:'center',
+        <div style={{ fontSize:11, color:colors.text.muted, textAlign:'center',
           wordBreak:'break-all' }}>{link}</div>
         <button onClick={onClose} style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
           Close
@@ -3657,17 +3657,17 @@ function EventCard ({ ev, onClick, compact, isPast, use24h, myRsvpStatus, myProf
         opacity: (isPast || isDeclined) ? 0.5 : (isShadow ? 0.6 : 1),
         fontStyle: isShadow ? 'italic' : 'normal' }}>
       <div style={{ flex:1, minWidth:0 }}>
-        <div style={{ fontWeight:300, fontSize:compact ? 13 : 15, color: colors.text.primary,
+        <div style={{ fontSize:compact ? 13 : 15, color: colors.text.primary,
           textDecoration: isDeclined ? 'line-through' : 'none' }}>
           {showRsvpPill && myRsvpStatus === 'going' && <span style={{ color:'#5DBF8A', marginRight:6 }}>✓</span>}
           {showRsvpPill && myRsvpStatus === 'declined' && <span style={{ color:'#D45F7A', marginRight:6 }}>✗</span>}
           {showRsvpPill && (!myRsvpStatus || myRsvpStatus === 'pending') && <span style={{ color:colors.text.muted, marginRight:6 }}>?</span>}
           {ev.title}
           {isShadow && creatorName ? (
-            <span style={{ color:colors.text.muted, fontWeight:300 }}> — {creatorName}</span>
+            <span style={{ color:colors.text.muted }}> — {creatorName}</span>
           ) : null}
         </div>
-        <div style={{ fontSize:12, color:colors.text.muted, marginTop:2, fontWeight:300 }}>
+        <div style={{ fontSize:12, color:colors.text.muted, marginTop:2 }}>
           {ev.allDay
             ? (ev.endDate && ev.endDate !== ev.date
                 ? `${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })} – ${new Date(ev.endDate + 'T12:00:00').toLocaleDateString('en-US', { month:'short', day:'numeric' })}`
@@ -3681,16 +3681,16 @@ function EventCard ({ ev, onClick, compact, isPast, use24h, myRsvpStatus, myProf
           <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
             style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, cursor:'pointer', minWidth:0 }}>
             <ArrowSquareOut size={12} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
-            <span style={{ fontSize:11, fontWeight:300, color:colors.primary, textDecoration:'underline',
+            <span style={{ fontSize:11, color:colors.primary, textDecoration:'underline',
               overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
               {ev.meetingLink.trim().replace(/^https?:\/\//, '')}
             </span>
           </div>
         ) : null}
-        {!compact && ev.desc ? <div style={{ fontSize:12, color:colors.text.muted, marginTop:4, fontWeight:300,
+        {!compact && ev.desc ? <div style={{ fontSize:12, color:colors.text.muted, marginTop:4, 
           overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.desc}</div> : null}
-        {!compact && ev.privateNote ? <div style={{ fontSize:12, color:colors.text.muted, marginTop:4, fontWeight:300,
+        {!compact && ev.privateNote ? <div style={{ fontSize:12, color:colors.text.muted, marginTop:4, 
           fontStyle:'italic', overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
           lineHeight:'1.35' }}>{ev.privateNote}</div> : null}
       </div>
@@ -3701,7 +3701,7 @@ function EventCard ({ ev, onClick, compact, isPast, use24h, myRsvpStatus, myProf
             style={{ width:96, display:'flex', alignItems:'center', justifyContent:'center',
               cursor:'pointer', flexShrink:0, padding:'0 6px', gap:4 }}>
             <MapPin size={13} weight="thin" color="var(--color-muted)" style={{ flexShrink: 0 }} />
-            <div style={{ fontSize:11, color:colors.primary, fontWeight:300, textDecoration:'underline',
+            <div style={{ fontSize:11, color:colors.primary, textDecoration:'underline',
               textAlign:'left', lineHeight:'1.35',
               overflow:'hidden', display:'-webkit-box', WebkitLineClamp:3, WebkitBoxOrient:'vertical' }}>
               {ev.location}
@@ -3740,12 +3740,13 @@ function deriveCustomUnitFromMinutes (m) {
 }
 
 function RemindersEditor ({ reminders, setReminders }) {
-  const FONT = 'Geist, system-ui, sans-serif'
-  const inp = {
-    width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
-    fontWeight: 300, border: `1px solid ${colors.border}`, background: colors.surface.input,
-    color: colors.text.primary, fontFamily: FONT, appearance: 'none', boxSizing: 'border-box',
-  }
+  // A compact variant of the shared field recipe. It keeps inputStyle's 16px on
+  // purpose: below 16px iOS zooms the whole page when the field takes focus, and
+  // an inline size overrides the reset that exists to prevent exactly that.
+  // (This block also used to shadow FONT with 'Geist' — a face the app has never
+  // shipped, so these fields silently rendered in system-ui while every other
+  // field rendered in Manrope.)
+  const inp = { ...inputStyle, padding: '8px 10px', appearance: 'none' }
 
   // Per-slot custom-mode flag. Once a slot is in custom mode, typing a value
   // that happens to match a preset (e.g. 60) doesn't visually flip it back to
@@ -3874,7 +3875,7 @@ function RemindersEditor ({ reminders, setReminders }) {
       {reminders.length < 3 && (
         <button onClick={addReminder}
           style={{ background: 'none', border: `1px dashed ${colors.border}`, borderRadius: 10,
-            color: colors.text.muted, fontSize: 13, fontWeight: 300, padding: '8px 12px',
+            color: colors.text.muted, fontSize: 13, padding: '8px 12px',
             cursor: 'pointer', width: '100%', fontFamily: FONT }}>
           + Add reminder
         </button>
@@ -4091,7 +4092,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
       <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
         padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center',
         gap:10, borderBottom:`1px solid ${colors.border}` }}>
-          <span style={{ fontWeight:300, fontSize:17, color: colors.text.primary, flex:1, minWidth:0,
+          <span style={{ fontSize:17, color: colors.text.primary, flex:1, minWidth:0,
             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {modal.mode === 'create' ? 'New Event' : 'Edit Event'}
           </span>
@@ -4104,7 +4105,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
             if (isReadOnly && !forwardsDirty) return null
             return (
               <button onClick={handleSave}
-                style={{ ...pillBtn, padding:'7px 16px', fontSize:13, fontWeight:300,
+                style={{ ...pillBtn, padding:'7px 16px', fontSize:13, 
                   display:'flex', alignItems:'center', gap:4 }}>
                 {modal.mode === 'create' ? 'Create' : 'Save'}
               </button>
@@ -4138,7 +4139,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
             return (
               <div onClick={() => setRsvpExpanded(e => !e)} style={{ cursor:'pointer',
                 padding:'10px 14px', border:`1px solid ${colors.border}`, borderRadius:10,
-                fontSize:13, fontWeight:300, color:colors.text.primary,
+                fontSize:13, color:colors.text.primary,
                 display:'flex', flexDirection:'column', gap:6 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                   <div style={{ display:'flex', gap:10 }}>
@@ -4207,7 +4208,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                         } : {}),
                       }))
                     }}
-                    style={{ padding:'10px 12px', fontSize:14, fontWeight:300, color:colors.text.primary,
+                    style={{ padding:'10px 12px', fontSize:14, color:colors.text.primary,
                       cursor:'pointer', borderBottom: i < suggestions.length - 1 ? `1px solid ${colors.border}` : 'none',
                       display:'flex', justifyContent:'space-between', alignItems:'center', gap:8 }}>
                     <span>{s}</span>
@@ -4217,7 +4218,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                 })}
               </div>
             )}
-            {titleErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300, marginTop:4 }}>{titleErr}</div>}
+            {titleErr && <div style={{ color:'#D45F7A', fontSize:12, marginTop:4 }}>{titleErr}</div>}
           </div>
 
           {/* ── Section: When ── */}
@@ -4229,7 +4230,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                 <input type="date" style={inputStyle} value={ev.date} onChange={e => set('date', e.target.value)} />
               </div>
               <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <span style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>All Day</span>
+                <span style={{ fontSize:14, color: colors.text.primary }}>All Day</span>
                 <Toggle val={ev.allDay} onChange={v => { set('allDay', v); if (!v) set('endDate', '') }} accent={colors.primary} />
               </div>
               {ev.allDay && !ev.recurrenceId && ev.recurrence === 'none' && (
@@ -4256,7 +4257,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
               )}
               {(modal.mode === 'create' || !ev.recurrenceId) && (
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                  <span style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Recurring</span>
+                  <span style={{ fontSize:14, color: colors.text.primary }}>Recurring</span>
                   <Toggle val={!!ev.recurrence && ev.recurrence !== 'none'} accent={colors.primary}
                     onChange={v => {
                       setCustomMode(false)
@@ -4350,7 +4351,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                     )
                   })()}
                   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                    <span style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Repeat forever</span>
+                    <span style={{ fontSize:14, color: colors.text.primary }}>Repeat forever</span>
                     <Toggle val={!!ev.repeatForever} accent={colors.primary}
                       onChange={v => set('repeatForever', v)} />
                   </div>
@@ -4389,7 +4390,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                       <button key={g.id} onClick={() => toggleGroup(g.id)}
                         style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
                           background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
-                          fontSize:13, fontWeight:300, cursor:'pointer',
+                          fontSize:13, cursor:'pointer',
                           display:'flex', alignItems:'center', gap:6 }}>
                         <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
                           display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
@@ -4417,7 +4418,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                 display:'flex', flexDirection:'column', gap:6 }}>
                 <div style={{ fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
                   textTransform:'uppercase', marginBottom:6 }}>Share Busy Time</div>
-                <div style={{ fontSize:11, color:colors.text.muted, marginTop:2, marginBottom:6, fontWeight:300 }}>
+                <div style={{ fontSize:11, color:colors.text.muted, marginTop:2, marginBottom:6 }}>
                   Members of these groups will see the title and time — nothing else.
                 </div>
                 <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
@@ -4427,7 +4428,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                       <button key={g.id} onClick={() => toggleForward(g.id)}
                         style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
                           background:sel ? g.color : 'transparent', color:sel ? '#fff' : g.color,
-                          fontSize:13, fontWeight:300, cursor:'pointer',
+                          fontSize:13, cursor:'pointer',
                           display:'flex', alignItems:'center', gap:6 }}>
                         <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
                           display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
@@ -4471,7 +4472,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                         marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
                         border:`1px solid ${colors.border}`, background: colors.surface.card }}>
                       <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
-                      <span style={{ fontSize:12, fontWeight:300, color:colors.primary,
+                      <span style={{ fontSize:12, color:colors.primary,
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {ev.meetingLink.trim()}
                       </span>
@@ -4483,7 +4484,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                   style={{ display:'flex', alignItems:'center', gap:8,
                     padding:'10px 12px', borderRadius:10, cursor:'pointer',
                     border:`1px dashed ${colors.border}`, background:'transparent',
-                    color:colors.text.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                    color:colors.text.muted, fontSize:13, fontFamily:FONT, width:'100%' }}>
                   + Add Meeting Link
                 </button>
               )}
@@ -4507,7 +4508,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                   style={{ display:'flex', alignItems:'center', gap:8,
                     padding:'10px 12px', borderRadius:10, cursor:'pointer',
                     border:`1px dashed ${colors.border}`, background:'transparent',
-                    color:colors.text.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                    color:colors.text.muted, fontSize:13, fontFamily:FONT, width:'100%' }}>
                   + Add Location
                 </button>
               )}
@@ -4533,7 +4534,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                         marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
                         border:`1px solid ${colors.border}`, background: colors.surface.card }}>
                       <ArrowSquareOut size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
-                      <span style={{ fontSize:12, fontWeight:300, color:colors.primary,
+                      <span style={{ fontSize:12, color:colors.primary,
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         {url}
                       </span>
@@ -4545,7 +4546,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                   style={{ display:'flex', alignItems:'center', gap:8,
                     padding:'10px 12px', borderRadius:10, cursor:'pointer',
                     border:`1px dashed ${colors.border}`, background:'transparent',
-                    color:colors.text.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                    color:colors.text.muted, fontSize:13, fontFamily:FONT, width:'100%' }}>
                   + Add {ev.groups?.length ? 'Shared ' : ''}Notes
                 </button>
               )}
@@ -4598,7 +4599,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                               border:`2px solid ${col}`, background:sel ? col : 'transparent',
                               cursor:'pointer', fontFamily:FONT }}>
                             <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={col} size={24} fontSize={11} />
-                            <span style={{ fontSize:13, color:sel ? '#fff' : col, fontWeight:300 }}>{m.nickname || m.name}</span>
+                            <span style={{ fontSize:13, color:sel ? '#fff' : col }}>{m.nickname || m.name}</span>
                           </button>
                         )
                       })}
@@ -4614,7 +4615,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                     <div style={{ display:'flex', gap:8 }}>
                       {[['everyone','Everyone'],['creator','Only me']].map(([val, label]) => (
                         <button key={val} onClick={() => set('editPermission', val)}
-                          style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+                          style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, 
                             cursor:'pointer',
                             border:'1.5px solid ' + (ev.editPermission === val ? colors.primary : colors.border),
                             background: ev.editPermission === val ? colors.primary : 'transparent',
@@ -4631,7 +4632,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
 
           {/* Recurring series hint */}
           {modal.mode === 'edit' && ev.recurrenceId && (
-            <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted,
+            <div style={{ fontSize:12, color:colors.text.muted,
               display:'flex', alignItems:'center', gap:6 }}>
               <Repeat size={13} weight="thin" color="var(--color-muted)" />
               {' '}Recurring series — editing this occurrence only
@@ -4646,7 +4647,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
               <div style={{ display:'flex', gap:8 }}>
                 {[['going','Going'],['declined','Decline']].map(([val, label]) => (
                   <button key={val} onClick={() => respondRsvp(val)}
-                    style={{ flex:1, padding:'10px 0', borderRadius:10, fontSize:14, fontWeight:300,
+                    style={{ flex:1, padding:'10px 0', borderRadius:10, fontSize:14, 
                       cursor:'pointer',
                       border:'1.5px solid ' + (myRsvp === val ? (val === 'going' ? '#5DBF8A' : '#D45F7A') : colors.border),
                       background: myRsvp === val ? (val === 'going' ? '#5DBF8A' : '#D45F7A') : 'transparent',
@@ -4663,13 +4664,13 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
             const isHoliday = modal.mode === 'edit' && ev.creatorId === 'system'
             const isReadOnly = modal.mode === 'edit' && ev.editPermission === 'creator' && !isCreator
             if (isHoliday) return (
-              <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, textAlign:'center',
+              <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center',
                 padding:'8px 0', border:'1px solid ' + colors.border, borderRadius:10 }}>
                 🗓 Public holiday — toggle off in Profile to remove all
               </div>
             )
             if (isReadOnly) return (
-              <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, textAlign:'center',
+              <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center',
                 padding:'8px 0', border:'1px solid ' + colors.border, borderRadius:10 }}>
                 <Lock size={13} weight="thin" color="var(--color-muted)" />
                 {' '}Read only — only the creator can edit this event
@@ -4708,7 +4709,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                 style={{ display:'flex', alignItems:'center', gap:8,
                   padding:'10px 12px', borderRadius:10, cursor:'pointer',
                   border:`1px dashed ${colors.border}`, background:'transparent',
-                  color:colors.text.muted, fontSize:13, fontWeight:300, fontFamily:FONT, width:'100%' }}>
+                  color:colors.text.muted, fontSize:13, fontFamily:FONT, width:'100%' }}>
                 + Add Private Notes
               </button>
             )}
@@ -4732,7 +4733,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
               <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:8 }}>
                 <button onClick={onClick}
                   style={{ background:'transparent', border:`1px solid #D45F7A`, borderRadius:12,
-                    padding:'11px', color:'#D45F7A', fontSize:14, fontWeight:300,
+                    padding:'11px', color:'#D45F7A', fontSize:14, 
                     fontFamily:FONT, cursor:'pointer', width:'100%' }}>
                   {label}
                 </button>
@@ -4770,18 +4771,18 @@ function JoinGroupModal ({ onClose, closeRef, db, sync, onJoined, onPendingJoin 
     <BottomSheet onClose={onClose} zIndex={100} closeRef={bsCloseRef}>
       <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-          <span style={{ fontSize:17, fontWeight:300, color: colors.text.primary }}>Join a Group</span>
+          <span style={{ fontSize:17, color: colors.text.primary }}>Join a Group</span>
           <button onClick={() => bsCloseRef.current?.()} style={{ ...iconBtn, fontSize:20 }}>✕</button>
         </div>
         {!pasteMode ? (
           <>
             <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
-              style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+              style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, 
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
               <QrCode size={22} weight="thin" /> Scan QR Code
             </button>
             <button onClick={() => setPasteMode(true)}
-              style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, fontWeight:300,
+              style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, 
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
               <ArrowSquareOut size={20} weight="thin" color="#fff" /> Paste Invite Link
             </button>
@@ -4791,18 +4792,18 @@ function JoinGroupModal ({ onClose, closeRef, db, sync, onJoined, onPendingJoin 
             <textarea value={pasteUrl} onChange={e => { setPasteUrl(e.target.value); setPasteErr('') }}
               placeholder='Paste invite link here…'
               style={{ width:'100%', minHeight:80, borderRadius:10, padding:'10px 12px',
-                fontSize:13, fontWeight:300, fontFamily:'inherit', resize:'none', boxSizing:'border-box',
+                fontSize:13, fontFamily:'inherit', resize:'none', boxSizing:'border-box',
                 background: colors.surface.input, border:'1px solid ' + (pasteErr ? '#D45F7A' : colors.border),
                 color:'#111', outline:'none' }} />
-            {pasteErr && <div style={{ fontSize:12, color:'#D45F7A', fontWeight:300 }}>{pasteErr}</div>}
+            {pasteErr && <div style={{ fontSize:12, color:'#D45F7A' }}>{pasteErr}</div>}
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => { setPasteMode(false); setPasteUrl(''); setPasteErr('') }}
-                style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, fontWeight:300,
+                style={{ flex:1, padding:'10px', borderRadius:10, fontSize:13, 
                   background:'transparent', border:'1px solid ' + colors.border, color:colors.text.muted, cursor:'pointer' }}>
                 Back
               </button>
               <button onClick={handlePasteJoin} disabled={!pasteUrl.trim()}
-                style={{ flex:1, ...pillBtn, padding:'10px', fontSize:13, fontWeight:300,
+                style={{ flex:1, ...pillBtn, padding:'10px', fontSize:13, 
                   opacity: !pasteUrl.trim() ? 0.5 : 1 }}>
                 Join
               </button>
@@ -4842,10 +4843,10 @@ function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, 
     <BottomSheet onClose={onClose} zIndex={110} closeRef={bsCloseRef}>
       <div style={{ padding:'0 20px 16px', display:'flex', flexDirection:'column', gap:14 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:4 }}>
-          <span style={{ fontSize:17, fontWeight:300, color: colors.text.primary }}>Join {groupName}</span>
+          <span style={{ fontSize:17, color: colors.text.primary }}>Join {groupName}</span>
           <button onClick={() => bsCloseRef.current?.()} style={{ ...iconBtn, fontSize:20 }}>✕</button>
         </div>
-        <div style={{ fontSize:13, color:colors.text.muted, fontWeight:300 }}>
+        <div style={{ fontSize:13, color:colors.text.muted }}>
           How should group members see your name?
         </div>
         <input
@@ -4853,14 +4854,14 @@ function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, 
           onChange={e => setNickname(e.target.value)}
           placeholder='Your nickname'
           style={{ background:colors.surface.input, border:`1px solid ${colors.border}`, borderRadius:8,
-            padding:'9px 12px', color:colors.text.primary, fontSize:14, fontWeight:300,
+            padding:'9px 12px', color:colors.text.primary, fontSize:14, 
             fontFamily:FONT, width:'100%', boxSizing:'border-box', outline:'none' }}
         />
-        {err ? <div style={{ fontSize:12, color:'#e55', fontWeight:300 }}>{err}</div> : null}
+        {err ? <div style={{ fontSize:12, color:'#e55' }}>{err}</div> : null}
         <button
           onClick={handleJoin}
           disabled={joining || !nickname.trim()}
-          style={{ ...pillBtn, width:'100%', padding:'13px', fontSize:15, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:'13px', fontSize:15, 
             opacity: (joining || !nickname.trim()) ? 0.5 : 1 }}>
           {joining ? 'Joining…' : 'Join Group'}
         </button>
@@ -4899,7 +4900,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
 
 
       {groups.length === 0 && (
-        <div style={{ textAlign:'center', color:colors.text.muted, fontSize:14, fontWeight:300, padding:'48px 0' }}>
+        <div style={{ textAlign:'center', color:colors.text.muted, fontSize:14, padding:'48px 0' }}>
           No groups yet — create one or join one!
         </div>
       )}
@@ -4910,8 +4911,8 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
               <GroupIcon group={g} />
               <div style={{ flex:1 }}>
-                <div style={{ fontWeight:300, fontSize:15, color: colors.text.primary }}>{g.name}</div>
-                <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300 }}>
+                <div style={{ fontSize:15, color: colors.text.primary }}>{g.name}</div>
+                <div style={{ fontSize:12, color:colors.text.muted }}>
                   {(g.members ?? []).length} member{(g.members ?? []).length !== 1 ? 's' : ''}
                 </div>
               </div>
@@ -4924,7 +4925,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
               <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
                 padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
                 <div style={{ fontSize:18, lineHeight:1 }}>⏳</div>
-                <div style={{ flex:1, fontSize:12, color: colors.text.primary, fontWeight:300, lineHeight:1.4 }}>
+                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
                   <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
                   <div style={{ color:colors.text.muted }}>
                     The owner must approve your return before you'll see the group's members and events.
@@ -4938,7 +4939,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
               {(g.members ?? []).map(m => (
                 <div key={m.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
                   <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.nickname || m.name} color={groups.length === 1 ? memberColorIndexed(g, m.id) : g.color} size={34} fontSize={13} />
-                  <span style={{ fontSize:10, color:colors.text.muted, fontWeight:300 }}>{m.nickname || m.name}</span>
+                  <span style={{ fontSize:10, color:colors.text.muted }}>{m.nickname || m.name}</span>
                 </div>
               ))}
             </div>
@@ -4951,7 +4952,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
                 setInviteModalGroup(fresh ?? g)
               }}
               disabled={!readyGroupKeys.has(g.id)}
-              style={{ width:'100%', padding:'10px', fontSize:13, fontWeight:300, fontFamily:FONT,
+              style={{ width:'100%', padding:'10px', fontSize:13, fontFamily:FONT,
                 background:'transparent', border:`1px solid ${g.color}44`, borderRadius:10,
                 color:readyGroupKeys.has(g.id) ? g.color : colors.text.muted,
                 cursor:readyGroupKeys.has(g.id) ? 'pointer' : 'not-allowed',
@@ -4973,7 +4974,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
           background:'var(--color-surface)', border:'1px solid var(--color-border)',
           boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
           display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          cursor:'pointer', fontFamily:FONT, fontSize:14, fontWeight:300, color:'var(--color-text)',
+          cursor:'pointer', fontFamily:FONT, fontSize:14, color:'var(--color-text)',
           pointerEvents:'auto'
         }}>
           <UserPlus size={18} weight="thin" color="var(--color-text)" /> Join Group
@@ -4983,7 +4984,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
           background:'var(--color-accent)', border:'none',
           boxShadow:'0 2px 12px rgba(0,0,0,0.18)',
           display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-          cursor:'pointer', fontFamily:FONT, fontSize:14, fontWeight:300, color:'#fff',
+          cursor:'pointer', fontFamily:FONT, fontSize:14, color:'#fff',
           pointerEvents:'auto'
         }}>
           <Plus size={18} weight="thin" /> New Group
@@ -5024,8 +5025,8 @@ function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRe
         cursor:'pointer', fontFamily:FONT, width:'100%', textAlign:'left' }}>
       <span style={{ fontSize:22, flexShrink:0 }}>{icon}</span>
       <div>
-        <div style={{ fontWeight:300, fontSize:14, color: colors.text.primary }}>{title}</div>
-        <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300 }}>{subtitle}</div>
+        <div style={{ fontSize:14, color: colors.text.primary }}>{title}</div>
+        <div style={{ fontSize:12, color:colors.text.muted }}>{subtitle}</div>
       </div>
     </button>
   )
@@ -5033,7 +5034,7 @@ function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRe
   return (
     <BottomSheet onClose={onClose} zIndex={300} closeRef={bsCloseRef}>
       <div style={{ padding:'0 16px 8px' }}>
-        <div style={{ fontWeight:300, fontSize:16, color: colors.text.primary, marginBottom:16 }}>
+        <div style={{ fontSize:16, color: colors.text.primary, marginBottom:16 }}>
           Invite to {group.name}
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
@@ -5130,7 +5131,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
 
 
   const section = label => (
-    <div style={{ fontSize:11, fontWeight:300, letterSpacing:'0.08em', color:colors.text.muted, marginBottom:8, marginTop:4 }}>
+    <div style={{ fontSize:11, letterSpacing:'0.08em', color:colors.text.muted, marginBottom:8, marginTop:4 }}>
       {label}
     </div>
   )
@@ -5138,12 +5139,12 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
   return (
     <BottomSheet onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-          <span style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>Group Settings</span>
+          <span style={{ fontSize:17, color: colors.text.primary }}>Group Settings</span>
           <div style={{ display:'flex', gap:8, alignItems:'center' }}>
-            {saved && <span style={{ fontSize:12, color:'#5DBF8A', fontWeight:300 }}>✓ Saved</span>}
+            {saved && <span style={{ fontSize:12, color:'#5DBF8A' }}>✓ Saved</span>}
             {isOwner && (
               <button onClick={save} disabled={saving}
-                style={{ ...pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, opacity:saving ? 0.6 : 1,
+                style={{ ...pillBtn, fontSize:13, padding:'6px 16px', opacity:saving ? 0.6 : 1,
                   display:'flex', alignItems:'center', gap:4 }}>
                 {saving ? <><Spinner size={12} /> {' Saving…'}</> : 'Save'}
               </button>
@@ -5157,7 +5158,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
             <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:12,
               padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
               <div style={{ fontSize:20, lineHeight:1 }}>⏳</div>
-              <div style={{ flex:1, fontSize:13, color: colors.text.primary, fontWeight:300, lineHeight:1.45 }}>
+              <div style={{ flex:1, fontSize:13, color: colors.text.primary, lineHeight:1.45 }}>
                 <div style={{ fontWeight:400, marginBottom:3 }}>Waiting for owner approval</div>
                 <div style={{ color:colors.text.muted }}>
                   The group owner is reviewing your recovery-phrase match. You'll see
@@ -5168,24 +5169,24 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
           )}
           {g.brokenAt && (
             <div style={{ border:'1px solid #D45F7A66', background:'#D45F7A11', borderRadius:12, padding:'14px 16px' }}>
-              <div style={{ fontSize:13, fontWeight:300, color:'#D45F7A', marginBottom:6 }}>
+              <div style={{ fontSize:13, color:'#D45F7A', marginBottom:6 }}>
                 ⚠ This group's data couldn't be loaded
               </div>
-              <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300, lineHeight:1.5, marginBottom:10 }}>
+              <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5, marginBottom:10 }}>
                 The local copy of this group is corrupted and can't be recovered in place.
                 {isOwner
                   ? ' As the owner, you\u2019ll need to recreate the group and re-invite everyone.'
                   : ' Ask the group owner to send you a fresh invite link.'}
               </div>
               {g.brokenError && (
-                <div style={{ fontSize:10, color:colors.text.muted, fontWeight:300, fontFamily:'monospace',
+                <div style={{ fontSize:10, color:colors.text.muted, fontFamily:'monospace',
                   marginBottom:10, opacity:0.7, overflowWrap:'anywhere' }}>
                   {g.brokenError}
                 </div>
               )}
               <button onClick={() => { onRequestConfirm({ type: 'removeBrokenGroup', g }) }}
                 style={{ background:'#D45F7A', border:'none', borderRadius:8, color:'#fff',
-                  fontSize:13, padding:'8px 14px', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                  fontSize:13, padding:'8px 14px', cursor:'pointer', fontFamily:FONT,
                   display:'flex', alignItems:'center', gap:6 }}>
                 <Trash size={14} weight="thin" /> Remove this group
               </button>
@@ -5201,8 +5202,8 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     background: colors.surface.card, borderRadius:12, padding:'10px 14px' }}>
                     <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:300, fontSize:14, color: colors.text.primary }}>{m.name}</div>
-                      <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>Invite sent</div>
+                      <div style={{ fontSize:14, color: colors.text.primary }}>{m.name}</div>
+                      <div style={{ fontSize:11, color:colors.text.muted }}>Invite sent</div>
                     </div>
                     <button onClick={() => {
                         const link = window.__pearBuildReinviteLink?.(g, me?.id ?? 'unknown')
@@ -5212,7 +5213,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                       }}
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT }}>
+                        fontFamily:FONT }}>
                       <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Share Again
                     </button>
                   </div>
@@ -5223,7 +5224,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
           {canManage && rejoinRequests.length > 0 && (
             <div>
               {section('REJOIN REQUESTS')}
-              <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300, marginBottom:8, lineHeight:1.5 }}>
+              <div style={{ fontSize:12, color:colors.text.muted, marginBottom:8, lineHeight:1.5 }}>
                 Someone you previously removed has returned with a matching recovery phrase.
                 Approve to restore them as a member, or deny to keep them out.
               </div>
@@ -5233,8 +5234,8 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     background: colors.surface.card, borderRadius:12, padding:'10px 14px' }}>
                     <MemberAvatar avatar={null} avatarHash={r.avatarHash} name={r.name || '?'} color={g.color} size={38} fontSize={15} />
                     <div style={{ flex:1, minWidth:0 }}>
-                      <div style={{ fontWeight:300, fontSize:14, color: colors.text.primary }}>{r.name || 'Unknown'}</div>
-                      <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300,
+                      <div style={{ fontSize:14, color: colors.text.primary }}>{r.name || 'Unknown'}</div>
+                      <div style={{ fontSize:11, color:colors.text.muted, 
                         overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                         Recovery phrase matches · {r.identityPublicKey.slice(0, 12)}…
                       </div>
@@ -5245,7 +5246,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                       }}
                       style={{ background:'transparent', border:'1px solid #5DBF8A66', borderRadius:8,
                         color:'#5DBF8A', fontSize:12, padding:'5px 10px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT }}>
+                        fontFamily:FONT }}>
                       Approve
                     </button>
                     <button onClick={async () => {
@@ -5254,7 +5255,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                       }}
                       style={{ background:'transparent', border:'1px solid #D45F7A44', borderRadius:8,
                         color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT }}>
+                        fontFamily:FONT }}>
                       Deny
                     </button>
                   </div>
@@ -5271,8 +5272,8 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     background: colors.surface.card, borderRadius:12, padding:'10px 14px' }}>
                     <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:300, fontSize:14, color: colors.text.primary }}>{m.name}</div>
-                      <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>Removed</div>
+                      <div style={{ fontSize:14, color: colors.text.primary }}>{m.name}</div>
+                      <div style={{ fontSize:11, color:colors.text.muted }}>Removed</div>
                     </div>
                     <button onClick={async () => {
                         await db.reinviteMember(g.id, m.id)
@@ -5288,13 +5289,13 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                       }}
                       style={{ background:'transparent', border:`1px solid ${g.color}44`, borderRadius:8,
                         color:g.color, fontSize:12, padding:'5px 10px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT }}>
+                        fontFamily:FONT }}>
                       <ShareNetwork size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Reinvite
                     </button>
                     <button onClick={() => { onRequestConfirm({ type: 'purgeMember', g, memberId: m.id }) }}
                       style={{ background:'transparent', border:'1px solid #D45F7A44', borderRadius:8,
                         color:'#D45F7A', fontSize:12, padding:'5px 10px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT }}>
+                        fontFamily:FONT }}>
                       <Trash size={14} weight="thin" style={{ display:'inline', verticalAlign:'middle' }} /> Delete
                     </button>
                   </div>
@@ -5310,14 +5311,14 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                 <div style={{ display:'flex', gap:6 }}>
                   <button onClick={() => { activeCameraConsumer.current = b64 => { if (b64) set('icon', b64) }; window.__pearSync?.takePhoto?.() }}
                     style={{ fontSize:11, padding:'4px 8px', borderRadius:6, border:`1px solid ${colors.border}`,
-                      background:'transparent', color:colors.text.primary, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                      background:'transparent', color:colors.text.primary, cursor:'pointer', fontFamily:FONT,
                       display:'flex', alignItems:'center', gap:4 }}>
                     <Image size={13} weight="thin" /> Photo
                   </button>
                   {g.icon && (
                     <button onClick={() => set('icon', null)}
                       style={{ fontSize:11, padding:'4px 8px', borderRadius:6, border:`1px solid #D45F7A`,
-                        background:'transparent', color:'#D45F7A', cursor:'pointer', fontWeight:300, fontFamily:FONT }}>
+                        background:'transparent', color:'#D45F7A', cursor:'pointer', fontFamily:FONT }}>
                       Remove
                     </button>
                   )}
@@ -5328,7 +5329,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
               <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8 }}>
                 <input style={inputStyle} placeholder="Group name" value={g.name}
                   onChange={e => { set('name', e.target.value); setNameErr('') }} />
-                {nameErr && <div style={{ color:'#D45F7A', fontSize:12, fontWeight:300 }}>{nameErr}</div>}
+                {nameErr && <div style={{ color:'#D45F7A', fontSize:12 }}>{nameErr}</div>}
                 {!g.icon && (
                   <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                     {GROUP_EMOJIS.map(em => (
@@ -5373,11 +5374,11 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                   setNickSaved(true)
                   setTimeout(() => setNickSaved(false), 2000)
                 }}
-                style={{ ...pillBtn, fontSize:13, padding:'6px 16px', fontWeight:300, flexShrink:0 }}>
+                style={{ ...pillBtn, fontSize:13, padding:'6px 16px', flexShrink:0 }}>
                 {nickSaved ? '✓' : 'Save'}
               </button>
             </div>
-            <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:4 }}>
+            <div style={{ fontSize:11, color:colors.text.muted, marginTop:4 }}>
               How you appear to others in this group
             </div>
           </div>
@@ -5396,20 +5397,20 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     background: colors.surface.card, borderRadius:12, padding:'10px 14px' }}>
                     <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={38} fontSize={15} />
                     <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:300, fontSize:14, color: colors.text.primary }}>
+                      <div style={{ fontSize:14, color: colors.text.primary }}>
                         {m.nickname || m.name}
-                        {isMe && <span style={{ fontSize:11, color:colors.text.muted, marginLeft:6, fontWeight:300 }}>(you)</span>}
+                        {isMe && <span style={{ fontSize:11, color:colors.text.muted, marginLeft:6 }}>(you)</span>}
                       </div>
-                      {m.nickname && <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>{m.name}</div>}
-                      {isMemberOwner && <div style={{ fontSize:11, color:g.color, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}><Crown size={11} weight="thin" /> Owner</div>}
-                      {!isMemberOwner && isMemberAdmin && <div style={{ fontSize:11, color:'#4CAF50', fontWeight:300, display:'flex', alignItems:'center', gap:3 }}><ShieldCheck size={11} weight="thin" /> Admin</div>}
+                      {m.nickname && <div style={{ fontSize:11, color:colors.text.muted }}>{m.name}</div>}
+                      {isMemberOwner && <div style={{ fontSize:11, color:g.color, display:'flex', alignItems:'center', gap:3 }}><Crown size={11} weight="thin" /> Owner</div>}
+                      {!isMemberOwner && isMemberAdmin && <div style={{ fontSize:11, color:'#4CAF50', display:'flex', alignItems:'center', gap:3 }}><ShieldCheck size={11} weight="thin" /> Admin</div>}
                     </div>
                     <div style={{ display:'flex', flexDirection:'row', gap:6, alignItems:'center' }}>
                       {isOwner && !isMe && !isMemberOwner && (
                         <button onClick={() => { onRequestConfirm({ type: isMemberAdmin ? 'removeAdmin' : 'makeAdmin', g, memberId: m.id, memberName: m.nickname || m.name }) }}
                           style={{ background:'transparent', border:`1px solid ${isMemberAdmin ? '#D45F7A44' : '#4CAF5044'}`, borderRadius:8,
                             color:isMemberAdmin ? '#D45F7A' : '#4CAF50', fontSize:11, padding:'4px 8px', cursor:'pointer',
-                            fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:4 }}>
+                            fontFamily:FONT, display:'flex', alignItems:'center', gap:4 }}>
                           <ShieldCheck size={12} weight="thin" /> {isMemberAdmin ? 'Revoke Admin' : 'Make Admin'}
                         </button>
                       )}
@@ -5417,20 +5418,20 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                         <button onClick={() => { onRequestConfirm({ type: 'removeMember', g, memberId: m.id }) }}
                           style={{ background:'transparent', border:`1px solid #D45F7A44`, borderRadius:8,
                             color:'#D45F7A', fontSize:11, padding:'4px 8px', cursor:'pointer',
-                            fontWeight:300, fontFamily:FONT }}>
+                            fontFamily:FONT }}>
                           Remove
                         </button>
                       )}
-                      {isMe && !isOwner && !isAdmin && <span style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>Member</span>}
+                      {isMe && !isOwner && !isAdmin && <span style={{ fontSize:11, color:colors.text.muted }}>Member</span>}
                       {isMe && isOwner && (
                         <span style={{ fontSize:11, color:g.color, background:g.color+'22',
-                          padding:'3px 8px', borderRadius:10, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}>
+                          padding:'3px 8px', borderRadius:10, display:'flex', alignItems:'center', gap:3 }}>
                           <Crown size={11} weight="thin" /> Owner
                         </span>
                       )}
                       {isMe && isAdmin && (
                         <span style={{ fontSize:11, color:'#4CAF50', background:'#4CAF5022',
-                          padding:'3px 8px', borderRadius:10, fontWeight:300, display:'flex', alignItems:'center', gap:3 }}>
+                          padding:'3px 8px', borderRadius:10, display:'flex', alignItems:'center', gap:3 }}>
                           <ShieldCheck size={11} weight="thin" /> Admin
                         </span>
                       )}
@@ -5463,15 +5464,15 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     <div style={{ flex:1, minWidth:0 }}>
                       {isOwner ? (
                         <>
-                          <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>You are the owner</div>
-                          <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:2 }}>
+                          <div style={{ fontSize:14, color: colors.text.primary }}>You are the owner</div>
+                          <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
                             Only you can remove members and approve rejoin requests
                           </div>
                         </>
                       ) : (
                         <>
-                          <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>{ownerName}</div>
-                          <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:2 }}>
+                          <div style={{ fontSize:14, color: colors.text.primary }}>{ownerName}</div>
+                          <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
                             Active {formatRelativeTime(lastOwnerActivityTs) || 'recently'}
                           </div>
                         </>
@@ -5483,7 +5484,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     <button onClick={() => { setTransferPicker(true) }}
                       style={{ background:'transparent', border:`1px solid ${colors.border}`, borderRadius:10,
                         color:colors.text.primary, fontSize:13, padding:'10px 14px', cursor:'pointer',
-                        fontWeight:300, fontFamily:FONT, textAlign:'left',
+                        fontFamily:FONT, textAlign:'left',
                         display:'flex', alignItems:'center', gap:8 }}>
                       <Crown size={14} weight="thin" /> Transfer ownership to…
                     </button>
@@ -5491,7 +5492,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
 
                   {isOwner && transferPicker && (
                     <div style={{ border:`1px solid ${colors.border}`, borderRadius:12, overflow:'hidden' }}>
-                      <div style={{ padding:'10px 14px', fontSize:12, color:colors.text.muted, fontWeight:300,
+                      <div style={{ padding:'10px 14px', fontSize:12, color:colors.text.muted, 
                         borderBottom:`1px solid ${colors.border}` }}>
                         Pick a member to promote. They'll gain owner privileges; you'll lose them.
                       </div>
@@ -5507,15 +5508,15 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                               cursor:'pointer', fontFamily:FONT, textAlign:'left' }}>
                             <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash} name={m.name} color={totalGroupsCount === 1 ? memberColorIndexed(g, m.id) : g.color} size={32} fontSize={13} />
                             <div style={{ flex:1 }}>
-                              <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>{m.nickname || m.name}</div>
-                              {m.nickname && <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>{m.name}</div>}
+                              <div style={{ fontSize:14, color: colors.text.primary }}>{m.nickname || m.name}</div>
+                              {m.nickname && <div style={{ fontSize:11, color:colors.text.muted }}>{m.name}</div>}
                             </div>
                           </button>
                         ))}
                       </div>
                       <button onClick={() => setTransferPicker(false)}
                         style={{ width:'100%', padding:'10px 14px', background:'transparent', border:'none',
-                          color:colors.text.muted, fontSize:12, cursor:'pointer', fontWeight:300, fontFamily:FONT, textAlign:'center' }}>
+                          color:colors.text.muted, fontSize:12, cursor:'pointer', fontFamily:FONT, textAlign:'center' }}>
                         Cancel
                       </button>
                     </div>
@@ -5523,14 +5524,14 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
 
                   {canClaimOwnership && (
                     <div style={{ border:'1px solid #F5C47466', background:'#F5C47411', borderRadius:12, padding:'12px 14px' }}>
-                      <div style={{ fontSize:13, color:colors.text.primary, fontWeight:300, marginBottom:6, lineHeight:1.45 }}>
+                      <div style={{ fontSize:13, color:colors.text.primary, marginBottom:6, lineHeight:1.45 }}>
                         The owner has been inactive for {ownerInactiveDays} day{ownerInactiveDays === 1 ? '' : 's'}.
                         If you can't reach them, you can claim ownership of this group.
                       </div>
                       <button onClick={() => { onRequestConfirm({ type: 'claimOwnership', g }) }}
                         style={{ background:'transparent', border:'1px solid #E5864A66', borderRadius:8,
                           color:'#E5864A', fontSize:13, padding:'6px 12px', cursor:'pointer',
-                          fontWeight:300, fontFamily:FONT, display:'flex', alignItems:'center', gap:6 }}>
+                          fontFamily:FONT, display:'flex', alignItems:'center', gap:6 }}>
                         <Crown size={14} weight="thin" /> Claim ownership
                       </button>
                     </div>
@@ -5543,7 +5544,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                     const visible = showAllHistory ? reversed : reversed.slice(0, HISTORY_PREVIEW)
                     return (
                       <div>
-                        <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:4, marginBottom:6,
+                        <div style={{ fontSize:11, color:colors.text.muted, marginTop:4, marginBottom:6,
                           letterSpacing:'0.04em' }}>
                           HISTORY
                         </div>
@@ -5556,7 +5557,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                             const toName = lookupName(e.to)
                             const selfPromoted = e.by === e.to
                             return (
-                              <div key={i} style={{ fontSize:12, color:colors.text.muted, fontWeight:300, lineHeight:1.5 }}>
+                              <div key={i} style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
                                 {selfPromoted
                                   ? `${toName} claimed ownership`
                                   : `${byName} transferred to ${toName}`}
@@ -5567,7 +5568,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                           {hiddenCount > 0 && (
                             <button onClick={() => setShowAllHistory(v => !v)}
                               style={{ background:'transparent', border:'none', color:colors.text.muted,
-                                fontSize:11, fontFamily:FONT, fontWeight:300, cursor:'pointer',
+                                fontSize:11, fontFamily:FONT, cursor:'pointer',
                                 textAlign:'left', padding:'2px 0', marginTop:2 }}>
                               {showAllHistory
                                 ? 'Show less'
@@ -5592,10 +5593,10 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                 <div style={{ border:`1px solid ${colors.border}`, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
                   <button onClick={() => { onRequestConfirm({ type: 'rekeyGroup', g }) }}
                     style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                      fontFamily:FONT, color:colors.text.primary, fontSize:14, fontWeight:300, cursor:'pointer',
+                      fontFamily:FONT, color:colors.text.primary, fontSize:14, cursor:'pointer',
                       textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center', gap:10 }}>
                     <span>Rekey Group</span>
-                    <span style={{ fontSize:11, color:colors.text.muted, fontWeight:300, textAlign:'right' }}>
+                    <span style={{ fontSize:11, color:colors.text.muted, textAlign:'right' }}>
                       Reclaim shared history storage
                     </span>
                   </button>
@@ -5607,19 +5608,19 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
               {!isOwner && (
                 <button onClick={() => { onRequestConfirm({ type: 'leaveGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'transparent', border:'none',
-                    fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
+                    fontFamily:FONT, color:'#D45F7A', fontSize:14, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ display:'flex', alignItems:'center', gap:6 }}><SignOut size={16} weight="thin" /> Leave Group</span>
-                  <span style={{ fontSize:12, color:colors.text.muted, fontWeight:300 }}>You'll lose access to shared events</span>
+                  <span style={{ fontSize:12, color:colors.text.muted }}>You'll lose access to shared events</span>
                 </button>
               )}
               {isOwner && (
                 <button onClick={() => { onRequestConfirm({ type: 'deleteGroup', g }) }}
                   style={{ width:'100%', padding:'14px 16px', background:'#D45F7A11', border:'none',
-                    fontFamily:FONT, color:'#D45F7A', fontSize:14, fontWeight:300, cursor:'pointer',
+                    fontFamily:FONT, color:'#D45F7A', fontSize:14, cursor:'pointer',
                     textAlign:'left', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                   <span style={{ display:'flex', alignItems:'center', gap:6 }}><Trash size={16} weight="thin" /> Delete Group</span>
-                  <span style={{ fontSize:12, color:'#D45F7A99', fontWeight:300 }}>Permanent — cannot be undone</span>
+                  <span style={{ fontSize:12, color:'#D45F7A99' }}>Permanent — cannot be undone</span>
                 </button>
               )}
             </div>
@@ -5676,7 +5677,7 @@ function NewGroupModal ({ onClose, onAdd, onUpdate, me, sync, onCreated, closeRe
   return (
     <BottomSheet onClose={onClose} zIndex={200} closeRef={bsCloseRef}>
       <div style={{ padding:'12px 20px 0', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-        <span style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>Create a Group</span>
+        <span style={{ fontSize:17, color: colors.text.primary }}>Create a Group</span>
         <button onClick={() => bsCloseRef.current?.()} style={{ ...iconBtn, fontSize:20 }}>✕</button>
       </div>
       <div style={{ padding:'0 20px 8px', display:'flex', flexDirection:'column', gap:14 }}>
@@ -5693,7 +5694,7 @@ function NewGroupModal ({ onClose, onAdd, onUpdate, me, sync, onCreated, closeRe
 
         {/* Group Avatar */}
         <div>
-          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:8 }}>Group Avatar</div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', marginBottom:8 }}>Group Avatar</div>
           <div style={{ display:'flex', alignItems:'center', gap:10 }}>
             {icon ? (
               <div style={{ position:'relative', width:52, height:52, borderRadius:12, overflow:'hidden', flexShrink:0 }}>
@@ -5716,7 +5717,7 @@ function NewGroupModal ({ onClose, onAdd, onUpdate, me, sync, onCreated, closeRe
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={() => { activeCameraConsumer.current = b64 => { if (b64) setIcon(b64) }; window.__pearSync?.takePhoto?.() }}
                 style={{ fontSize:12, padding:'6px 14px', borderRadius:8, border:`1px solid var(--color-border)`,
-                  background:'transparent', color:'var(--color-text)', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                  background:'transparent', color:'var(--color-text)', cursor:'pointer', fontFamily:FONT,
                   display:'flex', alignItems:'center', gap:5 }}>
                 <Image size={14} weight="thin" /> Photo
               </button>
@@ -5726,7 +5727,7 @@ function NewGroupModal ({ onClose, onAdd, onUpdate, me, sync, onCreated, closeRe
 
         {/* Color picker */}
         <div>
-          <div style={{ fontSize:13, color:'var(--color-muted)', fontWeight:300, marginBottom:6 }}>Color</div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', marginBottom:6 }}>Color</div>
           <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
             {GROUP_COLORS.map(c => (
               <button key={c} onClick={() => setColor(c)}
@@ -5738,7 +5739,7 @@ function NewGroupModal ({ onClose, onAdd, onUpdate, me, sync, onCreated, closeRe
 
         {/* Create button */}
         <button onClick={handleCreate} disabled={creating}
-          style={{ ...pillBtn, padding:'13px', fontSize:15, fontWeight:300, opacity: creating ? 0.6 : 1 }}>
+          style={{ ...pillBtn, padding:'13px', fontSize:15, opacity: creating ? 0.6 : 1 }}>
           {creating ? 'Creating…' : 'Create Group'}
         </button>
       </div>
@@ -5804,12 +5805,12 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
           : 'pearFadeUp 200ms var(--easing) both',
       }}>
         <GroupIcon group={group} size={28} radius={8} />
-        <span style={{ flex:1, fontWeight:300, color:'var(--color-text)', fontSize:14 }}>
+        <span style={{ flex:1, color:'var(--color-text)', fontSize:14 }}>
           "{group.name}" created
         </span>
         <button
           disabled={!ready}
-          style={{ ...pillBtn, fontSize:13, padding:'6px 14px', fontWeight:300,
+          style={{ ...pillBtn, fontSize:13, padding:'6px 14px', 
             opacity: ready ? 1 : 0.5 }}
           onClick={handleShare}
         >
@@ -5833,8 +5834,8 @@ function ScopeSheet ({ ev, onSave, onDismiss, closeRef }) {
     <BottomSheet onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
       <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:10, textAlign:'center' }}>
         <div style={{ marginBottom:4 }}><ArrowsClockwise size={28} weight="thin" color="var(--color-accent)" /></div>
-        <div style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>Edit recurring event</div>
-        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>
+        <div style={{ fontSize:17, color: colors.text.primary }}>Edit recurring event</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>
           Apply changes to just this event, this and future events, or every event in the series?
         </div>
         <Button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onSave(ev, 'one'), 280) }}>This Event</Button>
@@ -5861,26 +5862,26 @@ function DeleteScopeSheet ({ onChoose, onDismiss, closeRef }) {
     <BottomSheet onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
       <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
         <div style={{ marginBottom:4 }}><Trash size={28} weight="thin" color="var(--color-destructive)" /></div>
-        <div style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>Delete recurring event</div>
-        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>
+        <div style={{ fontSize:17, color: colors.text.primary }}>Delete recurring event</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>
           Delete just this event, or the entire series?
         </div>
         <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
           <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onChoose('one'), 280) }}
             style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-              background:'var(--color-destructive)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+              background:'var(--color-destructive)', color:'#fff', fontSize:14, cursor:'pointer' }}>
             This Event
           </button>
           <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => onChoose('all'), 280) }}
             style={{ flex:1, padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-              background:'var(--color-destructive)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer' }}>
+              background:'var(--color-destructive)', color:'#fff', fontSize:14, cursor:'pointer' }}>
             Entire Series
           </button>
         </div>
         <button onClick={() => bsCloseRef.current?.()}
           style={{ width:'100%', padding:'12px', borderRadius:12, border:`1px solid var(--color-border)`,
             fontFamily:FONT, background:'transparent', color:'var(--color-text)',
-            fontSize:14, fontWeight:300, cursor:'pointer', marginBottom:8 }}>
+            fontSize:14, cursor:'pointer', marginBottom:8 }}>
           Cancel
         </button>
       </div>
@@ -5903,8 +5904,8 @@ function ConfirmSheet ({ title, message, icon, confirmLabel, dangerous, onConfir
     <BottomSheet onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
       <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
         <div style={{ marginBottom:4 }}>{icon}</div>
-        <div style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>{title}</div>
-        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
+        <div style={{ fontSize:17, color: colors.text.primary }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>{message}</div>
         <div style={{ display:'flex', gap:10, width:'100%', marginTop:8 }}>
           {/* Equal width: the confirm and Cancel carry the same weight, so neither
               reads as the obvious choice by size alone. */}
@@ -5935,8 +5936,8 @@ function InfoSheet ({ title, message, icon, onDismiss, closeRef }) {
     <BottomSheet onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
       <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
         {icon && <div style={{ marginBottom:4 }}>{icon}</div>}
-        <div style={{ fontWeight:300, fontSize:17, color: colors.text.primary }}>{title}</div>
-        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
+        <div style={{ fontSize:17, color: colors.text.primary }}>{title}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>{message}</div>
         <Button onClick={() => bsCloseRef.current?.()} style={{ marginTop:8 }}>
           OK
         </Button>
@@ -6045,7 +6046,7 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
         <div style={{ fontSize:17, fontWeight:400, color: colors.text.primary, marginBottom:4 }}>
           Import {toImport.length} Event{toImport.length !== 1 ? 's' : ''}
         </div>
-        <div style={{ fontSize:13, color:colors.text.muted, fontWeight:300, marginBottom:16,
+        <div style={{ fontSize:13, color:colors.text.muted, marginBottom:16,
           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {filename}
         </div>
@@ -6056,14 +6057,14 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
                 padding:'8px 12px', borderRadius:8, border:`1px solid ${colors.border}` }}>
                 <div style={{ width:8, height:8, borderRadius:4,
                   background: row.color ?? colors.text.muted }} />
-                <div style={{ flex:1, fontSize:13, fontWeight:300, color: colors.text.primary }}>{row.label}</div>
-                <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted }}>{row.count}</div>
+                <div style={{ flex:1, fontSize:13, color: colors.text.primary }}>{row.label}</div>
+                <div style={{ fontSize:13, color:colors.text.muted }}>{row.count}</div>
               </div>
             ))}
           </div>
         )}
         {skippedCount > 0 && (
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, marginBottom:12 }}>
+          <div style={{ fontSize:12, color:colors.text.muted, marginBottom:12 }}>
             {skippedCount} event{skippedCount !== 1 ? 's' : ''} already exist — will be skipped
           </div>
         )}
@@ -6076,7 +6077,7 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
               <div style={{ fontSize:14, fontWeight:400, color: colors.text.primary }}>
                 {r.ev.title}{r.skipped ? ' · (skipped)' : ''}
               </div>
-              <div style={{ fontSize:12, color:colors.text.muted, fontWeight:300 }}>
+              <div style={{ fontSize:12, color:colors.text.muted }}>
                 {r.ev.date}
                 {r.ev.allDay
                   ? (r.ev.endDate ? ` – ${r.ev.endDate} · All day` : ' · All day')
@@ -6087,7 +6088,7 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
         </div>
         <button onClick={() => onImport(toImport)}
           disabled={toImport.length === 0}
-          style={{ ...pillBtn, width:'100%', padding:13, fontSize:15, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:13, fontSize:15, 
             opacity: toImport.length === 0 ? 0.4 : 1 }}>
           Import {toImport.length} Event{toImport.length !== 1 ? 's' : ''}
         </button>
@@ -6142,19 +6143,19 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
       <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:16 }}>
         <PearIcon size={44} />
         <div style={{ fontSize:18, fontWeight:400, color: colors.text.primary }}>PearCal</div>
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>Decentralized. Private. No servers.</div>
+        <div style={{ fontSize:12, color:colors.text.muted }}>Decentralized. Private. No servers.</div>
       </div>
 
       {/* P2P explainer */}
       <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HOW IT WORKS</div>
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
+        <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol.
           Your calendar data never touches a server — it lives only on the devices in your groups.
           No accounts. No subscriptions. No data collection.
         </div>
         <button onClick={() => sync?.openURL('https://pears.com/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           Learn about P2P <ArrowSquareOut size={14} weight="thin" />
         </button>
@@ -6164,11 +6165,11 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
       {onReplayTour && (
         <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
           <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>HELP</div>
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
+          <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
             Walk through the calendar's main controls again — create flow, groups, profile, settings.
           </div>
           <button onClick={onReplayTour}
-            style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300 }}>
+            style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
             Replay welcome tour
           </button>
         </div>
@@ -6177,17 +6178,17 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
       {/* Donate */}
       <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SUPPORT DEVELOPMENT</div>
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
+        <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           PearCal is free and open source. If you receive value from it, please consider returning value.
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           <button onClick={handleDonate}
-            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, fontWeight:300,
+            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, 
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <Lightning size={14} weight="thin" /> Donate BTC <Lightning size={14} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://buymeacoffee.com/peerloomllc')}
-            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, fontWeight:300,
+            style={{ ...pillBtn, flex:1, minWidth:120, padding:'10px 8px', fontSize:13, 
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <CurrencyDollar size={14} weight="thin" /> Donate USD <CurrencyDollar size={14} weight="thin" />
           </button>
@@ -6197,11 +6198,11 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
       {/* Bitcoin learning card */}
       <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>LEARN ABOUT BITCOIN</div>
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
+        <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters.
         </div>
         <button onClick={() => sync?.openURL('https://nakamotoinstitute.org/crash-course/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           <BookOpen size={16} weight="thin" /> Bitcoin Crash Course <ArrowSquareOut size={14} weight="thin" />
         </button>
@@ -6210,11 +6211,11 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
       {/* Share App */}
       <div style={{ background: colors.surface.card, borderRadius:14, padding:'12px 14px', marginBottom:10 }}>
         <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:6, letterSpacing:'0.04em', textAlign:'center' }}>SHARE THE APP</div>
-        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
+        <div style={{ fontSize:12, color:colors.text.muted, lineHeight:'1.6', marginBottom:10 }}>
           Know someone who'd enjoy a private, serverless calendar? Share PearCal with them.
         </div>
         <button onClick={() => sync?.nativeShare('PearCal', 'Check out PearCal — a private, peer-to-peer calendar app with no servers or accounts.\n\nhttps://peerloomllc.com/pearcal/')}
-          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, fontWeight:300,
+          style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14, 
             display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
           <ShareNetwork size={16} weight="thin" /> Share PearCal
         </button>
@@ -6225,12 +6226,12 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
         <div style={{ fontSize:11, fontWeight:400, color: colors.text.primary, marginBottom:10, letterSpacing:'0.04em', textAlign:'center' }}>CONTACT</div>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => sync?.openURL('mailto:peerloomllc@proton.me?subject=%5BPearCal%5D%20Feedback')}
-            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, fontWeight:300,
+            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, 
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <EnvelopeSimple size={14} weight="thin" /> Send Email <ArrowSquareOut size={13} weight="thin" />
           </button>
           <button onClick={() => sync?.openURL('https://github.com/peerloomllc/pearcal-native/issues')}
-            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, fontWeight:300,
+            style={{ ...pillBtn, flex:1, padding:'10px 8px', fontSize:13, 
               display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
             <Bug size={14} weight="thin" /> Report Issue <ArrowSquareOut size={13} weight="thin" />
           </button>
@@ -6264,7 +6265,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
               <button onClick={() => { sync?.openURL(STRIKE_TIP_URL); lsBsCloseRef.current?.() }} style={donatePrimaryBtn}>
                 <Lightning size={16} weight="fill" /> Show a QR / pay in a browser <Lightning size={16} weight="fill" />
               </button>
-              <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, margin:'4px 0 0', textAlign:'center', lineHeight:1.5 }}>
+              <div style={{ fontSize:12, color:colors.text.muted, margin:'4px 0 0', textAlign:'center', lineHeight:1.5 }}>
                 Scan from another device or on desktop.
               </div>
             </div>
@@ -6290,7 +6291,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
                         fontFamily:FONT, textAlign:'left' }}>
                       <div style={{ flex:1 }}>
                         <div style={{ fontSize:14, fontWeight:400, color: colors.text.primary }}>{w.name}</div>
-                        <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>{w.desc}</div>
+                        <div style={{ fontSize:12, color:colors.text.muted }}>{w.desc}</div>
                       </div>
                       <ArrowSquareOut size={14} weight="thin" color={colors.text.muted} />
                     </button>
@@ -6305,7 +6306,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
         </BottomSheet>
       )}
 
-      <div style={{ textAlign:'center', fontSize:11, fontWeight:300, color:colors.text.muted,
+      <div style={{ textAlign:'center', fontSize:11, color:colors.text.muted,
         paddingTop:16, paddingBottom:4 }}>
         v{window.__PEARCAL_VERSION__ ?? '1.0.0'}
       </div>
@@ -6618,7 +6619,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         <div style={{ position:'relative' }}>
           <div style={{ width:88, height:88, borderRadius:'50%', background:profile?.color ?? '#6C9BF5',
             display:'flex', alignItems:'center', justifyContent:'center',
-            fontSize:36, color:'#fff', fontWeight:300, overflow:'hidden',
+            fontSize:36, color:'#fff', overflow:'hidden',
             opacity: photoSaving ? 0.5 : 1, transition:'opacity 0.2s' }}>
             {hasPhoto
               ? <img src={profile.avatar} alt="avatar"
@@ -6639,7 +6640,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           <button onClick={() => window.__pearSync?.takePhoto?.()} disabled={photoSaving}
             style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
               border:`1px solid ${colors.border}`, background:'transparent',
-              color:colors.text.primary, cursor:'pointer', fontWeight:300, fontFamily:FONT,
+              color:colors.text.primary, cursor:'pointer', fontFamily:FONT,
               display:'flex', alignItems:'center', gap:5,
               opacity: photoSaving ? 0.5 : 1 }}>
             <Image size={14} weight="thin" /> Photo
@@ -6648,7 +6649,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <button onClick={removePhoto} disabled={photoSaving}
               style={{ fontSize:12, padding:'5px 14px', borderRadius:8,
                 border:`1px solid #D45F7A`, background:'transparent',
-                color:'#D45F7A', cursor:'pointer', fontWeight:300, fontFamily:FONT,
+                color:'#D45F7A', cursor:'pointer', fontFamily:FONT,
                 opacity: photoSaving ? 0.5 : 1 }}>
               Remove
             </button>
@@ -6658,21 +6659,21 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           onChange={handlePhotoChange} />
 
         {editing
-          ? <input autoFocus style={{ fontSize:18, fontWeight:300, textAlign:'center', background:'transparent',
+          ? <input autoFocus style={{ fontSize:18, textAlign:'center', background:'transparent',
               fontFamily:FONT, border:`1px solid ${colors.border}`, borderRadius:8, padding:'6px 12px',
               color:colors.text.primary, outline:'none' }}
               value={name} onChange={e => setName(e.target.value)} />
-          : <span style={{ fontSize:20, fontWeight:300, color: colors.text.primary }}>{profile?.name ?? 'My Name'}</span>
+          : <span style={{ fontSize:20, color: colors.text.primary }}>{profile?.name ?? 'My Name'}</span>
         }
         <button
           onClick={editing ? saveName : () => setEditing(true)}
           disabled={saving}
-          style={{ ...pillBtn, fontSize:13, padding:'5px 16px', fontWeight:300, opacity:saving ? 0.6 : 1 }}>
+          style={{ ...pillBtn, fontSize:13, padding:'5px 16px', opacity:saving ? 0.6 : 1 }}>
           {saving ? 'Saving…' : editing ? 'Save Name' : 'Edit Name'}
         </button>
       </div>
 
-      <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, letterSpacing:'0.06em',
+      <div style={{ fontSize:12, color:colors.text.muted, letterSpacing:'0.06em',
         marginBottom:12, marginTop:4, textAlign:'center' }}>
         SETTINGS
       </div>
@@ -6682,7 +6683,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         <div onClick={() => { window.__pearSync?.haptic('light'); setPersonalOpen(o => !o) }}
           style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, letterSpacing:'0.06em' }}>
+          <div style={{ fontSize:12, color:colors.text.muted, letterSpacing:'0.06em' }}>
             PERSONAL
           </div>
           <CaretRight size={16} weight="thin" color="var(--color-muted)"
@@ -6694,26 +6695,26 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         transition:'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
 
       {/* Appearance */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         APPEARANCE
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
           justifyContent:'space-between' }}>
-          <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>Dark mode</div>
+          <div style={{ fontSize:13, color: colors.text.primary }}>Dark mode</div>
           <Toggle val={dark} onChange={onToggleDark} accent={colors.primary} />
         </div>
       </div>
 
       {/* First Day of Week */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         FIRST DAY OF WEEK
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', gap:8 }}>
           {[['Sunday', 0], ['Monday', 1]].map(([label, val]) => (
             <button key={val} onClick={() => { onUpdateProfile({ weekStart: val }) }}
-              style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, fontWeight:300,
+              style={{ flex:1, padding:'8px 0', borderRadius:10, fontSize:13, 
                 cursor:'pointer', fontFamily:FONT,
                 border:'1.5px solid ' + (weekStart === val ? colors.primary : colors.border),
                 background: weekStart === val ? colors.primary : 'transparent',
@@ -6725,14 +6726,14 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       </div>
 
       {/* Default Reminder */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         DEFAULT REMINDER
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px' }}>
           <select value={profile?.defaultReminder ?? 15}
             onChange={e => { window.__pearSync?.haptic('light'); onUpdateProfile({ defaultReminder: Number(e.target.value) }) }}
-            style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, fontWeight:300,
+            style={{ width:'100%', padding:'10px 12px', borderRadius:10, fontSize:13, 
               border:`1px solid ${colors.border}`, background:colors.surface.input, color:colors.text.primary,
               fontFamily:FONT, appearance:'none' }}>
             <option value={0}>None</option>
@@ -6751,15 +6752,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         const hhmm = String(digestHour).padStart(2, '0') + ':' + String(digestMinute).padStart(2, '0')
         return (
           <>
-            <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+            <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
               DAILY DIGEST
             </div>
             <div style={{ marginBottom:12 }}>
               <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
                 justifyContent:'space-between' }}>
                 <div style={{ flex:1, paddingRight:12 }}>
-                  <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>Morning summary</div>
-                  <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:2 }}>
+                  <div style={{ fontSize:13, color: colors.text.primary }}>Morning summary</div>
+                  <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
                     Notifies you of today's events so the app foregrounds and peers sync
                   </div>
                 </div>
@@ -6770,7 +6771,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               {digestEnabled && (
                 <div style={{ padding:'0 16px 14px', display:'flex', alignItems:'center',
                   justifyContent:'space-between' }}>
-                  <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>Time</div>
+                  <div style={{ fontSize:13, color: colors.text.primary }}>Time</div>
                   <input type="time" value={hhmm}
                     onChange={e => {
                       const [hStr, mStr] = e.target.value.split(':')
@@ -6780,7 +6781,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                         onUpdateProfile({ digestHour: h, digestMinute: m })
                       }
                     }}
-                    style={{ padding:'8px 12px', borderRadius:10, fontSize:13, fontWeight:300,
+                    style={{ padding:'8px 12px', borderRadius:10, fontSize:13, 
                       border:`1px solid ${colors.border}`, background:colors.surface.input, color:colors.text.primary,
                       fontFamily:FONT, appearance:'none' }} />
                 </div>
@@ -6791,15 +6792,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       })()}
 
       {/* Time Format */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         TIME FORMAT
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
           justifyContent:'space-between' }}>
           <div>
-            <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>24-hour time</div>
-            <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:2 }}>
+            <div style={{ fontSize:13, color: colors.text.primary }}>24-hour time</div>
+            <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
               {use24h ? 'e.g. 14:30' : 'e.g. 2:30pm'}
             </div>
           </div>
@@ -6808,15 +6809,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       </div>
 
       {/* Widget */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         WIDGET
       </div>
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px', display:'flex', alignItems:'center',
           justifyContent:'space-between' }}>
           <div style={{ flex:1, paddingRight:12 }}>
-            <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>Show upcoming events</div>
-            <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:2 }}>
+            <div style={{ fontSize:13, color: colors.text.primary }}>Show upcoming events</div>
+            <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
               On empty days, list the next few events instead of just tomorrow
             </div>
           </div>
@@ -6896,7 +6897,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         const anyEnabled = activeCountries.size > 0
         return (
           <>
-            <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+            <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
               HOLIDAYS
             </div>
             <div style={{ marginBottom:12,
@@ -6907,8 +6908,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                     padding:'10px 0', borderBottom: i < allCountries.length - 1 ? `1px solid ${colors.border}` : 'none' }}>
                     <span style={{ fontSize:20, color: flagColor }}>{flag}</span>
                     <div style={{ flex:1 }}>
-                      <div style={{ fontSize:13, fontWeight:300, color: colors.text.primary }}>{label}</div>
-                      <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300 }}>
+                      <div style={{ fontSize:13, color: colors.text.primary }}>{label}</div>
+                      <div style={{ fontSize:11, color:colors.text.muted }}>
                         {fn(thisYear).length} holidays · {thisYear}–{thisYear + 1}
                       </div>
                     </div>
@@ -6917,7 +6918,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   </div>
                 ))}
                 {anyEnabled && (
-                  <div style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginTop:10 }}>
+                  <div style={{ fontSize:11, color:colors.text.muted, marginTop:10 }}>
                     Added to your personal calendar. Toggle off to remove.
                   </div>
                 )}
@@ -6934,7 +6935,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         <div onClick={() => { window.__pearSync?.haptic('light'); setAdvancedOpen(o => !o) }}
           style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
             padding:'14px 16px', cursor:'pointer' }}>
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, letterSpacing:'0.06em' }}>
+          <div style={{ fontSize:12, color:colors.text.muted, letterSpacing:'0.06em' }}>
             ADVANCED
           </div>
           <CaretRight size={16} weight="thin" color="var(--color-muted)"
@@ -6946,7 +6947,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         transition:'max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)' }}>
 
       {/* Devices (TODO #11 Phase 4) */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         DEVICES
       </div>
       <div style={{ marginBottom:12 }}>
@@ -6962,13 +6963,13 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               <div style={{ fontSize:14, fontWeight:400, color:'var(--color-accent)' }}>
                 {pairHostBusy ? 'Generating…' : 'Add a device'}
               </div>
-              <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
                 Pair your phone, tablet, or desktop under the same identity
               </div>
             </div>
           </button>
           {pairHostError && !pairHost && (
-            <div style={{ fontSize:12, color:'#e67b7b', fontWeight:300, marginTop:8, textAlign:'center' }}>
+            <div style={{ fontSize:12, color:'#e67b7b', marginTop:8, textAlign:'center' }}>
               {pairHostError}
             </div>
           )}
@@ -7001,20 +7002,20 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                             if (e.key === 'Escape') { e.preventDefault(); cancelRenameDevice() }
                           }}
                           placeholder={deviceDefaultLabel(d)}
-                          style={{ fontSize:14, fontWeight:300, fontFamily:FONT,
+                          style={{ fontSize:14, fontFamily:FONT,
                             background:'transparent', border:`1px solid ${colors.border}`,
                             borderRadius:8, padding:'8px 10px', color:colors.text.primary, outline:'none' }} />
                         <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
                           <button onClick={e => { e.stopPropagation(); cancelRenameDevice() }}
                             disabled={renameSaving}
-                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, 
                               fontFamily:FONT, border:`1px solid ${colors.border}`, background:'transparent',
                               color:colors.text.muted, cursor:'pointer' }}>
                             Cancel
                           </button>
                           <button onClick={e => { e.stopPropagation(); saveRenameDevice() }}
                             disabled={renameSaving}
-                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, 
                               fontFamily:FONT, border:`1px solid var(--color-accent)`, background:'transparent',
                               color:'var(--color-accent)', cursor:'pointer',
                               opacity: renameSaving ? 0.5 : 1 }}>
@@ -7024,20 +7025,20 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                       </div>
                     ) : isConfirmingRemove ? (
                       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, lineHeight:1.5, textAlign:'center' }}>
+                        <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.5, textAlign:'center' }}>
                           Remove <span style={{ color: colors.text.primary, fontWeight:400 }}>{label}</span> from your devices list?
                         </div>
                         <div style={{ display:'flex', justifyContent:'center', gap:8 }}>
                           <button onClick={e => { e.stopPropagation(); setRemoveConfirmKey(null) }}
                             disabled={isRemoving}
-                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, 
                               fontFamily:FONT, border:`1px solid ${colors.border}`, background:'transparent',
                               color:colors.text.muted, cursor:'pointer' }}>
                             Cancel
                           </button>
                           <button onClick={e => { e.stopPropagation(); confirmRemoveDevice(d.writerKey) }}
                             disabled={isRemoving}
-                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, fontWeight:300,
+                            style={{ padding:'6px 12px', borderRadius:8, fontSize:13, 
                               fontFamily:FONT, border:`1px solid var(--color-destructive)`, background:'transparent',
                               color:'var(--color-destructive)', cursor:'pointer',
                               opacity: isRemoving ? 0.5 : 1 }}>
@@ -7048,11 +7049,11 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                     ) : (
                       <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                         <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary,
+                          <div style={{ fontSize:14, color: colors.text.primary,
                             whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                             {label}
                           </div>
-                          <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, marginTop:2 }}>
+                          <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
                             {subtitle}
                           </div>
                         </div>
@@ -7081,7 +7082,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       </div>
 
       {/* Import & Export */}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         IMPORT & EXPORT
       </div>
       <div style={{ marginBottom:12 }}>
@@ -7105,8 +7106,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
               <UploadSimple size={18} weight="thin" color="var(--color-accent)" />
               <div style={{ flex:1, textAlign:'left' }}>
-                <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Import Events</div>
-                <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>Import from .ics file</div>
+                <div style={{ fontSize:14, color: colors.text.primary }}>Import Events</div>
+                <div style={{ fontSize:11, color:colors.text.muted }}>Import from .ics file</div>
               </div>
             </button>
             <button onClick={() => {
@@ -7119,8 +7120,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
               <DownloadSimple size={18} weight="thin" color="var(--color-accent)" />
               <div style={{ flex:1, textAlign:'left' }}>
-                <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Export Events</div>
-                <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>Export all events as .ics</div>
+                <div style={{ fontSize:14, color: colors.text.primary }}>Export Events</div>
+                <div style={{ fontSize:11, color:colors.text.muted }}>Export all events as .ics</div>
               </div>
             </button>
         </div>
@@ -7151,13 +7152,13 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               return (
                 <>
                   <div style={{ textAlign:'center', marginBottom:18 }}>
-                    <div style={{ fontSize:28, fontWeight:300, color: colors.text.primary }}>{formatBytes(b.total)}</div>
-                    <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>Total on disk</div>
+                    <div style={{ fontSize:28, color: colors.text.primary }}>{formatBytes(b.total)}</div>
+                    <div style={{ fontSize:12, color:colors.text.muted }}>Total on disk</div>
                   </div>
                   <div style={{ fontSize:12, fontWeight:400, color:colors.text.muted, letterSpacing:'0.06em', marginBottom:8 }}>BY TYPE</div>
                   {cats.map(([k,v]) => (
                     <div key={k} style={{ marginBottom:10 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, color: colors.text.primary }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color: colors.text.primary }}>
                         <span>{typeLabel[k] || k}</span>
                         <span style={{ color:colors.text.muted }}>{formatBytes(v.size)}</span>
                       </div>
@@ -7167,7 +7168,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   <div style={{ fontSize:12, fontWeight:400, color:colors.text.muted, letterSpacing:'0.06em', margin:'16px 0 8px' }}>BY LOCATION</div>
                   {dirs.map(([k,v]) => (
                     <div key={k} style={{ marginBottom:10 }}>
-                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, color: colors.text.primary }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color: colors.text.primary }}>
                         <span style={{ fontFamily:'monospace' }}>{k || '.'}</span>
                         <span style={{ color:colors.text.muted }}>{formatBytes(v)}</span>
                       </div>
@@ -7182,8 +7183,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               return (
                 <>
                   <div style={{ textAlign:'center', marginBottom:18 }}>
-                    <div style={{ fontSize:28, fontWeight:300, color: colors.text.primary }}>{formatBytes(a.reclaimableBytes)}</div>
-                    <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>
+                    <div style={{ fontSize:28, color: colors.text.primary }}>{formatBytes(a.reclaimableBytes)}</div>
+                    <div style={{ fontSize:12, color:colors.text.muted }}>
                       reclaimable ({a.pct}% of {formatBytes(a.totalBytes)})
                     </div>
                   </div>
@@ -7198,7 +7199,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                     ]
                     const Row = g => (
                       <div key={g.id} style={{ marginBottom:10 }}>
-                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, fontWeight:300, color: colors.text.primary }}>
+                        <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, color: colors.text.primary }}>
                           <span>{g.name}</span>
                           <span style={{ color:colors.text.muted }}>
                             {formatBytes(g.bytes)}{g.reclaim > 0 ? ' · ' + formatBytes(g.reclaim) + ' reclaimable' : ''}
@@ -7228,7 +7229,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <button onClick={() => setReportOpen(null)}
               style={{ marginTop:18, width:'100%', padding:'10px 16px', borderRadius:8,
                 border:`1px solid ${colors.border}`, background:'transparent', color:colors.text.primary,
-                fontFamily:FONT, fontSize:13, fontWeight:300, cursor:'pointer' }}>
+                fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
               Close
             </button>
           </div>
@@ -7243,13 +7244,13 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <div style={{ fontSize:16, fontWeight:400, marginBottom:10, textAlign:'center', color: colors.text.primary }}>
               Reclaim Storage?
             </div>
-            <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, lineHeight:1.5, marginBottom:16, textAlign:'center' }}>
+            <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.5, marginBottom:16, textAlign:'center' }}>
               This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically.
             </div>
             <div style={{ display:'flex', gap:10 }}>
               <button onClick={() => setRebuildConfirm(false)} disabled={reclaimBusy}
                 style={{ flex:1, padding:'10px 16px', borderRadius:8, border:`1px solid ${colors.border}`,
-                  background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:13, fontWeight:300,
+                  background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:13, 
                   cursor: reclaimBusy ? 'wait' : 'pointer', opacity: reclaimBusy ? 0.5 : 1 }}>
                 Cancel
               </button>
@@ -7289,12 +7290,12 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             {!sweepResult && (
               <>
                 <div style={{ textAlign:'center', marginBottom:16 }}>
-                  <div style={{ fontSize:28, fontWeight:300, color: colors.text.primary }}>{formatBytes(sweepReport.orphanBytes ?? 0)}</div>
-                  <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>
+                  <div style={{ fontSize:28, color: colors.text.primary }}>{formatBytes(sweepReport.orphanBytes ?? 0)}</div>
+                  <div style={{ fontSize:12, color:colors.text.muted }}>
                     across {sweepReport.orphans} orphan core{sweepReport.orphans === 1 ? '' : 's'}
                   </div>
                 </div>
-                <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, lineHeight:1.5, marginBottom:12 }}>
+                <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.5, marginBottom:12 }}>
                   Cores belonging to groups you've left, deleted, or that were rekeyed.
                   They sit in <span style={{ fontFamily:'monospace' }}>pearcal/store</span> and aren't
                   freed by the normal Reclaim flow. Purging them is permanent.
@@ -7303,11 +7304,11 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14, lineHeight:1.5 }}>
                   ⚠ Reports of sync breakage after sweeping. Some devices have been unable to join new groups afterward, requiring a reinstall. Cause under investigation. Only proceed if you understand the risk and have backups or can rebuild your data.
                 </div>
-                <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, marginBottom:14 }}>
+                <div style={{ fontSize:12, color:colors.text.muted, marginBottom:14 }}>
                   Total cores on disk: {sweepReport.totalCores} · reachable: {sweepReport.reachableCount} · groups tracked: {sweepReport.groupCount}
                 </div>
                 {sweepReport.liveWithoutBase?.length > 0 && (
-                  <div style={{ fontSize:12, fontWeight:300, color:'#d04', background:'rgba(221,0,68,0.08)',
+                  <div style={{ fontSize:12, color:'#d04', background:'rgba(221,0,68,0.08)',
                     border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14 }}>
                     ⚠ {sweepReport.liveWithoutBase.length} live group{sweepReport.liveWithoutBase.length === 1 ? '' : 's'} {sweepReport.liveWithoutBase.length === 1 ? 'is' : 'are'} not loaded yet
                     ({sweepReport.liveWithoutBase.join(', ')}).
@@ -7315,7 +7316,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   </div>
                 )}
                 {sweepReport.personalWithoutBase && (
-                  <div style={{ fontSize:12, fontWeight:300, color:'#d04', background:'rgba(221,0,68,0.08)',
+                  <div style={{ fontSize:12, color:'#d04', background:'rgba(221,0,68,0.08)',
                     border:'1px solid rgba(221,0,68,0.3)', borderRadius:8, padding:'10px 12px', marginBottom:14 }}>
                     ⚠ Multi-device sync is configured but the personal data store hasn't loaded yet.
                     Sweeping now could mistakenly purge sibling-device data. Reopen the app and retry.
@@ -7324,7 +7325,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 <div style={{ display:'flex', gap:10 }}>
                   <button onClick={() => setSweepReport(null)} disabled={sweepBusy}
                     style={{ flex:1, padding:'10px 16px', borderRadius:8, border:`1px solid ${colors.border}`,
-                      background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:13, fontWeight:300,
+                      background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:13, 
                       cursor: sweepBusy ? 'wait' : 'pointer', opacity: sweepBusy ? 0.5 : 1 }}>
                     Cancel
                   </button>
@@ -7354,18 +7355,18 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             {sweepResult && (
               <>
                 {sweepResult.error ? (
-                  <div style={{ fontSize:13, fontWeight:300, color:'#d04', textAlign:'center', marginBottom:16 }}>
+                  <div style={{ fontSize:13, color:'#d04', textAlign:'center', marginBottom:16 }}>
                     Error: {sweepResult.error}
                   </div>
                 ) : (
                   <>
                     <div style={{ textAlign:'center', marginBottom:16 }}>
-                      <div style={{ fontSize:28, fontWeight:300, color: colors.text.primary }}>
+                      <div style={{ fontSize:28, color: colors.text.primary }}>
                         {formatBytes(sweepResult.reclaim?.freed ?? 0)}
                       </div>
-                      <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted }}>freed from disk</div>
+                      <div style={{ fontSize:12, color:colors.text.muted }}>freed from disk</div>
                     </div>
-                    <div style={{ fontSize:13, fontWeight:300, color:colors.text.muted, lineHeight:1.7, marginBottom:14 }}>
+                    <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.7, marginBottom:14 }}>
                       Purged {sweepResult.purged} core{sweepResult.purged === 1 ? '' : 's'}
                       {sweepResult.dataRangesCleared > 0 ? ` · cleared ${sweepResult.dataRangesCleared} data range${sweepResult.dataRangesCleared === 1 ? '' : 's'}` : ''}
                       {sweepResult.reclaim?.before !== undefined ? <><br />{formatBytes(sweepResult.reclaim.before)} → {formatBytes(sweepResult.reclaim.after)}</> : null}
@@ -7376,7 +7377,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 <button onClick={() => { setSweepReport(null); setSweepResult(null) }}
                   style={{ width:'100%', padding:'10px 16px', borderRadius:8,
                     border:`1px solid ${colors.border}`, background:'transparent', color:colors.text.primary,
-                    fontFamily:FONT, fontSize:13, fontWeight:300, cursor:'pointer' }}>
+                    fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
                   Close
                 </button>
               </>
@@ -7384,7 +7385,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           </div>
         </div>
       )}
-      <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
         STORAGE
       </div>
       <div style={{ marginBottom:12 }}>
@@ -7400,8 +7401,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             padding:'12px 14px', borderRadius:10, cursor:'pointer',
             border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
           <div style={{ flex:1, textAlign:'left' }}>
-            <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Storage Breakdown</div>
-            <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>Show where disk space is used</div>
+            <div style={{ fontSize:14, color: colors.text.primary }}>Storage Breakdown</div>
+            <div style={{ fontSize:11, color:colors.text.muted }}>Show where disk space is used</div>
           </div>
         </button>
         <button onClick={async () => {
@@ -7415,8 +7416,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             padding:'12px 14px', borderRadius:10, cursor:'pointer',
             border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
           <div style={{ flex:1, textAlign:'left' }}>
-            <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>Analyze Reclaimable</div>
-            <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>Estimate reclaimable per group (keep last 100 blocks)</div>
+            <div style={{ fontSize:14, color: colors.text.primary }}>Analyze Reclaimable</div>
+            <div style={{ fontSize:11, color:colors.text.muted }}>Estimate reclaimable per group (keep last 100 blocks)</div>
           </div>
         </button>
         {(() => {
@@ -7432,10 +7433,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT,
                 opacity: enabled ? 1 : 0.4 }}>
               <div style={{ flex:1, textAlign:'left' }}>
-                <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>
+                <div style={{ fontSize:14, color: colors.text.primary }}>
                   {reclaimBusy ? 'Reclaiming…' : 'Reclaim Storage'}
                 </div>
-                <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>
+                <div style={{ fontSize:11, color:colors.text.muted }}>
                   {pct < 0
                     ? 'Run Analyze first to check reclaimable space'
                     : pct < 21
@@ -7470,27 +7471,27 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT,
               opacity: sweepBusy ? 0.6 : 1 }}>
             <div style={{ flex:1, textAlign:'left' }}>
-              <div style={{ fontSize:14, fontWeight:300, color: colors.text.primary }}>
+              <div style={{ fontSize:14, color: colors.text.primary }}>
                 {sweepBusy && !sweepReport ? 'Scanning…' : 'Sweep Orphaned Data'}
               </div>
-              <div style={{ fontSize:11, fontWeight:300, color:colors.text.muted }}>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
                 Purge cores from deleted / left groups (shows report first)
               </div>
             </div>
           </button>
         )}
         {reclaimResult?.analyze && (
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, textAlign:'center', padding:'4px 0' }}>
+          <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center', padding:'4px 0' }}>
             {reclaimResult.analyze.pct}% reclaimable — tap Reclaim below to continue
           </div>
         )}
         {reclaimResult?.error && (
-          <div style={{ fontSize:12, fontWeight:300, color:'#d04', textAlign:'center', padding:'4px 0' }}>
+          <div style={{ fontSize:12, color:'#d04', textAlign:'center', padding:'4px 0' }}>
             Error: {reclaimResult.error}
           </div>
         )}
         {reclaimResult?.freed !== undefined && (
-          <div style={{ fontSize:12, fontWeight:300, color:colors.text.muted, textAlign:'center', padding:'4px 0' }}>
+          <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center', padding:'4px 0' }}>
             Freed {formatBytes(reclaimResult.freed)} ({formatBytes(reclaimResult.before)} → {formatBytes(reclaimResult.after)})
           </div>
         )}
