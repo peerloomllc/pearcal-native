@@ -2,6 +2,12 @@ import { handleInviteLink, buildReinviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
 import { installFixtures } from './screenshot-fixtures.js'
+import { injectGlobalStyles } from './theme.js'
+
+// Tokens + reset go in before the first render, so nothing paints unthemed.
+// (:root is the dark palette, so no data-theme attribute is needed to start —
+// App flips it to light once the profile loads.)
+injectGlobalStyles()
 
 // IPC bridge — installed only if a host hasn't already wired one.
 // Desktop pre-sets __pearDB inline in index.html to talk over a Pear worker pipe;

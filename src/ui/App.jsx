@@ -14,7 +14,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import QRCode from 'qrcode'
-import { FONT_CSS } from './fonts.js'
+import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs,
   MAX_COLOR_SEGMENTS,
@@ -41,94 +41,11 @@ import {
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
-if (typeof document !== 'undefined' && !document.getElementById('pear-styles')) {
-  const style = document.createElement('style')
-  style.id = 'pear-styles'
-  style.textContent = FONT_CSS + `
-    [data-theme="dark"] {
-      --color-bg:                #0E0D0C;
-      --color-surface:           #1A1916;
-      --color-border:            #2C2A26;
-      --color-text:              #F2EFE8;
-      --color-muted:             #8A8478;
-      --color-accent:            #C8922A;
-      --color-accent-faint:      rgba(200,146,42,0.12);
-      --color-destructive:       #C0504A;
-      --color-destructive-faint: rgba(192,80,74,0.12);
-      --color-success:           #5DBF8A;
-    }
-    [data-theme="light"] {
-      --color-bg:                #F7F5F0;
-      --color-surface:           #FFFFFF;
-      --color-border:            #E5E1D8;
-      --color-text:              #1A1916;
-      --color-muted:             #9A9288;
-      --color-accent:            #B07D20;
-      --color-accent-faint:      rgba(176,125,32,0.10);
-      --color-destructive:       #C0504A;
-      --color-destructive-faint: rgba(192,80,74,0.08);
-      --color-success:           #4A9E6E;
-    }
-    :root {
-      --space-xs:  4px;
-      --space-sm:  8px;
-      --space-md:  16px;
-      --space-lg:  24px;
-      --space-xl:  32px;
-      --radius-sm: 6px;
-      --radius-md: 10px;
-      --radius-lg: 16px;
-      --radius-xl: 20px;
-      --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
-      --duration-fast:   120ms;
-      --duration-normal: 200ms;
-      --duration-slow:   280ms;
-      --easing: cubic-bezier(0.2, 0, 0, 1);
-      --safe-area-top:    env(safe-area-inset-top, 0px);
-      --safe-area-bottom: env(safe-area-inset-bottom, 0px);
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    * { -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
-    input, textarea { -webkit-user-select: text; user-select: text; }
-    input, textarea, select, button { font-family: var(--font-sans); }
-    input, textarea { font-size: 16px; }
-    button { transition: transform var(--duration-fast) var(--easing); }
-    button:active { transform: scale(0.97); }
-    input:focus, textarea:focus { border-color: var(--color-accent) !important; }
-    * { -webkit-overflow-scrolling: touch; }
-    @keyframes pearFadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: translateY(0);   }
-    }
-    @keyframes pearFadeIn {
-      from { opacity: 0; }
-      to   { opacity: 1; }
-    }
-    @keyframes pearPulse {
-      0%, 100% { opacity: 0.3; }
-      50%       { opacity: 0.7; }
-    }
-    @keyframes pearShake {
-      0%, 100% { transform: translateX(0);   }
-      20%, 60% { transform: translateX(-4px); }
-      40%, 80% { transform: translateX(4px);  }
-    }
-    @keyframes pearSpin {
-      from { transform: rotate(0deg);   }
-      to   { transform: rotate(360deg); }
-    }
-    @keyframes pearSlideInRight { from { opacity: 0; transform: translateX(32px) } to { opacity: 1; transform: translateX(0) } }
-    @keyframes pearSlideInLeft { from { opacity: 0; transform: translateX(-32px) } to { opacity: 1; transform: translateX(0) } }
-    @keyframes pearSkeletonPulse { 0%,100% { opacity: 0.4 } 50% { opacity: 0.8 } }
-    @keyframes pearFadeOut {
-      from { opacity: 1; }
-      to   { opacity: 0; }
-    }
-  `
-  document.head.appendChild(style)
-}
+// Tokens, the CSS-variable palette and the global reset live in ./theme.js — the
+// same shape every other PeerLoom app uses. main.jsx injects them before first
+// render; this call is the idempotent safety net for any other entry point.
+injectGlobalStyles()
 
-const FONT = `'Manrope', -apple-system, BlinkMacSystemFont, sans-serif`
 const IS_IOS = window.__pearPlatform === 'ios'
 
 // ─── Donation (BTC / Lightning) ─────────────────────────────────────────────
@@ -191,9 +108,7 @@ function CopyField ({ th, sync, value, hint }) {
 }
 
 function setTheme (dark) {
-  if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light')
-  }
+  applyTheme(dark ? 'dark' : 'light')
 }
 
 function extractURLs (text) {
@@ -287,7 +202,7 @@ function shadowCreatorName (e, groups) {
 function SkeletonEventCard () {
   return (
     <div style={{
-      background: 'var(--color-surface)', borderRadius: 'var(--radius-md)',
+      background: 'var(--color-surface-card)', borderRadius: 'var(--radius-lg)',
       padding: '10px 12px', marginBottom: 6,
       borderLeft: '4px solid var(--color-border)',
       display: 'flex', flexDirection: 'column', gap: 8,
@@ -426,8 +341,8 @@ function themes () {
       color: 'var(--color-text)',
     },
     pillBtn: {
-      background: 'var(--color-accent)', border: 'none',
-      borderRadius: 'var(--radius-md)', color: '#fff',
+      background: 'var(--color-primary)', border: 'none',
+      borderRadius: 'var(--radius-lg)', color: colors.text.onPrimary,
       cursor: 'pointer', fontFamily: FONT, fontWeight: 400,
     },
   }
@@ -1546,7 +1461,7 @@ export default function App ({ db, notifs, sync }) {
           {syncingGroups.size > 0 && (
             <div style={{ position:'fixed', top:'calc(var(--safe-area-top) + 8px)',
               left:'50%', transform:'translateX(-50%)',
-              background:th.card?.background ?? 'var(--color-card)',
+              background:th.card?.background ?? 'var(--color-surface-card)',
               border:`1px solid ${th.border}`,
               borderRadius:'var(--radius-lg)',
               padding:'6px 12px', fontSize:12, fontWeight:300, zIndex:400,
@@ -1974,7 +1889,7 @@ function Label ({ th, children }) {
 function Toggle ({ val, onChange, accent }) {
   return (
     <div onClick={() => { window.__pearSync?.haptic('light'); onChange(!val) }}
-      style={{ width:44, height:24, borderRadius:12, background:val?accent:'#555',
+      style={{ width:44, height:24, borderRadius:'var(--radius-full)', background: val ? accent : colors.track,
         cursor:'pointer', position:'relative', transition:'background 0.2s' }}>
       <div style={{ position:'absolute', top:2, left:val?22:2, width:20, height:20,
         borderRadius:'50%', background:'#fff', transition:'left 0.2s' }} />
@@ -3484,8 +3399,8 @@ function OnboardingModal ({ th, step, setStep, profile, onUpdateProfile, db, syn
             </span>
             {' '}and{' '}
             <span style={{ display:'inline-flex', alignItems:'center', gap:4, verticalAlign:'middle',
-              background:'var(--color-accent)', border:'none',
-              borderRadius:12, padding:'3px 10px', fontSize:12, fontWeight:300, color:'#fff' }}>
+              background:'var(--color-primary)', border:'none',
+              borderRadius:'var(--radius-xl)', padding:'3px 10px', fontSize:12, color: colors.text.onPrimary }}>
               <Plus size={13} weight="thin" /> New Group
             </span>
             {' '}buttons on the <span style={{ ...th.text, fontWeight:400 }}>Groups</span> page.
@@ -4120,7 +4035,7 @@ function EventModal ({ th, modal, setModal, groups, profile, events = [], onSave
   }, [])
   const inp = {
     background: 'var(--color-bg)', border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    borderRadius: 'var(--radius-md)', padding: '10px 14px',
     color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
     fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
     transition: 'border-color var(--duration-fast) var(--easing)',
@@ -5175,7 +5090,7 @@ function GroupSettingsModal ({ th, group, me, db, sync, totalGroupsCount = 1, pe
 
   const inp = {
     background: 'var(--color-bg)', border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    borderRadius: 'var(--radius-md)', padding: '10px 14px',
     color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
     fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
     transition: 'border-color var(--duration-fast) var(--easing)',
@@ -5726,7 +5641,7 @@ function NewGroupModal ({ th, onClose, onAdd, onUpdate, me, sync, onCreated, clo
 
   const inp = {
     background: 'var(--color-bg)', border: '1px solid var(--color-border)',
-    borderRadius: 'var(--radius-sm)', padding: '10px 14px',
+    borderRadius: 'var(--radius-md)', padding: '10px 14px',
     color: 'var(--color-text)', fontSize: 16, fontWeight: 300,
     fontFamily: FONT, width: '100%', boxSizing: 'border-box', outline: 'none',
     transition: 'border-color var(--duration-fast) var(--easing)',
@@ -5891,7 +5806,7 @@ function ScopeSheet ({ th, ev, onSave, onDismiss, closeRef }) {
   }, [])
   const btn = {
     width:'100%', padding:'12px', borderRadius:12, border:'none', fontFamily:FONT,
-    background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer',
+    background:'var(--color-primary)', color: colors.text.onPrimary, fontSize:14, cursor:'pointer',
   }
   return (
     <BottomSheet th={th} onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
@@ -5984,8 +5899,8 @@ function ConfirmSheet ({ th, title, message, icon, confirmLabel, dangerous, onCo
           </button>
           <button onClick={() => { bsCloseRef.current?.(); setTimeout(onConfirm, 280) }}
             style={{ flex:1, padding:'12px', borderRadius:12, border:'none',
-              background: dangerous ? 'var(--color-destructive)' : 'var(--color-accent)',
-              color:'#fff', fontSize:14, fontWeight:300, cursor:'pointer', fontFamily:FONT }}>
+              background: dangerous ? 'var(--color-error)' : 'var(--color-primary)',
+              color: dangerous ? '#fff' : colors.text.onPrimary, fontSize:14, cursor:'pointer', fontFamily:FONT }}>
             {confirmLabel}
           </button>
         </div>
@@ -6012,7 +5927,7 @@ function InfoSheet ({ th, title, message, icon, onDismiss, closeRef }) {
         <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, fontWeight:300 }}>{message}</div>
         <button onClick={() => bsCloseRef.current?.()}
           style={{ width:'100%', marginTop:8, padding:'12px', borderRadius:12, border:'none',
-            background:'var(--color-accent)', color:'#fff', fontSize:14, fontWeight:300,
+            background:'var(--color-primary)', color: colors.text.onPrimary, fontSize:14,
             cursor:'pointer', fontFamily:FONT }}>
           OK
         </button>
@@ -6059,7 +5974,7 @@ function BottomSheet ({ th, onClose, children, zIndex = 200, closeRef }) {
         style={{
           width: '100%', maxWidth: 430,
           background: 'var(--color-bg)',
-          borderRadius: '20px 20px 0 0',
+          borderRadius: 'var(--radius-sheet) var(--radius-sheet) 0 0',
           maxHeight: '80dvh', overflowY: 'auto', overflowX: 'hidden',
           paddingBottom: 'calc(32px + 53px + var(--safe-area-bottom))',
           transform: `translateY(${translateY})`,
@@ -7336,7 +7251,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                 }
               }} disabled={reclaimBusy}
                 style={{ flex:1, padding:'10px 16px', borderRadius:8, border:'none',
-                  background: th.accent, color:'#fff', fontFamily:FONT, fontSize:13, fontWeight:400,
+                  background: th.accent, color: colors.text.onPrimary, fontFamily:FONT, fontSize:13, fontWeight:400,
                   cursor: reclaimBusy ? 'wait' : 'pointer', opacity: reclaimBusy ? 0.7 : 1 }}>
                 {reclaimBusy ? 'Reclaiming…' : 'Reclaim'}
               </button>
@@ -7411,7 +7326,7 @@ function ProfileTab ({ th, profile, groups, onUpdateProfile, db, events, setEven
                     }
                   }} disabled={sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase}
                     style={{ flex:1, padding:'10px 16px', borderRadius:8, border:'none',
-                      background: th.accent, color:'#fff', fontFamily:FONT, fontSize:13, fontWeight:400,
+                      background: th.accent, color: colors.text.onPrimary, fontFamily:FONT, fontSize:13, fontWeight:400,
                       cursor: sweepBusy ? 'wait' : 'pointer',
                       opacity: (sweepBusy || sweepReport.orphans === 0 || sweepReport.liveWithoutBase?.length > 0 || sweepReport.personalWithoutBase) ? 0.5 : 1 }}>
                     {sweepBusy ? 'Sweeping…' : sweepReport.orphans === 0 ? 'Nothing to sweep' : 'Purge'}
