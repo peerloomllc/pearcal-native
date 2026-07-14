@@ -16894,7 +16894,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           " Copied"
         ] }) : "Copy" })
       ] }),
-      hint && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, margin: "4px 0 0", lineHeight: 1.5, textAlign: "center" }, children: hint })
+      hint && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, margin: "4px 0 0", lineHeight: 1.5, textAlign: "center" }, children: hint })
     ] });
   }
   function setTheme2(dark) {
@@ -18144,7 +18144,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       padding: 24
     }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 32 }, children: "\u26A0\uFE0F" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 16, fontWeight: 300 }, children: "Failed to load PearCal" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 16 }, children: "Failed to load PearCal" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: "#888", fontFamily: "monospace" }, children: error })
     ] });
     (0, import_react7.useEffect)(() => {
@@ -18158,7 +18158,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     if (!ready) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { minHeight: "100dvh", background: "#111" } });
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
       fontFamily: FONT,
-      fontWeight: 300,
       height: "100dvh",
       background: colors.surface.base,
       display: "flex",
@@ -18222,7 +18221,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           borderRadius: "var(--radius-lg)",
           padding: "12px 16px",
           fontSize: 13,
-          fontWeight: 300,
           zIndex: 400,
           textAlign: "center",
           lineHeight: 1.5
@@ -18237,7 +18235,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           borderRadius: "var(--radius-lg)",
           padding: "6px 12px",
           fontSize: 12,
-          fontWeight: 300,
           zIndex: 400,
           display: "flex",
           alignItems: "center",
@@ -18753,7 +18750,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] }) });
   }
   function Label({ children }) {
-    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, marginBottom: 4, letterSpacing: "0.04em" }, children });
+    return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 4, letterSpacing: "0.04em" }, children });
   }
   function Toggle({ val, onChange, accent }) {
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -18812,7 +18809,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         justifyContent: "center",
         overflow: "hidden",
         flexShrink: 0
-      }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: avatar, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: avatar || "?" }) });
+      }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: avatar, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: "#fff", fontSize, lineHeight: 1 }, children: avatar || "?" }) });
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatarByHash, { avatarHash, fallback: avatar, name, color, size, fontSize });
   }
@@ -18839,7 +18836,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       justifyContent: "center",
       overflow: "hidden",
       flexShrink: 0
-    }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: resolved, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: "#fff", fontWeight: 300, fontSize, lineHeight: 1 }, children: fallback || "?" }) });
+    }, children: isPhoto ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: resolved, alt: name, style: { width: "100%", height: "100%", objectFit: "cover" } }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: "#fff", fontSize, lineHeight: 1 }, children: fallback || "?" }) });
   }
   function downscaleAvatarDataUrl(dataUrl) {
     return new Promise((resolve2, reject) => {
@@ -18959,7 +18956,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                     fontSize: 11,
-                    fontWeight: 300,
                     color: isSel ? "#fff" : colors.text.muted
                   }, children: DAYS[d.getDay()].slice(0, 1) }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
@@ -18987,7 +18983,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               alignItems: "center",
               gap: 3,
               fontSize: 11,
-              fontWeight: 300,
               color: colors.text.muted,
               letterSpacing: "0.03em"
             }, children: [
@@ -18997,7 +18992,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
               flexShrink: 0,
               fontSize: 12,
-              fontWeight: 300,
               padding: "4px 12px",
               borderRadius: 20,
               border: "1.5px solid " + (filterGroupIds.size === 0 ? colors.primary : colors.border),
@@ -19012,7 +19006,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             }), style: {
               flexShrink: 0,
               fontSize: 12,
-              fontWeight: 300,
               padding: "4px 12px",
               borderRadius: 20,
               border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : colors.border),
@@ -19055,7 +19048,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 "en-US",
                 { weekday: "long", month: "short", day: "numeric" }
               ).toUpperCase() }),
-              dayEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, padding: "8px 0", fontStyle: "italic" }, children: "No events" }) : dayEvents.map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+              dayEvents.length === 0 ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, padding: "8px 0", fontStyle: "italic" }, children: "No events" }) : dayEvents.map((ev2, i2) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { animation: `pearFadeUp 150ms var(--easing) ${i2 * 30}ms both` }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                 EventCard,
                 {
                   ev: ev2,
@@ -19193,7 +19186,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                     fontSize: 11,
-                    fontWeight: 300,
                     color: isSel ? "#fff" : colors.text.muted
                   }, children: DAYS[d.getDay()].slice(0, 1) }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
@@ -19221,7 +19213,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               alignItems: "center",
               gap: 3,
               fontSize: 11,
-              fontWeight: 300,
               color: colors.text.muted,
               letterSpacing: "0.03em"
             }, children: [
@@ -19231,7 +19222,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
               flexShrink: 0,
               fontSize: 12,
-              fontWeight: 300,
               padding: "4px 12px",
               borderRadius: 20,
               border: "1.5px solid " + (filterGroupIds.size === 0 ? colors.primary : colors.border),
@@ -19246,7 +19236,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             }), style: {
               flexShrink: 0,
               fontSize: 12,
-              fontWeight: 300,
               padding: "4px 12px",
               borderRadius: 20,
               border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : colors.border),
@@ -19279,7 +19268,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     backgroundColor: (cs[0] ?? ev2.color) + "22",
                     ...leftStripeStyle(cs, 3)
                   },
-                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: [
+                  children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 13, color: colors.text.primary }, children: [
                     ev2.title,
                     isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: colors.text.muted }, children: [
                       " \u2014 ",
@@ -19290,7 +19279,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ev2.id
               );
             }),
-            allDayEvents.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: [
+            allDayEvents.length > 3 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 12, color: colors.text.muted }, children: [
               "+",
               allDayEvents.length - 3,
               " more"
@@ -19314,7 +19303,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 },
                 children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                   fontSize: 11,
-                  fontWeight: 300,
                   color: colors.text.muted,
                   width: 48,
                   textAlign: "right",
@@ -19368,7 +19356,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                           creatorName
                         ] }) : null
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted }, children: [
                         formatTime(ev2.start, use24h),
                         ev2.end ? ` \u2013 ${formatTime(ev2.end, use24h)}` : ""
                       ] }),
@@ -19384,7 +19372,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 10, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
                             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                               fontSize: 10,
-                              fontWeight: 300,
                               color: colors.primary,
                               textDecoration: "underline",
                               overflow: "hidden",
@@ -19563,7 +19550,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         flexShrink: 0
       }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: onExit, style: iconBtn, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s, { size: 18, weight: "thin" }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontWeight: 300, fontSize: 15, color: colors.text.primary }, children: "Full-Month Grid" })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 15, color: colors.text.primary }, children: "Full-Month Grid" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
         display: "grid",
@@ -19571,7 +19558,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         padding: "6px 8px",
         borderBottom: `1px solid ${colors.border}`,
         flexShrink: 0
-      }, children: dayHeaders.map((d) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: d }, d)) }),
+      }, children: dayHeaders.map((d) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", fontSize: 11, color: colors.text.muted }, children: d }, d)) }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "div",
         {
@@ -19956,7 +19943,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   },
                   style: {
                     ...iconBtn,
-                    fontWeight: 300,
                     fontSize: 17,
                     padding: "4px 8px",
                     border: `1px solid ${showMonthPicker ? colors.primary : colors.border}`,
@@ -19991,7 +19977,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   },
                   style: {
                     ...iconBtn,
-                    fontWeight: 300,
                     fontSize: 17,
                     padding: "4px 8px",
                     border: `1px solid ${showYearPicker ? colors.primary : colors.border}`,
@@ -20016,7 +20001,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 yr
               )) })
             ] })
-          ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: calView === "day" ? (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }) : (() => {
+          ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 17, color: colors.text.primary }, children: calView === "day" ? (/* @__PURE__ */ new Date(selectedDate + "T12:00:00")).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" }) : (() => {
             const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
             const dow = d.getDay();
             const off = (dow - weekStart + 7) % 7;
@@ -20058,7 +20043,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               opacity: isSliding ? 0 : 1,
               transition: isSliding ? "transform 0.22s ease, opacity 0.22s ease" : "none"
             }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }, children: [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)].map((d) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", fontSize: 12, fontWeight: 300, color: colors.text.muted, padding: "4px 0" }, children: d }, d)) }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", marginBottom: 4 }, children: [...DAYS.slice(weekStart), ...DAYS.slice(0, weekStart)].map((d) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", fontSize: 12, color: colors.text.muted, padding: "4px 0" }, children: d }, d)) }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "grid", gridTemplateColumns: "repeat(7,1fr)", gap: 2 }, children: calDays.map((cell, i2) => {
                 const ds = dateStr2(cell.y, cell.m, cell.d);
                 const evs = eventsOnDate(ds);
@@ -20161,7 +20146,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             alignItems: "center",
             gap: 3,
             fontSize: 11,
-            fontWeight: 300,
             color: colors.text.muted,
             letterSpacing: "0.03em"
           }, children: [
@@ -20171,7 +20155,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => setFilterGroupIds(/* @__PURE__ */ new Set()), style: {
             flexShrink: 0,
             fontSize: 12,
-            fontWeight: 300,
             padding: "4px 12px",
             borderRadius: 20,
             border: "1.5px solid " + (filterGroupIds.size === 0 ? colors.primary : colors.border),
@@ -20186,7 +20169,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           }), style: {
             flexShrink: 0,
             fontSize: 12,
-            fontWeight: 300,
             padding: "4px 12px",
             borderRadius: 20,
             border: "1.5px solid " + (filterGroupIds.has(g.id) ? g.color : colors.border),
@@ -20379,7 +20361,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 52 }, children: "\u26A1" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 20, fontWeight: 400, color: colors.text.primary }, children: "Enjoying PearCal?" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, lineHeight: "1.7" }, children: "PearCal is free and open source with no ads or subscriptions. If you've received value from it, consider returning value to support development." }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, lineHeight: "1.7" }, children: "PearCal is free and open source with no ads or subscriptions. If you've received value from it, consider returning value to support development." }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "button",
         {
@@ -20389,7 +20371,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             width: "100%",
             padding: "13px",
             fontSize: 15,
-            fontWeight: 300,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -20407,7 +20388,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             border: "none",
             color: colors.text.muted,
             fontSize: 13,
-            fontWeight: 300,
             cursor: "pointer",
             fontFamily: FONT,
             padding: "4px"
@@ -20424,7 +20404,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             border: "none",
             color: colors.text.muted,
             fontSize: 13,
-            fontWeight: 300,
             cursor: "pointer",
             fontFamily: FONT,
             padding: "4px"
@@ -20561,8 +20540,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       // Slide 0 — Welcome (or pair sub-flow when restoreMode is set)
       restoreMode === "pair" || restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 16, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 22, fontWeight: 400, color: colors.text.primary, textAlign: "center" }, children: "Pair with another device" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", maxWidth: 290, lineHeight: "1.6" }, children: "On your other device, open PearCal \u2192 Profile \u2192 Devices \u2192 Add a device, then scan or paste the pairing code here." }),
-        restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", padding: "8px 0" }, children: "Connecting to your other device\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", maxWidth: 290, lineHeight: "1.6" }, children: "On your other device, open PearCal \u2192 Profile \u2192 Devices \u2192 Add a device, then scan or paste the pairing code here." }),
+        restoreMode === "pair-waiting" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", padding: "8px 0" }, children: "Connecting to your other device\u2026" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
@@ -20571,7 +20550,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ...pillBtn,
                 padding: "12px 24px",
                 fontSize: 15,
-                fontWeight: 300,
                 width: "100%",
                 maxWidth: 260,
                 boxSizing: "border-box"
@@ -20579,7 +20557,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               children: "Scan QR code"
             }
           ),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300, marginTop: 4 }, children: "or paste the link" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginTop: 4 }, children: "or paste the link" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "textarea",
             {
@@ -20597,7 +20575,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 padding: "10px 12px",
                 color: colors.text.primary,
                 fontSize: 13,
-                fontWeight: 300,
                 fontFamily: "monospace",
                 width: "100%",
                 maxWidth: 260,
@@ -20617,7 +20594,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ...pillBtn,
                 padding: "12px 24px",
                 fontSize: 15,
-                fontWeight: 300,
                 width: "100%",
                 maxWidth: 260,
                 boxSizing: "border-box",
@@ -20627,7 +20603,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             }
           )
         ] }),
-        restoreError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 300 }, children: restoreError }),
+        restoreError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "#e67b7b", textAlign: "center", maxWidth: 300 }, children: restoreError }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -20645,7 +20621,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               color: colors.text.muted,
               fontFamily: FONT,
               fontSize: 13,
-              fontWeight: 300,
               cursor: "pointer",
               padding: 4,
               opacity: restoreMode === "pair-waiting" ? 0.4 : 1
@@ -20656,7 +20631,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       ] }, "0-pair") : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PearIcon, { size: 56 }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 22, fontWeight: 400, color: colors.text.primary, textAlign: "center" }, children: "Welcome to PearCal" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "A private shared calendar that works without servers, accounts, or subscriptions." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "A private shared calendar that works without servers, accounts, or subscriptions." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -20664,7 +20639,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               setSlideDir(1);
               setStep(1);
             },
-            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, marginTop: 8 },
+            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, marginTop: 8 },
             children: "Get Started"
           }
         ),
@@ -20678,7 +20653,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               color: colors.text.muted,
               fontFamily: FONT,
               fontSize: 13,
-              fontWeight: 300,
               cursor: "pointer",
               padding: 4,
               textDecoration: "underline"
@@ -20691,8 +20665,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n7, { size: 48, weight: "thin", color: "var(--color-accent)" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 22, fontWeight: 400, color: colors.text.primary, textAlign: "center" }, children: "No servers. No accounts." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server \u2014 it lives only on the devices you share it with." }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "Share invite links or QR codes to connect with group members." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", lineHeight: "1.6", maxWidth: 290 }, children: "PearCal syncs directly between devices using peer-to-peer technology. Your calendar data never touches a server \u2014 it lives only on the devices you share it with." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "Share invite links or QR codes to connect with group members." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -20700,7 +20674,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               setSlideDir(1);
               setStep(2);
             },
-            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, marginTop: 8 },
+            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, marginTop: 8 },
             children: "Next"
           }
         )
@@ -20709,7 +20683,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 20, flex: 1, justifyContent: "center" }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n9, { size: 48, weight: "thin", color: "var(--color-accent)" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 22, fontWeight: 400, color: colors.text.primary, textAlign: "center" }, children: "What's your name?" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "This is how you'll appear to group members in shared groups." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "This is how you'll appear to group members in shared groups." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "input",
           {
@@ -20723,7 +20697,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               padding: "12px 16px",
               color: colors.text.primary,
               fontSize: 16,
-              fontWeight: 300,
               fontFamily: FONT,
               width: "100%",
               boxSizing: "border-box",
@@ -20741,7 +20714,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               ...pillBtn,
               padding: "12px 40px",
               fontSize: 16,
-              fontWeight: 300,
               opacity: name.trim() && name.trim().toLowerCase() !== "my name" ? 1 : 0.4
             },
             children: saving ? "Saving\u2026" : "Continue"
@@ -20760,13 +20732,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           justifyContent: "center",
           fontSize: 40,
           color: "#fff",
-          fontWeight: 300,
           overflow: "hidden",
           opacity: photoSaving ? 0.5 : 1,
           transition: "opacity 0.2s"
         }, children: hasPhoto ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: profile.avatar, alt: "avatar", style: { width: "100%", height: "100%", objectFit: "cover" } }) : (profile?.name ?? "?").slice(0, 1).toUpperCase() }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 22, fontWeight: 400, color: colors.text.primary, textAlign: "center" }, children: "Add a photo" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "Optional \u2014 helps group members recognise you in shared groups." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, textAlign: "center", maxWidth: 290 }, children: "Optional \u2014 helps group members recognise you in shared groups." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { ref: fileRef, type: "file", accept: "image/*", style: { display: "none" }, onChange: handlePhotoChange }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "button",
@@ -20777,7 +20748,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               ...pillBtn,
               padding: "12px 20px",
               fontSize: 15,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -20803,7 +20773,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               ...pillBtn,
               padding: "12px 20px",
               fontSize: 15,
-              fontWeight: 300,
               width: "100%",
               maxWidth: 200,
               boxSizing: "border-box"
@@ -20819,7 +20788,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 16, width: "100%", maxWidth: 300 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n11, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, color: colors.text.muted, lineHeight: "1.6" }, children: [
               "Use the",
               " ",
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: {
@@ -20832,7 +20801,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 borderRadius: 12,
                 padding: "3px 10px",
                 fontSize: 12,
-                fontWeight: 300,
                 color: "var(--color-text)"
               }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n10, { size: 13, weight: "thin" }),
@@ -20864,11 +20832,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n7, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6" }, children: "Share the invite link or QR code from a group to let others join." })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.muted, lineHeight: "1.6" }, children: "Share the invite link or QR code from a group to let others join." })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c2, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, color: colors.text.muted, lineHeight: "1.6" }, children: [
               "Tap any day on the calendar, hit the",
               " ",
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
@@ -20888,7 +20856,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 14, alignItems: "flex-start" }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(l6, { size: 22, weight: "thin", color: "var(--color-muted)", style: { flexShrink: 0 } }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6" }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, color: colors.text.muted, lineHeight: "1.6" }, children: [
               "Have events in another calendar? Import them from the",
               " ",
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.primary, fontWeight: 400 }, children: "Profile" }),
@@ -20898,7 +20866,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         ] }),
         backupToastText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
           fontSize: 12,
-          fontWeight: 300,
           color: colors.text.muted,
           textAlign: "center",
           maxWidth: 300,
@@ -20911,7 +20878,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             onClick: () => {
               onComplete?.();
             },
-            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, fontWeight: 300, marginTop: 4 },
+            style: { ...pillBtn, padding: "12px 40px", fontSize: 16, marginTop: 4 },
             children: "Let's go!"
           }
         )
@@ -21027,18 +20994,18 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             onClick: (e60) => e60.stopPropagation(),
             children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 16, fontWeight: 400, color: colors.text.primary }, children: isCompleted ? "Device paired" : "Add a device" }),
-              isCompleted ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, fontWeight: 300, textAlign: "center", padding: "20px 0" }, children: "The other device is now linked to your identity." }) : isExpired ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, fontWeight: 300, textAlign: "center", lineHeight: 1.5 }, children: "This pairing link expired. Generate a new one and scan it within 15 minutes." }),
+              isCompleted ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, textAlign: "center", padding: "20px 0" }, children: "The other device is now linked to your identity." }) : isExpired ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, textAlign: "center", lineHeight: 1.5 }, children: "This pairing link expired. Generate a new one and scan it within 15 minutes." }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "button",
                   {
                     onClick: onRegenerate,
-                    style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14, fontWeight: 300 },
+                    style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14 },
                     children: "Generate new link"
                   }
                 )
               ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300, textAlign: "center", maxWidth: 260 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, textAlign: "center", maxWidth: 260 }, children: [
                   "On the other device, open PearCal and tap ",
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("b", { children: "I already use PearCal \u2192 Pair with another device" }),
                   "."
@@ -21050,7 +21017,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                   fontSize: 10,
                   color: colors.text.muted,
-                  fontWeight: 300,
                   textAlign: "center",
                   wordBreak: "break-all",
                   fontFamily: "monospace",
@@ -21067,7 +21033,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   }
                 )
               ] }),
-              error && !isCompleted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, textAlign: "center", maxWidth: 260 }, children: error }),
+              error && !isCompleted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", textAlign: "center", maxWidth: 260 }, children: error }),
               !isCompleted && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                 "button",
                 {
@@ -21079,7 +21045,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     fontFamily: FONT,
                     padding: "8px 20px",
                     fontSize: 13,
-                    fontWeight: 300,
                     cursor: "pointer",
                     borderRadius: 8,
                     width: "100%"
@@ -21146,7 +21111,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                 fontSize: 11,
                 color: colors.text.muted,
-                fontWeight: 300,
                 textAlign: "center",
                 wordBreak: "break-all"
               }, children: link }),
@@ -21188,7 +21152,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-              fontWeight: 300,
               fontSize: compact ? 13 : 15,
               color: colors.text.primary,
               textDecoration: isDeclined ? "line-through" : "none"
@@ -21197,12 +21160,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               showRsvpPill && myRsvpStatus === "declined" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: "#D45F7A", marginRight: 6 }, children: "\u2717" }),
               showRsvpPill && (!myRsvpStatus || myRsvpStatus === "pending") && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.muted, marginRight: 6 }, children: "?" }),
               ev2.title,
-              isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: colors.text.muted, fontWeight: 300 }, children: [
+              isShadow && creatorName ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: colors.text.muted }, children: [
                 " \u2014 ",
                 creatorName
               ] }) : null
             ] }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, marginTop: 2, fontWeight: 300 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, marginTop: 2 }, children: [
               ev2.allDay ? ev2.endDate && ev2.endDate !== ev2.date ? `${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })} \u2013 ${(/* @__PURE__ */ new Date(ev2.endDate + "T12:00:00")).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "All day" : `${formatTime(ev2.start, use24h)} \u2013 ${formatTime(ev2.end, use24h)}`,
               dayIndex && dayTotal ? ` \xB7 day ${dayIndex} of ${dayTotal}` : "",
               compact && ` \xB7 ${(/* @__PURE__ */ new Date(ev2.date + "T12:00:00")).toLocaleDateString(
@@ -21222,7 +21185,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 12, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                     fontSize: 11,
-                    fontWeight: 300,
                     color: colors.primary,
                     textDecoration: "underline",
                     overflow: "hidden",
@@ -21236,7 +21198,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               fontSize: 12,
               color: colors.text.muted,
               marginTop: 4,
-              fontWeight: 300,
               overflow: "hidden",
               display: "-webkit-box",
               WebkitLineClamp: 2,
@@ -21247,7 +21208,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               fontSize: 12,
               color: colors.text.muted,
               marginTop: 4,
-              fontWeight: 300,
               fontStyle: "italic",
               overflow: "hidden",
               display: "-webkit-box",
@@ -21280,7 +21240,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                     fontSize: 11,
                     color: colors.primary,
-                    fontWeight: 300,
                     textDecoration: "underline",
                     textAlign: "left",
                     lineHeight: "1.35",
@@ -21317,20 +21276,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     return "minutes";
   }
   function RemindersEditor({ reminders, setReminders }) {
-    const FONT2 = "Geist, system-ui, sans-serif";
-    const inp = {
-      width: "100%",
-      padding: "10px 12px",
-      borderRadius: 10,
-      fontSize: 13,
-      fontWeight: 300,
-      border: `1px solid ${colors.border}`,
-      background: colors.surface.input,
-      color: colors.text.primary,
-      fontFamily: FONT2,
-      appearance: "none",
-      boxSizing: "border-box"
-    };
+    const inp = { ...inputStyle, padding: "8px 10px", appearance: "none" };
     const [customMode, setCustomMode] = (0, import_react7.useState)(
       () => reminders.map((v2) => !isPresetReminder(v2))
     );
@@ -21468,11 +21414,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             borderRadius: 10,
             color: colors.text.muted,
             fontSize: 13,
-            fontWeight: 300,
             padding: "8px 12px",
             cursor: "pointer",
             width: "100%",
-            fontFamily: FONT2
+            fontFamily: FONT
           },
           children: "+ Add reminder"
         }
@@ -21659,7 +21604,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         borderBottom: `1px solid ${colors.border}`
       }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
-          fontWeight: 300,
           fontSize: 17,
           color: colors.text.primary,
           flex: 1,
@@ -21682,7 +21626,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ...pillBtn,
                 padding: "7px 16px",
                 fontSize: 13,
-                fontWeight: 300,
                 display: "flex",
                 alignItems: "center",
                 gap: 4
@@ -21732,7 +21675,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               border: `1px solid ${colors.border}`,
               borderRadius: 10,
               fontSize: 13,
-              fontWeight: 300,
               color: colors.text.primary,
               display: "flex",
               flexDirection: "column",
@@ -21849,7 +21791,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   style: {
                     padding: "10px 12px",
                     fontSize: 14,
-                    fontWeight: 300,
                     color: colors.text.primary,
                     cursor: "pointer",
                     borderBottom: i2 < suggestions.length - 1 ? `1px solid ${colors.border}` : "none",
@@ -21866,7 +21807,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 i2
               );
             }) }),
-            titleErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300, marginTop: 4 }, children: titleErr })
+            titleErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, marginTop: 4 }, children: titleErr })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { borderTop: `1px solid ${colors.border}`, paddingTop: 12, marginTop: 2 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
@@ -21883,7 +21824,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("input", { type: "date", style: inputStyle, value: ev2.date, onChange: (e60) => set("date", e60.target.value) })
               ] }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "All Day" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, color: colors.text.primary }, children: "All Day" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Toggle, { val: ev2.allDay, onChange: (v2) => {
                   set("allDay", v2);
                   if (!v2) set("endDate", "");
@@ -21919,7 +21860,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ] })
               ] }),
               (modal.mode === "create" || !ev2.recurrenceId) && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Recurring" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, color: colors.text.primary }, children: "Recurring" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   Toggle,
                   {
@@ -22035,7 +21976,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   ] });
                 })(),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Repeat forever" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 14, color: colors.text.primary }, children: "Repeat forever" }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                     Toggle,
                     {
@@ -22096,7 +22037,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                       background: sel ? g.color : "transparent",
                       color: sel ? "#fff" : g.color,
                       fontSize: 13,
-                      fontWeight: 300,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -22143,7 +22083,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               textTransform: "uppercase",
               marginBottom: 6
             }, children: "Share Busy Time" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2, marginBottom: 6, fontWeight: 300 }, children: "Members of these groups will see the title and time \u2014 nothing else." }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2, marginBottom: 6 }, children: "Members of these groups will see the title and time \u2014 nothing else." }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 }, children: others.map((g) => {
               const sel = myForwards.includes(g.id);
               return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -22158,7 +22098,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     background: sel ? g.color : "transparent",
                     color: sel ? "#fff" : g.color,
                     fontSize: 13,
-                    fontWeight: 300,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
@@ -22253,7 +22192,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                         fontSize: 12,
-                        fontWeight: 300,
                         color: colors.primary,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -22277,7 +22215,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     background: "transparent",
                     color: colors.text.muted,
                     fontSize: 13,
-                    fontWeight: 300,
                     fontFamily: FONT,
                     width: "100%"
                   },
@@ -22328,7 +22265,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     background: "transparent",
                     color: colors.text.muted,
                     fontSize: 13,
-                    fontWeight: 300,
                     fontFamily: FONT,
                     width: "100%"
                   },
@@ -22387,7 +22323,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 15, weight: "thin", color: "var(--color-accent)", style: { flexShrink: 0 } }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: {
                         fontSize: 12,
-                        fontWeight: 300,
                         color: colors.primary,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -22412,7 +22347,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                     background: "transparent",
                     color: colors.text.muted,
                     fontSize: 13,
-                    fontWeight: 300,
                     fontFamily: FONT,
                     width: "100%"
                   },
@@ -22517,7 +22451,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                       },
                       children: [
                         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: col, size: 24, fontSize: 11 }),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col, fontWeight: 300 }, children: m3.nickname || m3.name })
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 13, color: sel ? "#fff" : col }, children: m3.nickname || m3.name })
                       ]
                     },
                     m3.id
@@ -22535,7 +22469,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                       padding: "8px 0",
                       borderRadius: 10,
                       fontSize: 13,
-                      fontWeight: 300,
                       cursor: "pointer",
                       border: "1.5px solid " + (ev2.editPermission === val ? colors.primary : colors.border),
                       background: ev2.editPermission === val ? colors.primary : "transparent",
@@ -22550,7 +22483,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           ] }),
           modal.mode === "edit" && ev2.recurrenceId && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
             fontSize: 12,
-            fontWeight: 300,
             color: colors.text.muted,
             display: "flex",
             alignItems: "center",
@@ -22572,7 +22504,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 padding: "10px 0",
                 borderRadius: 10,
                 fontSize: 14,
-                fontWeight: 300,
                 cursor: "pointer",
                 border: "1.5px solid " + (myRsvp === val ? val === "going" ? "#5DBF8A" : "#D45F7A" : colors.border),
                 background: myRsvp === val ? val === "going" ? "#5DBF8A" : "#D45F7A" : "transparent",
@@ -22589,7 +22520,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           const isReadOnly = modal.mode === "edit" && ev2.editPermission === "creator" && !isCreator;
           if (isHoliday) return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
             fontSize: 12,
-            fontWeight: 300,
             color: colors.text.muted,
             textAlign: "center",
             padding: "8px 0",
@@ -22598,7 +22528,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           }, children: "\u{1F5D3} Public holiday \u2014 toggle off in Profile to remove all" });
           if (isReadOnly) return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
             fontSize: 12,
-            fontWeight: 300,
             color: colors.text.muted,
             textAlign: "center",
             padding: "8px 0",
@@ -22663,7 +22592,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             background: "transparent",
             color: colors.text.muted,
             fontSize: 13,
-            fontWeight: 300,
             fontFamily: FONT,
             width: "100%"
           },
@@ -22695,7 +22623,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               padding: "11px",
               color: "#D45F7A",
               fontSize: 14,
-              fontWeight: 300,
               fontFamily: FONT,
               cursor: "pointer",
               width: "100%"
@@ -22740,7 +22667,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose, zIndex: 100, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 8px", display: "flex", flexDirection: "column", gap: 14 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 17, fontWeight: 300, color: colors.text.primary }, children: "Join a Group" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 17, color: colors.text.primary }, children: "Join a Group" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
       !pasteMode ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
@@ -22756,7 +22683,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               width: "100%",
               padding: "14px",
               fontSize: 15,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -22777,7 +22703,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               width: "100%",
               padding: "14px",
               fontSize: 15,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -22805,7 +22730,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               borderRadius: 10,
               padding: "10px 12px",
               fontSize: 13,
-              fontWeight: 300,
               fontFamily: "inherit",
               resize: "none",
               boxSizing: "border-box",
@@ -22816,7 +22740,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             }
           }
         ),
-        pasteErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#D45F7A", fontWeight: 300 }, children: pasteErr }),
+        pasteErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#D45F7A" }, children: pasteErr }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
@@ -22831,7 +22755,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 padding: "10px",
                 borderRadius: 10,
                 fontSize: 13,
-                fontWeight: 300,
                 background: "transparent",
                 border: "1px solid " + colors.border,
                 color: colors.text.muted,
@@ -22850,7 +22773,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 ...pillBtn,
                 padding: "10px",
                 fontSize: 13,
-                fontWeight: 300,
                 opacity: !pasteUrl.trim() ? 0.5 : 1
               },
               children: "Join"
@@ -22895,13 +22817,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose, zIndex: 110, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 14 }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 17, fontWeight: 300, color: colors.text.primary }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { fontSize: 17, color: colors.text.primary }, children: [
           "Join ",
           groupName
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, fontWeight: 300 }, children: "How should group members see your name?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted }, children: "How should group members see your name?" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "input",
         {
@@ -22915,7 +22837,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             padding: "9px 12px",
             color: colors.text.primary,
             fontSize: 14,
-            fontWeight: 300,
             fontFamily: FONT,
             width: "100%",
             boxSizing: "border-box",
@@ -22923,7 +22844,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           }
         }
       ),
-      err ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e55", fontWeight: 300 }, children: err }) : null,
+      err ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e55" }, children: err }) : null,
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
         "button",
         {
@@ -22934,7 +22855,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             width: "100%",
             padding: "13px",
             fontSize: 15,
-            fontWeight: 300,
             opacity: joining || !nickname.trim() ? 0.5 : 1
           },
           children: joining ? "Joining\u2026" : "Join Group"
@@ -22964,13 +22884,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", height: "100%", position: "relative" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, overflowY: "auto", padding: "16px 16px calc(88px + var(--safe-area-bottom))", WebkitOverflowScrolling: "touch" }, children: [
-        groups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", color: colors.text.muted, fontSize: 14, fontWeight: 300, padding: "48px 0" }, children: "No groups yet \u2014 create one or join one!" }),
+        groups.length === 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { textAlign: "center", color: colors.text.muted, fontSize: 14, padding: "48px 0" }, children: "No groups yet \u2014 create one or join one!" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 14 }, children: groups.map((g) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "16px", borderLeft: `4px solid ${g.color}` }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(GroupIcon, { group: g }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 15, color: colors.text.primary }, children: g.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300 }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 15, color: colors.text.primary }, children: g.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted }, children: [
                 (g.members ?? []).length,
                 " member",
                 (g.members ?? []).length !== 1 ? "s" : ""
@@ -22996,14 +22916,14 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             alignItems: "flex-start"
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 18, lineHeight: 1 }, children: "\u23F3" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, fontSize: 12, color: colors.text.primary, fontWeight: 300, lineHeight: 1.4 }, children: [
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, fontSize: 12, color: colors.text.primary, lineHeight: 1.4 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 400, marginBottom: 2 }, children: "Waiting for owner approval" }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: colors.text.muted }, children: "The owner must approve your return before you'll see the group's members and events." })
             ] })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }, children: (g.members ?? []).map((m3) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.nickname || m3.name, color: groups.length === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 34, fontSize: 13 }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 10, color: colors.text.muted, fontWeight: 300 }, children: m3.nickname || m3.name })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 10, color: colors.text.muted }, children: m3.nickname || m3.name })
           ] }, m3.id)) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
             "button",
@@ -23019,7 +22939,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 width: "100%",
                 padding: "10px",
                 fontSize: 13,
-                fontWeight: 300,
                 fontFamily: FONT,
                 background: "transparent",
                 border: `1px solid ${g.color}44`,
@@ -23062,7 +22981,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           cursor: "pointer",
           fontFamily: FONT,
           fontSize: 14,
-          fontWeight: 300,
           color: "var(--color-text)",
           pointerEvents: "auto"
         }, children: [
@@ -23083,7 +23001,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           cursor: "pointer",
           fontFamily: FONT,
           fontSize: 14,
-          fontWeight: 300,
           color: "#fff",
           pointerEvents: "auto"
         }, children: [
@@ -23141,14 +23058,14 @@ ${link}`;
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 22, flexShrink: 0 }, children: icon }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 14, color: colors.text.primary }, children: title }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300 }, children: subtitle })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: title }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: subtitle })
           ] })
         ]
       }
     );
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose, zIndex: 300, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 16px 8px" }, children: [
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontWeight: 300, fontSize: 16, color: colors.text.primary, marginBottom: 16 }, children: [
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 16, color: colors.text.primary, marginBottom: 16 }, children: [
         "Invite to ",
         group.name
       ] }),
@@ -23247,12 +23164,12 @@ ${link}`;
       setSaved(true);
       setTimeout(() => setSaved(false), 2e3);
     }
-    const section = (label) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, letterSpacing: "0.08em", color: colors.text.muted, marginBottom: 8, marginTop: 4 }, children: label });
+    const section = (label) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, letterSpacing: "0.08em", color: colors.text.muted, marginBottom: 8, marginTop: 4 }, children: label });
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(BottomSheet, { onClose, zIndex: 200, closeRef: bsCloseRef, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: "Group Settings" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 17, color: colors.text.primary }, children: "Group Settings" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, alignItems: "center" }, children: [
-          saved && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: "#5DBF8A", fontWeight: 300 }, children: "\u2713 Saved" }),
+          saved && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: "#5DBF8A" }, children: "\u2713 Saved" }),
           isOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
@@ -23262,7 +23179,6 @@ ${link}`;
                 ...pillBtn,
                 fontSize: 13,
                 padding: "6px 16px",
-                fontWeight: 300,
                 opacity: saving ? 0.6 : 1,
                 display: "flex",
                 alignItems: "center",
@@ -23289,21 +23205,20 @@ ${link}`;
           alignItems: "flex-start"
         }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 20, lineHeight: 1 }, children: "\u23F3" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, fontSize: 13, color: colors.text.primary, fontWeight: 300, lineHeight: 1.45 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, fontSize: 13, color: colors.text.primary, lineHeight: 1.45 }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 400, marginBottom: 3 }, children: "Waiting for owner approval" }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: colors.text.muted }, children: "The group owner is reviewing your recovery-phrase match. You'll see the full member list and events once they approve." })
           ] })
         ] }),
         g.brokenAt && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { border: "1px solid #D45F7A66", background: "#D45F7A11", borderRadius: 12, padding: "14px 16px" }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: "#D45F7A", marginBottom: 6 }, children: "\u26A0 This group's data couldn't be loaded" }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300, lineHeight: 1.5, marginBottom: 10 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "#D45F7A", marginBottom: 6 }, children: "\u26A0 This group's data couldn't be loaded" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5, marginBottom: 10 }, children: [
             "The local copy of this group is corrupted and can't be recovered in place.",
             isOwner ? " As the owner, you\u2019ll need to recreate the group and re-invite everyone." : " Ask the group owner to send you a fresh invite link."
           ] }),
           g.brokenError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
             fontSize: 10,
             color: colors.text.muted,
-            fontWeight: 300,
             fontFamily: "monospace",
             marginBottom: 10,
             opacity: 0.7,
@@ -23323,7 +23238,6 @@ ${link}`;
                 fontSize: 13,
                 padding: "8px 14px",
                 cursor: "pointer",
-                fontWeight: 300,
                 fontFamily: FONT,
                 display: "flex",
                 alignItems: "center",
@@ -23348,8 +23262,8 @@ ${link}`;
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 14, color: colors.text.primary }, children: m3.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: "Invite sent" })
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: m3.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Invite sent" })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
               "button",
@@ -23368,7 +23282,6 @@ ${link}`;
                   fontSize: 12,
                   padding: "5px 10px",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT
                 },
                 children: [
@@ -23381,7 +23294,7 @@ ${link}`;
         ] }),
         canManage && rejoinRequests.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
           section("REJOIN REQUESTS"),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300, marginBottom: 8, lineHeight: 1.5 }, children: "Someone you previously removed has returned with a matching recovery phrase. Approve to restore them as a member, or deny to keep them out." }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 8, lineHeight: 1.5 }, children: "Someone you previously removed has returned with a matching recovery phrase. Approve to restore them as a member, or deny to keep them out." }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: rejoinRequests.map((r10) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
             display: "flex",
             alignItems: "center",
@@ -23392,11 +23305,10 @@ ${link}`;
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: null, avatarHash: r10.avatarHash, name: r10.name || "?", color: g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 14, color: colors.text.primary }, children: r10.name || "Unknown" }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: r10.name || "Unknown" }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
                 fontSize: 11,
                 color: colors.text.muted,
-                fontWeight: 300,
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap"
@@ -23421,7 +23333,6 @@ ${link}`;
                   fontSize: 12,
                   padding: "5px 10px",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT
                 },
                 children: "Approve"
@@ -23442,7 +23353,6 @@ ${link}`;
                   fontSize: 12,
                   padding: "5px 10px",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT
                 },
                 children: "Deny"
@@ -23462,8 +23372,8 @@ ${link}`;
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 14, color: colors.text.primary }, children: m3.name }),
-              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: "Removed" })
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: m3.name }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Removed" })
             ] }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
               "button",
@@ -23490,7 +23400,6 @@ ${link}`;
                   fontSize: 12,
                   padding: "5px 10px",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT
                 },
                 children: [
@@ -23513,7 +23422,6 @@ ${link}`;
                   fontSize: 12,
                   padding: "5px 10px",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT
                 },
                 children: [
@@ -23547,7 +23455,6 @@ ${link}`;
                       background: "transparent",
                       color: colors.text.primary,
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT,
                       display: "flex",
                       alignItems: "center",
@@ -23571,7 +23478,6 @@ ${link}`;
                       background: "transparent",
                       color: "#D45F7A",
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT
                     },
                     children: "Remove"
@@ -23602,7 +23508,7 @@ ${link}`;
                   }
                 }
               ),
-              nameErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "#D45F7A", fontSize: 12, fontWeight: 300 }, children: nameErr }),
+              nameErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "#D45F7A", fontSize: 12 }, children: nameErr }),
               !g.icon && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 }, children: GROUP_EMOJIS.map((em) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                 "button",
                 {
@@ -23667,12 +23573,12 @@ ${link}`;
                   setNickSaved(true);
                   setTimeout(() => setNickSaved(false), 2e3);
                 },
-                style: { ...pillBtn, fontSize: 13, padding: "6px 16px", fontWeight: 300, flexShrink: 0 },
+                style: { ...pillBtn, fontSize: 13, padding: "6px 16px", flexShrink: 0 },
                 children: nickSaved ? "\u2713" : "Save"
               }
             )
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 4 }, children: "How you appear to others in this group" })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 4 }, children: "How you appear to others in this group" })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
           section(`MEMBERS \xB7 ${g.members.length}`),
@@ -23691,16 +23597,16 @@ ${link}`;
             }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 38, fontSize: 15 }),
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontWeight: 300, fontSize: 14, color: colors.text.primary }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 14, color: colors.text.primary }, children: [
                   m3.nickname || m3.name,
-                  isMe && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted, marginLeft: 6, fontWeight: 300 }, children: "(you)" })
+                  isMe && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted, marginLeft: 6 }, children: "(you)" })
                 ] }),
-                m3.nickname && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: m3.name }),
-                isMemberOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: g.color, fontWeight: 300, display: "flex", alignItems: "center", gap: 3 }, children: [
+                m3.nickname && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: m3.name }),
+                isMemberOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: g.color, display: "flex", alignItems: "center", gap: 3 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s7, { size: 11, weight: "thin" }),
                   " Owner"
                 ] }),
-                !isMemberOwner && isMemberAdmin && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: "#4CAF50", fontWeight: 300, display: "flex", alignItems: "center", gap: 3 }, children: [
+                !isMemberOwner && isMemberAdmin && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: "#4CAF50", display: "flex", alignItems: "center", gap: 3 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(h, { size: 11, weight: "thin" }),
                   " Admin"
                 ] })
@@ -23720,7 +23626,6 @@ ${link}`;
                       fontSize: 11,
                       padding: "4px 8px",
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT,
                       display: "flex",
                       alignItems: "center",
@@ -23747,20 +23652,18 @@ ${link}`;
                       fontSize: 11,
                       padding: "4px 8px",
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT
                     },
                     children: "Remove"
                   }
                 ),
-                isMe && !isOwner && !isAdmin && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: "Member" }),
+                isMe && !isOwner && !isAdmin && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted }, children: "Member" }),
                 isMe && isOwner && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: {
                   fontSize: 11,
                   color: g.color,
                   background: g.color + "22",
                   padding: "3px 8px",
                   borderRadius: 10,
-                  fontWeight: 300,
                   display: "flex",
                   alignItems: "center",
                   gap: 3
@@ -23774,7 +23677,6 @@ ${link}`;
                   background: "#4CAF5022",
                   padding: "3px 8px",
                   borderRadius: 10,
-                  fontWeight: 300,
                   display: "flex",
                   alignItems: "center",
                   gap: 3
@@ -23808,11 +23710,11 @@ ${link}`;
               }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s7, { size: 18, weight: "thin", style: { color: g.color, flexShrink: 0 } }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { flex: 1, minWidth: 0 }, children: isOwner ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "You are the owner" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 2 }, children: "Only you can remove members and approve rejoin requests" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "You are the owner" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: "Only you can remove members and approve rejoin requests" })
                 ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: ownerName }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 2 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: ownerName }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: [
                     "Active ",
                     formatRelativeTime(lastOwnerActivityTs) || "recently"
                   ] })
@@ -23832,7 +23734,6 @@ ${link}`;
                     fontSize: 13,
                     padding: "10px 14px",
                     cursor: "pointer",
-                    fontWeight: 300,
                     fontFamily: FONT,
                     textAlign: "left",
                     display: "flex",
@@ -23850,7 +23751,6 @@ ${link}`;
                   padding: "10px 14px",
                   fontSize: 12,
                   color: colors.text.muted,
-                  fontWeight: 300,
                   borderBottom: `1px solid ${colors.border}`
                 }, children: "Pick a member to promote. They'll gain owner privileges; you'll lose them." }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", flexDirection: "column" }, children: nonOwnerMembers.map((m3) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -23876,8 +23776,8 @@ ${link}`;
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(MemberAvatar, { avatar: m3.avatar, avatarHash: m3.avatarHash, name: m3.name, color: totalGroupsCount === 1 ? memberColorIndexed(g, m3.id) : g.color, size: 32, fontSize: 13 }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: m3.nickname || m3.name }),
-                        m3.nickname && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: m3.name })
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: m3.nickname || m3.name }),
+                        m3.nickname && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: m3.name })
                       ] })
                     ]
                   },
@@ -23895,7 +23795,6 @@ ${link}`;
                       color: colors.text.muted,
                       fontSize: 12,
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT,
                       textAlign: "center"
                     },
@@ -23904,7 +23803,7 @@ ${link}`;
                 )
               ] }),
               canClaimOwnership && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { border: "1px solid #F5C47466", background: "#F5C47411", borderRadius: 12, padding: "12px 14px" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: colors.text.primary, fontWeight: 300, marginBottom: 6, lineHeight: 1.45 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: colors.text.primary, marginBottom: 6, lineHeight: 1.45 }, children: [
                   "The owner has been inactive for ",
                   ownerInactiveDays,
                   " day",
@@ -23925,7 +23824,6 @@ ${link}`;
                       fontSize: 13,
                       padding: "6px 12px",
                       cursor: "pointer",
-                      fontWeight: 300,
                       fontFamily: FONT,
                       display: "flex",
                       alignItems: "center",
@@ -23947,7 +23845,6 @@ ${link}`;
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                     fontSize: 11,
                     color: colors.text.muted,
-                    fontWeight: 300,
                     marginTop: 4,
                     marginBottom: 6,
                     letterSpacing: "0.04em"
@@ -23959,7 +23856,7 @@ ${link}`;
                       const byName = lookupName(e60.by);
                       const toName = lookupName(e60.to);
                       const selfPromoted = e60.by === e60.to;
-                      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300, lineHeight: 1.5 }, children: [
+                      return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: [
                         selfPromoted ? `${toName} claimed ownership` : `${byName} transferred to ${toName}`,
                         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { marginLeft: 8, opacity: 0.7 }, children: whenStr })
                       ] }, i2);
@@ -23974,7 +23871,6 @@ ${link}`;
                           color: colors.text.muted,
                           fontSize: 11,
                           fontFamily: FONT,
-                          fontWeight: 300,
                           cursor: "pointer",
                           textAlign: "left",
                           padding: "2px 0",
@@ -24006,7 +23902,6 @@ ${link}`;
                   fontFamily: FONT,
                   color: colors.text.primary,
                   fontSize: 14,
-                  fontWeight: 300,
                   cursor: "pointer",
                   textAlign: "left",
                   display: "flex",
@@ -24016,7 +23911,7 @@ ${link}`;
                 },
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: "Rekey Group" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, textAlign: "right" }, children: "Reclaim shared history storage" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 11, color: colors.text.muted, textAlign: "right" }, children: "Reclaim shared history storage" })
                 ]
               }
             ) })
@@ -24037,7 +23932,6 @@ ${link}`;
                   fontFamily: FONT,
                   color: "#D45F7A",
                   fontSize: 14,
-                  fontWeight: 300,
                   cursor: "pointer",
                   textAlign: "left",
                   display: "flex",
@@ -24049,7 +23943,7 @@ ${link}`;
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c7, { size: 16, weight: "thin" }),
                     " Leave Group"
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300 }, children: "You'll lose access to shared events" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: colors.text.muted }, children: "You'll lose access to shared events" })
                 ]
               }
             ),
@@ -24067,7 +23961,6 @@ ${link}`;
                   fontFamily: FONT,
                   color: "#D45F7A",
                   fontSize: 14,
-                  fontWeight: 300,
                   cursor: "pointer",
                   textAlign: "left",
                   display: "flex",
@@ -24079,7 +23972,7 @@ ${link}`;
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 16, weight: "thin" }),
                     " Delete Group"
                   ] }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: "#D45F7A99", fontWeight: 300 }, children: "Permanent \u2014 cannot be undone" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 12, color: "#D45F7A99" }, children: "Permanent \u2014 cannot be undone" })
                 ]
               }
             )
@@ -24130,7 +24023,7 @@ ${link}`;
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(BottomSheet, { onClose, zIndex: 200, closeRef: bsCloseRef, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "12px 20px 0", display: "flex", justifyContent: "space-between", alignItems: "center" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: "Create a Group" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 17, color: colors.text.primary }, children: "Create a Group" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("button", { onClick: () => bsCloseRef.current?.(), style: { ...iconBtn, fontSize: 20 }, children: "\u2715" })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 8px", display: "flex", flexDirection: "column", gap: 14 }, children: [
@@ -24150,7 +24043,7 @@ ${link}`;
           nameErr && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { color: "var(--color-destructive)", fontSize: 13, marginTop: 4 }, children: nameErr })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "var(--color-muted)", fontWeight: 300, marginBottom: 8 }, children: "Group Avatar" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "var(--color-muted)", marginBottom: 8 }, children: "Group Avatar" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", alignItems: "center", gap: 10 }, children: [
             icon ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { position: "relative", width: 52, height: 52, borderRadius: 12, overflow: "hidden", flexShrink: 0 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("img", { src: icon, alt: "", style: { width: "100%", height: "100%", objectFit: "cover" } }),
@@ -24208,7 +24101,6 @@ ${link}`;
                   background: "transparent",
                   color: "var(--color-text)",
                   cursor: "pointer",
-                  fontWeight: 300,
                   fontFamily: FONT,
                   display: "flex",
                   alignItems: "center",
@@ -24223,7 +24115,7 @@ ${link}`;
           ] })
         ] }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "var(--color-muted)", fontWeight: 300, marginBottom: 6 }, children: "Color" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: "var(--color-muted)", marginBottom: 6 }, children: "Color" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: GROUP_COLORS.map((c9) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
             {
@@ -24246,7 +24138,7 @@ ${link}`;
           {
             onClick: handleCreate,
             disabled: creating,
-            style: { ...pillBtn, padding: "13px", fontSize: 15, fontWeight: 300, opacity: creating ? 0.6 : 1 },
+            style: { ...pillBtn, padding: "13px", fontSize: 15, opacity: creating ? 0.6 : 1 },
             children: creating ? "Creating\u2026" : "Create Group"
           }
         )
@@ -24268,8 +24160,8 @@ ${link}`;
     }, []);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 10, textAlign: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(m, { size: 28, weight: "thin", color: "var(--color-accent)" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: "Edit recurring event" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, fontWeight: 300 }, children: "Apply changes to just this event, this and future events, or every event in the series?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary }, children: "Edit recurring event" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5 }, children: "Apply changes to just this event, this and future events, or every event in the series?" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Button, { onClick: () => {
         bsCloseRef.current?.();
         setTimeout(() => onSave(ev2, "one"), 280);
@@ -24300,8 +24192,8 @@ ${link}`;
     }, []);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n8, { size: 28, weight: "thin", color: "var(--color-destructive)" }) }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: "Delete recurring event" }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, fontWeight: 300 }, children: "Delete just this event, or the entire series?" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary }, children: "Delete recurring event" }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5 }, children: "Delete just this event, or the entire series?" }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 10, width: "100%", marginTop: 8 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
@@ -24319,7 +24211,6 @@ ${link}`;
               background: "var(--color-destructive)",
               color: "#fff",
               fontSize: 14,
-              fontWeight: 300,
               cursor: "pointer"
             },
             children: "This Event"
@@ -24341,7 +24232,6 @@ ${link}`;
               background: "var(--color-destructive)",
               color: "#fff",
               fontSize: 14,
-              fontWeight: 300,
               cursor: "pointer"
             },
             children: "Entire Series"
@@ -24361,7 +24251,6 @@ ${link}`;
             background: "transparent",
             color: "var(--color-text)",
             fontSize: 14,
-            fontWeight: 300,
             cursor: "pointer",
             marginBottom: 8
           },
@@ -24385,8 +24274,8 @@ ${link}`;
     }, []);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }, children: [
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 4 }, children: icon }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, fontWeight: 300 }, children: message }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary }, children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5 }, children: message }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 10, width: "100%", marginTop: 8 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Button, { variant: "secondary", onClick: () => bsCloseRef.current?.(), style: { flex: 1 }, children: "Cancel" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -24419,8 +24308,8 @@ ${link}`;
     }, []);
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }, children: [
       icon && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 4 }, children: icon }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontWeight: 300, fontSize: 17, color: colors.text.primary }, children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, fontWeight: 300 }, children: message }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary }, children: title }),
+      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5 }, children: message }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Button, { onClick: () => bsCloseRef.current?.(), style: { marginTop: 8 }, children: "OK" })
     ] }) });
   }
@@ -24546,7 +24435,6 @@ ${link}`;
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
         fontSize: 13,
         color: colors.text.muted,
-        fontWeight: 300,
         marginBottom: 16,
         overflow: "hidden",
         textOverflow: "ellipsis",
@@ -24566,10 +24454,10 @@ ${link}`;
           borderRadius: 4,
           background: row.color ?? colors.text.muted
         } }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { flex: 1, fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: row.label }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted }, children: row.count })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { flex: 1, fontSize: 13, color: colors.text.primary }, children: row.label }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted }, children: row.count })
       ] }, i2)) }),
-      skippedCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, marginBottom: 12 }, children: [
+      skippedCount > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 12 }, children: [
         skippedCount,
         " event",
         skippedCount !== 1 ? "s" : "",
@@ -24595,7 +24483,7 @@ ${link}`;
           r10.ev.title,
           r10.skipped ? " \xB7 (skipped)" : ""
         ] }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, fontWeight: 300 }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted }, children: [
           r10.ev.date,
           r10.ev.allDay ? r10.ev.endDate ? ` \u2013 ${r10.ev.endDate} \xB7 All day` : " \xB7 All day" : r10.ev.start ? ` \xB7 ${r10.ev.start}${r10.ev.end ? "\u2013" + r10.ev.end : ""}` : ""
         ] })
@@ -24610,7 +24498,6 @@ ${link}`;
             width: "100%",
             padding: 13,
             fontSize: 15,
-            fontWeight: 300,
             opacity: toImport.length === 0 ? 0.4 : 1
           },
           children: [
@@ -24681,11 +24568,11 @@ ${link}`;
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4, marginBottom: 16 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(PearIcon, { size: 44 }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 18, fontWeight: 400, color: colors.text.primary }, children: "PearCal" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: "Decentralized. Private. No servers." })
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: "Decentralized. Private. No servers." })
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "HOW IT WORKS" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol. Your calendar data never touches a server \u2014 it lives only on the devices in your groups. No accounts. No subscriptions. No data collection." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal syncs directly between devices using peer-to-peer technology powered by Hypercore Protocol. Your calendar data never touches a server \u2014 it lives only on the devices in your groups. No accounts. No subscriptions. No data collection." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "button",
           {
@@ -24695,7 +24582,6 @@ ${link}`;
               width: "100%",
               padding: "10px",
               fontSize: 14,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -24710,19 +24596,19 @@ ${link}`;
       ] }),
       onReplayTour && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "HELP" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Walk through the calendar's main controls again \u2014 create flow, groups, profile, settings." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Walk through the calendar's main controls again \u2014 create flow, groups, profile, settings." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
             onClick: onReplayTour,
-            style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14, fontWeight: 300 },
+            style: { ...pillBtn, width: "100%", padding: "10px", fontSize: 14 },
             children: "Replay welcome tour"
           }
         )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "SUPPORT DEVELOPMENT" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal is free and open source. If you receive value from it, please consider returning value." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "PearCal is free and open source. If you receive value from it, please consider returning value." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
             "button",
@@ -24734,7 +24620,6 @@ ${link}`;
                 minWidth: 120,
                 padding: "10px 8px",
                 fontSize: 13,
-                fontWeight: 300,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -24757,7 +24642,6 @@ ${link}`;
                 minWidth: 120,
                 padding: "10px 8px",
                 fontSize: 13,
-                fontWeight: 300,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -24774,7 +24658,7 @@ ${link}`;
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "LEARN ABOUT BITCOIN" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "New to Bitcoin? The Satoshi Nakamoto Institute has a free, concise crash course explaining how Bitcoin works and why it matters." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "button",
           {
@@ -24784,7 +24668,6 @@ ${link}`;
               width: "100%",
               padding: "10px",
               fontSize: 14,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -24800,7 +24683,7 @@ ${link}`;
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { background: colors.surface.card, borderRadius: 14, padding: "12px 14px", marginBottom: 10 }, children: [
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 400, color: colors.text.primary, marginBottom: 6, letterSpacing: "0.04em", textAlign: "center" }, children: "SHARE THE APP" }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Know someone who'd enjoy a private, serverless calendar? Share PearCal with them." }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: "1.6", marginBottom: 10 }, children: "Know someone who'd enjoy a private, serverless calendar? Share PearCal with them." }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "button",
           {
@@ -24810,7 +24693,6 @@ ${link}`;
               width: "100%",
               padding: "10px",
               fontSize: 14,
-              fontWeight: 300,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -24835,7 +24717,6 @@ ${link}`;
                 flex: 1,
                 padding: "10px 8px",
                 fontSize: 13,
-                fontWeight: 300,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -24857,7 +24738,6 @@ ${link}`;
                 flex: 1,
                 padding: "10px 8px",
                 fontSize: 13,
-                fontWeight: 300,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -24905,7 +24785,7 @@ ${link}`;
             " Show a QR / pay in a browser ",
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(c5, { size: 16, weight: "fill" })
           ] }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, margin: "4px 0 0", textAlign: "center", lineHeight: 1.5 }, children: "Scan from another device or on desktop." })
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, margin: "4px 0 0", textAlign: "center", lineHeight: 1.5 }, children: "Scan from another device or on desktop." })
         ] }),
         BTC_ONCHAIN_ADDRESS && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: donateSecLabel, children: "On-chain Bitcoin" }),
@@ -24935,7 +24815,7 @@ ${link}`;
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 400, color: colors.text.primary }, children: w.name }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: w.desc })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: w.desc })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n, { size: 14, weight: "thin", color: colors.text.muted })
               ]
@@ -24948,7 +24828,6 @@ ${link}`;
       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
         textAlign: "center",
         fontSize: 11,
-        fontWeight: 300,
         color: colors.text.muted,
         paddingTop: 16,
         paddingBottom: 4
@@ -25235,7 +25114,6 @@ ${link}`;
             justifyContent: "center",
             fontSize: 36,
             color: "#fff",
-            fontWeight: 300,
             overflow: "hidden",
             opacity: photoSaving ? 0.5 : 1,
             transition: "opacity 0.2s"
@@ -25271,7 +25149,6 @@ ${link}`;
                 background: "transparent",
                 color: colors.text.primary,
                 cursor: "pointer",
-                fontWeight: 300,
                 fontFamily: FONT,
                 display: "flex",
                 alignItems: "center",
@@ -25297,7 +25174,6 @@ ${link}`;
                 background: "transparent",
                 color: "#D45F7A",
                 cursor: "pointer",
-                fontWeight: 300,
                 fontFamily: FONT,
                 opacity: photoSaving ? 0.5 : 1
               },
@@ -25321,7 +25197,6 @@ ${link}`;
             autoFocus: true,
             style: {
               fontSize: 18,
-              fontWeight: 300,
               textAlign: "center",
               background: "transparent",
               fontFamily: FONT,
@@ -25334,20 +25209,19 @@ ${link}`;
             value: name,
             onChange: (e60) => setName(e60.target.value)
           }
-        ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 20, fontWeight: 300, color: colors.text.primary }, children: profile?.name ?? "My Name" }),
+        ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 20, color: colors.text.primary }, children: profile?.name ?? "My Name" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
             onClick: editing ? saveName : () => setEditing(true),
             disabled: saving,
-            style: { ...pillBtn, fontSize: 13, padding: "5px 16px", fontWeight: 300, opacity: saving ? 0.6 : 1 },
+            style: { ...pillBtn, fontSize: 13, padding: "5px 16px", opacity: saving ? 0.6 : 1 },
             children: saving ? "Saving\u2026" : editing ? "Save Name" : "Edit Name"
           }
         )
       ] }),
       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
         fontSize: 12,
-        fontWeight: 300,
         color: colors.text.muted,
         letterSpacing: "0.06em",
         marginBottom: 12,
@@ -25369,7 +25243,7 @@ ${link}`;
             cursor: "pointer"
           },
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.06em" }, children: "PERSONAL" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, letterSpacing: "0.06em" }, children: "PERSONAL" }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
               s4,
               {
@@ -25387,17 +25261,17 @@ ${link}`;
         overflow: "hidden",
         transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
       }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "APPEARANCE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "APPEARANCE" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
           padding: "14px 16px",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between"
         }, children: [
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: "Dark mode" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: "Dark mode" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Toggle, { val: dark, onChange: onToggleDark, accent: colors.primary })
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "FIRST DAY OF WEEK" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "FIRST DAY OF WEEK" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { padding: "14px 16px", display: "flex", gap: 8 }, children: [["Sunday", 0], ["Monday", 1]].map(([label, val]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -25409,7 +25283,6 @@ ${link}`;
               padding: "8px 0",
               borderRadius: 10,
               fontSize: 13,
-              fontWeight: 300,
               cursor: "pointer",
               fontFamily: FONT,
               border: "1.5px solid " + (weekStart === val ? colors.primary : colors.border),
@@ -25420,7 +25293,7 @@ ${link}`;
           },
           val
         )) }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEFAULT REMINDER" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEFAULT REMINDER" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { padding: "14px 16px" }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
           "select",
           {
@@ -25434,7 +25307,6 @@ ${link}`;
               padding: "10px 12px",
               borderRadius: 10,
               fontSize: 13,
-              fontWeight: 300,
               border: `1px solid ${colors.border}`,
               background: colors.surface.input,
               color: colors.text.primary,
@@ -25453,7 +25325,7 @@ ${link}`;
           const digestMinute = Number.isFinite(Number(profile?.digestMinute)) ? Number(profile.digestMinute) : 0;
           const hhmm = String(digestHour).padStart(2, "0") + ":" + String(digestMinute).padStart(2, "0");
           return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DAILY DIGEST" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DAILY DIGEST" }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 12 }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
                 padding: "14px 16px",
@@ -25462,8 +25334,8 @@ ${link}`;
                 justifyContent: "space-between"
               }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, paddingRight: 12 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: "Morning summary" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 2 }, children: "Notifies you of today's events so the app foregrounds and peers sync" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: "Morning summary" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: "Notifies you of today's events so the app foregrounds and peers sync" })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   Toggle,
@@ -25482,7 +25354,7 @@ ${link}`;
                 alignItems: "center",
                 justifyContent: "space-between"
               }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: "Time" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: "Time" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "input",
                   {
@@ -25500,7 +25372,6 @@ ${link}`;
                       padding: "8px 12px",
                       borderRadius: 10,
                       fontSize: 13,
-                      fontWeight: 300,
                       border: `1px solid ${colors.border}`,
                       background: colors.surface.input,
                       color: colors.text.primary,
@@ -25513,7 +25384,7 @@ ${link}`;
             ] })
           ] });
         })(),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "TIME FORMAT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "TIME FORMAT" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
           padding: "14px 16px",
           display: "flex",
@@ -25521,12 +25392,12 @@ ${link}`;
           justifyContent: "space-between"
         }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: "24-hour time" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 2 }, children: use24h ? "e.g. 14:30" : "e.g. 2:30pm" })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: "24-hour time" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: use24h ? "e.g. 14:30" : "e.g. 2:30pm" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Toggle, { val: use24h, onChange: (v2) => onUpdateProfile({ use24h: v2 }), accent: colors.primary })
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "WIDGET" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "WIDGET" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
           padding: "14px 16px",
           display: "flex",
@@ -25534,8 +25405,8 @@ ${link}`;
           justifyContent: "space-between"
         }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, paddingRight: 12 }, children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: "Show upcoming events" }),
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 2 }, children: "On empty days, list the next few events instead of just tomorrow" })
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: "Show upcoming events" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: "On empty days, list the next few events instead of just tomorrow" })
           ] }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             Toggle,
@@ -25628,7 +25499,7 @@ ${link}`;
           }
           const anyEnabled = activeCountries.size > 0;
           return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "HOLIDAYS" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "HOLIDAYS" }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
               marginBottom: 12,
               opacity: holidayWorking ? 0.6 : 1,
@@ -25643,8 +25514,8 @@ ${link}`;
               }, children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontSize: 20, color: flagColor }, children: flag }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1 }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: label }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary }, children: label }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted }, children: [
                     fn(thisYear).length,
                     " holidays \xB7 ",
                     thisYear,
@@ -25661,7 +25532,7 @@ ${link}`;
                   }
                 )
               ] }, code)),
-              anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, fontWeight: 300, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
+              anyEnabled && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 10 }, children: "Added to your personal calendar. Toggle off to remove." })
             ] }) })
           ] });
         })()
@@ -25681,7 +25552,7 @@ ${link}`;
             cursor: "pointer"
           },
           children: [
-            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.06em" }, children: "ADVANCED" }),
+            /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, letterSpacing: "0.06em" }, children: "ADVANCED" }),
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
               s4,
               {
@@ -25699,7 +25570,7 @@ ${link}`;
         overflow: "hidden",
         transition: "max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1)"
       }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEVICES" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "DEVICES" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 16px 14px" }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
             "button",
@@ -25725,12 +25596,12 @@ ${link}`;
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(n5, { size: 18, weight: "thin", color: "var(--color-accent)" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 400, color: "var(--color-accent)" }, children: pairHostBusy ? "Generating\u2026" : "Add a device" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: "Pair your phone, tablet, or desktop under the same identity" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Pair your phone, tablet, or desktop under the same identity" })
                 ] })
               ]
             }
           ),
-          pairHostError && !pairHost && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", fontWeight: 300, marginTop: 8, textAlign: "center" }, children: pairHostError }),
+          pairHostError && !pairHost && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#e67b7b", marginTop: 8, textAlign: "center" }, children: pairHostError }),
           linkedDevices.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }, children: [
             linkedDevices.map((d) => {
               const isRenaming = renamingKey === d.writerKey;
@@ -25778,7 +25649,6 @@ ${link}`;
                         placeholder: deviceDefaultLabel(d),
                         style: {
                           fontSize: 14,
-                          fontWeight: 300,
                           fontFamily: FONT,
                           background: "transparent",
                           border: `1px solid ${colors.border}`,
@@ -25802,7 +25672,6 @@ ${link}`;
                             padding: "6px 12px",
                             borderRadius: 8,
                             fontSize: 13,
-                            fontWeight: 300,
                             fontFamily: FONT,
                             border: `1px solid ${colors.border}`,
                             background: "transparent",
@@ -25824,7 +25693,6 @@ ${link}`;
                             padding: "6px 12px",
                             borderRadius: 8,
                             fontSize: 13,
-                            fontWeight: 300,
                             fontFamily: FONT,
                             border: `1px solid var(--color-accent)`,
                             background: "transparent",
@@ -25837,7 +25705,7 @@ ${link}`;
                       )
                     ] })
                   ] }) : isConfirmingRemove ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, lineHeight: 1.5, textAlign: "center" }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.5, textAlign: "center" }, children: [
                       "Remove ",
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.primary, fontWeight: 400 }, children: label }),
                       " from your devices list?"
@@ -25855,7 +25723,6 @@ ${link}`;
                             padding: "6px 12px",
                             borderRadius: 8,
                             fontSize: 13,
-                            fontWeight: 300,
                             fontFamily: FONT,
                             border: `1px solid ${colors.border}`,
                             background: "transparent",
@@ -25877,7 +25744,6 @@ ${link}`;
                             padding: "6px 12px",
                             borderRadius: 8,
                             fontSize: 13,
-                            fontWeight: 300,
                             fontFamily: FONT,
                             border: `1px solid var(--color-destructive)`,
                             background: "transparent",
@@ -25893,13 +25759,12 @@ ${link}`;
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, minWidth: 0 }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                         fontSize: 14,
-                        fontWeight: 300,
                         color: colors.text.primary,
                         whiteSpace: "nowrap",
                         overflow: "hidden",
                         textOverflow: "ellipsis"
                       }, children: label }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, marginTop: 2 }, children: subtitle })
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: subtitle })
                     ] }),
                     d.isThisDevice ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(s4, { size: 14, weight: "thin", color: "var(--color-muted)" }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                       "button",
@@ -25930,7 +25795,7 @@ ${link}`;
             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2, lineHeight: 1.4 }, children: "Tap your device to rename it." })
           ] })
         ] }) }),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "IMPORT & EXPORT" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 10 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "input",
@@ -25971,8 +25836,8 @@ ${link}`;
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(l6, { size: 18, weight: "thin", color: "var(--color-accent)" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Import Events" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: "Import from .ics file" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "Import Events" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Import from .ics file" })
                 ] })
               ]
             }
@@ -25999,8 +25864,8 @@ ${link}`;
               children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(l4, { size: 18, weight: "thin", color: "var(--color-accent)" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Export Events" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: "Export all events as .ics" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "Export Events" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Export all events as .ics" })
                 ] })
               ]
             }
@@ -26052,12 +25917,12 @@ ${link}`;
                     const Bar = ({ size, total }) => /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { height: 6, borderRadius: 3, background: colors.border, overflow: "hidden", marginTop: 4 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { height: "100%", width: 100 * size / Math.max(total, 1) + "%", background: colors.primary } }) });
                     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, fontWeight: 300, color: colors.text.primary }, children: formatBytes(b.total) }),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: "Total on disk" })
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, color: colors.text.primary }, children: formatBytes(b.total) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: "Total on disk" })
                       ] }),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: colors.text.muted, letterSpacing: "0.06em", marginBottom: 8 }, children: "BY TYPE" }),
                       cats.map(([k, v2]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 10 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.text.primary }, children: [
                           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: typeLabel[k] || k }),
                           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.muted }, children: formatBytes(v2.size) })
                         ] }),
@@ -26065,7 +25930,7 @@ ${link}`;
                       ] }, k)),
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 400, color: colors.text.muted, letterSpacing: "0.06em", margin: "16px 0 8px" }, children: "BY LOCATION" }),
                       dirs.map(([k, v2]) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 10 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.text.primary }, children: [
                           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontFamily: "monospace" }, children: k || "." }),
                           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.muted }, children: formatBytes(v2) })
                         ] }),
@@ -26077,8 +25942,8 @@ ${link}`;
                     const a39 = reclaimResult.analyze;
                     return /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", marginBottom: 18 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, fontWeight: 300, color: colors.text.primary }, children: formatBytes(a39.reclaimableBytes) }),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: [
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, color: colors.text.primary }, children: formatBytes(a39.reclaimableBytes) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted }, children: [
                           "reclaimable (",
                           a39.pct,
                           "% of ",
@@ -26094,7 +25959,7 @@ ${link}`;
                           { heading: "ORPHANED CORES", match: (g) => g.id === "__orphans__" }
                         ];
                         const Row = (g) => /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { marginBottom: 10 }, children: [
-                          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 300, color: colors.text.primary }, children: [
+                          /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.text.primary }, children: [
                             /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { children: g.name }),
                             /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("span", { style: { color: colors.text.muted }, children: [
                               formatBytes(g.bytes),
@@ -26132,7 +25997,6 @@ ${link}`;
                         color: colors.text.primary,
                         fontFamily: FONT,
                         fontSize: 13,
-                        fontWeight: 300,
                         cursor: "pointer"
                       },
                       children: "Close"
@@ -26164,7 +26028,7 @@ ${link}`;
                 style: { background: colors.surface.card, borderRadius: 14, padding: "20px", maxWidth: 420, width: "100%", border: `1px solid ${colors.border}` },
                 children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", color: colors.text.primary }, children: "Reclaim Storage?" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "center" }, children: "This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically." }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.5, marginBottom: 16, textAlign: "center" }, children: "This rebuilds your local database to drop stale event history. Your groups, memberships, and settings stay intact. Events re-sync from each group's peers and local cache automatically." }),
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                       "button",
@@ -26180,7 +26044,6 @@ ${link}`;
                           color: colors.text.primary,
                           fontFamily: FONT,
                           fontSize: 13,
-                          fontWeight: 300,
                           cursor: reclaimBusy ? "wait" : "pointer",
                           opacity: reclaimBusy ? 0.5 : 1
                         },
@@ -26260,15 +26123,15 @@ ${link}`;
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 16, fontWeight: 400, marginBottom: 10, textAlign: "center", color: colors.text.primary }, children: sweepResult ? "Sweep Complete" : "Sweep Orphaned Group Data?" }),
                   !sweepResult && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
                     /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", marginBottom: 16 }, children: [
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, fontWeight: 300, color: colors.text.primary }, children: formatBytes(sweepReport.orphanBytes ?? 0) }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, color: colors.text.primary }, children: formatBytes(sweepReport.orphanBytes ?? 0) }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted }, children: [
                         "across ",
                         sweepReport.orphans,
                         " orphan core",
                         sweepReport.orphans === 1 ? "" : "s"
                       ] })
                     ] }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, lineHeight: 1.5, marginBottom: 12 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.5, marginBottom: 12 }, children: [
                       "Cores belonging to groups you've left, deleted, or that were rekeyed. They sit in ",
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { fontFamily: "monospace" }, children: "pearcal/store" }),
                       " and aren't freed by the normal Reclaim flow. Purging them is permanent."
@@ -26284,7 +26147,7 @@ ${link}`;
                       marginBottom: 14,
                       lineHeight: 1.5
                     }, children: "\u26A0 Reports of sync breakage after sweeping. Some devices have been unable to join new groups afterward, requiring a reinstall. Cause under investigation. Only proceed if you understand the risk and have backups or can rebuild your data." }),
-                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, marginBottom: 14 }, children: [
+                    /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 14 }, children: [
                       "Total cores on disk: ",
                       sweepReport.totalCores,
                       " \xB7 reachable: ",
@@ -26294,7 +26157,6 @@ ${link}`;
                     ] }),
                     sweepReport.liveWithoutBase?.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
                       fontSize: 12,
-                      fontWeight: 300,
                       color: "#d04",
                       background: "rgba(221,0,68,0.08)",
                       border: "1px solid rgba(221,0,68,0.3)",
@@ -26314,7 +26176,6 @@ ${link}`;
                     ] }),
                     sweepReport.personalWithoutBase && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
                       fontSize: 12,
-                      fontWeight: 300,
                       color: "#d04",
                       background: "rgba(221,0,68,0.08)",
                       border: "1px solid rgba(221,0,68,0.3)",
@@ -26337,7 +26198,6 @@ ${link}`;
                             color: colors.text.primary,
                             fontFamily: FONT,
                             fontSize: 13,
-                            fontWeight: 300,
                             cursor: sweepBusy ? "wait" : "pointer",
                             opacity: sweepBusy ? 0.5 : 1
                           },
@@ -26382,15 +26242,15 @@ ${link}`;
                     ] })
                   ] }),
                   sweepResult && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                    sweepResult.error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: "#d04", textAlign: "center", marginBottom: 16 }, children: [
+                    sweepResult.error ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: "#d04", textAlign: "center", marginBottom: 16 }, children: [
                       "Error: ",
                       sweepResult.error
                     ] }) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", marginBottom: 16 }, children: [
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, fontWeight: 300, color: colors.text.primary }, children: formatBytes(sweepResult.reclaim?.freed ?? 0) }),
-                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted }, children: "freed from disk" })
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 28, color: colors.text.primary }, children: formatBytes(sweepResult.reclaim?.freed ?? 0) }),
+                        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted }, children: "freed from disk" })
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, fontWeight: 300, color: colors.text.muted, lineHeight: 1.7, marginBottom: 14 }, children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.7, marginBottom: 14 }, children: [
                         "Purged ",
                         sweepResult.purged,
                         " core",
@@ -26431,7 +26291,6 @@ ${link}`;
                           color: colors.text.primary,
                           fontFamily: FONT,
                           fontSize: 13,
-                          fontWeight: 300,
                           cursor: "pointer"
                         },
                         children: "Close"
@@ -26443,7 +26302,7 @@ ${link}`;
             )
           }
         ),
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "STORAGE" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "STORAGE" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }, children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
             "button",
@@ -26470,8 +26329,8 @@ ${link}`;
                 fontFamily: FONT
               },
               children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Storage Breakdown" }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: "Show where disk space is used" })
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "Storage Breakdown" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Show where disk space is used" })
               ] })
             }
           ),
@@ -26500,8 +26359,8 @@ ${link}`;
                 fontFamily: FONT
               },
               children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: "Analyze Reclaimable" }),
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: "Estimate reclaimable per group (keep last 100 blocks)" })
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "Analyze Reclaimable" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Estimate reclaimable per group (keep last 100 blocks)" })
               ] })
             }
           ),
@@ -26530,22 +26389,22 @@ ${link}`;
                   opacity: enabled ? 1 : 0.4
                 },
                 children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, fontWeight: 300, color: colors.text.primary }, children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim Storage" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, fontWeight: 300, color: colors.text.muted }, children: pct < 0 ? "Run Analyze first to check reclaimable space" : pct < 21 ? "Not enough reclaimable space (need \u2265 21%; currently " + pct + "%)" : "Rebuild local database to free ~" + pct + "% of storage" })
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: reclaimBusy ? "Reclaiming\u2026" : "Reclaim Storage" }),
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: pct < 0 ? "Run Analyze first to check reclaimable space" : pct < 21 ? "Not enough reclaimable space (need \u2265 21%; currently " + pct + "%)" : "Rebuild local database to free ~" + pct + "% of storage" })
                 ] })
               }
             );
           })(),
           false,
-          reclaimResult?.analyze && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, textAlign: "center", padding: "4px 0" }, children: [
+          reclaimResult?.analyze && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, textAlign: "center", padding: "4px 0" }, children: [
             reclaimResult.analyze.pct,
             "% reclaimable \u2014 tap Reclaim below to continue"
           ] }),
-          reclaimResult?.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: "#d04", textAlign: "center", padding: "4px 0" }, children: [
+          reclaimResult?.error && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: "#d04", textAlign: "center", padding: "4px 0" }, children: [
             "Error: ",
             reclaimResult.error
           ] }),
-          reclaimResult?.freed !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, fontWeight: 300, color: colors.text.muted, textAlign: "center", padding: "4px 0" }, children: [
+          reclaimResult?.freed !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 12, color: colors.text.muted, textAlign: "center", padding: "4px 0" }, children: [
             "Freed ",
             formatBytes(reclaimResult.freed),
             " (",
