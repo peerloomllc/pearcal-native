@@ -2,6 +2,12 @@ import { handleInviteLink, buildReinviteLink } from '../invite.js'
 import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
 import { installFixtures } from './screenshot-fixtures.js'
+import { injectGlobalStyles } from './theme.js'
+
+// Tokens + reset go in before the first render, so nothing paints unthemed.
+// (:root is the dark palette, so no data-theme attribute is needed to start —
+// App flips it to light once the profile loads.)
+injectGlobalStyles()
 
 // IPC bridge — installed only if a host hasn't already wired one.
 // Desktop pre-sets __pearDB inline in index.html to talk over a Pear worker pipe;
@@ -225,11 +231,19 @@ window.__pearResolveAvatar = function (hash) {
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
 
-// Global haptic on all button taps
+// Light tactile feedback on every button tap. Capture phase, so it fires before
+// any onClick that stops propagation, and every button — including ones added
+// later — buzzes without per-handler wiring.
+//
+// A button carrying data-haptic fires its own stronger cue ('medium' for a
+// destructive commit, 'success' on a completed copy) and opts out here, so a tap
+// is one buzz and never two. Disabled buttons skip it: the visible action will
+// not fire either, and a buzz would promise otherwise.
 document.addEventListener('click', e => {
-  if (e.target.closest('button')) {
-    window.__pearSync?.haptic('light')
-  }
+  const btn = e.target.closest?.('button')
+  if (!btn || btn.disabled) return
+  if (btn.dataset?.haptic) return
+  window.__pearSync?.haptic('light')
 }, true)
 
 window.__pearEvent_handlers = window.__pearEvent_handlers || {}
