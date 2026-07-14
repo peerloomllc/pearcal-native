@@ -47,7 +47,13 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
     if (value.isShadow) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
     if (nowHHMM && !value.allDay) {
-      const cutoff = value.end || value.start
+      // A timed event carries only wall-clock start/end against a single date, so
+      // an end that sorts *before* its start means the event runs past midnight
+      // (10pm-12am, an overnight shift). Its end string is then less than every
+      // clock time, and pruning on it would drop the event for the whole day.
+      // A wrapping event is live until the day is over, so never prune it.
+      const wraps = !!(value.start && value.end && value.end < value.start)
+      const cutoff = wraps ? null : (value.end || value.start)
       if (cutoff && cutoff < nowHHMM) continue
     }
     const prev = byId.get(value.id)

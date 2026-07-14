@@ -100,7 +100,8 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                     views.setTextViewText(titleIds[rowIdx], e.title)
                     applyColorBar(views, colorIds[rowIdx], e)
 
-                    val isPast = !e.allDay && e.endMin != null && e.endMin < nowMin
+                    val endEff = effectiveEndMin(e)
+                    val isPast = !e.allDay && endEff != null && endEff < nowMin
                     val isNextUp = nextUpSet.contains(leftIdx)
                     val titleColor = when {
                         isPast -> Color.parseColor(COLOR_MUTED)
@@ -119,7 +120,8 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                         views.setViewVisibility(rightTitleIds[rowIdx], View.VISIBLE)
                         applyColorBar(views, rightColorIds[rowIdx], e2)
                         views.setTextViewText(rightTitleIds[rowIdx], e2.title)
-                        val isPastR = !e2.allDay && e2.endMin != null && e2.endMin < nowMin
+                        val endEffR = effectiveEndMin(e2)
+                        val isPastR = !e2.allDay && endEffR != null && endEffR < nowMin
                         val isNextUpR = nextUpSet.contains(rightIdx)
                         val titleColorR = when {
                             isPastR -> Color.parseColor(COLOR_MUTED)
@@ -320,6 +322,15 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             return cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         }
 
+        // An event whose end sorts before its start runs past midnight (10pm-12am,
+        // an overnight shift). Unwrap it onto today's timeline so it isn't judged
+        // as having ended at 00:00 and greyed out for the whole day.
+        private fun effectiveEndMin(e: EventRow): Int? {
+            val end = e.endMin ?: return null
+            val start = e.startMin ?: return end
+            return if (end < start) end + 1440 else end
+        }
+
         private fun findNextUp(events: List<EventRow>, nowMin: Int): Set<Int> {
             // All events currently happening (start <= now < end) win; otherwise
             // the first event whose start is in the future. All-day events are skipped.
@@ -327,7 +338,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             for (i in events.indices) {
                 val e = events[i]
                 if (e.allDay || e.startMin == null) continue
-                val endMin = e.endMin ?: (e.startMin + 30)
+                val endMin = effectiveEndMin(e) ?: (e.startMin + 30)
                 if (e.startMin <= nowMin && nowMin < endMin) happening.add(i)
             }
             if (happening.isNotEmpty()) return happening

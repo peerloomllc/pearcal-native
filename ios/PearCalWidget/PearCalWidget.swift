@@ -172,12 +172,21 @@ private func currentMinutes() -> Int {
   return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
 }
 
+// An event whose end sorts before its start runs past midnight (10pm-12am, an
+// overnight shift). Unwrap it onto today's timeline so it isn't judged as having
+// ended at 00:00 and dimmed for the whole day.
+private func effectiveEndMin(_ e: CachedEvent) -> Int? {
+  guard let end = minutesFromHHMM(e.end) else { return nil }
+  guard let start = minutesFromHHMM(e.start) else { return end }
+  return end < start ? end + 1440 : end
+}
+
 private func findNextUp(_ events: [CachedEvent], nowMin: Int) -> Set<Int> {
   var happening = Set<Int>()
   for (i, e) in events.enumerated() {
     if e.allDay { continue }
     guard let startMin = minutesFromHHMM(e.start) else { continue }
-    let endMin = minutesFromHHMM(e.end) ?? (startMin + 30)
+    let endMin = effectiveEndMin(e) ?? (startMin + 30)
     if startMin <= nowMin && nowMin < endMin { happening.insert(i) }
   }
   if !happening.isEmpty { return happening }
@@ -191,7 +200,7 @@ private func findNextUp(_ events: [CachedEvent], nowMin: Int) -> Set<Int> {
 
 private func isPastEvent(_ e: CachedEvent, nowMin: Int) -> Bool {
   if e.allDay { return false }
-  guard let endMin = minutesFromHHMM(e.end) else { return false }
+  guard let endMin = effectiveEndMin(e) else { return false }
   return endMin < nowMin
 }
 
