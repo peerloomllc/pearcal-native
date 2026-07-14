@@ -25,6 +25,8 @@ export const colors = {
   text: { primary: v('text-primary'), secondary: v('text-secondary'), muted: v('text-muted'), onPrimary: v('text-on-primary') },
   surface: { base: v('surface-base'), card: v('surface-card'), elevated: v('surface-elevated'), input: v('surface-input') },
   border: v('border'), divider: v('divider'), track: v('track'),
+  // Tinted washes for selected/active states on the two signal colours.
+  accentFaint: v('accent-faint'), destructiveFaint: v('destructive-faint'),
 }
 
 // Dark is the default (plain :root), matching the suite.
