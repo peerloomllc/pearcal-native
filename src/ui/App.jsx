@@ -3208,7 +3208,7 @@ function EncryptionNoticeModal ({ onDismiss }) {
       display:'flex', alignItems:'center', justifyContent:'center', padding:'0 28px' }}>
       <div style={{ background: colors.surface.base, borderRadius:20, padding:'32px 24px', width:'100%', maxWidth:360,
         display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
-        <div style={{ fontSize:52 }}>🔒</div>
+        <Lock size={48} weight="thin" color="var(--color-accent)" />
         <div style={{ fontSize:20, fontWeight:400, color: colors.text.primary }}>Groups are now encrypted</div>
         <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.7' }}>
           New groups are end-to-end encrypted for privacy. Everyone in a group needs this version (or newer) to see it — invite members only after they've updated.
