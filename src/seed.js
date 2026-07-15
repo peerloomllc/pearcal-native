@@ -23,6 +23,7 @@ const Corestore = require('corestore')
 const Hyperswarm = require('hyperswarm')
 const sodium = require('sodium-native')
 const b4a = require('b4a')
+const { parseSeedInvite } = require('./lib/seedInvite.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // Mirrors bare.js: BareKit.IPC on the launcher/device, Pear.worker in Pear. When
@@ -159,6 +160,70 @@ async function onWriterAnnounce (buf) {
   console.log('[seed] +writer core', writerKey.slice(0, 12) + '…', 'for group', groupId)
 }
 
+// ── Admission (seed invites) ─────────────────────────────────────────────────
+// Consume ONE /seed invite: parse (rejects member /join + strips any enc),
+// persist the enrollment row, and mount the group. Idempotent — a re-enroll of
+// an already-known group just ensures it's mounted.
+async function enrollSeedInvite (invite) {
+  if (typeof invite !== 'string' || invite.length === 0) throw new Error('invite must be a non-empty string')
+  const parsed = parseSeedInvite(invite)
+  if (!parsed.ok) throw new Error('invalid seed invite: ' + (parsed.error ?? 'unknown'))
+  const { groupId, groupName, groupKey } = parsed
+  const existing = await db.get('seeder:enrolled:' + groupId).catch(() => null)
+  if (existing?.value) {
+    if (!mounted.has(groupId)) await mountGroup(existing.value).catch(() => {})
+    return { ok: true, groupId, name: existing.value.name ?? groupName, alreadyEnrolled: true }
+  }
+  // Franken guard: the same groupKey enrolled under a DIFFERENT groupId is
+  // malformed (one group's id glued onto another's key). A blind seeder can't
+  // read the view to verify the id, but groupKey is unique per group, so refuse.
+  try {
+    for await (const { value } of db.createReadStream({ gt: 'seeder:enrolled:', lt: 'seeder:enrolled:~' })) {
+      if (value && value.groupKey === groupKey && value.groupId !== groupId) {
+        throw new Error('franken seed invite: groupKey already enrolled under group ' + value.groupId)
+      }
+    }
+  } catch (e) { if (/franken/.test(e.message)) throw e }
+  const row = { groupId, groupKey, name: groupName, inviter: parsed.inviterKey, enrolledAt: _now() }
+  await db.put('seeder:enrolled:' + groupId, row)
+  enrolled.set(groupId, row)
+  try {
+    await mountGroup(row)
+  } catch (e) {
+    await db.del('seeder:enrolled:' + groupId).catch(() => {})
+    enrolled.delete(groupId)
+    throw new Error('seeder mount failed: ' + (e?.message ?? String(e)))
+  }
+  return { ok: true, groupId, name: groupName, alreadyEnrolled: false }
+}
+
+// Consume an all-groups bundle (newline-joined /seed invites). Per-line result
+// so one bad line doesn't abort the rest.
+async function enrollSeedBundle (bundle) {
+  const results = []
+  for (const line of String(bundle).split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)) {
+    try { results.push(await enrollSeedInvite(line)) }
+    catch (e) { results.push({ ok: false, error: e?.message ?? String(e) }) }
+  }
+  return { ok: true, results }
+}
+
+// Reverse of enroll: leave the topic, close the cores, drop the enrollment.
+async function leaveSeedGroup (groupId) {
+  if (!groupId) throw new Error('seeder:leave requires a groupId')
+  const entry = mounted.get(groupId)
+  if (entry) {
+    try { swarm.leave(b4a.from(entry.topicHex, 'hex')).catch(() => {}) } catch {}
+    try { await entry.core.close() } catch {}
+    for (const c of entry.writerCores.values()) { try { await c.close() } catch {} }
+    mounted.delete(groupId)
+  }
+  await db.del('seeder:enrolled:' + groupId).catch(() => {})
+  enrolled.delete(groupId)
+  console.log('[seed] left group', groupId)
+  return { ok: true, groupId }
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 async function init (dir) {
   if (_booted) return { ok: true, alreadyBooted: true }
@@ -208,12 +273,16 @@ async function handle (method, args) {
       }
     case 'seeder:enrolled:list':
       return [...enrolled.values()]
-    // seeder:enroll / seeder:leave land in Phase 4 (needs the seed-invite parser
-    // + Phase-3 mount). Present as explicit not-yet errors so the surface is
-    // discoverable.
-    case 'seeder:enroll':
-    case 'seeder:leave':
-      throw new Error(method + ' not implemented until Phase 3/4')
+    case 'seeder:enroll': {
+      const arg = args[0]
+      const invite = typeof arg === 'string' ? arg : arg?.invite
+      if (typeof invite !== 'string' || !invite) throw new Error('seeder:enroll requires an invite string')
+      return /[\r\n]/.test(invite) ? enrollSeedBundle(invite) : enrollSeedInvite(invite)
+    }
+    case 'seeder:leave': {
+      const arg = args[0]
+      return leaveSeedGroup(typeof arg === 'string' ? arg : arg?.groupId)
+    }
     default:
       throw new Error('Unknown seed method: ' + method)
   }
@@ -266,6 +335,7 @@ if (detectSeedMode(_argv)) {
 module.exports = {
   detectSeedMode, loadOrCreateSeederIdentity, loadEnrolledGroups, init, handle,
   mountGroup, onWriterAnnounce, topicForGroupKey,
+  enrollSeedInvite, enrollSeedBundle, leaveSeedGroup,
   // Test/introspection accessors.
   _state: () => ({ enrolled, mounted, identity, store: () => store, swarm: () => swarm }),
 }

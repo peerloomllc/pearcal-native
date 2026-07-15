@@ -21,6 +21,11 @@
 
 //import b4a from 'b4a'
 
+// Seed-invite builders (blind-seeder admission, proposal 2026-07-15). Single
+// source lives in the shared CJS lib so the seeder's parser can never drift from
+// what the UI builds. Re-exported here for the WebView/App layer.
+export { buildSeedInvite, buildSeedBundle } from './lib/seedInvite.js'
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SCHEME   = 'https://peerloomllc.com'
