@@ -415,7 +415,14 @@ async function handleNotification (msg: any, webViewRef: any) {
 }
 
 function buildHtml (appBundleJs: string): string {
-  const APP_VERSION: string = (require('../app.json') as any).expo.version
+  // Prefer the NATIVE app version (Android versionName / iOS
+  // CFBundleShortVersionString) so the About page always matches the installed
+  // binary. The app.json require is baked into the JS bundle at Metro-bundle
+  // time and can lag the native version by a release when Metro reuses a cached
+  // app.json (the 1.0.32-on-a-1.0.33-build bug). Fall back to app.json where the
+  // native value is unavailable (e.g. web).
+  const APP_VERSION: string =
+    Constants.nativeApplicationVersion || (require('../app.json') as any).expo.version
   const html = [
     '<!DOCTYPE html>',
     '<html lang="en">',
