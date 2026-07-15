@@ -26,7 +26,7 @@ const b4a = require('b4a')
 const { parseSeedInvite } = require('./lib/seedInvite.js')
 const { buildSeederPairLink } = require('./lib/seederPairLink.js')
 const { generateRendezvousKey, seederPairTopic } = require('./lib/seederPairTopic.js')
-const { setupSeederPairChannel } = require('./lib/seederPair.js')
+const { setupSeederPairChannel, SEEDER_PAIR_PROTOCOL } = require('./lib/seederPair.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // The seeder speaks the same JSON-newline envelope over whichever duplex the
@@ -189,17 +189,45 @@ async function trackSeederConn (stream) {
   const mux = stream.noiseStream.userData
   if (!mux) return
   _activeMuxes.add(mux)
-  stream.on('close', () => _activeMuxes.delete(mux))
-  if (_pairSession) setupSeederPairChannelFor(mux)
+  // React to the member opening a pair channel (the member always initiates at
+  // scan time). Creating our side *inside* the notify claims the member's
+  // pending open, so timing never races. Opening eagerly instead failed on a
+  // reused connection: we'd open seconds before the member, and protomux rejects
+  // an unclaimed incoming open, closing the channel on both ends.
+  mux.pair({ protocol: SEEDER_PAIR_PROTOCOL }, (id) => {
+    // Create our side using the rv from the MEMBER's incoming channel id — NOT
+    // our current session rv. The QR auto-renews on TTL, so a member can scan rv
+    // X and open just as we renew to rv Y; keying off our session rv would build
+    // a mismatched channel (Y) that never claims the member's open (X). The rv is
+    // only a per-session nonce here; the connection is already authenticated, and
+    // enrolling is not sensitive (PearCircle's "a pairing window is open" trust).
+    if (!_pairSession) return
+    const rv = _rvFromChannelId(id)
+    if (rv) setupSeederPairChannelFor(mux, rv)
+  })
+  stream.on('close', () => {
+    _activeMuxes.delete(mux)
+    try { mux.unpair({ protocol: SEEDER_PAIR_PROTOCOL }) } catch {}
+  })
 }
 
-// Seed side: open the receive channel for the active pairing session on a mux.
-function setupSeederPairChannelFor (mux) {
-  if (!_pairSession) return
+// The channel id carried on the wire IS the 32-byte rendezvous key; recover the
+// 43-char base64url rv the member scanned so we build a matching channel.
+function _rvFromChannelId (id) {
+  try {
+    if (!id || id.length !== 32) return null
+    return b4a.toString(id, 'base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  } catch { return null }
+}
+
+// Seed side: open the receive channel for a member's pairing open on a mux,
+// keyed by the rv the member scanned (passed in from the incoming channel id).
+function setupSeederPairChannelFor (mux, rv) {
+  if (!_pairSession || !rv) return
   setupSeederPairChannel({
     mux,
     role: 'seed',
-    rv: _pairSession.rv,
+    rv, // the member's scanned rv (from the incoming channel id), not our session rv
     onBundle: async ({ invites }) => {
       const res = await enrollSeedBundle(invites.join('\n')).catch(() => ({ results: [] }))
       const names = []
@@ -232,8 +260,9 @@ async function openSeederPairSession () {
   const ttlTimer = setTimeout(() => closeSeederPairSession('ttl'), SEEDER_PAIR_TTL_MS)
   if (typeof ttlTimer.unref === 'function') ttlTimer.unref()
   _pairSession = { rv, topic, topicHex, ttlTimer }
-  for (const mux of _activeMuxes) setupSeederPairChannelFor(mux)
-  console.log('[seed] pair session open — ttl', SEEDER_PAIR_TTL_MS, 'ms')
+  // No eager channel creation — each connection's mux.pair handler (registered
+  // in trackSeederConn) reacts to the member's open once this session is live.
+  console.log('[seed] pair session open — rv', rv.slice(0, 8))
   return { link: buildSeederPairLink({ rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS }
 }
 
