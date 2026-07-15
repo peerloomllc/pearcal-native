@@ -1,0 +1,14 @@
+{
+  "name": "pearcal-seeder-launcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Always-on launcher for the PearCal blind-seeder worklet (src/seed.js). Spawns the bare seed worklet and keeps it alive.",
+  "main": "host/index.js",
+  "scripts": {
+    "start": "node host/index.js",
+    "dev": "node host/index.js --dev"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

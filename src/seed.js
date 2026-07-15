@@ -26,13 +26,37 @@ const b4a = require('b4a')
 const { parseSeedInvite } = require('./lib/seedInvite.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
-// Mirrors bare.js: BareKit.IPC on the launcher/device, Pear.worker in Pear. When
-// neither is present (plain `node src/seed.js --seed --data <dir>`), run headless
-// so the skeleton is testable without the bare toolchain.
-const _hasBareKit = typeof BareKit !== 'undefined' && BareKit && BareKit.IPC
-const _isDesktopPear = !_hasBareKit && typeof Pear !== 'undefined'
-const ipc = _hasBareKit ? BareKit.IPC : (_isDesktopPear ? Pear.worker.pipe() : null)
-const send = (msg) => { if (ipc) ipc.write(Buffer.from(JSON.stringify(msg) + '\n')) }
+// The seeder speaks the same JSON-newline envelope over whichever duplex the
+// host provides, in priority order:
+//   1. BareKit.IPC          — mobile shell (not used for the seeder, kept for parity)
+//   2. Pear.worker.pipe()   — Pear worker
+//   3. bare-process stdio   — standalone `bare seed.bundle` spawned by the launcher.
+//      Outbound MUST be a synchronous fd-1 write: bare's piped stdout buffers
+//      until exit and would deadlock the launcher's init handshake otherwise
+//      (mirrors PearCircle bare.js).
+//   4. node stdin/stdout    — `node src/seed.js` spawned by the dev launcher / tests.
+// A direct `node src/seed.js --seed --data <dir>` boots headless (no host) — see
+// the CLI section at the bottom.
+let ipc = null
+let send = () => {}
+function setupTransport () {
+  if (typeof BareKit !== 'undefined' && BareKit && BareKit.IPC) {
+    ipc = BareKit.IPC
+    send = (msg) => BareKit.IPC.write(Buffer.from(JSON.stringify(msg) + '\n'))
+  } else if (typeof Pear !== 'undefined' && Pear.worker) {
+    const p = Pear.worker.pipe()
+    ipc = p
+    send = (msg) => p.write(Buffer.from(JSON.stringify(msg) + '\n'))
+  } else if (typeof Bare !== 'undefined') {
+    const bp = require('bare-process')
+    const bfs = require('bare-fs')
+    ipc = bp.stdin
+    send = (msg) => bfs.writeSync(1, Buffer.from(JSON.stringify(msg) + '\n'))
+  } else if (typeof process !== 'undefined' && process.stdin && process.stdout) {
+    ipc = process.stdin
+    send = (msg) => process.stdout.write(Buffer.from(JSON.stringify(msg) + '\n'))
+  }
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let db = null
@@ -261,8 +285,12 @@ async function init (dir) {
 // ── IPC surface (seed-only) ─────────────────────────────────────────────────
 async function handle (method, args) {
   switch (method) {
-    case 'init':
-      return init(args[0]?.dataDir ?? args[0])
+    case 'init': {
+      const a = args
+      const dir = typeof a === 'string' ? a
+        : (a?.dataDir ?? (Array.isArray(a) ? (a[0]?.dataDir ?? a[0]) : null))
+      return init(dir)
+    }
     case 'seeder:status':
       return {
         pubkey: identity ? b4a.toString(identity.publicKey, 'hex') : null,
@@ -274,14 +302,17 @@ async function handle (method, args) {
     case 'seeder:enrolled:list':
       return [...enrolled.values()]
     case 'seeder:enroll': {
-      const arg = args[0]
-      const invite = typeof arg === 'string' ? arg : arg?.invite
+      const a = args
+      const invite = typeof a === 'string' ? a
+        : (a?.invite ?? (Array.isArray(a) ? (a[0]?.invite ?? a[0]) : null))
       if (typeof invite !== 'string' || !invite) throw new Error('seeder:enroll requires an invite string')
       return /[\r\n]/.test(invite) ? enrollSeedBundle(invite) : enrollSeedInvite(invite)
     }
     case 'seeder:leave': {
-      const arg = args[0]
-      return leaveSeedGroup(typeof arg === 'string' ? arg : arg?.groupId)
+      const a = args
+      const groupId = typeof a === 'string' ? a
+        : (a?.groupId ?? (Array.isArray(a) ? a[0] : null))
+      return leaveSeedGroup(groupId)
     }
     default:
       throw new Error('Unknown seed method: ' + method)
@@ -298,7 +329,8 @@ async function dispatch (method, args, id) {
   }
 }
 
-if (ipc) {
+function attachReader () {
+  if (!ipc) return
   let buf = ''
   ipc.on('data', (chunk) => {
     buf += chunk.toString()
@@ -313,22 +345,29 @@ if (ipc) {
       } catch (e) { console.error('[seed] IPC parse error:', e?.message) }
     }
   })
+  if (typeof ipc.resume === 'function') ipc.resume()
 }
 
-// ── Headless / CLI boot (testing without the bare toolchain) ─────────────────
-// `node src/seed.js --seed --data <dir>` boots directly and idles.
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 const _argv = (typeof Bare !== 'undefined' && Bare.argv) ? Bare.argv
   : (typeof process !== 'undefined' && process.argv) ? process.argv : []
-if (detectSeedMode(_argv)) {
+if (typeof BareKit !== 'undefined' || typeof Pear !== 'undefined') {
+  // Mobile / Pear host drives us via IPC (waits for init).
+  setupTransport()
+  attachReader()
+} else if (detectSeedMode(_argv)) {
   const di = _argv.indexOf('--data')
   const dir = di !== -1 ? _argv[di + 1] : null
   if (dir) {
+    // Direct headless boot — no host (CLI testing). Boots immediately and idles.
     init(dir)
       .then(r => console.log('[seed] headless boot:', JSON.stringify(r)))
       .catch(e => { console.error('[seed] headless boot failed:', e?.message); if (typeof process !== 'undefined') process.exitCode = 1 })
-    // Keep the event loop alive (swarm holds it under bare; under node the
-    // Hyperswarm socket does too — this interval is a belt-and-suspenders idle).
     setInterval(() => {}, 1 << 30)
+  } else {
+    // Launcher-driven: bridge to stdio (bare-process or node) and wait for init.
+    setupTransport()
+    attachReader()
   }
 }
 
