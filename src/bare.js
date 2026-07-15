@@ -1543,7 +1543,7 @@ async function _joinGroupImpl (group) {
   // every member stuck in ready() before ever announcing the topic, so no one
   // serves anyone. Idempotent with the later swarm.join (same topic).
   try {
-    const earlyTopic = b4a.from(group.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+    const earlyTopic = groupSwarmTopic(group.groupKey, group.encryptionKey)
     swarm.join(earlyTopic, { server: true, client: true })
   } catch (e) {
     console.warn('[group] early swarm.join failed:', group.id, e?.message)
@@ -1716,7 +1716,7 @@ async function _joinGroupImpl (group) {
   // Always use group.groupKey as swarm topic so both sides match
   // (owner updates groupKey to realKey before this point)
   const topicKey = group.groupKey
-  const topic = b4a.from(topicKey.slice(0, 64).padEnd(64, '0'), 'hex')
+  const topic = groupSwarmTopic(topicKey, group.encryptionKey)
   swarm.join(topic, { server: true, client: true })
 
   console.log('Joined group swarm:', group.id, 'topic:', topicKey.slice(0,16))
@@ -2801,6 +2801,21 @@ function _hex32 () {
   const b = b4a.alloc(32); sodium.randombytes_buf(b); return b4a.toString(b, 'hex')
 }
 
+// Swarm topic for a group. ENCRYPTED groups (proposal 2026-07-15) use a
+// domain-separated blake2b topic so OLD-code peers — which join on groupKey and
+// can't decrypt — never even connect to an encrypted group, and so can't
+// trigger owner-recovery on a false "owner offline" reading or emit member
+// removals over the plaintext control channel (the EncTestv incident). Legacy
+// (unencrypted) groups keep the plain groupKey topic so old + new interoperate.
+function groupSwarmTopic (groupKey, encryptionKey) {
+  if (encryptionKey) {
+    const out = b4a.alloc(32)
+    sodium.crypto_generichash(out, b4a.concat([b4a.from('pearcal-enc-topic-v1:'), b4a.from(groupKey, 'hex')]))
+    return out
+  }
+  return b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+}
+
 function _clearPairSession () {
   if (!_pairSession) return
   if (_pairSession.expiryTimer) clearTimeout(_pairSession.expiryTimer)
@@ -3681,7 +3696,7 @@ async function purgeMigratedGroup (oldGroupId, opts = {}) {
   // 2. Leave the swarm topic for this group.
   if (swarm && oldGroup.groupKey) {
     try {
-      const topic = b4a.from(oldGroup.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+      const topic = groupSwarmTopic(oldGroup.groupKey, oldGroup.encryptionKey)
       await swarm.leave(topic).catch(() => {})
     } catch (e) { console.warn('[PURGE] swarm leave:', e.message) }
   }
@@ -4141,7 +4156,7 @@ async function syncMemberLeft (groupId, memberId) {
   pendingMemberLeaves.add(key)
   // Persist including groupKey and topicHex so we can rejoin swarm after restart to deliver
   const group = await getGroup(groupId).catch(() => null)
-  const topicHex = group?.groupKey ? group.groupKey.slice(0, 64).padEnd(64, '0') : null
+  const topicHex = group?.groupKey ? b4a.toString(groupSwarmTopic(group.groupKey, group.encryptionKey), 'hex') : null
   await db.put('pendingLeave:' + groupId + ':' + memberId, { groupId, memberId, groupKey: group?.groupKey, ts: Date.now() }).catch(() => {})
   if (topicHex) await db.put('pendingLeaveKey:' + groupId, { topicHex }).catch(() => {})
   for (const ch of activeChannels) {
@@ -4384,7 +4399,7 @@ async function resyncGroup (groupId) {
     const group = await getGroup(groupId).catch(() => null)
     if (swarm && group?.groupKey) {
       try {
-        const topic = b4a.from(group.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+        const topic = groupSwarmTopic(group.groupKey, group.encryptionKey)
         await swarm.leave(topic).catch(() => {})
         swarm.join(topic, { server: true, client: true })
         await swarm.flush().catch(() => {})
