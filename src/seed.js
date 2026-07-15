@@ -75,9 +75,13 @@ const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, top
 const WRITER_ANNOUNCE_PROTOCOL = 'pearcal/writer-announce'
 const WRITER_ANNOUNCE_ID = Buffer.from('pearcal-writer-announce-v1')
 
-// Same topic derivation as bare.js joinGroup (groupKey → 32-byte topic).
+// Topic for an enrolled group. Seeded groups are ENCRYPTED, so this must match
+// bare.js groupSwarmTopic()'s encrypted branch (domain-separated blake2b) — old
+// code joins the plain groupKey topic and never meets the seeder or members.
 function topicForGroupKey (groupKey) {
-  return b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+  const out = b4a.alloc(32)
+  sodium.crypto_generichash(out, b4a.concat([b4a.from('pearcal-enc-topic-v1:'), b4a.from(groupKey, 'hex')]))
+  return out
 }
 
 // Date.now() is unavailable in some bare sandboxes at module init; guard it.
