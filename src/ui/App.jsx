@@ -488,6 +488,7 @@ export default function App ({ db, notifs, sync }) {
   // sub-screens first, same pattern as closeXxxSheetRef for bottom sheets.
   const closeOnboardSubModeRef = useRef(null)
   const [showDonationReminder, setShowDonationReminder] = useState(false)
+  const [showEncryptionNotice, setShowEncryptionNotice] = useState(false)
   const tabHistoryRef  = useRef([])
   const tabRef         = useRef('calendar')
   const backHandlerRef = useRef(null)
@@ -1503,6 +1504,17 @@ export default function App ({ db, notifs, sync }) {
     }
   }, [ready, profile?.onboardingComplete, profile?.donationReminderShown])
 
+  // One-time notice after updating to the version that made new groups
+  // encrypted (proposal 2026-07-15-pearcal-seeder-port). Existing users need to
+  // know new groups require everyone on this version+, so an older member won't
+  // see a new group until they update (or it's recreated). New onboarders get
+  // the flag pre-set at onboarding complete, so they never see it.
+  useEffect(() => {
+    if (!ready || !profile || !profile.onboardingComplete) return
+    if (profile.encryptionNoticeSeen) return
+    setShowEncryptionNotice(true)
+  }, [ready, profile?.onboardingComplete, profile?.encryptionNoticeSeen])
+
   // Plain dark screen while the WebView data loads. Matches the RN loading
   // screen background (#111) so the handoff is seamless, with no second icon
   // flashing between the native loading screen and the calendar.
@@ -1702,7 +1714,7 @@ export default function App ({ db, notifs, sync }) {
           profile={profile} onUpdateProfile={updateProfile} db={db} sync={sync}
           qrScanModeRef={qrScanModeRef}
           closeOnboardSubModeRef={closeOnboardSubModeRef}
-          onComplete={async () => { await db.updateProfile({ onboardingComplete: true, tourPending: true }); const p = await db.getProfile(); setProfile(p) }} />}
+          onComplete={async () => { await db.updateProfile({ onboardingComplete: true, tourPending: true, encryptionNoticeSeen: true }); const p = await db.getProfile(); setProfile(p) }} />}
         {profile?.tourPending && !showOnboarding && (
           <Tour
             tokens={{
@@ -1728,6 +1740,12 @@ export default function App ({ db, notifs, sync }) {
               setShowDonationReminder(false)
             }}
           />
+        )}
+        {showEncryptionNotice && !showOnboarding && !showDonationReminder && (
+          <EncryptionNoticeModal onDismiss={() => {
+            updateProfile({ encryptionNoticeSeen: true })
+            setShowEncryptionNotice(false)
+          }} />
         )}
         {qrGroup && <QRModal link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
@@ -3176,6 +3194,32 @@ function DonationReminderModal ({ sync, onDonate, onDismiss }) {
           style={{ background:'none', border:'none', color:colors.text.muted, fontSize:13,
             cursor:'pointer', fontFamily:FONT, padding:'4px' }}>
           Already donated ✓
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// One-time explainer shown after updating to the version that made new groups
+// encrypted. Gated by profile.encryptionNoticeSeen (proposal 2026-07-15).
+function EncryptionNoticeModal ({ onDismiss }) {
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:490, background:'rgba(0,0,0,0.75)',
+      display:'flex', alignItems:'center', justifyContent:'center', padding:'0 28px' }}>
+      <div style={{ background: colors.surface.base, borderRadius:20, padding:'32px 24px', width:'100%', maxWidth:360,
+        display:'flex', flexDirection:'column', alignItems:'center', gap:16, textAlign:'center' }}>
+        <div style={{ fontSize:52 }}>🔒</div>
+        <div style={{ fontSize:20, fontWeight:400, color: colors.text.primary }}>Groups are now encrypted</div>
+        <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.7' }}>
+          New groups are end-to-end encrypted for privacy. Everyone in a group needs this version (or newer) to see it — invite members only after they've updated.
+        </div>
+        <div style={{ fontSize:14, color:colors.text.muted, lineHeight:'1.7' }}>
+          If an existing group stops syncing, recreate it with everyone on the latest version.
+        </div>
+        <button onClick={onDismiss}
+          style={{ ...pillBtn, width:'100%', padding:'13px', fontSize:15,
+            display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          Got it
         </button>
       </div>
     </div>
