@@ -89,12 +89,6 @@ async function main () {
   // dashboard renders the same link as an on-screen QR; this is the headless
   // stand-in for testing before that lands.
   if (opts.pair) {
-    wl.on('event', ({ name, data }) => {
-      if (name !== 'seeder:pair:result') return
-      const n = data?.enrolled ?? 0
-      log('pair', `✓ paired — enrolled ${n} group(s)` + (data?.names?.length ? ': ' + data.names.join(', ') : ''))
-      log('pair', 'run with --pair again (or re-open) to admit another device')
-    })
     const openPair = async () => {
       try {
         const r = await wl.call('seeder:pair:open', {})
@@ -107,9 +101,18 @@ async function main () {
         process.stdout.write(qr + '\n')
         process.stdout.write(r.link + '\n')
         process.stdout.write(`QR image: ${pngPath}  (open it fullscreen if the terminal QR is hard to scan)\n`)
-        process.stdout.write(`(valid ${Math.round((r.ttlMs || 0) / 60000)} min)\n\n`)
+        process.stdout.write(`(valid ${Math.round((r.ttlMs || 0) / 60000)} min — a fresh QR appears after each pairing)\n\n`)
       } catch (e) { log('pair', 'error: ' + e.message) }
     }
+    // Each QR is single-use (the seeder closes the rendezvous once a device
+    // pairs). Mint a fresh one after every pairing so the on-screen QR is always
+    // live — scanning a spent QR would otherwise just time out on the phone.
+    wl.on('event', ({ name, data }) => {
+      if (name !== 'seeder:pair:result') return
+      const n = data?.enrolled ?? 0
+      log('pair', `✓ paired — enrolled ${n} group(s)` + (data?.names?.length ? ': ' + data.names.join(', ') : ''))
+      setTimeout(() => openPair(), 500) // refresh QR for the next device
+    })
     await openPair()
   }
 

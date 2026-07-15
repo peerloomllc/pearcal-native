@@ -5171,6 +5171,7 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
   useEffect(() => {
     function onResult (r) {
       if (r?.pending) { setPhase('scanning'); return }
+      if (r?.cancelled) { setPhase('idle'); return }
       if (r?.ok) { setResult(r); setPhase('success'); window.__pearSync?.haptic('success') }
       else { setResult(r); setPhase('error') }
     }
@@ -5221,9 +5222,14 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
           <div style={{ textAlign:'center', padding:'20px 0' }}>
             <div style={{ fontSize:14, color: colors.text.primary }}>Pairing…</div>
             <div style={{ fontSize:13, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
-              Point your camera at the blind peer's QR code. Once it connects, your groups
-              enroll automatically.
+              Connecting to the blind peer. Make sure you scanned the QR currently on its
+              screen — a QR that's already been used won't connect.
             </div>
+            <button onClick={() => { db.cancelSeederPairScan?.().catch(() => {}); setPhase('idle') }}
+              style={{ background:'none', border:`1px solid ${colors.border}`, color: colors.text.muted,
+                fontFamily:FONT, padding:'8px 20px', fontSize:13, cursor:'pointer', borderRadius:8, marginTop:18 }}>
+              Cancel
+            </button>
           </div>
         ) : (
           <>

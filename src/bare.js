@@ -352,6 +352,7 @@ async function handle (method, args) {
     case 'mintSeedBundle':   return mintSeedBundle()
     case 'mintSeedInvite':   return mintSeedInvite(args[0])
     case 'seederPairScan':   return seederPairScan(args[0])
+    case 'cancelSeederPairScan': return cancelSeederPairScan()
     case 'listBlindPeers':   return listBlindPeers()
     case 'removeBlindPeer':  return removeBlindPeer(args[0])
     case 'listLinkedDevices': return listLinkedDevices()
@@ -880,8 +881,7 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
   const session = _pairScan
   if (!session || session.done) return
   if (!remotePubkeyHex || remotePubkeyHex !== session.seederKeyHex) return
-  session.done = true // one bundle push per scan
-  setupSeederPairChannel({
+  const res = setupSeederPairChannel({
     mux,
     role: 'member',
     rv: session.rv,
@@ -901,6 +901,16 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
   })
+  // Only commit to this connection if the channel actually opened. A stale mux
+  // from a prior pairing (same rendezvous id already used) returns null here —
+  // burning `done` on it would block a fresh connection and hang the scan.
+  if (res) session.done = true
+}
+
+// Abort an in-flight scan (UI Cancel button, or a fresh scan superseding one).
+function cancelSeederPairScan () {
+  _finishPairScan({ ok: false, cancelled: true })
+  return { ok: true }
 }
 
 async function seederPairScan (link) {
