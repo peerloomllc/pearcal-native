@@ -15,6 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
+const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const {
   computeReminderFireTime,
@@ -345,6 +346,8 @@ async function handle (method, args) {
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
+    case 'mintSeedBundle':   return mintSeedBundle()
+    case 'mintSeedInvite':   return mintSeedInvite(args[0])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'removeDeviceFromList': return removeDeviceFromList(args[0])
@@ -783,6 +786,47 @@ async function removeBlindPeerKey () {
     console.log('Blind peering disabled')
   }
   return true
+}
+
+// ── Blind-seeder admission (member side) ─────────────────────────────────────
+// Mint /seed invites so the user can admit an always-on blind seeder to their
+// groups (proposal 2026-07-15-pearcal-seeder-port, Phase 4/5). The invite
+// carries the groupKey (swarm topic + Autobase bootstrap) but NEVER the block
+// encryption key — a seeder admitted this way replicates ciphertext it can't
+// read. `seedInvite.js` is the single shared build/parse definition; the seed
+// worklet parses what we build here.
+
+// The provenance field on a /seed invite must be a hex key (parseSeedInvite
+// requires ≥16 hex chars). Prefer publicKey, then identityPublicKey.
+function _seedInviterId (profile) {
+  const cand = profile?.publicKey || profile?.identityPublicKey
+  return (typeof cand === 'string' && /^[0-9a-f]{16,}$/i.test(cand)) ? cand : null
+}
+
+// All-groups seed bundle: one admit enrolls the seeder in every group the user
+// is in. Returns per-group flags so the UI can show what's covered and which
+// groups are encrypted (blind) vs legacy (seeder would hold plaintext).
+async function mintSeedBundle () {
+  const profile = await getProfile()
+  const inviterId = _seedInviterId(profile)
+  if (!inviterId) throw new Error('mintSeedBundle: no hex identity key on profile')
+  const groups = (await listGroups()).filter(g => g && g.id && g.groupKey)
+  return {
+    ok: true,
+    bundle: buildSeedBundle(groups, inviterId),
+    count: groups.length,
+    groups: groups.map(g => ({ id: g.id, name: g.name, encrypted: !!g.encryptionKey })),
+  }
+}
+
+// Single-group /seed invite (for admitting a seeder to just one group).
+async function mintSeedInvite (groupId) {
+  const profile = await getProfile()
+  const inviterId = _seedInviterId(profile)
+  if (!inviterId) throw new Error('mintSeedInvite: no hex identity key on profile')
+  const group = await getGroup(groupId)
+  if (!group || !group.groupKey) throw new Error('mintSeedInvite: group not found or missing key')
+  return { ok: true, invite: buildSeedInvite(group, inviterId), name: group.name, encrypted: !!group.encryptionKey }
 }
 
 async function initBlindPeering (key) {

@@ -5136,6 +5136,113 @@ function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRe
   )
 }
 
+// ─── Admit a Blind Peer (blind-seeder admission) ──────────────────────────────
+// Mints an all-groups /seed bundle (proposal 2026-07-15-pearcal-seeder-port,
+// Phase 4/5) so the user can admit an always-on blind seeder. The bundle carries
+// each group's swarm topic + Autobase bootstrap but NEVER the block-encryption
+// key — the seeder replicates ciphertext it can't read. "Blind peer" is the
+// user-facing term (project_blind_peer_terminology). Copy/share the bundle text
+// into the seeder host to enroll it.
+function BlindPeerSheet ({ db, sync, onClose }) {
+  const bsCloseRef = useRef(null)
+  const [state, setState] = useState({ loading: true })
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    db.mintSeedBundle?.()
+      .then(r => { if (!cancelled) setState({ loading: false, ...r }) })
+      .catch(e => { if (!cancelled) setState({ loading: false, error: e?.message || 'Could not create invite' }) })
+    return () => { cancelled = true }
+  }, [])
+
+  const bundle = state.bundle || ''
+  const count = state.count ?? 0
+  const encryptedCount = (state.groups ?? []).filter(g => g.encrypted).length
+
+  const copyBundle = () => {
+    if (!bundle) return
+    try {
+      const ta = document.createElement('textarea')
+      ta.value = bundle; ta.style.position = 'fixed'; ta.style.opacity = '0'
+      document.body.appendChild(ta); ta.select()
+      document.execCommand('copy'); document.body.removeChild(ta)
+      window.__pearSync?.haptic('success')
+      setCopied(true); setTimeout(() => setCopied(false), 2000)
+    } catch {}
+  }
+  const shareBundle = () => {
+    if (!bundle) return
+    bsCloseRef.current?.()
+    setTimeout(() => sync?.nativeShare('PearCal blind-peer invite', bundle), 50)
+  }
+
+  return (
+    <BottomSheet onClose={onClose} zIndex={300} closeRef={bsCloseRef}>
+      <div style={{ padding:'0 20px 8px' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+          <ShieldCheck size={24} weight="thin" color="var(--color-accent)" />
+          <span style={{ fontSize:17, color: colors.text.primary }}>Admit a blind peer</span>
+        </div>
+        <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5, marginBottom:16 }}>
+          A blind peer is an always-on device that keeps your groups in sync even when no
+          one else is online. It stores your groups <b>encrypted</b> and can never read
+          them — it only holds and relays the scrambled data. Send it this invite to enroll it.
+        </div>
+
+        {state.loading ? (
+          <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'24px 0' }}>
+            Preparing invite…
+          </div>
+        ) : state.error ? (
+          <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', padding:'16px 0' }}>
+            {state.error}
+          </div>
+        ) : count === 0 ? (
+          <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'16px 0' }}>
+            You're not in any groups yet. Create or join a group first, then admit a blind peer to keep it synced.
+          </div>
+        ) : (
+          <>
+            <div style={{ fontSize:12, color: colors.text.muted, marginBottom:8 }}>
+              Covers {count} group{count === 1 ? '' : 's'}
+              {encryptedCount < count && (
+                <span> · {encryptedCount} encrypted (blind), {count - encryptedCount} legacy</span>
+              )}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
+              {(state.groups ?? []).map(g => (
+                <div key={g.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color: colors.text.primary }}>
+                  <Lock size={14} weight="thin" color={g.encrypted ? 'var(--color-accent)' : 'var(--color-muted)'} />
+                  <span>{g.name || 'Group'}</span>
+                  {!g.encrypted && <span style={{ fontSize:11, color: colors.text.muted }}>(legacy — not blind)</span>}
+                </div>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button data-haptic="success" onClick={copyBundle}
+                style={{ ...pillBtn, flex:1, padding:'11px', fontSize:14,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                {copied ? <><Check size={16} weight="bold" /> Copied</> : 'Copy invite'}
+              </button>
+              <button onClick={shareBundle}
+                style={{ flex:1, padding:'11px', fontSize:14, borderRadius:999, cursor:'pointer',
+                  fontFamily:FONT, border:`1px solid ${colors.border}`, background:'transparent',
+                  color: colors.text.primary, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+                <ShareNetwork size={16} weight="thin" /> Share
+              </button>
+            </div>
+            <div style={{ fontSize:11, color: colors.text.muted, marginTop:12, lineHeight:1.5 }}>
+              Paste this into your blind-peer host (Linux, Umbrel, or Mac) to enroll it.
+              The invite never contains a group's encryption key.
+            </div>
+          </>
+        )}
+      </div>
+    </BottomSheet>
+  )
+}
+
 // ─── Group Settings Modal ─────────────────────────────────────────────────────
 function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendingApproval = false, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
   const bsCloseRef = useRef(null)
@@ -6439,12 +6546,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const use24h    = profile?.use24h    ?? localeUse24h
   const weekStart = profile?.weekStart ?? 0
   const fileRef = useRef()
-  const [seedPeerOpen,     setSeedPeerOpen]     = useState(false)
-  const [seedPeerInput,    setSeedPeerInput]    = useState(blindPeerKey ?? '')
-  const [seedPeerSaving,   setSeedPeerSaving]   = useState(false)
-  const [seedPeerSaved,    setSeedPeerSaved]    = useState(false)
-  const [seedPeerError,    setSeedPeerError]    = useState(null)
-  const [seedPeerInfoOpen, setSeedPeerInfoOpen] = useState(false)
+  // Blind-seeder admission (proposal 2026-07-15-pearcal-seeder-port). Supersedes
+  // the old manual blind-peer-key input; the user mints a /seed invite instead.
+  const [blindPeerOpen,    setBlindPeerOpen]    = useState(false)
   const [backupStatus,     setBackupStatus]     = useState(null)
   const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
   const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
@@ -7211,6 +7315,29 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         </div>
       </div>
 
+      {/* Blind peer (always-on group replicator) */}
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        BLIND PEER
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'0 16px 14px' }}>
+          <button onClick={() => { window.__pearSync?.haptic('light'); setBlindPeerOpen(true) }}
+            style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
+              padding:'12px 14px', borderRadius:10, cursor:'pointer',
+              border:`1px solid var(--color-accent)`, background:'transparent', fontFamily:FONT }}>
+            <ShieldCheck size={18} weight="thin" color="var(--color-accent)" />
+            <div style={{ flex:1, textAlign:'left' }}>
+              <div style={{ fontSize:14, fontWeight:400, color:'var(--color-accent)' }}>
+                Admit a blind peer
+              </div>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
+                Keep groups synced when no one else is online — it can't read them
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* Storage */}
       {reportOpen && reclaimResult && (
         <div onClick={() => setReportOpen(null)}
@@ -7618,6 +7745,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         <PairingHostModal data={pairHost} error={pairHostError}
           onRegenerate={async () => { await cancelDevicePairing(); startDevicePairing() }}
           onCancel={cancelDevicePairing} />
+      )}
+      {blindPeerOpen && (
+        <BlindPeerSheet db={db} sync={sync} onClose={() => setBlindPeerOpen(false)} />
       )}
     </div>
   )
