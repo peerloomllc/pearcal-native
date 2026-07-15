@@ -1509,6 +1509,22 @@ async function _joinGroupImpl (group) {
   // killing the bare runtime. The listener turns those into recoverable
   // events so the runtime stays alive and other groups keep working.
   base.on('error', e => console.error('[group] base error (joinGroup):', group.id, e?.message))
+
+  // Join the group's swarm topic BEFORE awaiting base.ready(). Autobase.ready()
+  // must read the bootstrap core's blocks; when a device lost them (wiped or
+  // Storage-Reclaim-pruned indexer), ready() blocks until a peer serves them.
+  // The swarm 'connection' handler wires up store.replicate(conn), so announcing
+  // the topic here lets peers feed those blocks and ready() completes. Joining
+  // only at the end of this function (see below) would deadlock a whole group:
+  // every member stuck in ready() before ever announcing the topic, so no one
+  // serves anyone. Idempotent with the later swarm.join (same topic).
+  try {
+    const earlyTopic = b4a.from(group.groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+    swarm.join(earlyTopic, { server: true, client: true })
+  } catch (e) {
+    console.warn('[group] early swarm.join failed:', group.id, e?.message)
+  }
+
   await base.ready()
   attachConflictListeners(base)
 
@@ -6821,21 +6837,30 @@ async function _doInit (dir, attempt = 0) {
         const target = await db.get(NS.groups + g.migratedTo).catch(() => null)
         if (target?.value) continue
       }
-      await joinGroup(g).catch(async e => {
-        console.error('joinGroup error:', e.message, 'groupId:', g.id)
-        // STORAGE_EMPTY means the group's bootstrap Hypercore is gone from
-        // the corestore. The group is unrecoverable — it can never sync again
-        // without its bootstrap. Auto-delete the record so it stops
-        // resurrecting after force-stop-and-reopen cycles when the tombstone
-        // write from removeBrokenGroup doesn't fsync in time.
-        if (/STORAGE_EMPTY/i.test(e?.message || '')) {
-          console.log('[STARTUP] auto-deleting unrecoverable group:', g.id)
-          await db.put('forgottenGroup:' + g.id, { ts: Date.now(), reason: 'storage_empty' }).catch(() => {})
-          await deleteGroup(g.id).catch(() => {})
-          return
-        }
-        await markGroupBroken(g.id, e)
-      })
+      // Fire-and-forget: opening a group's Autobase must NOT block boot. A group
+      // whose bootstrap blocks aren't in local storage yet (a wiped or
+      // Storage-Reclaim-pruned indexer) makes base.ready() wait for a peer;
+      // awaiting it here froze the whole app on the loading screen, because
+      // _dbReady below gates every IPC call. joinGroup now announces the swarm
+      // topic before ready(), so the group heals in the background once a peer
+      // serves the blocks, while the UI loads immediately from the local mirror.
+      joinGroup(g)
+        .then(() => emitSync(g.id, { groupChanged: true }))
+        .catch(async e => {
+          console.error('joinGroup error:', e.message, 'groupId:', g.id)
+          // STORAGE_EMPTY means the group's bootstrap Hypercore is gone from
+          // the corestore. The group is unrecoverable — it can never sync again
+          // without its bootstrap. Auto-delete the record so it stops
+          // resurrecting after force-stop-and-reopen cycles when the tombstone
+          // write from removeBrokenGroup doesn't fsync in time.
+          if (/STORAGE_EMPTY/i.test(e?.message || '')) {
+            console.log('[STARTUP] auto-deleting unrecoverable group:', g.id)
+            await db.put('forgottenGroup:' + g.id, { ts: Date.now(), reason: 'storage_empty' }).catch(() => {})
+            await deleteGroup(g.id).catch(() => {})
+            return
+          }
+          await markGroupBroken(g.id, e)
+        })
     }
 
     // Reload persisted pending member leaves so they can be delivered on next peer connection
@@ -6852,7 +6877,7 @@ async function _doInit (dir, attempt = 0) {
       }
     } catch(e) {}
 
-    console.log('DB ready, groups rejoined:', groups.length)
+    console.log('DB ready; opening', groups.length, 'group(s) in background')
     _dbReady = true
     _dbReadyResolve()
     // Self-heal: drop any duplicate event keys (same id under different dates)
