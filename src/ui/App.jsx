@@ -5192,7 +5192,7 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
   return (
     <BottomSheet onClose={onClose} zIndex={300} closeRef={bsCloseRef}>
       <div style={{ padding:'0 20px 8px' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:12 }}>
           <ShieldCheck size={24} weight="thin" color="var(--color-accent)" />
           <span style={{ fontSize:17, color: colors.text.primary }}>Admit a blind peer</span>
         </div>
@@ -6574,8 +6574,16 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const weekStart = profile?.weekStart ?? 0
   const fileRef = useRef()
   // Blind-seeder admission (proposal 2026-07-15-pearcal-seeder-port). Supersedes
-  // the old manual blind-peer-key input; the user mints a /seed invite instead.
+  // the old manual blind-peer-key input; the user scans the seeder's QR instead.
   const [blindPeerOpen,    setBlindPeerOpen]    = useState(false)
+  const [blindPeers,       setBlindPeers]       = useState([])
+  const [removeBpConfirm,  setRemoveBpConfirm]  = useState(null)
+  const loadBlindPeers = useCallback(() => {
+    db.listBlindPeers?.().then(list => setBlindPeers(list ?? [])).catch(() => {})
+  }, [db])
+  // Load on mount and refresh whenever the pairing sheet closes (a scan may have
+  // just admitted one).
+  useEffect(() => { if (!blindPeerOpen) loadBlindPeers() }, [blindPeerOpen, loadBlindPeers])
   const [backupStatus,     setBackupStatus]     = useState(null)
   const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
   const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
@@ -7347,7 +7355,47 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         BLIND PEER
       </div>
       <div style={{ marginBottom:12 }}>
-        <div style={{ padding:'0 16px 14px' }}>
+        <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+          {blindPeers.map(bp => {
+            const confirming = removeBpConfirm === bp.pubkey
+            return (
+              <div key={bp.pubkey}
+                style={{ padding:'12px 14px', borderRadius:10, border:`1px solid ${colors.border}`,
+                  display:'flex', alignItems:'center', gap:10 }}>
+                <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:13, color: colors.text.primary }}>Blind peer</div>
+                  <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
+                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                    {String(bp.pubkey).slice(0, 16)}…
+                  </div>
+                  <div style={{ fontSize:11, color: colors.text.muted }}>
+                    Seeding {bp.groupCount ?? 0} group{(bp.groupCount ?? 0) === 1 ? '' : 's'}
+                  </div>
+                </div>
+                {confirming ? (
+                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                    <button onClick={async () => { window.__pearSync?.haptic('medium'); await db.removeBlindPeer?.(bp.pubkey).catch(() => {}); setRemoveBpConfirm(null); loadBlindPeers() }}
+                      style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                        border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
+                      Remove
+                    </button>
+                    <button onClick={() => setRemoveBpConfirm(null)}
+                      style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                        border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => { window.__pearSync?.haptic('light'); setRemoveBpConfirm(bp.pubkey) }}
+                    style={{ background:'none', border:'none', padding:6, cursor:'pointer',
+                      display:'flex', alignItems:'center', color: colors.text.muted, flexShrink:0 }}>
+                    <X size={16} weight="thin" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
           <button onClick={() => { window.__pearSync?.haptic('light'); setBlindPeerOpen(true) }}
             style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
               padding:'12px 14px', borderRadius:10, cursor:'pointer',
@@ -7355,10 +7403,12 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <ShieldCheck size={18} weight="thin" color="var(--color-accent)" />
             <div style={{ flex:1, textAlign:'left' }}>
               <div style={{ fontSize:14, fontWeight:400, color:'var(--color-accent)' }}>
-                Admit a blind peer
+                {blindPeers.length ? 'Admit another blind peer' : 'Admit a blind peer'}
               </div>
               <div style={{ fontSize:11, color:colors.text.muted }}>
-                Keep groups synced when no one else is online — it can't read them
+                {blindPeers.length
+                  ? 'Scan another blind peer’s QR to add it'
+                  : 'Keep groups synced when no one else is online — it can’t read them'}
               </div>
             </div>
           </button>

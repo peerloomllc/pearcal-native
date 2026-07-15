@@ -352,6 +352,8 @@ async function handle (method, args) {
     case 'mintSeedBundle':   return mintSeedBundle()
     case 'mintSeedInvite':   return mintSeedInvite(args[0])
     case 'seederPairScan':   return seederPairScan(args[0])
+    case 'listBlindPeers':   return listBlindPeers()
+    case 'removeBlindPeer':  return removeBlindPeer(args[0])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'removeDeviceFromList': return removeDeviceFromList(args[0])
@@ -833,6 +835,25 @@ async function mintSeedInvite (groupId) {
   return { ok: true, invite: buildSeedInvite(group, inviterId), name: group.name, encrypted: !!group.encryptionKey }
 }
 
+// List the blind peers this identity has paired with (for the settings UI).
+async function listBlindPeers () {
+  const out = []
+  for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
+    if (value?.pubkey) out.push(value)
+  }
+  return out
+}
+
+// Forget a paired blind peer locally (stops the auto-follow / removes it from
+// the list). This does NOT cryptographically revoke — the seeder still holds the
+// ciphertext it was given; true revocation (a signed tombstone across each
+// group's base, PearCircle seederRevocation) is a follow-up.
+async function removeBlindPeer (pubkey) {
+  if (typeof pubkey !== 'string' || !pubkey) throw new Error('removeBlindPeer: pubkey required')
+  await db.del('seederFollow:' + pubkey).catch(() => {})
+  return { ok: true, pubkey }
+}
+
 // ── Seeder QR pairing (member side) ──────────────────────────────────────────
 // The seeder shows a QR = a one-time rendezvous topic + its pubkey; we scan it,
 // join the rendezvous, and — ONLY on the connection whose authenticated remote
@@ -869,8 +890,14 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
       return (bundle || '').split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)
     },
     onAck: async ({ enrolled, names }) => {
-      // Follow this seeder so future groups auto-enroll (best-effort local mark).
-      await db.put('seederFollow:' + session.seederKeyHex, { pubkey: session.seederKeyHex, since: Date.now() }).catch(() => {})
+      // Record the paired blind peer so the UI can list it and offer removal.
+      const existing = await db.get('seederFollow:' + session.seederKeyHex).catch(() => null)
+      await db.put('seederFollow:' + session.seederKeyHex, {
+        pubkey: session.seederKeyHex,
+        since: existing?.value?.since ?? Date.now(),
+        pairedAt: Date.now(),
+        groupCount: enrolled,
+      }).catch(() => {})
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
   })
