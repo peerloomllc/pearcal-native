@@ -42,6 +42,18 @@ let dataDir = null
 let _booted = false
 const bootTs = _now()
 const enrolled = new Map() // groupId -> enrollment row
+const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex }
+
+// Must byte-match src/bare.js's writer-announce channel so members announce
+// their Autobase writer cores to us (we can't read the encrypted view to find
+// them ourselves). We only LISTEN — the seeder never announces a writer.
+const WRITER_ANNOUNCE_PROTOCOL = 'pearcal/writer-announce'
+const WRITER_ANNOUNCE_ID = Buffer.from('pearcal-writer-announce-v1')
+
+// Same topic derivation as bare.js joinGroup (groupKey → 32-byte topic).
+function topicForGroupKey (groupKey) {
+  return b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex')
+}
 
 // Date.now() is unavailable in some bare sandboxes at module init; guard it.
 function _now () { try { return Date.now() } catch { return 0 } }
@@ -90,6 +102,63 @@ async function loadEnrolledGroups () {
   } catch (e) { console.warn('[seed] loadEnrolledGroups error:', e?.message) }
 }
 
+// ── Blind replication core ──────────────────────────────────────────────────
+// Mount an enrolled group: open its bootstrap core BLIND (no encryptionKey),
+// force a full background download so we hold every block — Hypercore
+// replication is otherwise reactive/sparse and a fresh peer syncing FROM us
+// would find nothing — and join the group's swarm topic. Writer cores are added
+// as members announce them (onWriterAnnounce).
+async function mountGroup (enrollment) {
+  const { groupId, groupKey } = enrollment || {}
+  if (!groupId || !groupKey || !/^[0-9a-f]{64}$/i.test(groupKey)) return null
+  if (mounted.has(groupId)) return mounted.get(groupId)
+  const core = store.get({ key: b4a.from(groupKey, 'hex') })
+  await core.ready()
+  core.download({ start: 0, end: -1, linear: false })
+  const topicHex = b4a.toString(topicForGroupKey(groupKey), 'hex')
+  swarm.join(b4a.from(topicHex, 'hex'), { server: true, client: true })
+  const entry = { core, writerCores: new Map(), topicHex }
+  mounted.set(groupId, entry)
+  console.log('[seed] mounted group', groupId, '— topic', topicHex.slice(0, 12) + '…')
+  return entry
+}
+
+// Open the writer-announce channel on a replication stream (byte-identical to
+// bare.js) and replicate every writer core a member announces for a group we
+// host. We only LISTEN — the seeder never announces a writer of its own.
+async function setupWriterAnnounceListener (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  const channel = mux.createChannel({
+    protocol: WRITER_ANNOUNCE_PROTOCOL,
+    id: WRITER_ANNOUNCE_ID,
+    onopen () {},
+    onclose () {},
+  })
+  if (!channel) return
+  channel.addMessage({ onmessage: (buf) => { onWriterAnnounce(buf).catch(() => {}) } })
+  channel.open()
+}
+
+// A member announced { groupId, writerKey, ... }. If we host that group and
+// don't already replicate this writer core, open it blind and download it in
+// full. We hold ciphertext only — no encryptionKey, so we can never read it.
+async function onWriterAnnounce (buf) {
+  let parsed
+  try { parsed = JSON.parse(buf.toString()) } catch { return }
+  const groupId = parsed?.groupId
+  const writerKey = parsed?.writerKey
+  if (!groupId || !writerKey || !/^[0-9a-f]{64}$/i.test(writerKey)) return
+  const entry = mounted.get(groupId)
+  if (!entry || entry.writerCores.has(writerKey)) return
+  const core = store.get({ key: b4a.from(writerKey, 'hex') })
+  await core.ready()
+  core.download({ start: 0, end: -1, linear: false })
+  entry.writerCores.set(writerKey, core)
+  console.log('[seed] +writer core', writerKey.slice(0, 12) + '…', 'for group', groupId)
+}
+
 // ── Boot ────────────────────────────────────────────────────────────────────
 async function init (dir) {
   if (_booted) return { ok: true, alreadyBooted: true }
@@ -103,17 +172,20 @@ async function init (dir) {
   await store.ready()
 
   swarm = new Hyperswarm()
-  // Blind replication: serve whatever cores we hold to any peer that connects.
-  // Phase 3 will join each enrolled group's topic; for now the handler is wired
-  // so replication "just works" once topics are joined.
+  // Blind replication: replicate the whole corestore to any connected peer, and
+  // open the writer-announce channel so members tell us their writer cores.
   swarm.on('connection', (conn) => {
     const s = store.replicate(conn)
     s.on('error', () => {})
     conn.on('error', () => {})
+    setupWriterAnnounceListener(s)
   })
 
   identity = await loadOrCreateSeederIdentity()
   await loadEnrolledGroups()
+  for (const enr of enrolled.values()) {
+    await mountGroup(enr).catch((e) => console.warn('[seed] mount error', enr.groupId, e?.message))
+  }
   _booted = true
   console.log('[seed] booted — pubkey', b4a.toString(identity.publicKey, 'hex').slice(0, 16) + '…',
               '| enrolled groups:', enrolled.size,
@@ -132,6 +204,7 @@ async function handle (method, args) {
         booted: _booted,
         uptime: _now() - bootTs,
         enrolled: enrolled.size,
+        mounted: mounted.size,
       }
     case 'seeder:enrolled:list':
       return [...enrolled.values()]
@@ -190,4 +263,9 @@ if (detectSeedMode(_argv)) {
   }
 }
 
-module.exports = { detectSeedMode, loadOrCreateSeederIdentity, loadEnrolledGroups, init, handle }
+module.exports = {
+  detectSeedMode, loadOrCreateSeederIdentity, loadEnrolledGroups, init, handle,
+  mountGroup, onWriterAnnounce, topicForGroupKey,
+  // Test/introspection accessors.
+  _state: () => ({ enrolled, mounted, identity, store: () => store, swarm: () => swarm }),
+}
