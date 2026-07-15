@@ -827,6 +827,16 @@ export default function App ({ db, notifs, sync }) {
       if (!url || !db || !sync) return
       const mode = qrScanModeRef.current
       qrScanModeRef.current = null
+      if (mode === 'seederPair') {
+        // Scanned a blind peer's QR. Hand to the worklet: join the rendezvous,
+        // verify the seeder pubkey, push our seed bundle. Broadcast progress +
+        // result so the BlindPeerSheet can reflect it.
+        emitter.emit('seederPairResult', { pending: true })
+        db.seederPairScan(url)
+          .then(r => emitter.emit('seederPairResult', r || { ok: false, error: 'no result' }))
+          .catch(e => emitter.emit('seederPairResult', { ok: false, error: e?.message || 'pairing failed' }))
+        return
+      }
       if (mode === 'pair') {
         // Pair-mode: URL must be pearcal://pair. Hand to bare worklet which
         // verifies the handshake, installs the mnemonic + personal base, and
@@ -1581,7 +1591,7 @@ export default function App ({ db, notifs, sync }) {
             <ProfileTab profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
-              focusBackup={focusBackup}
+              focusBackup={focusBackup} qrScanModeRef={qrScanModeRef}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -5136,45 +5146,47 @@ function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRe
   )
 }
 
-// ─── Admit a Blind Peer (blind-seeder admission) ──────────────────────────────
-// Mints an all-groups /seed bundle (proposal 2026-07-15-pearcal-seeder-port,
-// Phase 4/5) so the user can admit an always-on blind seeder. The bundle carries
-// each group's swarm topic + Autobase bootstrap but NEVER the block-encryption
-// key — the seeder replicates ciphertext it can't read. "Blind peer" is the
-// user-facing term (project_blind_peer_terminology). Copy/share the bundle text
-// into the seeder host to enroll it.
-function BlindPeerSheet ({ db, sync, onClose }) {
+// ─── Admit a Blind Peer (blind-seeder QR pairing) ─────────────────────────────
+// The blind peer (seeder) displays a QR; the member scans it here. Scanning
+// joins the seeder's one-time rendezvous, verifies its pubkey, and pushes an
+// all-groups seed bundle so the seeder enrolls every group — encrypted, so it
+// replicates ciphertext it can never read (proposal 2026-07-15-pearcal-seeder-
+// port, QR-pairing model from PearCircle). "Blind peer" is the user-facing term
+// (project_blind_peer_terminology).
+function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
   const bsCloseRef = useRef(null)
-  const [state, setState] = useState({ loading: true })
-  const [copied, setCopied] = useState(false)
+  const [groupInfo, setGroupInfo] = useState({ loading: true })
+  // phase: 'idle' | 'scanning' | 'success' | 'error'
+  const [phase, setPhase] = useState('idle')
+  const [result, setResult] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     db.mintSeedBundle?.()
-      .then(r => { if (!cancelled) setState({ loading: false, ...r }) })
-      .catch(e => { if (!cancelled) setState({ loading: false, error: e?.message || 'Could not create invite' }) })
+      .then(r => { if (!cancelled) setGroupInfo({ loading: false, ...r }) })
+      .catch(() => { if (!cancelled) setGroupInfo({ loading: false, count: 0 }) })
     return () => { cancelled = true }
   }, [])
 
-  const bundle = state.bundle || ''
-  const count = state.count ?? 0
-  const encryptedCount = (state.groups ?? []).filter(g => g.encrypted).length
+  useEffect(() => {
+    function onResult (r) {
+      if (r?.pending) { setPhase('scanning'); return }
+      if (r?.ok) { setResult(r); setPhase('success'); window.__pearSync?.haptic('success') }
+      else { setResult(r); setPhase('error') }
+    }
+    emitter.on('seederPairResult', onResult)
+    return () => emitter.off('seederPairResult', onResult)
+  }, [])
 
-  const copyBundle = () => {
-    if (!bundle) return
-    try {
-      const ta = document.createElement('textarea')
-      ta.value = bundle; ta.style.position = 'fixed'; ta.style.opacity = '0'
-      document.body.appendChild(ta); ta.select()
-      document.execCommand('copy'); document.body.removeChild(ta)
-      window.__pearSync?.haptic('success')
-      setCopied(true); setTimeout(() => setCopied(false), 2000)
-    } catch {}
-  }
-  const shareBundle = () => {
-    if (!bundle) return
-    bsCloseRef.current?.()
-    setTimeout(() => sync?.nativeShare('PearCal blind-peer invite', bundle), 50)
+  const count = groupInfo.count ?? 0
+  const encryptedCount = (groupInfo.groups ?? []).filter(g => g.encrypted).length
+
+  const startScan = () => {
+    if (!qrScanModeRef || !sync?.qrScan) return
+    window.__pearSync?.haptic('light')
+    setPhase('scanning')
+    qrScanModeRef.current = 'seederPair'
+    sync.qrScan()
   }
 
   return (
@@ -5184,57 +5196,72 @@ function BlindPeerSheet ({ db, sync, onClose }) {
           <ShieldCheck size={24} weight="thin" color="var(--color-accent)" />
           <span style={{ fontSize:17, color: colors.text.primary }}>Admit a blind peer</span>
         </div>
-        <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5, marginBottom:16 }}>
-          A blind peer is an always-on device that keeps your groups in sync even when no
-          one else is online. It stores your groups <b>encrypted</b> and can never read
-          them — it only holds and relays the scrambled data. Send it this invite to enroll it.
-        </div>
 
-        {state.loading ? (
-          <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'24px 0' }}>
-            Preparing invite…
+        {phase === 'success' ? (
+          <div style={{ textAlign:'center', padding:'8px 0 4px' }}>
+            <CheckCircle size={44} weight="thin" color="#5DBF8A" />
+            <div style={{ fontSize:15, color: colors.text.primary, marginTop:10 }}>
+              Paired with your blind peer
+            </div>
+            <div style={{ fontSize:13, color: colors.text.muted, marginTop:6, lineHeight:1.5 }}>
+              It's now keeping {result?.enrolled ?? 0} group{(result?.enrolled ?? 0) === 1 ? '' : 's'} synced,
+              even when no one else is online.
+            </div>
+            {Array.isArray(result?.names) && result.names.length > 0 && (
+              <div style={{ fontSize:12, color: colors.text.muted, marginTop:8 }}>
+                {result.names.join(' · ')}
+              </div>
+            )}
+            <button onClick={() => bsCloseRef.current?.()}
+              style={{ ...pillBtn, width:'100%', padding:'11px', fontSize:14, marginTop:18 }}>
+              Done
+            </button>
           </div>
-        ) : state.error ? (
-          <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', padding:'16px 0' }}>
-            {state.error}
-          </div>
-        ) : count === 0 ? (
-          <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'16px 0' }}>
-            You're not in any groups yet. Create or join a group first, then admit a blind peer to keep it synced.
+        ) : phase === 'scanning' ? (
+          <div style={{ textAlign:'center', padding:'20px 0' }}>
+            <div style={{ fontSize:14, color: colors.text.primary }}>Pairing…</div>
+            <div style={{ fontSize:13, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
+              Point your camera at the blind peer's QR code. Once it connects, your groups
+              enroll automatically.
+            </div>
           </div>
         ) : (
           <>
-            <div style={{ fontSize:12, color: colors.text.muted, marginBottom:8 }}>
-              Covers {count} group{count === 1 ? '' : 's'}
-              {encryptedCount < count && (
-                <span> · {encryptedCount} encrypted (blind), {count - encryptedCount} legacy</span>
-              )}
+            <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5, marginBottom:16 }}>
+              A blind peer is an always-on device (a home server, Umbrel, or Mac) that keeps your
+              groups in sync even when no one else is online. It stores them <b>encrypted</b> and
+              can never read them. Open its screen and <b>scan the QR code</b> it shows.
             </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:4, marginBottom:14 }}>
-              {(state.groups ?? []).map(g => (
-                <div key={g.id} style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color: colors.text.primary }}>
-                  <Lock size={14} weight="thin" color={g.encrypted ? 'var(--color-accent)' : 'var(--color-muted)'} />
-                  <span>{g.name || 'Group'}</span>
-                  {!g.encrypted && <span style={{ fontSize:11, color: colors.text.muted }}>(legacy — not blind)</span>}
-                </div>
-              ))}
-            </div>
-            <div style={{ display:'flex', gap:10 }}>
-              <button data-haptic="success" onClick={copyBundle}
-                style={{ ...pillBtn, flex:1, padding:'11px', fontSize:14,
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                {copied ? <><Check size={16} weight="bold" /> Copied</> : 'Copy invite'}
-              </button>
-              <button onClick={shareBundle}
-                style={{ flex:1, padding:'11px', fontSize:14, borderRadius:999, cursor:'pointer',
-                  fontFamily:FONT, border:`1px solid ${colors.border}`, background:'transparent',
-                  color: colors.text.primary, display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
-                <ShareNetwork size={16} weight="thin" /> Share
-              </button>
-            </div>
+
+            {phase === 'error' && (
+              <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', padding:'0 0 12px' }}>
+                {result?.error || 'Pairing failed'} — try again.
+              </div>
+            )}
+
+            {!groupInfo.loading && count === 0 ? (
+              <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'8px 0 16px' }}>
+                You're not in any groups yet. Create or join a group first, then admit a blind peer
+                to keep it synced.
+              </div>
+            ) : (
+              <>
+                {!groupInfo.loading && (
+                  <div style={{ fontSize:12, color: colors.text.muted, marginBottom:14 }}>
+                    Will enroll {count} group{count === 1 ? '' : 's'}
+                    {encryptedCount < count && <span> · {encryptedCount} encrypted (blind), {count - encryptedCount} legacy</span>}
+                  </div>
+                )}
+                <button data-haptic="light" onClick={startScan}
+                  style={{ ...pillBtn, width:'100%', padding:'12px', fontSize:15,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                  <QrCode size={18} weight="thin" /> Scan blind peer QR
+                </button>
+              </>
+            )}
             <div style={{ fontSize:11, color: colors.text.muted, marginTop:12, lineHeight:1.5 }}>
-              Paste this into your blind-peer host (Linux, Umbrel, or Mac) to enroll it.
-              The invite never contains a group's encryption key.
+              Nothing you scan reveals a group's contents — the pairing only shares each group's
+              encrypted-sync address, never its decryption key.
             </div>
           </>
         )}
@@ -6505,7 +6532,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup }) {
+function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup, qrScanModeRef }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -7747,7 +7774,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           onCancel={cancelDevicePairing} />
       )}
       {blindPeerOpen && (
-        <BlindPeerSheet db={db} sync={sync} onClose={() => setBlindPeerOpen(false)} />
+        <BlindPeerSheet db={db} sync={sync} qrScanModeRef={qrScanModeRef} onClose={() => setBlindPeerOpen(false)} />
       )}
     </div>
   )

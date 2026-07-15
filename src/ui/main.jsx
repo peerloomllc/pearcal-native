@@ -93,6 +93,7 @@ const db = {
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
   mintSeedBundle:     ()   => window.__pearDB.call('mintSeedBundle'),
   mintSeedInvite:     (id) => window.__pearDB.call('mintSeedInvite', id),
+  seederPairScan:     (link) => window.__pearDB.call('seederPairScan', link),
   getBackupStatus:    ()  => window.__pearDB.call('getBackupStatus'),
   setBackupEnabled:   (b) => window.__pearDB.call('setBackupEnabled', b),
   revealMnemonic:     ()  => window.__pearDB.call('revealMnemonic'),

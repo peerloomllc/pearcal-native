@@ -24,6 +24,9 @@ const Hyperswarm = require('hyperswarm')
 const sodium = require('sodium-native')
 const b4a = require('b4a')
 const { parseSeedInvite } = require('./lib/seedInvite.js')
+const { buildSeederPairLink } = require('./lib/seederPairLink.js')
+const { generateRendezvousKey, seederPairTopic } = require('./lib/seederPairTopic.js')
+const { setupSeederPairChannel } = require('./lib/seederPair.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // The seeder speaks the same JSON-newline envelope over whichever duplex the
@@ -68,6 +71,14 @@ let _booted = false
 const bootTs = _now()
 const enrolled = new Map() // groupId -> enrollment row
 const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex }
+
+// ── Seeder QR pairing (proposal 2026-07-15-pearcal-seeder-port, QR-pairing
+// model). The seeder shows a QR = one-time rendezvous topic + its pubkey; the
+// phone scans it, joins the rendezvous, verifies our pubkey, and pushes its seed
+// bundle over a one-time pearcal/seeder-pair/1 channel. No copy-paste.
+const SEEDER_PAIR_TTL_MS = 5 * 60 * 1000 // rendezvous lifetime
+let _pairSession = null   // { rv, topic, topicHex, ttlTimer }
+const _activeMuxes = new Set() // live replication muxers, for opening the pair channel
 
 // Must byte-match src/bare.js's writer-announce channel so members announce
 // their Autobase writer cores to us (we can't read the encrypted view to find
@@ -170,6 +181,70 @@ async function setupWriterAnnounceListener (stream) {
   channel.open()
 }
 
+// Track a live replication mux so a QR-pairing session can open its channel on
+// connections that already exist (a member may connect over the rendezvous topic
+// before, or after, the session is opened).
+async function trackSeederConn (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  _activeMuxes.add(mux)
+  stream.on('close', () => _activeMuxes.delete(mux))
+  if (_pairSession) setupSeederPairChannelFor(mux)
+}
+
+// Seed side: open the receive channel for the active pairing session on a mux.
+function setupSeederPairChannelFor (mux) {
+  if (!_pairSession) return
+  setupSeederPairChannel({
+    mux,
+    role: 'seed',
+    rv: _pairSession.rv,
+    onBundle: async ({ invites }) => {
+      const res = await enrollSeedBundle(invites.join('\n')).catch(() => ({ results: [] }))
+      const names = []
+      let enrolled = 0
+      for (const r of (res?.results ?? [])) {
+        if (r?.ok) { enrolled++; if (!r.alreadyEnrolled && r.name) names.push(r.name) }
+      }
+      console.log('[seed] pair: enrolled', enrolled, 'group(s) via QR')
+      try { send({ type: 'event', event: 'seeder:pair:result', data: { enrolled, names } }) } catch {}
+      if (enrolled > 0) closeSeederPairSession('paired') // one-shot: pairing done
+      return { enrolled, names }
+    },
+  })
+}
+
+// Seed side: mint a fresh rendezvous + join its topic; return the QR link.
+// Idempotent — re-opening returns the same live session's link.
+async function openSeederPairSession () {
+  if (!identity) return { error: 'seeder not booted' }
+  const seederHex = b4a.toString(identity.publicKey, 'hex')
+  if (_pairSession) {
+    return { link: buildSeederPairLink({ rv: _pairSession.rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS, reused: true }
+  }
+  const rv = generateRendezvousKey()
+  const topic = seederPairTopic(rv)
+  const topicHex = b4a.toString(topic, 'hex')
+  try { swarm.join(topic, { server: true, client: true }) } catch (e) {
+    return { error: 'join failed: ' + (e?.message ?? String(e)) }
+  }
+  const ttlTimer = setTimeout(() => closeSeederPairSession('ttl'), SEEDER_PAIR_TTL_MS)
+  if (typeof ttlTimer.unref === 'function') ttlTimer.unref()
+  _pairSession = { rv, topic, topicHex, ttlTimer }
+  for (const mux of _activeMuxes) setupSeederPairChannelFor(mux)
+  console.log('[seed] pair session open — ttl', SEEDER_PAIR_TTL_MS, 'ms')
+  return { link: buildSeederPairLink({ rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS }
+}
+
+function closeSeederPairSession (reason) {
+  if (!_pairSession) return
+  const s = _pairSession; _pairSession = null
+  try { clearTimeout(s.ttlTimer) } catch {}
+  try { swarm.leave(s.topic) } catch {}
+  console.log('[seed] pair session closed:', reason)
+}
+
 // A member announced { groupId, writerKey, ... }. If we host that group and
 // don't already replicate this writer core, open it blind and download it in
 // full. We hold ciphertext only — no encryptionKey, so we can never read it.
@@ -264,7 +339,12 @@ async function init (dir) {
   store = new Corestore(dataDir + '/store')
   await store.ready()
 
-  swarm = new Hyperswarm()
+  // Load the seeder identity BEFORE the swarm and key the swarm with it, so the
+  // authenticated remote pubkey a member sees on a rendezvous connection equals
+  // the identity pubkey carried in the QR (the QR-pairing security anchor).
+  identity = await loadOrCreateSeederIdentity()
+
+  swarm = new Hyperswarm({ keyPair: identity })
   // Blind replication: replicate the whole corestore to any connected peer, and
   // open the writer-announce channel so members tell us their writer cores.
   swarm.on('connection', (conn) => {
@@ -272,9 +352,9 @@ async function init (dir) {
     s.on('error', () => {})
     conn.on('error', () => {})
     setupWriterAnnounceListener(s)
+    trackSeederConn(s)
   })
 
-  identity = await loadOrCreateSeederIdentity()
   await loadEnrolledGroups()
   for (const enr of enrolled.values()) {
     await mountGroup(enr).catch((e) => console.warn('[seed] mount error', enr.groupId, e?.message))
@@ -318,6 +398,11 @@ async function handle (method, args) {
         : (a?.groupId ?? (Array.isArray(a) ? a[0] : null))
       return leaveSeedGroup(groupId)
     }
+    case 'seeder:pair:open':
+      return openSeederPairSession()
+    case 'seeder:pair:close':
+      closeSeederPairSession('manual')
+      return { ok: true }
     default:
       throw new Error('Unknown seed method: ' + method)
   }
