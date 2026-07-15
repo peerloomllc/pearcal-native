@@ -50,7 +50,7 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
   const parsed = parseInviteLink(url)
   if (!parsed.ok) return parsed
 
-  const { groupId, groupName, groupKey, inviterKey } = parsed
+  const { groupId, groupName, groupKey, inviterKey, encryptionKey } = parsed
 
   // 2. Check if we were blocked / already a member
   const isReinvite = parsed.reinvite === true
@@ -99,6 +99,10 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
     icon:      null,
     ownerId:   inviterKey,               // inviter is the owner
     groupKey,
+    // Encrypted-group block key (null for legacy invites without &enc=). Local
+    // only — threaded into the Autobase open in bare.js joinGroup and never
+    // written into the (encrypted) view.
+    ...(encryptionKey ? { encryptionKey } : {}),
     members: [ myMember, inviterMember ],
     joinedAt: Date.now(),
   }
@@ -159,6 +163,7 @@ export function buildReinviteLink (group, myIdentityId) {
     inviter: myIdentityId,
     reinvite: '1',
   })
+  if (group.encryptionKey) params.set('enc', group.encryptionKey)
   return `${SCHEME}/join?${params.toString()}`
 }
 
@@ -169,6 +174,9 @@ export function buildInviteLink (group, myIdentityId) {
     key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
     inviter: myIdentityId,
   })
+  // Block-encryption key for encrypted groups (proposal 2026-07-15). MEMBER
+  // invites carry it so joiners can decrypt; the blind-seeder invite omits it.
+  if (group.encryptionKey) params.set('enc', group.encryptionKey)
   return `${SCHEME}/join?${params.toString()}`
 }
 
@@ -206,6 +214,7 @@ export function parseInviteLink (url) {
     name:    u.searchParams.get('name'),
     key:     u.searchParams.get('key'),
     inviter: u.searchParams.get('inviter'),
+    enc:     u.searchParams.get('enc'),
   }
 
   // Validate required params
@@ -231,6 +240,17 @@ export function parseInviteLink (url) {
     return { ok: false, error: 'invalid_inviter' }
   }
 
+  // Optional block-encryption key (encrypted groups, proposal 2026-07-15).
+  // Absent → legacy unencrypted group → encryptionKey null (Autobase opens
+  // without block encryption). When present it must be a full 32-byte hex key.
+  let encryptionKey = null
+  if (raw.enc != null && raw.enc !== '') {
+    if (!/^[0-9a-f]{64}$/i.test(raw.enc)) {
+      return { ok: false, error: 'invalid_enc' }
+    }
+    encryptionKey = raw.enc.toLowerCase()
+  }
+
   const reinvite = u.searchParams.get('reinvite') === '1'
   return {
     ok: true,
@@ -239,6 +259,7 @@ export function parseInviteLink (url) {
     reinvite,
     groupKey:   raw.key,
     inviterKey: raw.inviter,
+    encryptionKey,
   }
 }
 

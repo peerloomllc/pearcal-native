@@ -540,7 +540,12 @@ async function appendGroupWithAvatarSplit (base, groupValue) {
       },
     })
   }
-  const value = { ...groupValue, members, updatedAt: groupValue.updatedAt || Date.now() }
+  // Strip the local-only block-encryption key — it must never be written into
+  // the (encrypted) view. Members receive it via the invite; the local group
+  // record + personal-base fan-out carry it across restarts, and mirrorToLocal
+  // preserves it when this view record replays back into the local mirror.
+  const { encryptionKey: _ek, ...rest } = groupValue
+  const value = { ...rest, members, updatedAt: groupValue.updatedAt || Date.now() }
   await safeAppend(base, { op: 'put', type: 'group', key: NS.groups + groupValue.id, value })
 }
 
@@ -1400,12 +1405,21 @@ async function createGroup (name, metadata) {
   const groupId = 'g' + Math.random().toString(36).slice(2, 8)
   const groupStore = store.namespace(groupId)
 
+  // Per-group block-encryption key — a random 32-byte secret, independent of
+  // groupKey (which doubles as the swarm topic + Autobase bootstrap). Members
+  // receive it via the invite's `enc` param; a blind seeder that holds only the
+  // topic/bootstrap replicates ciphertext but can never derive it. Always-on for
+  // new groups (proposal 2026-07-15-pearcal-seeder-port); legacy groups carry
+  // none and open unencrypted.
+  const encryptionKey = _hex32()
+
   // bootstrap=null mints a fresh Autobase key — that becomes the real groupKey.
   const base = new Autobase(groupStore, null, {
     valueEncoding: 'json',
     open: (s) => new Hyperbee(s.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json' }),
     apply: makeApply(groupId),
     ackInterval: 1000,
+    encryptionKey: b4a.from(encryptionKey, 'hex'),
   })
   // Without an 'error' listener Autobase calls crashSoon() on internal
   // failures (e.g., Hypercore "Truncation breaks prologue" during drain),
@@ -1438,6 +1452,7 @@ async function createGroup (name, metadata) {
     ownerId: profile.id,
     members: [ownerMember],
     groupKey,
+    encryptionKey,
     removedMembers: [],
     joinedAt: now,
     updatedAt: now,
@@ -1498,12 +1513,21 @@ async function _joinGroupImpl (group) {
   // For the real-first-time group-creator path, see createGroup() above.
   const bootstrap = b4a.from(group.groupKey, 'hex')
 
-  const base = new Autobase(groupStore, bootstrap, {
+  // Encrypted groups (proposal 2026-07-15-pearcal-seeder-port) carry a
+  // local-only encryptionKey; legacy groups have none and open unencrypted.
+  // The key never enters the Autobase view (stripped in
+  // appendGroupWithAvatarSplit) and is preserved across view→local mirrors —
+  // it lives on the local group record, the personal-base fan-out, and the
+  // member invite only, so a blind seeder can replicate ciphertext it can't read.
+  const baseOpts = {
     valueEncoding: 'json',
     open: (s) => new Hyperbee(s.get('view'), { keyEncoding: 'utf-8', valueEncoding: 'json' }),
     apply: makeApply(group.id),
     ackInterval: 1000,
-  })
+  }
+  if (group.encryptionKey) baseOpts.encryptionKey = b4a.from(group.encryptionKey, 'hex')
+
+  const base = new Autobase(groupStore, bootstrap, baseOpts)
   // Without an 'error' listener Autobase calls crashSoon() on internal
   // failures (e.g., Hypercore "Truncation breaks prologue" during drain),
   // killing the bare runtime. The listener turns those into recoverable
@@ -1950,6 +1974,9 @@ function makePersonalApply () {
               icon:     val.value.icon,
               ownerId:  val.value.ownerId,
               groupKey,
+              // Linked sibling needs the block-encryption key to open an
+              // encrypted group (fanned out via the personal base).
+              ...(val.value.encryptionKey ? { encryptionKey: val.value.encryptionKey } : {}),
               members:  selfMember ? [selfMember] : [],
               joinedAt: val.value.joinedAt ?? Date.now(),
             }
@@ -2159,7 +2186,7 @@ async function migratePersonalData () {
   // Group membership (one entry per group the user is currently in)
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
     if (!value?.id || !value?.groupKey) continue
-    await safeAppend(personalBase, { op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, joinedAt: value.joinedAt ?? Date.now() } })
+    await safeAppend(personalBase, { op: 'put', type: 'groupMembership', key: 'personalGroups:' + value.id, value: { groupId: value.id, groupKey: value.groupKey, ...(value.encryptionKey ? { encryptionKey: value.encryptionKey } : {}), joinedAt: value.joinedAt ?? Date.now() } })
     groupCount++
   }
   // Identity-scoped profile fields (name, avatar). Seed once so a sibling
@@ -2336,6 +2363,10 @@ async function personalBaseAddGroup (group) {
   const value = {
     groupId:  group.id,
     groupKey: group.groupKey,
+    // Carry the block-encryption key to the user's OWN paired devices so a
+    // linked sibling can open the encrypted group. The personal base is shared
+    // only among same-identity devices; omitted (undefined) for legacy groups.
+    ...(group.encryptionKey ? { encryptionKey: group.encryptionKey } : {}),
     name:     group.name,
     color:    group.color,
     emoji:    group.emoji,
@@ -2919,6 +2950,10 @@ async function _handlePairHello (parsed, replySend) {
         id:        value.id,
         name:      value.name,
         groupKey:  value.groupKey,
+        // Newly-paired device needs the block-encryption key to open an
+        // encrypted group. This pair channel runs between the user's own
+        // devices over the mnemonic-authenticated pairing handshake.
+        ...(value.encryptionKey ? { encryptionKey: value.encryptionKey } : {}),
         ownerId:   value.ownerId,
         color:     value.color,
         emoji:     value.emoji,
@@ -3199,6 +3234,7 @@ async function _seedGroupsFromPair (groups) {
       icon:     g.icon,
       ownerId:  g.ownerId,
       groupKey: g.groupKey,
+      ...(g.encryptionKey ? { encryptionKey: g.encryptionKey } : {}),
       members:  selfMember ? [selfMember] : [],
       joinedAt: g.joinedAt ?? Date.now(),
     }
@@ -5550,6 +5586,11 @@ async function mirrorToLocal (type, key, value, groupId) {
         emoji:   value.emoji   || existing?.value?.emoji,
         icon:    value.icon    ?? existing?.value?.icon,
         joinedAt: existing?.value?.joinedAt || value.joinedAt,
+        // Local-only block-encryption key — never present in the (stripped)
+        // view record, so preserve it from the existing local record or the
+        // base won't reopen encrypted after a restart. Fallback to value for
+        // safety (e.g. a future path that legitimately carries it).
+        encryptionKey: existing?.value?.encryptionKey || value.encryptionKey,
         removedMembers: [...removedMap.values()],
         members: splitMembers,
         updatedAt: value.updatedAt || Date.now()
