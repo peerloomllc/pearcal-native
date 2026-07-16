@@ -253,7 +253,8 @@ const PAGE = `<!doctype html>
   <div id="pane-paste" class="stack" style="display:none;align-items:stretch">
     <div class="hint">Paste a seed invite or an all-groups bundle:</div>
     <textarea id="inv" placeholder="https://peerloomllc.com/seed?..."></textarea>
-    <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="enroll">Enroll</button><span id="enrollmsg" class="flash"></span></div>
+    <button class="primary" id="enroll" style="width:100%;justify-content:center">Enroll</button>
+    <span id="enrollmsg" class="flash center"></span>
   </div>
 </div></div>
 
