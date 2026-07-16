@@ -14,7 +14,18 @@ const fs = require('node:fs')
 const path = require('node:path')
 const auth = require('./auth')
 
-const DONATE = { ln: 'peerloomllc@strike.me', bmc: 'https://buymeacoffee.com/peerloomllc?new=1' }
+// PeerLoom donation channels (identical to the mobile app's donation modal).
+const DONATE = {
+  ln: 'peerloomllc@strike.me',
+  onchain: 'bc1q0kksenz3j4u9ppe6f4krclvzwxk7sjy00cc9cf',
+  bmc: 'https://buymeacoffee.com/peerloomllc?new=1',
+}
+const LN_WALLETS = [
+  { name: 'Strike', url: 'https://strike.me' },
+  { name: 'Cash App', url: 'https://cash.app' },
+  { name: 'Wallet of Satoshi', url: 'https://walletofsatoshi.com' },
+  { name: 'Phoenix', url: 'https://phoenix.acinq.co' },
+]
 
 function sendJson (res, body, status = 200) { res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body)) }
 function readBody (req) {
@@ -68,9 +79,9 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
       }
       if (req.method === 'GET' && p === '/api/status') return sendJson(res, await snapshot(worklet))
       if (req.method === 'GET' && p === '/api/donate') {
-        const tab = url.searchParams.get('tab') === 'bmc' ? 'bmc' : 'ln'; const value = DONATE[tab]
+        const t = url.searchParams.get('tab'); const tab = DONATE[t] ? t : 'ln'; const value = DONATE[tab]
         let qr = null; try { qr = await require('qrcode').toDataURL(value, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) } catch {}
-        return sendJson(res, { tab, value, qr })
+        return sendJson(res, { tab, value, qr, wallets: tab === 'ln' ? LN_WALLETS : [] })
       }
       if (req.method === 'POST' && p === '/api/pair/open') {
         const r = await worklet.call('seeder:pair:open', {}).catch((e) => ({ error: e.message }))
@@ -256,11 +267,12 @@ const PAGE = `<!doctype html>
   <div class="modal-head"><h3>Support Development</h3><button class="iconbtn" id="sup-x" style="font-size:15px">✕</button></div>
   <div class="stack">
     <div class="hint center">No accounts, no servers, no subscriptions. If running this seeder is useful, a tip helps keep PearCal free — entirely optional.</div>
-    <div class="tabs" style="width:100%"><button class="primary" id="sup-ln">⚡ Bitcoin</button><button class="ghost" id="sup-bmc">💲 Card / USD</button></div>
-    <img class="qr" id="supqr" alt="donation QR" style="width:200px;background:#fff;padding:10px;border-radius:12px"/>
+    <div class="tabs" style="width:100%"><button class="primary" id="sup-ln">⚡ Lightning</button><button class="ghost" id="sup-onchain">₿ On-chain</button><button class="ghost" id="sup-bmc">💲 Card</button></div>
+    <img class="qr" id="supqr" alt="donation QR" style="width:190px;background:#fff;padding:10px;border-radius:12px"/>
     <div class="hint center" id="suphint"></div>
     <div class="mono center" id="supval" style="color:var(--muted);font-size:12px;word-break:break-all"></div>
     <div style="display:flex;gap:10px"><button class="ghost" id="supcopy">Copy</button><button class="primary" id="supopen" style="display:none">Open</button></div>
+    <div id="supwallets" style="display:none;width:100%"><div class="hint" style="margin-bottom:6px">New to Lightning? Try a wallet:</div><div id="walletrow" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
   </div>
 </div></div>
 
@@ -340,10 +352,17 @@ $('pairbtn').onclick=async()=>{$('pairbtn').textContent='…';try{const r=await 
 $('enroll').onclick=async()=>{const inv=$('inv').value.trim();if(!inv)return;$('enroll').disabled=true;$('enrollmsg').textContent='';try{const r=await post('/api/enroll',{invite:inv});if(r.error){$('enrollmsg').className='flash err';$('enrollmsg').textContent=r.error;}else{$('enrollmsg').className='flash ok';$('enrollmsg').textContent='Enrolled';$('inv').value='';}}catch(e){$('enrollmsg').className='flash err';$('enrollmsg').textContent=e.message;}$('enroll').disabled=false;};
 // support
 let supTab='ln';
-async function loadDonate(){try{const r=await fetch(q('/api/donate?tab='+supTab)).then(x=>x.json());$('supqr').src=r.qr||'';$('supval').textContent=r.value||'';$('suphint').textContent=supTab==='ln'?'Scan with any Lightning wallet (pick your own amount), or copy the address.':'Scan to open Buy Me a Coffee, or open it here to pay by card.';$('supopen').style.display=supTab==='bmc'?'':'none';$('sup-ln').className=supTab==='ln'?'primary':'ghost';$('sup-bmc').className=supTab==='bmc'?'primary':'ghost';}catch(_){}}
+const SUP_HINTS={ln:'Scan with any Lightning wallet (pick your own amount), or copy the address.',onchain:'On-chain BTC — higher fees, so Lightning is cheaper for small tips.',bmc:'Scan to open Buy Me a Coffee, or open it here to pay by card.'};
+async function loadDonate(){try{const r=await fetch(q('/api/donate?tab='+supTab)).then(x=>x.json());
+  $('supqr').src=r.qr||'';$('supval').textContent=r.value||'';$('suphint').textContent=SUP_HINTS[supTab]||'';
+  $('supopen').style.display=supTab==='bmc'?'':'none';
+  for(const [id,t] of [['sup-ln','ln'],['sup-onchain','onchain'],['sup-bmc','bmc']])$(id).className=supTab===t?'primary':'ghost';
+  const w=r.wallets||[];$('supwallets').style.display=w.length?'block':'none';
+  $('walletrow').innerHTML=w.map(x=>'<a href="'+x.url+'" target="_blank" rel="noopener" style="text-decoration:none"><button class="ghost" style="font-size:12px;padding:6px 12px">'+x.name+'</button></a>').join('');
+}catch(_){}}
 $('m-support').onclick=()=>{$('menu').classList.remove('open');$('supov').classList.add('open');loadDonate();};
 $('sup-x').onclick=()=>$('supov').classList.remove('open');
-$('sup-ln').onclick=()=>{supTab='ln';loadDonate();};$('sup-bmc').onclick=()=>{supTab='bmc';loadDonate();};
+$('sup-ln').onclick=()=>{supTab='ln';loadDonate();};$('sup-onchain').onclick=()=>{supTab='onchain';loadDonate();};$('sup-bmc').onclick=()=>{supTab='bmc';loadDonate();};
 $('supcopy').onclick=()=>{navigator.clipboard?.writeText($('supval').textContent);$('supcopy').textContent='Copied';setTimeout(()=>$('supcopy').textContent='Copy',1200);};
 $('supopen').onclick=()=>window.open($('supval').textContent,'_blank','noopener');
 // maintenance
