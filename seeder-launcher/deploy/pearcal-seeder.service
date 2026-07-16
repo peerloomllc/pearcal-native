@@ -1,0 +1,26 @@
+[Unit]
+Description=PearCal blind seeder (always-on group replicator)
+Documentation=https://github.com/peerloomllc/pearcal-native
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Payload staged by scripts/stage-linux.sh; run.sh launches the Node host which
+# supervises the Bare worklet. Node must be on PATH. Runs as a dedicated
+# `pearcal` user (created by deploy-linux-ssh.sh) so the one-shot `--pair`
+# admission can share the same data dir.
+User=pearcal
+Group=pearcal
+WorkingDirectory=/opt/pearcal-seeder
+Environment=PEARCAL_SEED_DATA=/var/lib/pearcal-seeder
+ExecStart=/opt/pearcal-seeder/run.sh
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/pearcal-seeder
+
+[Install]
+WantedBy=multi-user.target
