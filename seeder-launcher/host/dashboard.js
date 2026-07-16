@@ -203,8 +203,9 @@ const PAGE = `<!doctype html>
   button.danger{background:transparent;color:var(--bad);border:1px solid transparent;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;font-weight:600} button.danger:hover{border-color:var(--bad)}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:50} .overlay.open{display:flex}
   .modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;box-shadow:var(--shadow);width:420px;max-width:100%;padding:20px}
-  .modal.confirm{width:360px} .modal.confirm h3{margin:0 0 8px;font-size:16px} .confirm-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
-  .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px} .modal-head h3{margin:0;font-size:16px;font-weight:600}
+  .modal.confirm{width:360px} .modal.confirm h3{margin:0 0 8px;font-size:16px;text-align:center} .modal.confirm .hint{text-align:center} .confirm-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .modal-head{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:14px} .modal-head h3{margin:0;font-size:16px;font-weight:600;text-align:center}
+  .modal-head .iconbtn{position:absolute;right:0;top:50%;transform:translateY(-50%)}
   .tabs{display:flex;gap:8px;margin-bottom:14px} .tabs button{flex:1;justify-content:center}
   .qr img{width:280px;max-width:100%;background:#fff;padding:12px;border-radius:12px}
   textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--text);font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:10px 12px;min-height:80px;resize:vertical;font-weight:300} textarea:focus{outline:none;border-color:var(--primary)}
