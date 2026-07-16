@@ -75,9 +75,19 @@ done < <(cd "$REPO/node_modules" && find . -type d -path "*/prebuilds/$BARE_HOST
 echo "    staged $staged addon prebuild dirs"
 [ "$staged" -gt 0 ] || { echo "stage-linux: no $BARE_HOST prebuilds found; run \`npm install\`" >&2; exit 1; }
 
-# 4. Launcher host (Node).
+# 4. Launcher host (Node) + version (for the dashboard pill).
 cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" \
    "$LAUNCHER/host/auth.js" "$OUT_DIR/host/"
+cp "$LAUNCHER/package.json" "$OUT_DIR/package.json" 2>/dev/null || true
+
+# 4a. Brand mark: a small copy of the app icon for the dashboard header.
+if command -v magick >/dev/null 2>&1; then
+  magick "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged"
+elif command -v convert >/dev/null 2>&1; then
+  convert "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged"
+else
+  echo "--> no imagemagick; dashboard uses the ◆ fallback mark"
+fi
 
 # 4b. Offline dashboard font: extract the Manrope woff2 @font-face CSS from the
 #     app's fonts.js so the dashboard renders without a Google Fonts round-trip.

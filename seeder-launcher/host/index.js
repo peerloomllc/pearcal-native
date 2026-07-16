@@ -94,7 +94,9 @@ async function main () {
   if (dashPort) {
     // Token auth on by default (persisted in the data dir); --no-auth disables.
     const token = opts.noAuth ? null : loadOrCreateToken(dataDir).token
-    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, log })
+    let version = null
+    try { version = require('../package.json').version } catch {}
+    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, log })
     if (token) log('host', `dashboard token: ${token}`)
   }
 
