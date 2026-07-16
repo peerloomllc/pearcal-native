@@ -201,7 +201,9 @@ const PAGE = `<!doctype html>
       <div class="val nick"><input id="nick" placeholder="Home server" maxlength="64"/><button id="nicksave" class="ghost" style="padding:7px 12px">Save</button></div></div>
     <div class="row"><div class="label">Seeder ID</div><div class="val mono" id="pk">—</div></div>
     <div class="row"><div class="label">Uptime</div><div class="val" id="up">—</div></div>
+    <div class="row"><div class="label">Peers connected</div><div class="val" id="peers">—</div></div>
     <div class="row"><div class="label">Groups</div><div class="val" id="cnt">—</div></div>
+    <div class="row"><div class="label">Data held</div><div class="val" id="held">—</div></div>
     <div id="groups" class="glist"></div>
   </div>
 
@@ -225,18 +227,21 @@ const T=new URLSearchParams(location.search).get('t')||'';
 const q=p=>p+(p.includes('?')?'&':'?')+'t='+encodeURIComponent(T);
 const post=(p,b)=>fetch(q(p),{method:'POST',headers:b?{'content-type':'application/json'}:{},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 function fmtUp(ms){if(!ms)return'—';const s=Math.floor(ms/1000),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+(h?h+'h ':'')+m+'m';}
+function fmtBytes(n){if(!n)return'0 B';const u=['B','KB','MB','GB','TB'];const i=Math.min(Math.floor(Math.log(n)/Math.log(1024)),u.length-1);return (n/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i];}
 let nickDirty=false;$('nick').addEventListener('input',()=>nickDirty=true);
 function render(r){
   const s=r.status||{},en=r.enrolled||[],ok=!!s.booted;
   $('dot').className='dot '+(ok?'on':'off');
   $('ststate').textContent=ok?'running':(s.error||'starting…');
   $('pk').textContent=s.pubkey||'—';$('up').textContent=fmtUp(s.uptime);
+  $('peers').textContent=(s.peers??0);
   $('cnt').textContent=(s.enrolled??en.length)+' enrolled · '+(s.mounted??0)+' mounted';
+  $('held').textContent=fmtBytes(s.bytes||0)+' · '+(s.blocks||0).toLocaleString()+' blocks';
   if(!nickDirty&&document.activeElement!==$('nick'))$('nick').value=s.nickname||'';
   $('groups').innerHTML='';
   if(en.length){for(const g of en){
     const row=document.createElement('div');row.className='gitem';
-    row.innerHTML='<div class="nm">'+(g.name||'Group').replace(/[<>]/g,'')+' <span class="mono">'+String(g.groupId||'').slice(0,8)+'</span></div>';
+    row.innerHTML='<div class="nm">'+(g.name||'Group').replace(/[<>]/g,'')+' <span class="mono">'+String(g.groupId||'').slice(0,8)+'</span><div class="muted" style="font-size:12px">'+fmtBytes(g.bytes||0)+' · '+(g.blocks||0).toLocaleString()+' blocks · '+(g.writers||0)+' writer'+((g.writers||0)===1?'':'s')+'</div></div>';
     const b=document.createElement('button');b.className='danger';b.textContent='Leave';
     b.onclick=async()=>{if(!confirm('Stop seeding "'+(g.name||g.groupId)+'"?'))return;await post('/api/leave',{groupId:g.groupId});};
     row.appendChild(b);$('groups').appendChild(row);
