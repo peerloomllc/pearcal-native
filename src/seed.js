@@ -404,14 +404,27 @@ async function handle (method, args) {
         : (a?.dataDir ?? (Array.isArray(a) ? (a[0]?.dataDir ?? a[0]) : null))
       return init(dir)
     }
-    case 'seeder:status':
+    case 'seeder:status': {
+      const nick = await db.get('seeder:nickname').catch(() => null)
       return {
         pubkey: identity ? b4a.toString(identity.publicKey, 'hex') : null,
+        nickname: nick?.value?.name ?? null,
         booted: _booted,
         uptime: _now() - bootTs,
         enrolled: enrolled.size,
         mounted: mounted.size,
       }
+    }
+    case 'seeder:nickname:get': {
+      const n = await db.get('seeder:nickname').catch(() => null)
+      return { name: n?.value?.name ?? null }
+    }
+    case 'seeder:nickname:set': {
+      const a = args
+      const name = (typeof a === 'string' ? a : (a?.name ?? (Array.isArray(a) ? a[0] : ''))) || ''
+      await db.put('seeder:nickname', { name: String(name).slice(0, 64), updatedAt: _now() })
+      return { ok: true, name: String(name).slice(0, 64) }
+    }
     case 'seeder:enrolled:list':
       return [...enrolled.values()]
     case 'seeder:enroll': {
