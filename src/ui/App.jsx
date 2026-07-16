@@ -7370,7 +7370,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   display:'flex', alignItems:'center', gap:10 }}>
                 <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, color: colors.text.primary }}>Blind peer</div>
+                  <div style={{ fontSize:13, color: colors.text.primary }}>{bp.nickname || 'Blind peer'}</div>
                   <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
                     overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                     {String(bp.pubkey).slice(0, 16)}…

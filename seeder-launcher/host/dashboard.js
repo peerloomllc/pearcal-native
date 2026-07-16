@@ -232,8 +232,8 @@ const PAGE = `<!doctype html>
     <div class="nick" id="nickwrap"><input id="nick" placeholder="Nickname" maxlength="64"/><button class="ghost save" id="nicksave">Save</button></div>
     <div class="topbar-right">
       <span class="pill"><span id="dot" class="dot"></span><span id="ststate">connecting…</span><span class="v" id="uptime"></span></span>
-      <div class="menuwrap"><button class="iconbtn" id="menubtn" title="Menu">⋯</button>
-        <div class="menu" id="menu"><button id="m-maint">⟳ Maintenance</button></div></div>
+      <div class="menuwrap"><button class="iconbtn" id="menubtn" title="Menu">⚙</button>
+        <div class="menu" id="menu"><button id="m-maint">⟳ Maintenance</button><button id="m-support">♥ Support Development</button></div></div>
     </div>
   </div>
 
@@ -274,8 +274,19 @@ const PAGE = `<!doctype html>
 <!-- Maintenance modal -->
 <div class="overlay" id="maintov"><div class="modal">
   <div class="modal-head"><h3>Maintenance</h3><button class="iconbtn" id="maint-x" style="font-size:15px">✕</button></div>
-  <div class="stack"><div class="hint">Restart briefly disconnects, then re-syncs and re-mounts all groups on boot.</div>
-    <div style="display:flex;gap:10px;align-items:center"><button class="ghost" id="restart">Restart seeder</button><span id="restartmsg" class="flash"></span></div></div>
+  <div class="stack"><div class="hint center">Restart briefly disconnects, then re-syncs and re-mounts all groups on boot.</div>
+    <div style="display:flex;gap:10px;align-items:center;justify-content:center"><button class="ghost" id="restart">Restart seeder</button><span id="restartmsg" class="flash"></span></div></div>
+</div></div>
+
+<!-- Support modal -->
+<div class="overlay" id="supov"><div class="modal">
+  <div class="modal-head"><h3>Support development</h3><button class="iconbtn" id="sup-x" style="font-size:15px">✕</button></div>
+  <div class="stack">
+    <div class="hint">PearCal is free and serverless — no accounts, no tracking. If it's useful to you, a tip helps keep it built and maintained.</div>
+    <div class="identity"><span class="lbl">Bitcoin</span><span class="mono" id="btc">bc1q0kksenz3j4u9ppe6f4krclvzwxk7sjy00cc9cf</span><button class="iconbtn" id="btccopy" title="Copy" style="width:30px;height:30px;font-size:13px">⧉</button></div>
+    <div class="hint">Lightning-friendly wallets: Strike, Cash App, Wallet of Satoshi, Phoenix.</div>
+    <button class="ghost" id="sup-site">Open peerloomllc.com</button>
+  </div>
 </div></div>
 
 <script>
@@ -323,6 +334,10 @@ $('menubtn').onclick=e=>{e.stopPropagation();$('menu').classList.toggle('open');
 document.addEventListener('click',()=>$('menu').classList.remove('open'));
 $('m-maint').onclick=()=>{$('menu').classList.remove('open');$('maintov').classList.add('open');};
 $('maint-x').onclick=()=>$('maintov').classList.remove('open');
+$('m-support').onclick=()=>{$('menu').classList.remove('open');$('supov').classList.add('open');};
+$('sup-x').onclick=()=>$('supov').classList.remove('open');
+$('sup-site').onclick=()=>window.open('https://peerloomllc.com','_blank','noopener');
+$('btccopy').onclick=()=>{navigator.clipboard?.writeText($('btc').textContent);$('btccopy').textContent='✓';setTimeout(()=>$('btccopy').textContent='⧉',1200);};
 // add-device modal + tabs
 function openAdd(){$('addov').classList.add('open');setTab('pair');}
 $('add').onclick=openAdd;$('add-x').onclick=()=>{$('addov').classList.remove('open');post('/api/pair/close').catch(()=>{});};

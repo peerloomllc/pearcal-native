@@ -97,7 +97,7 @@ function setupSeederPairChannel ({ mux, role, rv, getBundle, onBundle, onAck, ma
         trace('seederpair:onbundle-failed', { err: e?.message ?? String(e) })
       }
       try {
-        ackMessage.send({ enrolled: result.enrolled || 0, names: Array.isArray(result.names) ? result.names : [] })
+        ackMessage.send({ enrolled: result.enrolled || 0, names: Array.isArray(result.names) ? result.names : [], nickname: result.nickname || null })
         trace('seederpair:ack-sent', { enrolled: result.enrolled || 0 })
       } catch (e) {
         trace('seederpair:ack-send-failed', { err: e?.message ?? String(e) })
@@ -114,7 +114,7 @@ function setupSeederPairChannel ({ mux, role, rv, getBundle, onBundle, onAck, ma
       trace('seederpair:ack-received', { enrolled: msg.enrolled })
       try {
         if (typeof onAck === 'function') {
-          await onAck({ enrolled: msg.enrolled || 0, names: Array.isArray(msg.names) ? msg.names : [] })
+          await onAck({ enrolled: msg.enrolled || 0, names: Array.isArray(msg.names) ? msg.names : [], nickname: msg.nickname || null })
         }
       } catch (e) {
         trace('seederpair:onack-failed', { err: e?.message ?? String(e) })

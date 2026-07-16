@@ -247,10 +247,12 @@ function setupSeederPairChannelFor (mux, rv) {
       for (const r of (res?.results ?? [])) {
         if (r?.ok) { enrolled++; if (!r.alreadyEnrolled && r.name) names.push(r.name) }
       }
+      const nickRow = await db.get('seeder:nickname').catch(() => null)
+      const nickname = nickRow?.value?.name || null
       console.log('[seed] pair: enrolled', enrolled, 'group(s) via QR')
       try { send({ type: 'event', event: 'seeder:pair:result', data: { enrolled, names } }) } catch {}
       if (enrolled > 0) closeSeederPairSession('paired') // one-shot: pairing done
-      return { enrolled, names }
+      return { enrolled, names, nickname }
     },
   })
 }
