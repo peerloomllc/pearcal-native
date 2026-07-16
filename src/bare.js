@@ -6362,6 +6362,48 @@ async function _doInit (dir, attempt = 0) {
         _maybeSetupPairScanChannel(mux, _remotePubkeyHex)
       }
 
+      // Seeder self-announce: an always-on blind peer opens this channel on every
+      // group connection and sends its nickname. Its identity pubkey IS this
+      // stream's authenticated remote pubkey, so we record it as a blind peer
+      // WITHOUT trusting the message — the connection proves who it is. This is
+      // how a seeder enrolled via a pasted /seed invite (never met at pair time)
+      // still shows up in the Blind Peer list, and how a seeder becomes visible
+      // to EVERY member that connects to it. Members never send here.
+      // Wrapped defensively: a throw from createChannel/open here would become an
+      // unhandled rejection in this async connection handler, which BareKit
+      // aborts the whole app for on iOS.
+      if (_remotePubkeyHex) {
+        try {
+          const helloChannel = mux.createChannel({
+            protocol: 'pearcal/seeder-hello',
+            id: Buffer.from('pearcal-seeder-hello-v1'),
+            onopen () {},
+            onclose () {},
+          })
+          if (helloChannel) {
+            helloChannel.addMessage({
+              onmessage: async function (buf) {
+                try {
+                  const hello = JSON.parse(buf.toString()) || {}
+                  const nickname = (typeof hello.nickname === 'string' && hello.nickname)
+                    ? hello.nickname.slice(0, 64) : null
+                  const groupCount = Number.isInteger(hello.groupCount) ? hello.groupCount : null
+                  const existing = await db.get('seederFollow:' + _remotePubkeyHex).catch(() => null)
+                  await db.put('seederFollow:' + _remotePubkeyHex, {
+                    pubkey: _remotePubkeyHex,
+                    nickname: nickname || existing?.value?.nickname || null,
+                    groupCount: groupCount ?? existing?.value?.groupCount ?? 0,
+                    since: existing?.value?.since ?? existing?.value?.addedAt ?? Date.now(),
+                    via: existing?.value?.via ?? 'group-announce',
+                  })
+                } catch {}
+              }
+            })
+            helloChannel.open()
+          }
+        } catch {}
+      }
+
       // Open a dedicated Protomux channel for writer key exchange
       // Per-connection dedup set — scoped here so both onopen and onmessage can access it
       const connSeenWriters = new Set()
