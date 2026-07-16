@@ -68,3 +68,12 @@ test('buildSeedBundle + parseSeedBundle: one admit covers all groups', () => {
   assert.deepEqual(results.map(r => r.groupId).sort(), ['gseed01', 'gseed02'])
   assert.ok(!bundle.includes('enc='), 'bundle must never carry enc')
 })
+
+test('buildSeedBundle drops groups with no groupKey (member-side mint relies on this)', () => {
+  // mintSeedBundle pre-filters, but the shared builder must also refuse a
+  // keyless group so a broken/legacy record never yields a malformed invite.
+  const bundle = buildSeedBundle([g1, { id: 'gnokey', name: 'Broken' }, g2], INVITER)
+  const results = parseSeedBundle(bundle)
+  assert.equal(results.length, 2)
+  assert.deepEqual(results.map(r => r.groupId).sort(), ['gseed01', 'gseed02'])
+})

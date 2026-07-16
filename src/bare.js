@@ -15,6 +15,10 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
+const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
+const { parseSeederPairLink } = require('./lib/seederPairLink.js')
+const { seederPairTopic } = require('./lib/seederPairTopic.js')
+const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const {
   computeReminderFireTime,
@@ -345,6 +349,12 @@ async function handle (method, args) {
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
+    case 'mintSeedBundle':   return mintSeedBundle()
+    case 'mintSeedInvite':   return mintSeedInvite(args[0])
+    case 'seederPairScan':   return seederPairScan(args[0])
+    case 'cancelSeederPairScan': return cancelSeederPairScan()
+    case 'listBlindPeers':   return listBlindPeers()
+    case 'removeBlindPeer':  return removeBlindPeer(args[0])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'removeDeviceFromList': return removeDeviceFromList(args[0])
@@ -784,6 +794,148 @@ async function removeBlindPeerKey () {
   }
   return true
 }
+
+// ── Blind-seeder admission (member side) ─────────────────────────────────────
+// Mint /seed invites so the user can admit an always-on blind seeder to their
+// groups (proposal 2026-07-15-pearcal-seeder-port, Phase 4/5). The invite
+// carries the groupKey (swarm topic + Autobase bootstrap) but NEVER the block
+// encryption key — a seeder admitted this way replicates ciphertext it can't
+// read. `seedInvite.js` is the single shared build/parse definition; the seed
+// worklet parses what we build here.
+
+// The provenance field on a /seed invite must be a hex key (parseSeedInvite
+// requires ≥16 hex chars). Prefer publicKey, then identityPublicKey.
+function _seedInviterId (profile) {
+  const cand = profile?.publicKey || profile?.identityPublicKey
+  return (typeof cand === 'string' && /^[0-9a-f]{16,}$/i.test(cand)) ? cand : null
+}
+
+// All-groups seed bundle: one admit enrolls the seeder in every group the user
+// is in. Returns per-group flags so the UI can show what's covered and which
+// groups are encrypted (blind) vs legacy (seeder would hold plaintext).
+async function mintSeedBundle () {
+  const profile = await getProfile()
+  const inviterId = _seedInviterId(profile)
+  if (!inviterId) throw new Error('mintSeedBundle: no hex identity key on profile')
+  const groups = (await listGroups()).filter(g => g && g.id && g.groupKey)
+  return {
+    ok: true,
+    bundle: buildSeedBundle(groups, inviterId),
+    count: groups.length,
+    groups: groups.map(g => ({ id: g.id, name: g.name, encrypted: !!g.encryptionKey })),
+  }
+}
+
+// Single-group /seed invite (for admitting a seeder to just one group).
+async function mintSeedInvite (groupId) {
+  const profile = await getProfile()
+  const inviterId = _seedInviterId(profile)
+  if (!inviterId) throw new Error('mintSeedInvite: no hex identity key on profile')
+  const group = await getGroup(groupId)
+  if (!group || !group.groupKey) throw new Error('mintSeedInvite: group not found or missing key')
+  return { ok: true, invite: buildSeedInvite(group, inviterId), name: group.name, encrypted: !!group.encryptionKey }
+}
+
+// List the blind peers this identity has paired with (for the settings UI).
+async function listBlindPeers () {
+  const out = []
+  for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
+    if (value?.pubkey) out.push(value)
+  }
+  return out
+}
+
+// Forget a paired blind peer locally (stops the auto-follow / removes it from
+// the list). This does NOT cryptographically revoke — the seeder still holds the
+// ciphertext it was given; true revocation (a signed tombstone across each
+// group's base, PearCircle seederRevocation) is a follow-up.
+async function removeBlindPeer (pubkey) {
+  if (typeof pubkey !== 'string' || !pubkey) throw new Error('removeBlindPeer: pubkey required')
+  await db.del('seederFollow:' + pubkey).catch(() => {})
+  return { ok: true, pubkey }
+}
+
+// ── Seeder QR pairing (member side) ──────────────────────────────────────────
+// The seeder shows a QR = a one-time rendezvous topic + its pubkey; we scan it,
+// join the rendezvous, and — ONLY on the connection whose authenticated remote
+// pubkey equals the QR's seeder pubkey (the security anchor) — push our seed
+// bundle over the one-time pearcal/seeder-pair/1 channel. Resolves when the
+// seeder acks the enroll, or after a timeout. Also marks the seeder followed so
+// future groups auto-enroll (the steady-state sync already carries them once the
+// seeder holds the group topic).
+const SEEDER_PAIR_SCAN_TIMEOUT_MS = 60 * 1000
+let _pairScan = null // { rv, topic, seederKeyHex, timer, resolve, done }
+
+function _finishPairScan (result) {
+  if (!_pairScan) return
+  const s = _pairScan; _pairScan = null
+  try { clearTimeout(s.timer) } catch {}
+  try { if (swarm) swarm.leave(s.topic) } catch {}
+  try { s.resolve(result) } catch {}
+}
+
+// On a rendezvous connection, push the bundle ONLY if the authenticated remote
+// pubkey equals the scanned seeder pubkey. Called from the swarm connection
+// handler once the mux is ready.
+function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
+  const session = _pairScan
+  if (!session || session.done) return
+  if (!remotePubkeyHex || remotePubkeyHex !== session.seederKeyHex) return
+  const res = setupSeederPairChannel({
+    mux,
+    role: 'member',
+    rv: session.rv,
+    getBundle: async () => {
+      const { bundle } = await mintSeedBundle()
+      return (bundle || '').split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)
+    },
+    onAck: async ({ enrolled, names }) => {
+      // Record the paired blind peer so the UI can list it and offer removal.
+      const existing = await db.get('seederFollow:' + session.seederKeyHex).catch(() => null)
+      await db.put('seederFollow:' + session.seederKeyHex, {
+        pubkey: session.seederKeyHex,
+        since: existing?.value?.since ?? Date.now(),
+        pairedAt: Date.now(),
+        groupCount: enrolled,
+      }).catch(() => {})
+      _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
+    },
+  })
+  // Only commit to this connection if the channel actually opened. A stale mux
+  // from a prior pairing (same rendezvous id already used) returns null here —
+  // burning `done` on it would block a fresh connection and hang the scan.
+  if (res) session.done = true
+}
+
+// Abort an in-flight scan (UI Cancel button, or a fresh scan superseding one).
+function cancelSeederPairScan () {
+  _finishPairScan({ ok: false, cancelled: true })
+  return { ok: true }
+}
+
+async function seederPairScan (link) {
+  const parsed = parseSeederPairLink(link)
+  if (!parsed.ok) throw new Error('invalid pairing QR: ' + (parsed.error ?? 'unknown'))
+  if (_pairScan) throw new Error('a pairing is already in progress')
+  if (!swarm) throw new Error('swarm not ready')
+  const { rv, seeder } = parsed
+  const topic = seederPairTopic(rv)
+  try { swarm.join(topic, { server: true, client: true }) } catch (e) {
+    throw new Error('rendezvous join failed: ' + (e?.message ?? String(e)))
+  }
+  swarm.flush().catch(() => {})
+  return await new Promise((resolve) => {
+    const timer = setTimeout(() => _finishPairScan({ ok: false, error: 'timed out waiting for the blind peer' }), SEEDER_PAIR_SCAN_TIMEOUT_MS)
+    if (typeof timer.unref === 'function') timer.unref()
+    _pairScan = { rv, topic, seederKeyHex: seeder, timer, resolve, done: false }
+    // Cover the case where we're already connected to the seeder.
+    for (const [mux, pk] of _pairScanMuxes) _maybeSetupPairScanChannel(mux, pk)
+  })
+}
+
+// Live muxes + their authenticated remote pubkey, so a scan started after a
+// connection already exists can still match it.
+const _pairScanMuxes = new Map() // mux -> remotePubkeyHex
 
 async function initBlindPeering (key) {
   if (blind) {
@@ -6197,6 +6349,16 @@ async function _doInit (dir, attempt = 0) {
       if (!mux) {
         console.error('[HANDSHAKE] no muxer found')
         return
+      }
+
+      // Seeder QR pairing: track this mux + its authenticated remote pubkey so an
+      // in-flight scan can push the seed bundle to the matching seeder.
+      const _remotePubkeyHex = info?.publicKey ? b4a.toString(info.publicKey, 'hex')
+        : (stream.noiseStream.remotePublicKey ? b4a.toString(stream.noiseStream.remotePublicKey, 'hex') : null)
+      if (_remotePubkeyHex) {
+        _pairScanMuxes.set(mux, _remotePubkeyHex)
+        stream.on('close', () => _pairScanMuxes.delete(mux))
+        _maybeSetupPairScanChannel(mux, _remotePubkeyHex)
       }
 
       // Open a dedicated Protomux channel for writer key exchange

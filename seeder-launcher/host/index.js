@@ -22,6 +22,7 @@ function parseArgs (argv) {
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dev') out.dev = true
+    else if (a === '--pair') out.pair = true
     else if (a === '--data') out.dataDir = argv[++i]
     else if (a === '--bare') out.barePath = argv[++i]
     else if (a === '--bundle') out.bundleEntry = argv[++i]
@@ -82,6 +83,44 @@ async function main () {
 
   const initResult = await wl.start()
   log('host', 'seeder ready: ' + JSON.stringify(initResult))
+
+  // Dev QR pairing: open a rendezvous and render the QR in the terminal so a
+  // phone can scan it (proposal 2026-07-15 QR-pairing model). The real launcher
+  // dashboard renders the same link as an on-screen QR; this is the headless
+  // stand-in for testing before that lands.
+  if (opts.pair) {
+    let renewTimer = null
+    const openPair = async () => {
+      if (renewTimer) { clearTimeout(renewTimer); renewTimer = null }
+      try {
+        const r = await wl.call('seeder:pair:open', {})
+        if (r?.error || !r?.link) { log('pair', 'open failed: ' + (r?.error || 'no link')); return }
+        const QRCode = require('qrcode')
+        const qr = await QRCode.toString(r.link, { type: 'terminal', small: true })
+        const pngPath = path.join(dataDir, 'pair-qr.png')
+        await QRCode.toFile(pngPath, r.link, { width: 512, margin: 2 }).catch(() => {})
+        process.stdout.write('\n=== Scan this QR in PearCal → Profile → Advanced → Blind peer ===\n')
+        process.stdout.write(qr + '\n')
+        process.stdout.write(r.link + '\n')
+        process.stdout.write(`QR image: ${pngPath}  (open it fullscreen if the terminal QR is hard to scan)\n`)
+        process.stdout.write(`(a fresh QR appears after each pairing and whenever this one expires)\n\n`)
+        // Keep the on-screen QR live: renew shortly after the rendezvous TTL so a
+        // spent/expired QR is never the one showing.
+        renewTimer = setTimeout(() => openPair(), (r.ttlMs || 300000) + 3000)
+        if (typeof renewTimer.unref === 'function') renewTimer.unref()
+      } catch (e) { log('pair', 'error: ' + e.message) }
+    }
+    // Each QR is single-use (the seeder closes the rendezvous once a device
+    // pairs). Mint a fresh one after every pairing so the on-screen QR is always
+    // live — scanning a spent QR would otherwise just time out on the phone.
+    wl.on('event', ({ name, data }) => {
+      if (name !== 'seeder:pair:result') return
+      const n = data?.enrolled ?? 0
+      log('pair', `✓ paired — enrolled ${n} group(s)` + (data?.names?.length ? ': ' + data.names.join(', ') : ''))
+      setTimeout(() => openPair(), 500) // refresh QR for the next device
+    })
+    await openPair()
+  }
 
   // Enroll an all-groups bundle if provided (a file of newline-joined /seed URLs).
   if (opts.enroll) {
