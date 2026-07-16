@@ -267,12 +267,11 @@ const PAGE = `<!doctype html>
   <div class="modal-head"><h3>Support Development</h3><button class="iconbtn" id="sup-x" style="font-size:15px">✕</button></div>
   <div class="stack">
     <div class="hint center">No accounts, no servers, no subscriptions. If running this seeder is useful, a tip helps keep PearCal free — entirely optional.</div>
-    <div class="tabs" style="width:100%"><button class="primary" id="sup-ln">⚡ Lightning</button><button class="ghost" id="sup-onchain">₿ On-chain</button><button class="ghost" id="sup-bmc">💲 Card</button></div>
+    <div class="tabs" style="width:100%"><button class="primary" id="sup-ln">⚡ Lightning</button><button class="ghost" id="sup-onchain">₿ On-chain</button><button class="ghost" id="sup-bmc">💲 USD</button></div>
     <img class="qr" id="supqr" alt="donation QR" style="width:190px;background:#fff;padding:10px;border-radius:12px"/>
     <div class="hint center" id="suphint"></div>
     <div class="mono center" id="supval" style="color:var(--muted);font-size:12px;word-break:break-all"></div>
-    <div style="display:flex;gap:10px"><button class="ghost" id="supcopy">Copy</button><button class="primary" id="supopen" style="display:none">Open</button></div>
-    <div id="supwallets" style="display:none;width:100%"><div class="hint" style="margin-bottom:6px">New to Lightning? Try a wallet:</div><div id="walletrow" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>
+    <div style="display:flex;gap:10px;width:100%"><button class="ghost" id="supcopy" style="flex:1;justify-content:center">Copy</button><button class="primary" id="supopen" style="flex:1;justify-content:center;display:none">Open</button></div>
   </div>
 </div></div>
 
@@ -357,8 +356,6 @@ async function loadDonate(){try{const r=await fetch(q('/api/donate?tab='+supTab)
   $('supqr').src=r.qr||'';$('supval').textContent=r.value||'';$('suphint').textContent=SUP_HINTS[supTab]||'';
   $('supopen').style.display=supTab==='bmc'?'':'none';
   for(const [id,t] of [['sup-ln','ln'],['sup-onchain','onchain'],['sup-bmc','bmc']])$(id).className=supTab===t?'primary':'ghost';
-  const w=r.wallets||[];$('supwallets').style.display=w.length?'block':'none';
-  $('walletrow').innerHTML=w.map(x=>'<a href="'+x.url+'" target="_blank" rel="noopener" style="text-decoration:none"><button class="ghost" style="font-size:12px;padding:6px 12px">'+x.name+'</button></a>').join('');
 }catch(_){}}
 $('m-support').onclick=()=>{$('menu').classList.remove('open');$('supov').classList.add('open');loadDonate();};
 $('sup-x').onclick=()=>$('supov').classList.remove('open');
