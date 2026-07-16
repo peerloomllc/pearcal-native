@@ -804,6 +804,15 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
+      // Blind-peer list change (#116 facet #2). Fires when a seederFollow row is
+      // added/updated/removed — including a live seeder groupCount update — so the
+      // Profile → Blind Peer list refreshes in place.
+      onEvent('blindPeersChanged', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("blindPeersChanged",' + JSON.stringify(data ?? null) + ');true;'
+        )
+      })
+
       onEvent('scheduleMorningDigest', async (items: any) => {
         try {
           for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {
