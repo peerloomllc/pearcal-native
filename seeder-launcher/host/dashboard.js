@@ -183,7 +183,20 @@ const PAGE = `<!doctype html>
   .stat .num{font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1.1;color:var(--primary)}
   .stat .num.small{font-size:22px;color:var(--text)}
   .stat .lbl{color:var(--muted);font-size:12.5px;margin-top:3px} .stat .sub{color:var(--subtle);font-size:11.5px;margin-top:3px}
-  @media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.stat.hero{grid-column:span 2}}
+  @media(max-width:560px){
+    .stats{grid-template-columns:1fr 1fr} .stat.hero{grid-column:span 2}
+    .stat .num{font-size:28px} .stat .num.small{font-size:20px}
+    .app{padding:0 14px}
+    /* topbar stacks: brand + theme/gear on row 1, pill on row 2, nickname full-width */
+    .topbar{flex-wrap:wrap;gap:8px;padding:12px 2px 10px}
+    .brand{order:1} .topbar-right{order:2;margin-left:auto} .pill{order:3;margin:0} .nick{order:4;flex-basis:100%;margin-left:0}
+    .nick input{max-width:none}
+    /* action bar stacks: seeder id row, then a full-width Add */
+    .actionbar{flex-wrap:wrap;gap:10px;padding:12px 2px 14px}
+    .identity{order:1;flex-basis:100%} .identity .mono{max-width:none} .spacer{display:none}
+    #add{order:2;width:100%;justify-content:center;padding:13px}
+    .modal{padding:18px}
+  }
   .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
   .panel-head{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--border)}
   .panel-head h2{font-size:14px;font-weight:600;margin:0} .count{color:var(--subtle);font-size:12px}
@@ -217,8 +230,8 @@ const PAGE = `<!doctype html>
   <header class="topbar">
     <div class="brand"><img class="brand-mark" id="brandmark" src="<!--BRAND-->" alt=""/><div><div class="brand-name">PearCal Seeder</div><div class="brand-sub">blind group replicator</div></div></div>
     <div class="nick" id="nickwrap"><input id="nick" placeholder="Nickname" maxlength="64"/><button class="ghost save" id="nicksave">Save</button></div>
+    <span class="pill"><span id="dot" class="dot"></span><span id="live">offline</span><span class="v" id="ver"><!--VERSION--></span></span>
     <div class="topbar-right">
-      <span class="pill"><span id="dot" class="dot"></span><span id="live">offline</span><span class="v" id="ver"><!--VERSION--></span></span>
       <button class="iconbtn" id="theme" title="Toggle theme"></button>
       <div class="menuwrap"><button class="iconbtn" id="menubtn" title="Menu"></button>
         <div class="menu" id="menu"><button id="m-maint"></button><button id="m-support"></button></div></div>
