@@ -76,7 +76,19 @@ echo "    staged $staged addon prebuild dirs"
 [ "$staged" -gt 0 ] || { echo "stage-linux: no $BARE_HOST prebuilds found; run \`npm install\`" >&2; exit 1; }
 
 # 4. Launcher host (Node).
-cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" "$OUT_DIR/host/"
+cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" \
+   "$LAUNCHER/host/auth.js" "$OUT_DIR/host/"
+
+# 4b. Offline dashboard font: extract the Manrope woff2 @font-face CSS from the
+#     app's fonts.js so the dashboard renders without a Google Fonts round-trip.
+node -e '
+  const fs=require("fs");
+  const t=fs.readFileSync(process.argv[1],"utf8");
+  const m=t.match(/FONT_CSS\s*=\s*("(?:[^"\\]|\\.)*")/s);
+  if(m) fs.writeFileSync(process.argv[2], JSON.parse(m[1]));
+' "$REPO/src/ui/fonts.js" "$OUT_DIR/host/fonts.css" 2>/dev/null && \
+  echo "--> inlined offline font ($(wc -c < "$OUT_DIR/host/fonts.css" 2>/dev/null || echo 0) bytes)" || \
+  echo "--> font extract skipped (dashboard falls back to Google Fonts)"
 
 # 5. Convenience runner: host in prod mode against this payload.
 cat > "$OUT_DIR/run.sh" <<'RUN'
