@@ -14,6 +14,9 @@ const fs = require('node:fs')
 const path = require('node:path')
 const auth = require('./auth')
 
+// PeerLoom donation channels (shared across the app family).
+const DONATE = { ln: 'peerloomllc@strike.me', bmc: 'https://buymeacoffee.com/peerloomllc?new=1' }
+
 function sendJson (res, body, status = 200) {
   res.writeHead(status, { 'content-type': 'application/json' })
   res.end(JSON.stringify(body))
@@ -70,6 +73,13 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
         return
       }
       if (req.method === 'GET' && p === '/api/status') return sendJson(res, await snapshot(worklet))
+      if (req.method === 'GET' && p === '/api/donate') {
+        const tab = url.searchParams.get('tab') === 'bmc' ? 'bmc' : 'ln'
+        const value = DONATE[tab]
+        let qr = null
+        try { qr = await require('qrcode').toDataURL(value, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) } catch {}
+        return sendJson(res, { tab, value, qr })
+      }
       if (req.method === 'POST' && p === '/api/pair/open') {
         const r = await worklet.call('seeder:pair:open', {}).catch((e) => ({ error: e.message }))
         let qr = null
@@ -158,10 +168,10 @@ const PAGE = `<!doctype html>
     border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:16px;line-height:1}
   .iconbtn:hover{background:var(--surface-hover);color:var(--text);border-color:var(--border-strong)}
   .menu{position:absolute;right:0;top:40px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
-    box-shadow:var(--shadow);padding:6px;min-width:170px;z-index:20;display:none}
+    box-shadow:var(--shadow);padding:6px;min-width:210px;z-index:20;display:none}
   .menu.open{display:block}
   .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;
-    color:var(--text);font-size:14px;padding:9px 10px;border-radius:7px;cursor:pointer;font-weight:400}
+    color:var(--text);font-size:14px;padding:9px 10px;border-radius:7px;cursor:pointer;font-weight:400;white-space:nowrap}
   .menu button:hover{background:var(--surface-hover)}
   /* main */
   .main{display:flex;flex-direction:column;gap:14px;margin-top:2px}
@@ -281,11 +291,13 @@ const PAGE = `<!doctype html>
 <!-- Support modal -->
 <div class="overlay" id="supov"><div class="modal">
   <div class="modal-head"><h3>Support development</h3><button class="iconbtn" id="sup-x" style="font-size:15px">✕</button></div>
-  <div class="stack">
-    <div class="hint">PearCal is free and serverless — no accounts, no tracking. If it's useful to you, a tip helps keep it built and maintained.</div>
-    <div class="identity"><span class="lbl">Bitcoin</span><span class="mono" id="btc">bc1q0kksenz3j4u9ppe6f4krclvzwxk7sjy00cc9cf</span><button class="iconbtn" id="btccopy" title="Copy" style="width:30px;height:30px;font-size:13px">⧉</button></div>
-    <div class="hint">Lightning-friendly wallets: Strike, Cash App, Wallet of Satoshi, Phoenix.</div>
-    <button class="ghost" id="sup-site">Open peerloomllc.com</button>
+  <div class="stack center">
+    <div class="hint center">No accounts, no servers, no subscriptions. If running this seeder is useful, a tip helps keep PearCal free — entirely optional.</div>
+    <div class="tabs" style="width:100%"><button class="primary" id="sup-ln">⚡ Bitcoin</button><button class="ghost" id="sup-bmc">💲 Card / USD</button></div>
+    <img class="qr" id="supqr" alt="donation QR" style="width:200px;background:#fff;padding:10px;border-radius:12px"/>
+    <div class="hint center" id="suphint"></div>
+    <div class="mono center" id="supval" style="color:var(--muted);font-size:12px;word-break:break-all"></div>
+    <div style="display:flex;gap:10px"><button class="ghost" id="supcopy">Copy</button><button class="primary" id="supopen" style="display:none">Open</button></div>
   </div>
 </div></div>
 
@@ -334,10 +346,21 @@ $('menubtn').onclick=e=>{e.stopPropagation();$('menu').classList.toggle('open');
 document.addEventListener('click',()=>$('menu').classList.remove('open'));
 $('m-maint').onclick=()=>{$('menu').classList.remove('open');$('maintov').classList.add('open');};
 $('maint-x').onclick=()=>$('maintov').classList.remove('open');
-$('m-support').onclick=()=>{$('menu').classList.remove('open');$('supov').classList.add('open');};
+let supTab='ln';
+async function loadDonate(){
+  try{const r=await fetch(q('/api/donate?tab='+supTab)).then(x=>x.json());
+    $('supqr').src=r.qr||'';$('supval').textContent=r.value||'';
+    $('suphint').textContent=supTab==='ln'?'Scan with any Lightning wallet (pick your own amount), or copy the address.':'Scan to open Buy Me a Coffee, or open it here to pay by card.';
+    $('supopen').style.display=supTab==='bmc'?'':'none';
+    $('sup-ln').className=supTab==='ln'?'primary':'ghost';$('sup-bmc').className=supTab==='bmc'?'primary':'ghost';
+  }catch(_){}
+}
+$('m-support').onclick=()=>{$('menu').classList.remove('open');$('supov').classList.add('open');loadDonate();};
 $('sup-x').onclick=()=>$('supov').classList.remove('open');
-$('sup-site').onclick=()=>window.open('https://peerloomllc.com','_blank','noopener');
-$('btccopy').onclick=()=>{navigator.clipboard?.writeText($('btc').textContent);$('btccopy').textContent='✓';setTimeout(()=>$('btccopy').textContent='⧉',1200);};
+$('sup-ln').onclick=()=>{supTab='ln';loadDonate();};
+$('sup-bmc').onclick=()=>{supTab='bmc';loadDonate();};
+$('supcopy').onclick=()=>{navigator.clipboard?.writeText($('supval').textContent);$('supcopy').textContent='Copied';setTimeout(()=>$('supcopy').textContent='Copy',1200);};
+$('supopen').onclick=()=>window.open($('supval').textContent,'_blank','noopener');
 // add-device modal + tabs
 function openAdd(){$('addov').classList.add('open');setTab('pair');}
 $('add').onclick=openAdd;$('add-x').onclick=()=>{$('addov').classList.remove('open');post('/api/pair/close').catch(()=>{});};
