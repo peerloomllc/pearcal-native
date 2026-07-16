@@ -7409,38 +7409,50 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             return (
               <div key={bp.pubkey}
                 style={{ padding:'12px 14px', borderRadius:10, border:`1px solid ${colors.border}`,
-                  display:'flex', alignItems:'center', gap:10 }}>
-                <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, color: colors.text.primary }}>{bp.nickname || 'Blind peer'}</div>
-                  <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
-                    overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                    {String(bp.pubkey).slice(0, 16)}…
+                  display:'flex', flexDirection:'column', gap:10 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, color: colors.text.primary }}>{bp.nickname || 'Blind peer'}</div>
+                    <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {String(bp.pubkey).slice(0, 16)}…
+                    </div>
+                    <div style={{ fontSize:11, color: colors.text.muted }}>
+                      Seeding {bp.groupCount ?? 0} group{(bp.groupCount ?? 0) === 1 ? '' : 's'}
+                    </div>
                   </div>
-                  <div style={{ fontSize:11, color: colors.text.muted }}>
-                    Seeding {bp.groupCount ?? 0} group{(bp.groupCount ?? 0) === 1 ? '' : 's'}
-                  </div>
+                  {confirming ? (
+                    <div style={{ display:'flex', gap:6, flexShrink:0 }}>
+                      <button onClick={async () => { window.__pearSync?.haptic('medium'); await db.removeBlindPeer?.(bp.pubkey).catch(() => {}); setRemoveBpConfirm(null); loadBlindPeers() }}
+                        style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                          border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
+                        Remove
+                      </button>
+                      <button onClick={() => setRemoveBpConfirm(null)}
+                        style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                          border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { window.__pearSync?.haptic('light'); setRemoveBpConfirm(bp.pubkey) }}
+                      style={{ background:'none', border:'none', padding:6, cursor:'pointer',
+                        display:'flex', alignItems:'center', color: colors.text.muted, flexShrink:0 }}>
+                      <X size={16} weight="thin" />
+                    </button>
+                  )}
                 </div>
-                {confirming ? (
-                  <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                    <button onClick={async () => { window.__pearSync?.haptic('medium'); await db.removeBlindPeer?.(bp.pubkey).catch(() => {}); setRemoveBpConfirm(null); loadBlindPeers() }}
-                      style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                        border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
-                      Remove
-                    </button>
-                    <button onClick={() => setRemoveBpConfirm(null)}
-                      style={{ padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                        border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
-                      Cancel
-                    </button>
+                <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:28 }}>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:12, color: colors.text.primary }}>Auto-follow new groups</div>
+                    <div style={{ fontSize:11, color: colors.text.muted }}>
+                      Seeds groups you create later. Shares topic keys — it still can’t read them.
+                    </div>
                   </div>
-                ) : (
-                  <button onClick={() => { window.__pearSync?.haptic('light'); setRemoveBpConfirm(bp.pubkey) }}
-                    style={{ background:'none', border:'none', padding:6, cursor:'pointer',
-                      display:'flex', alignItems:'center', color: colors.text.muted, flexShrink:0 }}>
-                    <X size={16} weight="thin" />
-                  </button>
-                )}
+                  <Toggle val={!!bp.autoFollow} accent={colors.primary}
+                    onChange={async (v) => { window.__pearSync?.haptic('light'); await db.setSeederAutoFollow?.(bp.pubkey, v).catch(() => {}); loadBlindPeers() }} />
+                </div>
               </div>
             )
           })}

@@ -27,6 +27,10 @@ const { parseSeedInvite } = require('./lib/seedInvite.js')
 const { buildSeederPairLink } = require('./lib/seederPairLink.js')
 const { generateRendezvousKey, seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel, SEEDER_PAIR_PROTOCOL } = require('./lib/seederPair.js')
+const {
+  SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
+  parseSeedEnrollBatch, buildSeedEnrollAck,
+} = require('./lib/seedEnroll.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // The seeder speaks the same JSON-newline envelope over whichever duplex the
@@ -95,6 +99,9 @@ const WRITER_ANNOUNCE_ID = Buffer.from('pearcal-writer-announce-v1')
 // connection, not the message. Only the seeder ever sends here.
 const SEEDER_HELLO_PROTOCOL = 'pearcal/seeder-hello'
 const SEEDER_HELLO_ID = Buffer.from('pearcal-seeder-hello-v1')
+
+// Live seed-enroll wire (TODO #116 facet #3) is defined in ./lib/seedEnroll.js
+// (imported at the top) so the member (bare.js) and seeder ends can't drift.
 
 // Topic for an enrolled group. Seeded groups are ENCRYPTED, so this must match
 // bare.js groupSwarmTopic()'s encrypted branch (domain-separated blake2b) — old
@@ -200,6 +207,41 @@ async function setupWriterAnnounceListener (stream) {
   })
   if (!channel) return
   channel.addMessage({ onmessage: (buf) => { onWriterAnnounce(buf).catch(() => {}) } })
+  channel.open()
+}
+
+// Open the live seed-enroll channel on a replication stream. A member with
+// auto-follow enabled pushes { seedInvites: [...] } for groups created after we
+// were admitted; we enroll each (idempotent) and ack { enrolled: [groupId...] }
+// so the member re-announces those groups' writer cores over the same stream.
+async function setupSeedEnrollListener (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  let msg = null
+  const channel = mux.createChannel({
+    protocol: SEED_ENROLL_PROTOCOL,
+    id: SEED_ENROLL_ID,
+    onopen () {},
+    onclose () {},
+  })
+  if (!channel) return
+  msg = channel.addMessage({
+    onmessage: async (buf) => {
+      const invites = parseSeedEnrollBatch(buf)
+      const enrolled = []
+      for (const invite of invites) {
+        try {
+          const r = await enrollSeedInvite(invite)
+          if (r?.ok && r.groupId) enrolled.push(r.groupId)
+        } catch (e) { /* one bad invite doesn't abort the batch */ }
+      }
+      if (enrolled.length) {
+        console.log('[seed] live-enroll: mounted', enrolled.length, 'group(s):', enrolled.join(', '))
+        try { msg.send(buildSeedEnrollAck(enrolled)) } catch {}
+      }
+    },
+  })
   channel.open()
 }
 
@@ -430,6 +472,7 @@ async function init (dir) {
     conn.on('error', () => {})
     setupWriterAnnounceListener(s)
     setupSeederHelloAnnouncer(s)
+    setupSeedEnrollListener(s)
     trackSeederConn(s)
   })
 
@@ -562,7 +605,7 @@ if (typeof BareKit !== 'undefined' || typeof Pear !== 'undefined') {
 module.exports = {
   detectSeedMode, loadOrCreateSeederIdentity, loadEnrolledGroups, init, handle,
   mountGroup, onWriterAnnounce, topicForGroupKey,
-  enrollSeedInvite, enrollSeedBundle, leaveSeedGroup,
+  enrollSeedInvite, enrollSeedBundle, leaveSeedGroup, setupSeedEnrollListener,
   // Test/introspection accessors.
   _state: () => ({ enrolled, mounted, identity, store: () => store, swarm: () => swarm }),
 }

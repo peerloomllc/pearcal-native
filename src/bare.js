@@ -16,6 +16,10 @@ const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
 const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
+const {
+  SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
+  buildSeedEnrollBatch, parseSeedEnrollAck, autoFollowEligible,
+} = require('./lib/seedEnroll.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
@@ -355,6 +359,7 @@ async function handle (method, args) {
     case 'cancelSeederPairScan': return cancelSeederPairScan()
     case 'listBlindPeers':   return listBlindPeers()
     case 'removeBlindPeer':  return removeBlindPeer(args[0])
+    case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'removeDeviceFromList': return removeDeviceFromList(args[0])
@@ -836,6 +841,54 @@ async function mintSeedInvite (groupId) {
   return { ok: true, invite: buildSeedInvite(group, inviterId), name: group.name, encrypted: !!group.encryptionKey }
 }
 
+// ── Live seeder auto-follow (#116 facet #3) ──────────────────────────────────
+// An admitted seeder only holds the groups it was given at admit time (the
+// one-shot QR/paste bundle). When we later create a group, we push its /seed
+// invite over the live pearcal/seed-enroll channel so the seeder mounts it over
+// the already-open connection. GATED on autoFollow: pushing a group's groupKey
+// lets the recipient replicate that group's ciphertext, so we only push to
+// seeders the user explicitly trusts (QR-paired → autoFollow set at pair time;
+// paste-admitted → the user opted in via the Blind Peer list toggle). A peer
+// that merely sent a seeder-hello (recorded for visibility) is NOT auto-pushed:
+// it could be a co-member spoofing the hello to harvest other groups' keys.
+async function _isAutoFollowSeeder (pubkeyHex) {
+  if (!pubkeyHex) return false
+  const row = await db.get('seederFollow:' + pubkeyHex).catch(() => null)
+  return autoFollowEligible(row?.value)
+}
+
+function _sendSeedInvites (msg, invites) {
+  if (!msg || !invites || !invites.length) return
+  try { msg.send(buildSeedEnrollBatch(invites)) } catch (e) {}
+}
+
+// Push every group the user is in to a specific connected seeder (on channel
+// open, or when the user just enabled auto-follow). Idempotent on the seeder
+// (already-enrolled groups short-circuit).
+async function pushAllGroupsToSeeder (pubkeyHex) {
+  const msg = seedEnrollChannels.get(pubkeyHex)
+  if (!msg) return
+  if (!(await _isAutoFollowSeeder(pubkeyHex))) return
+  try {
+    const { bundle } = await mintSeedBundle()
+    const invites = (bundle || '').split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)
+    _sendSeedInvites(msg, invites)
+  } catch (e) { /* best-effort */ }
+}
+
+// Push one newly-created/joined group to every connected auto-follow seeder.
+async function pushGroupToAutoFollowSeeders (groupId) {
+  if (seedEnrollChannels.size === 0) return
+  let invite = null
+  for (const [pubkeyHex, msg] of seedEnrollChannels) {
+    if (!(await _isAutoFollowSeeder(pubkeyHex))) continue
+    if (invite === null) {
+      try { invite = (await mintSeedInvite(groupId)).invite } catch (e) { return }
+    }
+    _sendSeedInvites(msg, [invite])
+  }
+}
+
 // List the blind peers this identity has paired with (for the settings UI).
 async function listBlindPeers () {
   const out = []
@@ -853,6 +906,20 @@ async function removeBlindPeer (pubkey) {
   if (typeof pubkey !== 'string' || !pubkey) throw new Error('removeBlindPeer: pubkey required')
   await db.del('seederFollow:' + pubkey).catch(() => {})
   return { ok: true, pubkey }
+}
+
+// Toggle live auto-follow (#116 facet #3) for a blind peer. Enabling shares this
+// peer the topic keys of your groups — present AND future — so it seeds groups
+// you create later automatically; it still can't read event contents (it never
+// gets the encryptionKey). Enabling a currently-connected seeder pushes every
+// group immediately; otherwise it takes effect on the next connection.
+async function setSeederAutoFollow (pubkey, enabled) {
+  if (typeof pubkey !== 'string' || !pubkey) throw new Error('setSeederAutoFollow: pubkey required')
+  const existing = await db.get('seederFollow:' + pubkey).catch(() => null)
+  if (!existing?.value) throw new Error('setSeederAutoFollow: unknown blind peer')
+  await db.put('seederFollow:' + pubkey, { ...existing.value, autoFollow: !!enabled })
+  if (enabled) await pushAllGroupsToSeeder(pubkey).catch(() => {})
+  return { ok: true, pubkey, autoFollow: !!enabled }
 }
 
 // ── Seeder QR pairing (member side) ──────────────────────────────────────────
@@ -898,6 +965,10 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
         pairedAt: Date.now(),
         groupCount: enrolled,
         nickname: nickname || existing?.value?.nickname || null,
+        // QR pairing anchors the seeder's pubkey (we scanned it), so auto-follow
+        // future groups by default. A paste-admitted seeder starts off and opts
+        // in via the Blind Peer toggle. Preserve an existing opt-out.
+        autoFollow: existing?.value?.autoFollow ?? true,
       }).catch(() => {})
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
@@ -1534,6 +1605,8 @@ async function removeMember (groupId, memberId) {
 
 const pendingWriterAnnouncements = new Map() // groupId → Set of writerKey hex strings
 const activeChannels = new Set() // active writer-announce message objects
+const activeChannelPubkeys = new Map() // writer-announce msg → authenticated remote pubkey hex (for seeder-targeted re-announce)
+const seedEnrollChannels = new Map() // remote pubkey hex → seed-enroll send msg (member→seeder live enroll, #116 facet #3)
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
 const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
 const recentDeleteNotifs = new Map()  // eventId → timeout handle; deduplicates cross-group delete notifications
@@ -1865,6 +1938,10 @@ async function _joinGroupImpl (group) {
   for (const ch of activeChannels) {
     try { ch.send(announceBuf) } catch(e) {}
   }
+  // Live auto-follow (#116 facet #3): tell any already-connected auto-follow
+  // seeder to mount this group over the existing connection. On its enroll ack
+  // we re-announce the writer above so it picks up our writer core.
+  pushGroupToAutoFollowSeeders(group.id).catch(() => {})
 
   // Always use group.groupKey as swarm topic so both sides match
   // (owner updates groupKey to realKey before this point)
@@ -6193,6 +6270,11 @@ async function runRealtimeSyncTick () {
   // read-only until some authorized writer grants us. Self-heals a device that
   // missed its grant window (no writer online when it first announced).
   await reannounceUnwritableGroups().catch(() => {})
+  // Seeder liveness (#116 facet #1): re-announce ALL groups to connected
+  // auto-follow seeders so one that mounted a group after we connected (or
+  // missed our enroll ack) still learns our writer core. Bounded to seeder
+  // connections only; regular member peers don't get the extra traffic.
+  await reannounceGroupsToSeeders().catch(() => {})
 }
 
 // Phase C: re-broadcast our writer-announce on every group where this device is
@@ -6212,6 +6294,27 @@ async function reannounceUnwritableGroups () {
       const announceBuf = await buildWriterAnnounce(groupId, writerKey, profile?.id)
       for (const ch of activeChannels) { try { ch.send(announceBuf) } catch (e) {} }
     } catch (e) { /* per-group best-effort */ }
+  }
+}
+
+// Seeder-targeted safety net: re-announce every joined group's writer to each
+// connected auto-follow seeder. The primary paths are immediate (join-time
+// announce + seed-enroll ack); this bounds worst-case convergence to one tick
+// if a seeder mounted a group without our seeing the ack. Appends to a writer a
+// seeder already knows need no help — the seeder's core.download({end:-1}) is a
+// live range that follows new blocks — so we only re-send the (deduped) writer
+// key, not per-append events.
+async function reannounceGroupsToSeeders () {
+  if (activeChannelPubkeys.size === 0 || bases.size === 0) return
+  let profile = null
+  for (const [msg, pubkeyHex] of activeChannelPubkeys) {
+    if (!(await _isAutoFollowSeeder(pubkeyHex))) continue
+    if (!profile) profile = await getProfile().catch(() => null)
+    for (const [groupId, base] of bases) {
+      const writerKey = base.local?.key ? b4a.toString(base.local.key, 'hex') : null
+      if (!writerKey) continue
+      try { msg.send(await buildWriterAnnounce(groupId, writerKey, profile?.id)) } catch (e) {}
+    }
   }
 }
 function startRealtimeSyncTick () {
@@ -6395,6 +6498,9 @@ async function _doInit (dir, attempt = 0) {
                     groupCount: groupCount ?? existing?.value?.groupCount ?? 0,
                     since: existing?.value?.since ?? existing?.value?.addedAt ?? Date.now(),
                     via: existing?.value?.via ?? 'group-announce',
+                    // Preserve any explicit auto-follow choice; a hello never
+                    // grants it (default off for hello-recorded seeders).
+                    autoFollow: existing?.value?.autoFollow ?? false,
                   })
                 } catch {}
               }
@@ -6402,6 +6508,56 @@ async function _doInit (dir, attempt = 0) {
             helloChannel.open()
           }
         } catch {}
+      }
+
+      // Live seed-enroll (#116 facet #3): push /seed invites for groups created
+      // after an auto-follow seeder was admitted, so it mounts them over THIS
+      // existing connection (Hyperswarm dedupes per-peer, so a second shared
+      // topic opens no new stream and the writer-announce onopen loop below never
+      // re-fires). Gated on autoFollow inside the push helpers — a mere
+      // hello-recorded peer is never auto-pushed. Wrapped defensively: a throw
+      // here would surface as an unhandled rejection and abort the app on iOS.
+      if (_remotePubkeyHex) {
+        try {
+          let enrollMsg = null
+          const enrollChannel = mux.createChannel({
+            protocol: SEED_ENROLL_PROTOCOL,
+            id: SEED_ENROLL_ID,
+            onopen () {
+              seedEnrollChannels.set(_remotePubkeyHex, enrollMsg)
+              // If this peer is already an auto-follow seeder, seed it with every
+              // group now (idempotent on the seeder side).
+              pushAllGroupsToSeeder(_remotePubkeyHex).catch(() => {})
+            },
+            onclose () {
+              if (seedEnrollChannels.get(_remotePubkeyHex) === enrollMsg) {
+                seedEnrollChannels.delete(_remotePubkeyHex)
+              }
+            },
+          })
+          if (enrollChannel) {
+            enrollMsg = enrollChannel.addMessage({
+              onmessage: async function (buf) {
+                // Seeder ack: it just mounted these groups. Re-announce their
+                // writer cores over the open connection so it learns them (#116
+                // facet #1) instead of waiting for the periodic safety net.
+                try {
+                  const enrolled = parseSeedEnrollAck(buf)
+                  if (!enrolled.length) return
+                  const _p = await getProfile().catch(() => null)
+                  for (const groupId of enrolled) {
+                    const base = bases.get(groupId)
+                    if (!base?.local?.key) continue
+                    const wk = b4a.toString(base.local.key, 'hex')
+                    const announce = await buildWriterAnnounce(groupId, wk, _p?.id)
+                    for (const ch of activeChannels) { try { ch.send(announce) } catch (e) {} }
+                  }
+                } catch (e) {}
+              },
+            })
+            enrollChannel.open()
+          }
+        } catch (e) {}
       }
 
       // Open a dedicated Protomux channel for writer key exchange
@@ -6449,9 +6605,11 @@ async function _doInit (dir, attempt = 0) {
             } catch(e) {}
           }
           activeChannels.add(msg)
+          if (_remotePubkeyHex) activeChannelPubkeys.set(msg, _remotePubkeyHex)
         },
         onclose () {
           activeChannels.delete(msg)
+          activeChannelPubkeys.delete(msg)
         }
       })
 
