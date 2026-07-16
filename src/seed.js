@@ -98,6 +98,18 @@ function topicForGroupKey (groupKey) {
 // Date.now() is unavailable in some bare sandboxes at module init; guard it.
 function _now () { try { return Date.now() } catch { return 0 } }
 
+// Blind-safe per-group metrics from the mounted cores: total bytes held, opaque
+// block count (NOT events — we can't decrypt), and writer-core count. Zero if
+// the group isn't mounted yet.
+function _groupMetrics (groupId) {
+  const m = mounted.get(groupId)
+  if (!m) return { bytes: 0, blocks: 0, writers: 0 }
+  let bytes = m.core?.byteLength || 0
+  let blocks = m.core?.length || 0
+  for (const c of m.writerCores.values()) { bytes += c?.byteLength || 0; blocks += c?.length || 0 }
+  return { bytes, blocks, writers: m.writerCores.size }
+}
+
 // ── Seed mode detection ─────────────────────────────────────────────────────
 // True in `--seed` argv (launcher / CLI) or when init passes { mode: 'seed' }.
 function detectSeedMode (input) {
@@ -235,10 +247,12 @@ function setupSeederPairChannelFor (mux, rv) {
       for (const r of (res?.results ?? [])) {
         if (r?.ok) { enrolled++; if (!r.alreadyEnrolled && r.name) names.push(r.name) }
       }
+      const nickRow = await db.get('seeder:nickname').catch(() => null)
+      const nickname = nickRow?.value?.name || null
       console.log('[seed] pair: enrolled', enrolled, 'group(s) via QR')
       try { send({ type: 'event', event: 'seeder:pair:result', data: { enrolled, names } }) } catch {}
       if (enrolled > 0) closeSeederPairSession('paired') // one-shot: pairing done
-      return { enrolled, names }
+      return { enrolled, names, nickname }
     },
   })
 }
@@ -404,16 +418,37 @@ async function handle (method, args) {
         : (a?.dataDir ?? (Array.isArray(a) ? (a[0]?.dataDir ?? a[0]) : null))
       return init(dir)
     }
-    case 'seeder:status':
+    case 'seeder:status': {
+      const nick = await db.get('seeder:nickname').catch(() => null)
+      let bytes = 0, blocks = 0
+      for (const groupId of mounted.keys()) { const m = _groupMetrics(groupId); bytes += m.bytes; blocks += m.blocks }
       return {
         pubkey: identity ? b4a.toString(identity.publicKey, 'hex') : null,
+        nickname: nick?.value?.name ?? null,
         booted: _booted,
         uptime: _now() - bootTs,
         enrolled: enrolled.size,
         mounted: mounted.size,
+        // Blind-safe metrics only: the seeder holds ciphertext, so it can report
+        // storage (bytes) and opaque block counts and peer count — never event
+        // counts, which would require decrypting.
+        peers: (swarm && swarm.connections) ? swarm.connections.size : 0,
+        bytes,
+        blocks,
       }
+    }
+    case 'seeder:nickname:get': {
+      const n = await db.get('seeder:nickname').catch(() => null)
+      return { name: n?.value?.name ?? null }
+    }
+    case 'seeder:nickname:set': {
+      const a = args
+      const name = (typeof a === 'string' ? a : (a?.name ?? (Array.isArray(a) ? a[0] : ''))) || ''
+      await db.put('seeder:nickname', { name: String(name).slice(0, 64), updatedAt: _now() })
+      return { ok: true, name: String(name).slice(0, 64) }
+    }
     case 'seeder:enrolled:list':
-      return [...enrolled.values()]
+      return [...enrolled.values()].map((row) => ({ ...row, ..._groupMetrics(row.groupId) }))
     case 'seeder:enroll': {
       const a = args
       const invite = typeof a === 'string' ? a

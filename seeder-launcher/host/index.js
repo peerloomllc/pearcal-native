@@ -16,13 +16,18 @@ const path = require('node:path')
 const os = require('node:os')
 const fs = require('node:fs')
 const { Worklet } = require('./worklet')
+const { startDashboard } = require('./dashboard')
+const { loadOrCreateToken } = require('./auth')
 
 function parseArgs (argv) {
-  const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000 }
+  const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000, port: null, host: '0.0.0.0' }
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dev') out.dev = true
     else if (a === '--pair') out.pair = true
+    else if (a === '--port') out.port = parseInt(argv[++i], 10)
+    else if (a === '--host') out.host = argv[++i]
+    else if (a === '--no-auth') out.noAuth = true
     else if (a === '--data') out.dataDir = argv[++i]
     else if (a === '--bare') out.barePath = argv[++i]
     else if (a === '--bundle') out.bundleEntry = argv[++i]
@@ -83,6 +88,17 @@ async function main () {
 
   const initResult = await wl.start()
   log('host', 'seeder ready: ' + JSON.stringify(initResult))
+
+  // Monitoring + pairing dashboard. Enable with --port <n> or SEEDER_PORT.
+  const dashPort = opts.port || (process.env.SEEDER_PORT ? Number(process.env.SEEDER_PORT) : null)
+  if (dashPort) {
+    // Token auth on by default (persisted in the data dir); --no-auth disables.
+    const token = opts.noAuth ? null : loadOrCreateToken(dataDir).token
+    let version = null
+    try { version = require('../package.json').version } catch {}
+    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, log })
+    if (token) log('host', `dashboard token: ${token}`)
+  }
 
   // Dev QR pairing: open a rendezvous and render the QR in the terminal so a
   // phone can scan it (proposal 2026-07-15 QR-pairing model). The real launcher

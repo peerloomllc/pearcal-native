@@ -889,7 +889,7 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
       const { bundle } = await mintSeedBundle()
       return (bundle || '').split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)
     },
-    onAck: async ({ enrolled, names }) => {
+    onAck: async ({ enrolled, names, nickname }) => {
       // Record the paired blind peer so the UI can list it and offer removal.
       const existing = await db.get('seederFollow:' + session.seederKeyHex).catch(() => null)
       await db.put('seederFollow:' + session.seederKeyHex, {
@@ -897,6 +897,7 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
         since: existing?.value?.since ?? Date.now(),
         pairedAt: Date.now(),
         groupCount: enrolled,
+        nickname: nickname || existing?.value?.nickname || null,
       }).catch(() => {})
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
