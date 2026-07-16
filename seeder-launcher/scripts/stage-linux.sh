@@ -76,7 +76,7 @@ echo "    staged $staged addon prebuild dirs"
 [ "$staged" -gt 0 ] || { echo "stage-linux: no $BARE_HOST prebuilds found; run \`npm install\`" >&2; exit 1; }
 
 # 4. Launcher host (Node).
-cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$OUT_DIR/host/"
+cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" "$OUT_DIR/host/"
 
 # 5. Convenience runner: host in prod mode against this payload.
 cat > "$OUT_DIR/run.sh" <<'RUN'
