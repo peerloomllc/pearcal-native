@@ -86,6 +86,16 @@ const _activeMuxes = new Set() // live replication muxers, for opening the pair 
 const WRITER_ANNOUNCE_PROTOCOL = 'pearcal/writer-announce'
 const WRITER_ANNOUNCE_ID = Buffer.from('pearcal-writer-announce-v1')
 
+// Seeder self-announce. Byte-matches bare.js's listener. On every group
+// connection we send our nickname so a member learns we exist and lists us as
+// its blind peer — even when it enrolled us via a pasted /seed invite and never
+// met us at pair time. Our identity pubkey IS the stream's authenticated remote
+// pubkey on the member side (swarm is keyed with the identity keypair), so the
+// hello need only carry the nickname; the member attributes it to us from the
+// connection, not the message. Only the seeder ever sends here.
+const SEEDER_HELLO_PROTOCOL = 'pearcal/seeder-hello'
+const SEEDER_HELLO_ID = Buffer.from('pearcal-seeder-hello-v1')
+
 // Topic for an enrolled group. Seeded groups are ENCRYPTED, so this must match
 // bare.js groupSwarmTopic()'s encrypted branch (domain-separated blake2b) — old
 // code joins the plain groupKey topic and never meets the seeder or members.
@@ -190,6 +200,30 @@ async function setupWriterAnnounceListener (stream) {
   })
   if (!channel) return
   channel.addMessage({ onmessage: (buf) => { onWriterAnnounce(buf).catch(() => {}) } })
+  channel.open()
+}
+
+// Announce ourselves to a connected member so it can list us as its blind peer.
+// See SEEDER_HELLO_PROTOCOL. Both sides open the channel (byte-identical to
+// bare.js); we send { nickname } once on open and never consume — members don't
+// announce here — so we register an empty message so the message index matches.
+async function setupSeederHelloAnnouncer (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  let msg = null
+  const channel = mux.createChannel({
+    protocol: SEEDER_HELLO_PROTOCOL,
+    id: SEEDER_HELLO_ID,
+    async onopen () {
+      const nickRow = await db.get('seeder:nickname').catch(() => null)
+      const nickname = nickRow?.value?.name || null
+      try { msg.send(Buffer.from(JSON.stringify({ nickname, groupCount: enrolled.size }))) } catch {}
+    },
+    onclose () {},
+  })
+  if (!channel) return
+  msg = channel.addMessage({ onmessage () {} })
   channel.open()
 }
 
@@ -395,6 +429,7 @@ async function init (dir) {
     s.on('error', () => {})
     conn.on('error', () => {})
     setupWriterAnnounceListener(s)
+    setupSeederHelloAnnouncer(s)
     trackSeederConn(s)
   })
 

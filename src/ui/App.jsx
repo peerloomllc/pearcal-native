@@ -33,7 +33,7 @@ import {
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
   Trash, SignOut, Repeat, Lock, Key,
   CaretRight, CaretLeft, QrCode, Plus, UserPlus,
-  Check, CheckCircle, X, Eye, EyeSlash, Circle,
+  Check, CheckCircle, Copy, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
@@ -5159,6 +5159,7 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
   // phase: 'idle' | 'scanning' | 'success' | 'error'
   const [phase, setPhase] = useState('idle')
   const [result, setResult] = useState(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -5188,6 +5189,19 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
     setPhase('scanning')
     qrScanModeRef.current = 'seederPair'
     sync.qrScan()
+  }
+
+  // Reverse of scanning: hand the seeder a link instead of scanning its QR.
+  // Copies the all-groups seed bundle so it can be pasted into the blind peer's
+  // dashboard ("Paste invite" tab). More reliable than QR pairing when the
+  // rendezvous can't hole-punch (e.g. phone + seeder behind the same router),
+  // and easier when the dashboard is open on the same phone.
+  const copyBundle = () => {
+    if (!groupInfo.bundle) return
+    window.__pearSync?.haptic('light')
+    sync?.copyText?.(groupInfo.bundle)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   return (
@@ -5263,6 +5277,34 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
                     display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
                   <QrCode size={18} weight="thin" /> Scan blind peer QR
                 </button>
+                <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginTop:10,
+                  padding:'9px 11px', borderRadius:9, background:'rgba(224,168,86,0.10)',
+                  border:'1px solid rgba(224,168,86,0.28)' }}>
+                  <Warning size={15} weight="thin" color="#E0A856" style={{ flexShrink:0, marginTop:1 }} />
+                  <span style={{ fontSize:11, color: colors.text.muted, lineHeight:1.5 }}>
+                    Scanning needs your phone and the blind peer on <b>different networks</b> — if
+                    they share the same Wi-Fi, the connection often can't form. On the same network,
+                    use <b>Copy invite link</b> below instead.
+                  </span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 0' }}>
+                  <div style={{ flex:1, height:1, background:colors.border }} />
+                  <span style={{ fontSize:11, color:colors.text.muted }}>or</span>
+                  <div style={{ flex:1, height:1, background:colors.border }} />
+                </div>
+                <button data-haptic="light" onClick={copyBundle}
+                  style={{ width:'100%', padding:'11px', fontSize:14, fontFamily:FONT,
+                    background:'none', color:colors.text.primary, cursor:'pointer',
+                    border:`1px solid ${colors.border}`, borderRadius:10,
+                    display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                  {copied
+                    ? <><CheckCircle size={18} weight="thin" color="#5DBF8A" /> Invite copied</>
+                    : <><Copy size={18} weight="thin" /> Copy invite link</>}
+                </button>
+                <div style={{ fontSize:11, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
+                  Paste it into the blind peer's dashboard — the <b>Paste invite</b> tab — to enroll
+                  all {count} group{count === 1 ? '' : 's'} without scanning.
+                </div>
               </>
             )}
             <div style={{ fontSize:11, color: colors.text.muted, marginTop:12, lineHeight:1.5 }}>

@@ -100,6 +100,19 @@ node -e '
   echo "--> inlined offline font ($(wc -c < "$OUT_DIR/host/fonts.css" 2>/dev/null || echo 0) bytes)" || \
   echo "--> font extract skipped (dashboard falls back to Google Fonts)"
 
+# 4c. Host runtime deps. The Node host pulls in `qrcode` (the dashboard renders
+#     pairing + support QRs via qrcode.toDataURL; the terminal --pair path uses
+#     it too). Stage qrcode + its runtime deps under host/node_modules so the
+#     payload is self-contained — otherwise the host only resolves qrcode when a
+#     repo checkout happens to sit on NODE_PATH (true on the dev box, false on a
+#     bare deploy target like Umbrel). All pure-JS, so arch-independent.
+echo "--> host runtime deps (qrcode)"
+mkdir -p "$OUT_DIR/host/node_modules"
+for m in qrcode dijkstrajs pngjs; do
+  [ -d "$REPO/node_modules/$m" ] || { echo "stage-linux: missing node_modules/$m; run \`npm install\`" >&2; exit 1; }
+  cp -R "$REPO/node_modules/$m" "$OUT_DIR/host/node_modules/"
+done
+
 # 5. Convenience runner: host in prod mode against this payload.
 cat > "$OUT_DIR/run.sh" <<'RUN'
 #!/usr/bin/env bash
