@@ -1,17 +1,13 @@
-// Monitoring + management dashboard for the PearCal seeder launcher. A focused
-// port of PearCircle's host/server.js + ui, in PearCal's palette + Manrope.
+// Monitoring + management dashboard for the PearCal seeder launcher. Layout +
+// hierarchy adapted from PearCircle's current seeder dashboard (topbar with
+// brand + inline nickname + status pill + menu; a stats grid; identity row;
+// groups panel; bottom actionbar; modals for Add-a-device and Maintenance),
+// restyled in PearCal's palette (gold #C8922A) + Manrope.
 //
-// - Overview: editable nickname, seeder ID, uptime, group counts, enrolled
-//   groups with per-group leave.
-// - Add a device: pairing QR (drives seeder:pair:open on the live worklet) +
-//   paste-to-enroll for a seed invite / all-groups bundle.
-// - Maintenance: restart.
-//
-// Extras: token auth (auth.js), live push via Server-Sent Events (no polling,
-// instant pair-result feedback — SSE rather than raw WebSocket keeps the payload
-// dependency-free while giving the same one-way live updates), and offline fonts
-// (Manrope woff2 inlined when host/fonts.css is staged, else a Google Fonts
-// fallback). Update/retention panels remain follow-ups (no such feature yet).
+// Extras: token auth (auth.js), live push via Server-Sent Events (no polling),
+// offline fonts (host/fonts.css inlined when staged, else a Google Fonts
+// fallback), and blind-safe metrics (storage/blocks/writers/peers — never event
+// counts). Self-contained: one page, no build; QR rendered server-side.
 
 const http = require('node:http')
 const fs = require('node:fs')
@@ -30,7 +26,6 @@ function readBody (req) {
     req.on('error', () => resolve({}))
   })
 }
-
 async function snapshot (worklet) {
   const [status, enrolled] = await Promise.all([
     worklet.call('seeder:status', {}).catch((e) => ({ error: e.message })),
@@ -40,34 +35,26 @@ async function snapshot (worklet) {
 }
 
 function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null, log }) {
-  // Inlined offline font CSS if the stage step produced host/fonts.css.
   let fontStyle
   try {
-    const css = fs.readFileSync(path.join(__dirname, 'fonts.css'), 'utf8')
-    fontStyle = '<style>' + css + '</style>'
+    fontStyle = '<style>' + fs.readFileSync(path.join(__dirname, 'fonts.css'), 'utf8') + '</style>'
   } catch {
     fontStyle = "<style>@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap');</style>"
   }
   const page = PAGE.replace('<!--FONTS-->', fontStyle)
 
   const authed = (req) => !token || auth.verify(req, token)
-  const clients = new Set() // SSE response streams
-
+  const clients = new Set()
   const broadcast = (event, data) => {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`
     for (const res of clients) { try { res.write(payload) } catch {} }
   }
-
-  // Live pairing feedback: relay the worklet's pair result to all dashboards.
-  worklet.on('event', ({ name, data }) => {
-    if (name === 'seeder:pair:result') broadcast('pair', data || {})
-  })
+  worklet.on('event', ({ name, data }) => { if (name === 'seeder:pair:result') broadcast('pair', data || {}) })
 
   const srv = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost')
       const p = url.pathname
-
       if (req.method === 'GET' && p === '/') {
         if (!authed(req)) { res.writeHead(401, { 'content-type': 'text/html' }); res.end(UNAUTH); return }
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(page); return
@@ -89,45 +76,30 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
         if (r && r.link) { try { qr = await require('qrcode').toDataURL(r.link, { width: 320, margin: 2 }) } catch {} }
         return sendJson(res, { ...r, qr })
       }
-      if (req.method === 'POST' && p === '/api/pair/close') {
-        return sendJson(res, await worklet.call('seeder:pair:close', {}).catch((e) => ({ error: e.message })))
-      }
+      if (req.method === 'POST' && p === '/api/pair/close') return sendJson(res, await worklet.call('seeder:pair:close', {}).catch((e) => ({ error: e.message })))
       if (req.method === 'POST' && p === '/api/enroll') {
         const { invite } = await readBody(req)
         if (!invite) return sendJson(res, { error: 'invite required' }, 400)
         const r = await worklet.call('seeder:enroll', { invite }).catch((e) => ({ error: e.message }))
-        broadcast('status', await snapshot(worklet))
-        return sendJson(res, r)
+        broadcast('status', await snapshot(worklet)); return sendJson(res, r)
       }
       if (req.method === 'POST' && p === '/api/leave') {
         const { groupId } = await readBody(req)
         if (!groupId) return sendJson(res, { error: 'groupId required' }, 400)
         const r = await worklet.call('seeder:leave', { groupId }).catch((e) => ({ error: e.message }))
-        broadcast('status', await snapshot(worklet))
-        return sendJson(res, r)
+        broadcast('status', await snapshot(worklet)); return sendJson(res, r)
       }
       if (req.method === 'POST' && p === '/api/nickname') {
         const { name } = await readBody(req)
         const r = await worklet.call('seeder:nickname:set', { name: name || '' }).catch((e) => ({ error: e.message }))
-        broadcast('status', await snapshot(worklet))
-        return sendJson(res, r)
+        broadcast('status', await snapshot(worklet)); return sendJson(res, r)
       }
-      if (req.method === 'POST' && p === '/api/restart') {
-        worklet.stop().catch(() => {}) // launcher auto-respawns on exit
-        return sendJson(res, { ok: true })
-      }
+      if (req.method === 'POST' && p === '/api/restart') { worklet.stop().catch(() => {}); return sendJson(res, { ok: true }) }
       res.writeHead(404); res.end('not found')
-    } catch (e) {
-      res.writeHead(500); res.end(String(e && e.message || e))
-    }
+    } catch (e) { res.writeHead(500); res.end(String(e && e.message || e)) }
   })
 
-  // Push a status snapshot to all live dashboards every 2s (server-driven — the
-  // page never polls).
-  const ticker = setInterval(async () => {
-    if (clients.size === 0) return
-    try { broadcast('status', await snapshot(worklet)) } catch {}
-  }, 2000)
+  const ticker = setInterval(async () => { if (clients.size) { try { broadcast('status', await snapshot(worklet)) } catch {} } }, 2000)
   if (typeof ticker.unref === 'function') ticker.unref()
 
   srv.on('error', (e) => log && log('dashboard', 'error: ' + e.message))
@@ -147,120 +119,219 @@ const PAGE = `<!doctype html>
 <!--FONTS-->
 <style>
   :root{
-    --bg:#0E0D0C; --card:#1A1916; --elev:#252220; --border:#2C2A26; --divider:#232120;
-    --tx:#F2EFE8; --tx2:#B8B2A6; --muted:#8A8478; --gold:#C8922A; --ink:#1A1916;
-    --ok:#5DBF8A; --err:#C0504A; --faint:rgba(200,146,42,0.12); color-scheme:dark;
+    --bg:#0E0D0C; --bg-accent:radial-gradient(1200px 600px at 50% -12%, rgba(200,146,42,.10) 0%, transparent 60%);
+    --surface:#1A1916; --surface-2:#252220; --surface-hover:#2C2A26; --border:#2C2A26; --border-strong:#3A372F;
+    --text:#F2EFE8; --muted:#B8B2A6; --subtle:#8A8478; --primary:#C8922A; --primary-strong:#A5761F; --on-primary:#1A1916;
+    --good:#5DBF8A; --warn:#E5864A; --bad:#C0504A; --faint:rgba(200,146,42,.12);
+    --shadow:0 1px 2px #00000040, 0 8px 24px #00000030; --radius:14px; --radius-sm:9px; color-scheme:dark;
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--tx);
-    font-family:'Manrope',-apple-system,BlinkMacSystemFont,sans-serif;font-weight:300;
-    -webkit-font-smoothing:antialiased;padding:28px 16px 60px}
-  .wrap{max-width:640px;margin:0 auto}
-  header{display:flex;align-items:center;gap:12px;margin-bottom:22px}
-  .logo{width:34px;height:34px;border-radius:9px;background:var(--faint);border:1px solid var(--border);
-    display:flex;align-items:center;justify-content:center;color:var(--gold);font-size:18px}
-  h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.01em}
-  .sub{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
-  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
-  .dot.on{background:var(--ok);box-shadow:0 0 7px var(--ok)} .dot.off{background:var(--err);box-shadow:0 0 7px var(--err)}
-  .panel{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px}
-  h2{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
-  .row{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--divider);font-size:14px}
-  .row:last-child{border-bottom:0}
-  .label{color:var(--tx2)} .val{text-align:right;word-break:break-all}
-  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--tx2)}
-  .muted{color:var(--muted);font-size:13px}
-  button{font-family:inherit;font-weight:600;font-size:14px;padding:10px 16px;border-radius:10px;cursor:pointer;
-    border:1px solid var(--gold);background:var(--gold);color:var(--ink);transition:filter .15s}
-  button:hover{filter:brightness(1.06)} button:disabled{opacity:.5;cursor:default}
-  button.ghost{background:transparent;color:var(--tx2);border-color:var(--border)}
-  button.danger{background:transparent;color:var(--err);border-color:var(--err);padding:6px 12px;font-size:12px}
-  .glist{margin-top:10px;display:flex;flex-direction:column;gap:8px}
-  .gitem{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px}
-  .gitem .nm{flex:1;min-width:0}
-  input,textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--tx);
-    font-family:inherit;font-size:14px;padding:10px 12px;font-weight:300}
-  input:focus,textarea:focus{outline:none;border-color:var(--gold)}
-  textarea{min-height:70px;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12px}
-  .qr{text-align:center;margin-top:14px}
-  .qr img{width:300px;max-width:100%;background:#fff;padding:12px;border-radius:12px}
-  .rowbtns{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:12px}
-  .flash{font-size:13px;margin-top:10px}
-  .flash.ok{color:var(--ok)} .flash.err{color:var(--err)}
-  .nick{display:flex;gap:8px;align-items:center} .nick input{max-width:220px}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);background-image:var(--bg-accent);color:var(--text);
+    font-family:'Manrope',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:15px;font-weight:300;
+    line-height:1.45;-webkit-font-smoothing:antialiased}
+  button,input,textarea{font-family:inherit}
+  .app{min-height:100dvh;max-width:940px;margin:0 auto;padding:0 18px 24px;display:flex;flex-direction:column}
+  /* topbar */
+  .topbar{display:flex;align-items:center;gap:12px;padding:16px 2px 14px}
+  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .brand-mark{width:30px;height:30px;flex:0 0 auto;border-radius:8px;display:grid;place-items:center;
+    background:var(--faint);border:1px solid var(--border);color:var(--primary);font-size:16px}
+  .brand-name{font-size:15px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+  .brand-sub{color:var(--subtle);font-size:12px;white-space:nowrap}
+  .nick{display:flex;align-items:center;gap:6px;margin-left:6px;min-width:0;flex:1}
+  .nick input{background:transparent;border:1px solid transparent;color:var(--text);font-size:14px;font-weight:500;
+    padding:5px 8px;border-radius:8px;min-width:0;width:100%;max-width:220px}
+  .nick input::placeholder{color:var(--subtle);font-weight:300}
+  .nick input:hover{border-color:var(--border)}
+  .nick input:focus{outline:none;border-color:var(--primary);background:var(--surface)}
+  .nick .save{flex:0 0 auto;font-size:12px;padding:5px 10px;opacity:0;transition:opacity .15s}
+  .nick.dirty .save,.nick .save.show{opacity:1}
+  .topbar-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .pill{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);background:var(--surface);
+    border:1px solid var(--border);padding:5px 11px;border-radius:999px;white-space:nowrap}
+  .pill .v{color:var(--subtle)}
+  .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--subtle)}
+  .dot.good{background:var(--good);box-shadow:0 0 7px var(--good)} .dot.bad{background:var(--bad)}
+  .menuwrap{position:relative}
+  .iconbtn{width:34px;height:34px;display:grid;place-items:center;background:var(--surface);color:var(--muted);
+    border:1px solid var(--border);border-radius:9px;cursor:pointer;font-size:16px;line-height:1}
+  .iconbtn:hover{background:var(--surface-hover);color:var(--text);border-color:var(--border-strong)}
+  .menu{position:absolute;right:0;top:40px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    box-shadow:var(--shadow);padding:6px;min-width:170px;z-index:20;display:none}
+  .menu.open{display:block}
+  .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;
+    color:var(--text);font-size:14px;padding:9px 10px;border-radius:7px;cursor:pointer;font-weight:400}
+  .menu button:hover{background:var(--surface-hover)}
+  /* main */
+  .main{display:flex;flex-direction:column;gap:14px;margin-top:2px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
+  .stat.hero{grid-column:span 1;background:linear-gradient(180deg,var(--faint),transparent),var(--surface);border-color:var(--border-strong)}
+  .stat .num{font-size:26px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+  .stat.hero .num{font-size:32px;color:var(--primary)}
+  .stat .lbl{color:var(--muted);font-size:12.5px;margin-top:3px}
+  .stat .sub{color:var(--subtle);font-size:11.5px;margin-top:2px}
+  @media(max-width:560px){.stats{grid-template-columns:1fr 1fr}.stat.hero{grid-column:span 2}}
+  /* identity */
+  .identity{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius-sm);padding:11px 14px}
+  .identity .lbl{color:var(--subtle);font-size:12px;flex:0 0 auto}
+  .identity .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+  /* panel + groups */
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .panel-head{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--border)}
+  .panel-head h2{font-size:14px;font-weight:600;margin:0}
+  .count{color:var(--subtle);font-size:12px;background:var(--surface-2);border:1px solid var(--border);
+    padding:1px 8px;border-radius:999px}
+  .list{padding:8px}
+  .empty{color:var(--subtle);font-size:13.5px;text-align:center;padding:26px 10px}
+  .gitem{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:10px}
+  .gitem:hover{background:var(--surface-hover)}
+  .live{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--good);box-shadow:0 0 6px var(--good)}
+  .live.off{background:var(--subtle);box-shadow:none}
+  .gmain{flex:1;min-width:0}
+  .gname{font-size:14px;font-weight:500}
+  .gname .id{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--subtle);margin-left:7px}
+  .gstate{color:var(--subtle);font-size:12px;margin-top:2px}
+  /* actionbar */
+  .actionbar{display:flex;gap:10px;margin-top:16px}
+  .spacer{flex:1}
+  button.primary{font-weight:600;font-size:14px;padding:10px 18px;border-radius:10px;cursor:pointer;
+    border:1px solid var(--primary);background:var(--primary);color:var(--on-primary)}
+  button.primary:hover{filter:brightness(1.06)} button:disabled{opacity:.5;cursor:default}
+  button.ghost{font-weight:600;font-size:13px;padding:8px 14px;border-radius:9px;cursor:pointer;
+    background:transparent;color:var(--muted);border:1px solid var(--border)}
+  button.ghost:hover{border-color:var(--border-strong);color:var(--text)}
+  button.danger{background:transparent;color:var(--bad);border:1px solid transparent;font-size:12px;padding:6px 10px;
+    border-radius:8px;cursor:pointer;font-weight:600}
+  button.danger:hover{border-color:var(--bad)}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;
+    padding:18px;z-index:50}
+  .overlay.open{display:flex}
+  .modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;box-shadow:var(--shadow);
+    width:420px;max-width:100%;padding:20px}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .modal-head h3{margin:0;font-size:16px;font-weight:600}
+  .tabs{display:flex;gap:8px;margin-bottom:14px}
+  .tabs button{flex:1}
+  .qr{text-align:center} .qr img{width:280px;max-width:100%;background:#fff;padding:12px;border-radius:12px}
+  textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:9px;color:var(--text);
+    font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:10px 12px;min-height:80px;resize:vertical;font-weight:300}
+  textarea:focus{outline:none;border-color:var(--primary)}
+  .hint{color:var(--subtle);font-size:12.5px;line-height:1.5} .center{text-align:center}
+  .flash{font-size:13px;margin-top:10px} .flash.ok{color:var(--good)} .flash.err{color:var(--bad)}
+  .stack{display:flex;flex-direction:column;gap:12px}
 </style></head>
-<body><div class="wrap">
-  <header>
-    <div class="logo">◆</div>
-    <div><h1>PearCal Seeder</h1>
-      <div class="sub"><span id="dot" class="dot off"></span><span id="ststate">connecting…</span></div></div>
-  </header>
-
-  <div class="panel"><h2>Overview</h2>
-    <div class="row"><div class="label">Nickname</div>
-      <div class="val nick"><input id="nick" placeholder="Home server" maxlength="64"/><button id="nicksave" class="ghost" style="padding:7px 12px">Save</button></div></div>
-    <div class="row"><div class="label">Seeder ID</div><div class="val mono" id="pk">—</div></div>
-    <div class="row"><div class="label">Uptime</div><div class="val" id="up">—</div></div>
-    <div class="row"><div class="label">Peers connected</div><div class="val" id="peers">—</div></div>
-    <div class="row"><div class="label">Groups</div><div class="val" id="cnt">—</div></div>
-    <div class="row"><div class="label">Data held</div><div class="val" id="held">—</div></div>
-    <div id="groups" class="glist"></div>
+<body><div class="app">
+  <div class="topbar">
+    <div class="brand"><div class="brand-mark">◆</div>
+      <div><div class="brand-name">PearCal Seeder</div><div class="brand-sub">blind group replicator</div></div></div>
+    <div class="nick" id="nickwrap"><input id="nick" placeholder="Nickname" maxlength="64"/><button class="ghost save" id="nicksave">Save</button></div>
+    <div class="topbar-right">
+      <span class="pill"><span id="dot" class="dot"></span><span id="ststate">connecting…</span><span class="v" id="uptime"></span></span>
+      <div class="menuwrap"><button class="iconbtn" id="menubtn" title="Menu">⋯</button>
+        <div class="menu" id="menu"><button id="m-maint">⟳ Maintenance</button></div></div>
+    </div>
   </div>
 
-  <div class="panel"><h2>Add a device</h2>
-    <div class="muted">On the phone: <b>Profile → Advanced → Blind peer → Admit a blind peer → Scan</b>. The QR is single-use.</div>
-    <div class="rowbtns"><button id="pair">Show pairing QR</button><button id="pairclose" class="ghost" style="display:none">Done</button></div>
-    <div id="pairbox" style="display:none" class="qr"><img id="qr" alt="pairing QR"/><div class="muted" id="pairmsg" style="margin-top:8px"></div></div>
-    <div style="margin-top:16px"><div class="muted" style="margin-bottom:6px">Or paste a seed invite / all-groups bundle:</div>
-      <textarea id="inv" placeholder="https://peerloomllc.com/seed?..."></textarea>
-      <div class="rowbtns"><button id="enroll" class="ghost">Enroll</button><span id="enrollmsg" class="flash"></span></div></div>
+  <div class="main">
+    <div class="stats">
+      <div class="stat hero"><div class="num" id="s-groups">—</div><div class="lbl">Groups seeded</div><div class="sub" id="s-mounted"></div></div>
+      <div class="stat"><div class="num" id="s-peers">—</div><div class="lbl">Peers connected</div></div>
+      <div class="stat"><div class="num" id="s-data">—</div><div class="lbl">Data held</div><div class="sub" id="s-blocks"></div></div>
+    </div>
+
+    <div class="identity"><span class="lbl">Seeder ID</span><span class="mono" id="pk">—</span><button class="iconbtn" id="copy" title="Copy" style="width:30px;height:30px;font-size:13px">⧉</button></div>
+
+    <div class="panel">
+      <div class="panel-head"><h2>Groups</h2><span class="count" id="gcount">0</span></div>
+      <div class="list" id="groups"><div class="empty">Loading…</div></div>
+    </div>
   </div>
 
-  <div class="panel"><h2>Maintenance</h2>
-    <div class="muted">Restart briefly disconnects, then re-syncs and re-mounts all groups on boot.</div>
-    <div class="rowbtns"><button id="restart" class="ghost">Restart seeder</button><span id="restartmsg" class="flash"></span></div>
-  </div>
+  <div class="actionbar"><div class="spacer"></div><button class="primary" id="add">+ Add a device</button></div>
 </div>
+
+<!-- Add-a-device modal -->
+<div class="overlay" id="addov"><div class="modal">
+  <div class="modal-head"><h3>Add a device</h3><button class="iconbtn" id="add-x" style="font-size:15px">✕</button></div>
+  <div class="tabs"><button class="primary" id="tab-pair">Pair a device</button><button class="ghost" id="tab-paste">Paste invite</button></div>
+  <div id="pane-pair" class="stack center">
+    <div class="hint center">Scan in PearCal → Profile → Advanced → Blind peer → Admit a blind peer.</div>
+    <div id="qrbox" class="qr" style="display:none"><img id="qr" alt="pairing QR"/><div class="hint" id="pairmsg" style="margin-top:8px"></div></div>
+    <button class="primary" id="pairbtn">Show pairing QR</button>
+  </div>
+  <div id="pane-paste" class="stack" style="display:none">
+    <div class="hint">Paste a seed invite or an all-groups bundle:</div>
+    <textarea id="inv" placeholder="https://peerloomllc.com/seed?..."></textarea>
+    <div style="display:flex;gap:10px;align-items:center"><button class="primary" id="enroll">Enroll</button><span id="enrollmsg" class="flash"></span></div>
+  </div>
+</div></div>
+
+<!-- Maintenance modal -->
+<div class="overlay" id="maintov"><div class="modal">
+  <div class="modal-head"><h3>Maintenance</h3><button class="iconbtn" id="maint-x" style="font-size:15px">✕</button></div>
+  <div class="stack"><div class="hint">Restart briefly disconnects, then re-syncs and re-mounts all groups on boot.</div>
+    <div style="display:flex;gap:10px;align-items:center"><button class="ghost" id="restart">Restart seeder</button><span id="restartmsg" class="flash"></span></div></div>
+</div></div>
+
 <script>
 const $=id=>document.getElementById(id);
 const T=new URLSearchParams(location.search).get('t')||'';
 const q=p=>p+(p.includes('?')?'&':'?')+'t='+encodeURIComponent(T);
 const post=(p,b)=>fetch(q(p),{method:'POST',headers:b?{'content-type':'application/json'}:{},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
-function fmtUp(ms){if(!ms)return'—';const s=Math.floor(ms/1000),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+(h?h+'h ':'')+m+'m';}
+function fmtUp(ms){if(!ms)return'';const s=Math.floor(ms/1000),d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+(h?h+'h ':'')+m+'m';}
 function fmtBytes(n){if(!n)return'0 B';const u=['B','KB','MB','GB','TB'];const i=Math.min(Math.floor(Math.log(n)/Math.log(1024)),u.length-1);return (n/Math.pow(1024,i)).toFixed(i?1:0)+' '+u[i];}
-let nickDirty=false;$('nick').addEventListener('input',()=>nickDirty=true);
+let live=false,nickDirty=false;
+$('nick').addEventListener('input',()=>{nickDirty=true;$('nickwrap').classList.add('dirty');});
 function render(r){
-  const s=r.status||{},en=r.enrolled||[],ok=!!s.booted;
-  $('dot').className='dot '+(ok?'on':'off');
+  const s=r.status||{},en=r.enrolled||[],ok=!!s.booted;live=ok;
+  $('dot').className='dot '+(ok?'good':'bad');
   $('ststate').textContent=ok?'running':(s.error||'starting…');
-  $('pk').textContent=s.pubkey||'—';$('up').textContent=fmtUp(s.uptime);
-  $('peers').textContent=(s.peers??0);
-  $('cnt').textContent=(s.enrolled??en.length)+' enrolled · '+(s.mounted??0)+' mounted';
-  $('held').textContent=fmtBytes(s.bytes||0)+' · '+(s.blocks||0).toLocaleString()+' blocks';
+  $('uptime').textContent=ok&&s.uptime?'· '+fmtUp(s.uptime):'';
+  $('s-groups').textContent=s.enrolled??en.length;$('s-mounted').textContent=(s.mounted??0)+' mounted';
+  $('s-peers').textContent=s.peers??0;
+  $('s-data').textContent=fmtBytes(s.bytes||0);$('s-blocks').textContent=(s.blocks||0).toLocaleString()+' blocks';
+  $('pk').textContent=s.pubkey||'—';$('pk').dataset.full=s.pubkey||'';
   if(!nickDirty&&document.activeElement!==$('nick'))$('nick').value=s.nickname||'';
-  $('groups').innerHTML='';
-  if(en.length){for(const g of en){
+  $('gcount').textContent=en.length;
+  const list=$('groups');list.innerHTML='';
+  if(!en.length){list.innerHTML='<div class="empty">No groups yet — add a device to start seeding.</div>';return;}
+  for(const g of en){
     const row=document.createElement('div');row.className='gitem';
-    row.innerHTML='<div class="nm">'+(g.name||'Group').replace(/[<>]/g,'')+' <span class="mono">'+String(g.groupId||'').slice(0,8)+'</span><div class="muted" style="font-size:12px">'+fmtBytes(g.bytes||0)+' · '+(g.blocks||0).toLocaleString()+' blocks · '+(g.writers||0)+' writer'+((g.writers||0)===1?'':'s')+'</div></div>';
+    row.innerHTML='<span class="live'+(ok?'':' off')+'"></span><div class="gmain"><div class="gname">'+(g.name||'Group').replace(/[<>]/g,'')+'<span class="id">'+String(g.groupId||'').slice(0,8)+'</span></div><div class="gstate">'+fmtBytes(g.bytes||0)+' · '+(g.blocks||0).toLocaleString()+' blocks · '+(g.writers||0)+' writer'+((g.writers||0)===1?'':'s')+'</div></div>';
     const b=document.createElement('button');b.className='danger';b.textContent='Leave';
     b.onclick=async()=>{if(!confirm('Stop seeding "'+(g.name||g.groupId)+'"?'))return;await post('/api/leave',{groupId:g.groupId});};
-    row.appendChild(b);$('groups').appendChild(row);
-  }}else{$('groups').innerHTML='<div class="muted" style="margin-top:8px">No groups yet — admit a device below.</div>';}
+    row.appendChild(b);list.appendChild(row);
+  }
 }
-// Live updates via SSE (no polling).
-let es;
-function connect(){
-  es=new EventSource(q('/api/events'));
+// live push
+function connect(){const es=new EventSource(q('/api/events'));
   es.addEventListener('status',e=>{try{render(JSON.parse(e.data));}catch(_){}} );
-  es.addEventListener('pair',e=>{try{const d=JSON.parse(e.data);$('pairbox').style.display='block';$('pairmsg').textContent='✓ Paired — now seeding '+(d.enrolled||0)+' group'+((d.enrolled||0)===1?'':'s')+(d.names&&d.names.length?': '+d.names.join(', '):'');$('qr').style.display='none';setTimeout(()=>{$('qr').style.display='';$('pairbox').style.display='none';$('pairclose').style.display='none';},6000);}catch(_){}} );
-  es.onerror=()=>{$('ststate').textContent='reconnecting…';$('dot').className='dot off';};
-}
+  es.addEventListener('pair',e=>{try{const d=JSON.parse(e.data);$('qrbox').style.display='block';$('qr').style.display='none';$('pairmsg').textContent='✓ Paired — now seeding '+(d.enrolled||0)+' group'+((d.enrolled||0)===1?'':'s')+(d.names&&d.names.length?': '+d.names.join(', '):'');}catch(_){}} );
+  es.onerror=()=>{$('dot').className='dot bad';$('ststate').textContent='reconnecting…';};}
 connect();
-$('nicksave').onclick=async()=>{await post('/api/nickname',{name:$('nick').value});nickDirty=false;$('nicksave').textContent='Saved';setTimeout(()=>$('nicksave').textContent='Save',1500);};
-$('pair').onclick=async()=>{$('pair').textContent='…';try{const r=await post('/api/pair/open');if(r.qr){$('qr').src=r.qr;$('qr').style.display='';$('pairbox').style.display='block';$('pairclose').style.display='';$('pairmsg').textContent='Valid ~5 min · scan in PearCal';}else{$('pairbox').style.display='block';$('pairmsg').textContent=r.error||'could not open pairing';}}catch(e){alert(e.message);}$('pair').textContent='Show pairing QR';};
-$('pairclose').onclick=async()=>{try{await post('/api/pair/close');}catch(e){}$('pairbox').style.display='none';$('pairclose').style.display='none';};
+// nickname
+$('nicksave').onclick=async()=>{await post('/api/nickname',{name:$('nick').value});nickDirty=false;$('nickwrap').classList.remove('dirty');$('nicksave').classList.add('show');setTimeout(()=>$('nicksave').classList.remove('show'),1200);};
+// copy pubkey
+$('copy').onclick=()=>{const v=$('pk').dataset.full;if(!v)return;navigator.clipboard?.writeText(v);$('copy').textContent='✓';setTimeout(()=>$('copy').textContent='⧉',1200);};
+// menu
+$('menubtn').onclick=e=>{e.stopPropagation();$('menu').classList.toggle('open');};
+document.addEventListener('click',()=>$('menu').classList.remove('open'));
+$('m-maint').onclick=()=>{$('menu').classList.remove('open');$('maintov').classList.add('open');};
+$('maint-x').onclick=()=>$('maintov').classList.remove('open');
+// add-device modal + tabs
+function openAdd(){$('addov').classList.add('open');setTab('pair');}
+$('add').onclick=openAdd;$('add-x').onclick=()=>{$('addov').classList.remove('open');post('/api/pair/close').catch(()=>{});};
+function setTab(t){const pair=t==='pair';$('tab-pair').className=pair?'primary':'ghost';$('tab-paste').className=pair?'ghost':'primary';$('pane-pair').style.display=pair?'flex':'none';$('pane-paste').style.display=pair?'none':'flex';}
+$('tab-pair').onclick=()=>setTab('pair');$('tab-paste').onclick=()=>setTab('paste');
+$('pairbtn').onclick=async()=>{$('pairbtn').textContent='…';try{const r=await post('/api/pair/open');if(r.qr){$('qr').src=r.qr;$('qr').style.display='';$('qrbox').style.display='block';$('pairmsg').textContent='Valid ~5 min · scan in PearCal';}else{$('qrbox').style.display='block';$('pairmsg').textContent=r.error||'could not open pairing';}}catch(e){alert(e.message);}$('pairbtn').textContent='Show pairing QR';};
 $('enroll').onclick=async()=>{const inv=$('inv').value.trim();if(!inv)return;$('enroll').disabled=true;$('enrollmsg').textContent='';try{const r=await post('/api/enroll',{invite:inv});if(r.error){$('enrollmsg').className='flash err';$('enrollmsg').textContent=r.error;}else{$('enrollmsg').className='flash ok';$('enrollmsg').textContent='Enrolled';$('inv').value='';}}catch(e){$('enrollmsg').className='flash err';$('enrollmsg').textContent=e.message;}$('enroll').disabled=false;};
-$('restart').onclick=async()=>{if(!confirm('Restart the seeder?'))return;$('restart').disabled=true;$('restartmsg').className='flash';$('restartmsg').textContent='Restarting…';try{await post('/api/restart');}catch(e){}setTimeout(()=>{$('restart').disabled=false;$('restartmsg').textContent='';},6000);};
+// maintenance
+$('restart').onclick=async()=>{if(!confirm('Restart the seeder?'))return;$('restart').disabled=true;$('restartmsg').className='flash';$('restartmsg').textContent='Restarting…';try{await post('/api/restart');}catch(e){}setTimeout(()=>{$('restart').disabled=false;$('restartmsg').textContent='';$('maintov').classList.remove('open');},6000);};
 </script>
 </body></html>`
 
