@@ -883,6 +883,32 @@ async function _revokedGroupIdsForSeeder (pubkeyHex) {
   return revoked
 }
 
+// Durable group-DELETION tombstones (`deletedGroup:{id}`). Unlike revocation there
+// is no group-shared record to drive a replay — the whole group is wiped — so a
+// delete issued while a seeder was offline (or over a dropped connection) would
+// never reach it, stranding the group on the seeder forever. This local tombstone
+// (written by the deleting owner in syncDeleteGroup) makes the leave durable: on
+// the NEXT seed-enroll connect to any seeder we replay a leave for every deleted
+// group. Idempotent (the seeder no-ops if it isn't seeding the group) and
+// self-healing. Bounded by a TTL so tombstones can't accumulate unboundedly;
+// stale ones are pruned lazily on read.
+const DELETED_GROUP_TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000 // 90 days
+async function _deletedGroupIds () {
+  const ids = new Set()
+  const now = Date.now()
+  const stale = []
+  try {
+    for await (const { key, value } of db.createReadStream({ gt: 'deletedGroup:', lt: 'deletedGroup:\xff' })) {
+      const id = typeof key === 'string' ? key.slice('deletedGroup:'.length) : null
+      if (!id) continue
+      if (value?.deletedAt && (now - value.deletedAt) > DELETED_GROUP_TOMBSTONE_TTL_MS) { stale.push(key); continue }
+      ids.add(id)
+    }
+  } catch (e) { /* best-effort */ }
+  for (const k of stale) await db.del(k).catch(() => {})
+  return ids
+}
+
 // Tell a connected seeder to leave groups it was revoked from. Immediate when
 // the channel is open; otherwise a no-op here — the durable path is the replay
 // on the next channel open (_replaySeederLeaves), driven by the replicated
@@ -900,7 +926,9 @@ function _sendSeedLeave (pubkeyHex, groupIds) {
 // seeder eventually leave even if the revoker is offline.
 async function _replaySeederLeaves (pubkeyHex) {
   const revoked = await _revokedGroupIdsForSeeder(pubkeyHex)
-  if (revoked.size) _sendSeedLeave(pubkeyHex, revoked)
+  const deleted = await _deletedGroupIds()
+  const all = new Set([...revoked, ...deleted])
+  if (all.size) _sendSeedLeave(pubkeyHex, all)
 }
 
 // Owner deleted a group → tell trusted (auto-follow) seeders connected right now
@@ -4660,6 +4688,11 @@ async function syncPutGroup (group) {
 
 async function syncDeleteGroup (groupId) {
   pendingGroupDeletes.add(groupId)
+  // Durable delete tombstone: the best-effort send below only reaches seeders
+  // connected right now, so record the deletion so a seeder that's offline (or on
+  // a dropped connection) is still told to leave on its next connect
+  // (_replaySeederLeaves). TTL-bounded; see _deletedGroupIds.
+  await db.put('deletedGroup:' + groupId, { deletedAt: Date.now() }).catch(() => {})
   for (const ch of activeChannels) {
     try {
       ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
