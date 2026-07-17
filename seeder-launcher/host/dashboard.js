@@ -152,6 +152,7 @@ const PAGE = `<!doctype html>
     --text:#F2EFE8; --muted:#B8B2A6; --subtle:#8A8478; --primary:#C8922A; --primary-strong:#A5761F; --on-primary:#1A1916;
     --good:#5DBF8A; --warn:#E5864A; --bad:#C0504A; --faint:rgba(200,146,42,.12);
     --shadow:0 1px 2px #00000040,0 8px 24px #00000030; --radius:14px; --radius-sm:9px;
+    --ease:cubic-bezier(.2,0,0,1); --dur:200ms; --dur-fast:130ms;
   }
   @media(prefers-color-scheme:light){:root{
     --bg:#F7F5F0; --bg-accent:radial-gradient(1200px 600px at 50% -12%, rgba(176,125,32,.10) 0%, transparent 60%);
@@ -239,7 +240,7 @@ const PAGE = `<!doctype html>
   button.danger{background:transparent;color:var(--bad);border:1px solid transparent;font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;font-weight:600} button.danger:hover{border-color:var(--bad)}
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:18px;z-index:50} .overlay.open{display:flex}
   .modal{background:var(--surface);border:1px solid var(--border-strong);border-radius:16px;box-shadow:var(--shadow);width:420px;max-width:100%;padding:20px}
-  .modal.confirm{width:360px} .modal.confirm h3{margin:0 0 8px;font-size:16px;text-align:center} .modal.confirm .hint{text-align:center} .confirm-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .modal.confirm{width:360px} .modal.confirm h3{margin:0 0 8px;font-size:16px;text-align:center} .modal.confirm .hint{text-align:center} .confirm-actions{display:flex;gap:10px;justify-content:center;margin-top:16px} .confirm-actions button{flex:1}
   .modal-head{position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:14px} .modal-head h3{margin:0;font-size:16px;font-weight:600;text-align:center}
   .modal-head .iconbtn{position:absolute;right:0;top:50%;transform:translateY(-50%)}
   .tabs{display:flex;gap:8px;margin-bottom:14px}
@@ -249,6 +250,27 @@ const PAGE = `<!doctype html>
   .hint{color:var(--subtle);font-size:12.5px;line-height:1.5} .center{text-align:center}
   .flash{font-size:13px;margin-top:10px} .flash.ok{color:var(--good)} .flash.err{color:var(--bad)}
   .stack{display:flex;flex-direction:column;gap:12px;align-items:center}
+  /* ── Motion: fades/slides where the UI used to hard-pop. Enter-only (exits
+     stay instant — display:none can't animate without JS delay). All of it is
+     neutralised by the prefers-reduced-motion block at the end. ── */
+  @keyframes ovIn{from{opacity:0}to{opacity:1}}
+  @keyframes mdIn{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:none}}
+  @keyframes barIn{from{opacity:0;transform:translateY(-7px)}to{opacity:1;transform:none}}
+  @keyframes menuIn{from{opacity:0;transform:translateY(-5px) scale(.97)}to{opacity:1;transform:none}}
+  @keyframes rowIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  @keyframes livePulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.72}}
+  .overlay.open{animation:ovIn .18s var(--ease) both}
+  .overlay.open .modal{animation:mdIn .24s var(--ease) both}
+  .toast.show{animation:barIn .2s var(--ease) both}
+  .updatebar.show{animation:barIn .24s var(--ease) both}
+  .menu.open{animation:menuIn .14s var(--ease) both;transform-origin:top right}
+  .gitem.enter{animation:rowIn .24s var(--ease) both}
+  .dot.good{animation:livePulse 2.2s ease-in-out infinite}
+  /* Eased hover/press feedback (these state changes used to be instant). */
+  button{transition:transform var(--dur-fast) var(--ease),background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease),filter var(--dur-fast) var(--ease)}
+  button:active{transform:scale(.97)}
+  .iconbtn,.pill,.gitem,.menu button,.nick input{transition:background var(--dur-fast) var(--ease),border-color var(--dur-fast) var(--ease),color var(--dur-fast) var(--ease)}
+  @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
 </style></head>
 <body><div class="app">
   <header class="topbar">
@@ -287,7 +309,7 @@ const PAGE = `<!doctype html>
   <div id="pane-pair" class="stack">
     <div class="hint center">Scan in PearCal → Profile → Advanced → Blind peer → Admit a blind peer.</div>
     <div id="qrbox" class="qr" style="display:none;text-align:center"><img id="qr" alt="pairing QR"/><div class="hint" id="pairmsg" style="margin-top:8px"></div></div>
-    <button class="primary" id="pairbtn">Show pairing QR</button>
+    <button class="primary" id="pairbtn" style="width:100%;justify-content:center">Show pairing QR</button>
   </div>
   <div id="pane-paste" class="stack" style="display:none;align-items:stretch">
     <div class="hint">Paste a seed invite or an all-groups bundle:</div>
@@ -300,7 +322,7 @@ const PAGE = `<!doctype html>
 <div class="overlay" id="maintov"><div class="modal">
   <div class="modal-head"><h3>Maintenance</h3><button class="iconbtn" id="maint-x" style="font-size:15px">✕</button></div>
   <div class="stack"><div class="hint center">Restart briefly disconnects, then re-syncs and re-mounts all groups on boot.</div>
-    <div style="display:flex;gap:10px;align-items:center;justify-content:center"><button class="ghost" id="restart">Restart seeder</button><span id="restartmsg" class="flash"></span></div></div>
+    <button class="ghost" id="restart">Restart seeder</button><span id="restartmsg" class="flash center"></span></div>
 </div></div>
 
 <div class="overlay" id="supov"><div class="modal">
@@ -346,6 +368,9 @@ let toastT;function toast(m){$('toast').textContent=m;$('toast').classList.add('
 let confResolve;function askConfirm(title,msg){$('conf-title').textContent=title;$('conf-msg').textContent=msg;$('confov').classList.add('open');return new Promise(r=>confResolve=r);}
 $('conf-cancel').onclick=()=>{$('confov').classList.remove('open');confResolve&&confResolve(false);};
 $('conf-ok').onclick=()=>{$('confov').classList.remove('open');confResolve&&confResolve(true);};
+// groups the list has already shown, so only genuinely-new rows animate in
+// (the list re-renders on every 2s SSE tick — animating every row would flash).
+let prevGroupIds=new Set();
 // nickname
 let nickDirty=false;$('nick').addEventListener('input',()=>{nickDirty=true;$('nickwrap').classList.add('dirty');});
 $('nicksave').onclick=async()=>{await post('/api/nickname',{name:$('nick').value});nickDirty=false;$('nickwrap').classList.remove('dirty');$('nicksave').classList.add('show');setTimeout(()=>$('nicksave').classList.remove('show'),1200);};
@@ -380,14 +405,19 @@ function render(r){
   if(!nickDirty&&document.activeElement!==$('nick'))$('nick').value=s.nickname||'';
   $('gcount').textContent=en.length?'· '+en.length:'';
   const list=$('groups');list.innerHTML='';
-  if(!en.length){list.innerHTML='<div class="empty"><strong>No groups yet.</strong><br>Add one below — pair a phone, or paste a seed invite from a member\\'s Profile → Advanced → Blind peer.</div>';return;}
+  if(!en.length){list.innerHTML='<div class="empty"><strong>No groups yet.</strong><br>Add one below — pair a phone, or paste a seed invite from a member\\'s Profile → Advanced → Blind peer.</div>';prevGroupIds=new Set();return;}
+  const nextIds=new Set();let entered=0;
   for(const g of en){
     const row=document.createElement('div');row.className='gitem';
+    const isNew=!prevGroupIds.has(g.groupId);
+    if(isNew){row.classList.add('enter');row.style.animationDelay=(entered++*45)+'ms';}
+    nextIds.add(g.groupId);
     row.innerHTML='<span class="live'+(s.booted?'':' off')+'"></span><div class="gmain"><div class="gname">'+(g.name||'Group').replace(/[<>]/g,'')+'<span class="id">'+String(g.groupId||'').slice(0,8)+'</span></div><div class="gstate">'+fmtBytes(g.bytes||0)+' · '+(g.blocks||0).toLocaleString()+' blocks · '+(g.writers||0)+' writer'+((g.writers||0)===1?'':'s')+'</div></div>';
     const b=document.createElement('button');b.className='danger';b.textContent='Leave';
     b.onclick=async()=>{if(!await askConfirm('Stop seeding?','The seeder will drop "'+(g.name||g.groupId)+'" and its stored data.'))return;const r=await post('/api/leave',{groupId:g.groupId});if(r.error)toast(r.error);};
     row.appendChild(b);list.appendChild(row);
   }
+  prevGroupIds=nextIds;
 }
 // live push (SSE); pill = dashboard↔seeder connection
 function setLive(on){$('dot').className='dot '+(on?'good':'bad');$('live').textContent=on?'live':'offline';}
