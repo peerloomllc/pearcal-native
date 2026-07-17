@@ -903,6 +903,20 @@ async function _replaySeederLeaves (pubkeyHex) {
   if (revoked.size) _sendSeedLeave(pubkeyHex, revoked)
 }
 
+// Owner deleted a group → tell trusted (auto-follow) seeders connected right now
+// to drop it too. A group delete is broadcast to every member (they delete+leave),
+// so the blind seeder should stop holding it rather than seed a dead group forever.
+// Best-effort over the trusted seed-enroll channel: the group record is being
+// wiped, so unlike revocation there's NO durable tombstone to replay — a seeder
+// offline at delete time (or reached only via a member not connected now) keeps
+// the group until re-checked. See TODO (seeder-leave-on-delete durability).
+async function _tellSeedersGroupDeleted (groupId) {
+  if (!groupId || seedEnrollChannels.size === 0) return
+  for (const [pubkeyHex] of seedEnrollChannels) {
+    try { if (await _isAutoFollowSeeder(pubkeyHex)) _sendSeedLeave(pubkeyHex, [groupId]) } catch (e) { /* best-effort */ }
+  }
+}
+
 // Push every group the user is in to a specific connected seeder (on channel
 // open, or when the user just enabled auto-follow). Idempotent on the seeder
 // (already-enrolled groups short-circuit).
@@ -4651,6 +4665,9 @@ async function syncDeleteGroup (groupId) {
       ch.send(Buffer.from(JSON.stringify({ groupDeleted: groupId })))
     } catch(e) {}
   }
+  // A blind seeder never sees the groupDeleted broadcast (it only listens for
+  // writer announces), so also tell trusted seeders to leave the group directly.
+  await _tellSeedersGroupDeleted(groupId).catch(() => {})
 }
 
 async function syncMemberLeft (groupId, memberId) {
