@@ -82,8 +82,13 @@ echo "    staged $staged addon prebuild dirs"
 
 # 4. Launcher host (Node) + version (for the dashboard pill).
 cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" \
-   "$LAUNCHER/host/auth.js" "$OUT_DIR/host/"
+   "$LAUNCHER/host/auth.js" "$LAUNCHER/host/updateCheck.js" "$OUT_DIR/host/"
 cp "$LAUNCHER/package.json" "$OUT_DIR/package.json" 2>/dev/null || true
+
+# 4·update. The update checker's pure logic lives at src/lib/seederUpdateCheck.js.
+# The host isn't esbuild-bundled, so ../../src/lib isn't in the payload — stage a
+# copy beside the host (updateCheck.js requires it via ./seederUpdateCheck in prod).
+cp "$REPO/src/lib/seederUpdateCheck.js" "$OUT_DIR/host/seederUpdateCheck.js"
 
 # 4a. Brand mark: a small copy of the app icon for the dashboard header.
 if command -v magick >/dev/null 2>&1; then

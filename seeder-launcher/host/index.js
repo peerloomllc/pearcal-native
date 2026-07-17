@@ -18,6 +18,7 @@ const fs = require('node:fs')
 const { Worklet } = require('./worklet')
 const { startDashboard } = require('./dashboard')
 const { loadOrCreateToken } = require('./auth')
+const { UpdateChecker } = require('./updateCheck')
 
 function parseArgs (argv) {
   const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000, port: null, host: '0.0.0.0' }
@@ -33,6 +34,7 @@ function parseArgs (argv) {
     else if (a === '--bundle') out.bundleEntry = argv[++i]
     else if (a === '--enroll') out.enroll = argv[++i]
     else if (a === '--status-interval') out.statusEveryMs = parseInt(argv[++i], 10) || 30000
+    else if (a === '--no-update-check') out.noUpdateCheck = true
   }
   return out
 }
@@ -89,14 +91,30 @@ async function main () {
   const initResult = await wl.start()
   log('host', 'seeder ready: ' + JSON.stringify(initResult))
 
+  // Seeder build version: stamped by the packager (PEARCAL_SEEDER_VERSION, phase
+  // C), else the launcher package.json. Drives the version pill + the update check.
+  let version = process.env.PEARCAL_SEEDER_VERSION || null
+  if (!version) { try { version = require('../package.json').version } catch {} }
+
+  // Update checker (proposal phase B). Gated OFF for store-managed deploys —
+  // Umbrel / Start9 / any container update through their store, not our updater
+  // (Tim, 2026-07-17). Disabled by --no-update-check, SEEDER_NO_UPDATE_CHECK, or
+  // a /.dockerenv marker. Notify-only for now (banner + download link).
+  const updateGated = opts.noUpdateCheck || !!process.env.SEEDER_NO_UPDATE_CHECK || fs.existsSync('/.dockerenv')
+  let updateChecker = null
+  if (!updateGated) {
+    updateChecker = new UpdateChecker({ currentVersion: version, log }).start()
+    log('host', `update check on (v${version || '?'}); source: ${process.env.PEARCAL_UPDATE_LATEST_URL || 'github/peerloomllc/pearcal-native'}`)
+  } else {
+    log('host', 'update check off (store-managed / --no-update-check)')
+  }
+
   // Monitoring + pairing dashboard. Enable with --port <n> or SEEDER_PORT.
   const dashPort = opts.port || (process.env.SEEDER_PORT ? Number(process.env.SEEDER_PORT) : null)
   if (dashPort) {
     // Token auth on by default (persisted in the data dir); --no-auth disables.
     const token = opts.noAuth ? null : loadOrCreateToken(dataDir).token
-    let version = null
-    try { version = require('../package.json').version } catch {}
-    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, log })
+    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, updateChecker, log })
     if (token) log('host', `dashboard token: ${token}`)
   }
 
