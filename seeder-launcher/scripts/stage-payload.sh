@@ -27,12 +27,14 @@ cd "$(dirname "$0")/.."
 LAUNCHER=$(pwd)
 REPO=$(cd "$LAUNCHER/.." && pwd)
 
-BARE_HOST="${BARE_HOST:?BARE_HOST must be linux-x64|linux-arm64|darwin-arm64|darwin-x64}"
+BARE_HOST="${BARE_HOST:?BARE_HOST must be linux-x64|linux-arm64|darwin-arm64|darwin-x64|win32-x64}"
 OUT_DIR="${OUT_DIR:?OUT_DIR must be an absolute payload path}"
 case "$BARE_HOST" in
-  linux-x64|linux-arm64|darwin-arm64|darwin-x64) ;;
+  linux-x64|linux-arm64|darwin-arm64|darwin-x64|win32-x64) ;;
   *) echo "stage-payload: unsupported BARE_HOST '$BARE_HOST'" >&2; exit 1 ;;
 esac
+# The Bare runtime + its output name carry .exe on Windows.
+case "$BARE_HOST" in win32-x64) BARE_EXT=".exe" ;; *) BARE_EXT="" ;; esac
 
 echo "==> staging PearCal seeder  host=$BARE_HOST  ->  $OUT_DIR"
 rm -rf "$OUT_DIR"
@@ -42,8 +44,8 @@ mkdir -p "$OUT_DIR/worklet" "$OUT_DIR/host"
 #    runtime), so fetch the pinned version for the target arch via `npm pack`.
 #    Override with BARE_VER=… if the bundle format ever needs a newer runtime.
 BARE_VER="${BARE_VER:-1.28.5}"
-BARE_BIN_SRC="$REPO/node_modules/bare-runtime-$BARE_HOST/bin/bare"
-if [ ! -x "$BARE_BIN_SRC" ]; then
+BARE_BIN_SRC="$REPO/node_modules/bare-runtime-$BARE_HOST/bin/bare$BARE_EXT"
+if [ ! -f "$BARE_BIN_SRC" ]; then
   echo "--> fetching bare-runtime-$BARE_HOST@$BARE_VER"
   PACKDIR=$(mktemp -d)
   ( cd "$PACKDIR" && npm pack --loglevel=error "bare-runtime-$BARE_HOST@$BARE_VER" >/dev/null )
@@ -51,10 +53,10 @@ if [ ! -x "$BARE_BIN_SRC" ]; then
   rm -rf "$DEST"; mkdir -p "$DEST"
   tar -xzf "$PACKDIR"/*.tgz -C "$DEST" --strip-components=1
   rm -rf "$PACKDIR"
-  chmod +x "$BARE_BIN_SRC"
+  chmod +x "$BARE_BIN_SRC" 2>/dev/null || true
 fi
-[ -x "$BARE_BIN_SRC" ] || { echo "stage-payload: bare binary missing: $BARE_BIN_SRC" >&2; exit 1; }
-cp "$BARE_BIN_SRC" "$OUT_DIR/bare"; chmod +x "$OUT_DIR/bare"
+[ -f "$BARE_BIN_SRC" ] || { echo "stage-payload: bare binary missing: $BARE_BIN_SRC" >&2; exit 1; }
+cp "$BARE_BIN_SRC" "$OUT_DIR/bare$BARE_EXT"; chmod +x "$OUT_DIR/bare$BARE_EXT" 2>/dev/null || true
 
 # 2. Worklet bundle. bare-pack collapses seed.js's whole module graph into one
 #    bundle; only native addon prebuilds ship beside it. --base one level below
