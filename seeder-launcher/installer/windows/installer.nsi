@@ -117,8 +117,10 @@ Section "PearCal Seeder" SecMain
   nsExec::ExecToLog '"$INSTDIR\nssm.exe" set ${SVC_NAME} AppRotateBytes 1048576'
   nsExec::ExecToLog 'sc.exe failure ${SVC_NAME} reset= 86400 actions= restart/60000/restart/60000/restart/60000'
 
-  ; Start Menu shortcut to the dashboard launcher.
+  ; Shortcuts to the dashboard launcher — Start Menu (searchable) + Desktop.
+  ; SetShellVarContext all (above) puts both in the all-users locations.
   CreateShortcut "$SMPROGRAMS\${APP_NAME}.lnk" "wscript.exe" '"$INSTDIR\open-ui.vbs"' "$INSTDIR\AppIcon.ico"
+  CreateShortcut "$DESKTOP\${APP_NAME}.lnk"   "wscript.exe" '"$INSTDIR\open-ui.vbs"' "$INSTDIR\AppIcon.ico"
 
   ; Add/Remove Programs entry.
   WriteRegStr   HKLM "${UNINST_KEY}" "DisplayName"     "${APP_NAME}"
@@ -144,6 +146,7 @@ Section "Uninstall"
   !insertmacro StopSeederService
 
   Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+  Delete "$DESKTOP\${APP_NAME}.lnk"
   DeleteRegKey HKLM "${UNINST_KEY}"
 
   ; Remove the installed program files. The data directory at
