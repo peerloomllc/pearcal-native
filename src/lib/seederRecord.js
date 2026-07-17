@@ -100,6 +100,16 @@ function buildSeederRevocation ({ pubkey, existing = null, revokedBy = null, now
   }
 }
 
+// Resolve the name shown for a seeder in the Blind Peer list. A member's own
+// local override (an inline rename on this device) wins; otherwise the seeder's
+// advertised self-name (learned from its hello / QR ack); otherwise the name on
+// the group-shared record (for a seeder known only via another member). Returns
+// null when nothing is set (caller shows a default label). Renames are LOCAL —
+// clearing the override (null/'') reveals the seeder's self-name.
+function resolveSeederDisplayName ({ override = null, seederName = null, groupName = null } = {}) {
+  return override || seederName || groupName || null
+}
+
 module.exports = {
   KEY_PREFIX,
   seederRecordKey,
@@ -108,5 +118,6 @@ module.exports = {
   acceptSeederRecord,
   buildSeederRecord,
   buildSeederRevocation,
+  resolveSeederDisplayName,
   isHex64,
 }

@@ -38,7 +38,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple, GridFour,
+  FunnelSimple, GridFour, PencilSimple,
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -6626,6 +6626,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [blindPeerOpen,    setBlindPeerOpen]    = useState(false)
   const [blindPeers,       setBlindPeers]       = useState([])
   const [removeBpConfirm,  setRemoveBpConfirm]  = useState(null)
+  const [renameBpKey,      setRenameBpKey]      = useState(null)
+  const [bpRenameDraft,    setBpRenameDraft]    = useState('')
+  const [bpRenameSaving,   setBpRenameSaving]   = useState(false)
   const loadBlindPeers = useCallback(() => {
     db.listBlindPeers?.().then(list => setBlindPeers(list ?? [])).catch(() => {})
   }, [db])
@@ -6640,6 +6643,39 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
     emitter.on('blindPeersChanged', onBlindPeersChanged)
     return () => emitter.off('blindPeersChanged', onBlindPeersChanged)
   }, [loadBlindPeers])
+
+  // Inline rename of a blind peer (member-side, LOCAL to this device). The pencil
+  // opens an editable name; the override is stored per-device. Clearing it (blank)
+  // reveals the seeder's own advertised name (bp.seederName), shown as the input
+  // placeholder so the user can see what it will revert to.
+  function startRenameBp (bp) {
+    setRemoveBpConfirm(null)
+    setBpRenameDraft(bp.override ?? '') // pre-fill the raw override, not the resolved name
+    setRenameBpKey(bp.pubkey)
+  }
+  function cancelRenameBp () {
+    setRenameBpKey(null)
+    setBpRenameDraft('')
+  }
+  async function saveRenameBp (pubkey) {
+    if (bpRenameSaving) return
+    setBpRenameSaving(true)
+    try {
+      const trimmed = (bpRenameDraft ?? '').trim().slice(0, 32)
+      const override = trimmed || null
+      await db.renameBlindPeer?.(pubkey, trimmed)
+      // Optimistic update so the row reflects immediately; the blindPeersChanged
+      // event will reconcile shortly after. Clearing reveals the seeder self-name.
+      setBlindPeers(list => list.map(bp => bp.pubkey === pubkey
+        ? { ...bp, override, nickname: override ?? bp.seederName ?? null }
+        : bp))
+      setRenameBpKey(null)
+      setBpRenameDraft('')
+    } catch (e) {
+      console.error('renameBlindPeer failed', e)
+    }
+    setBpRenameSaving(false)
+  }
   const [backupStatus,     setBackupStatus]     = useState(null)
   const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
   const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
@@ -7414,14 +7450,48 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10 }}>
           {blindPeers.map(bp => {
             const confirming = removeBpConfirm === bp.pubkey
+            const renaming = renameBpKey === bp.pubkey
             return (
               <div key={bp.pubkey}
                 style={{ padding:'12px 14px', borderRadius:10, border:`1px solid ${colors.border}`,
                   display:'flex', flexDirection:'column', gap:10 }}>
+                {renaming ? (
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    <input autoFocus type="text" value={bpRenameDraft} maxLength={32}
+                      onChange={e => setBpRenameDraft(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter')  { e.preventDefault(); saveRenameBp(bp.pubkey) }
+                        if (e.key === 'Escape') { e.preventDefault(); cancelRenameBp() }
+                      }}
+                      placeholder={bp.seederName || 'Blind peer'}
+                      style={{ fontSize:14, fontFamily:FONT,
+                        background:'transparent', border:`1px solid ${colors.border}`,
+                        borderRadius:8, padding:'8px 10px', color:colors.text.primary, outline:'none' }} />
+                    <div style={{ fontSize:11, color:colors.text.muted, lineHeight:1.4 }}>
+                      A name just for this device. Leave blank to use the seeder’s own name.
+                    </div>
+                    <div style={{ display:'flex', justifyContent:'flex-end', gap:8 }}>
+                      <button onClick={cancelRenameBp} disabled={bpRenameSaving}
+                        style={{ padding:'6px 12px', borderRadius:8, fontSize:13,
+                          fontFamily:FONT, border:`1px solid ${colors.border}`, background:'transparent',
+                          color:colors.text.muted, cursor:'pointer' }}>
+                        Cancel
+                      </button>
+                      <button onClick={() => saveRenameBp(bp.pubkey)} disabled={bpRenameSaving}
+                        style={{ padding:'6px 12px', borderRadius:8, fontSize:13,
+                          fontFamily:FONT, border:`1px solid var(--color-accent)`, background:'transparent',
+                          color:'var(--color-accent)', cursor:'pointer', opacity: bpRenameSaving ? 0.5 : 1 }}>
+                        {bpRenameSaving ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (<>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                   <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
                   <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:13, color: colors.text.primary }}>{bp.nickname || 'Blind peer'}</div>
+                    <div style={{ fontSize:13, color: colors.text.primary }}>
+                      {bp.nickname || 'Blind peer'}
+                    </div>
                     <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {String(bp.pubkey).slice(0, 16)}…
@@ -7444,11 +7514,20 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                       </button>
                     </div>
                   ) : (
-                    <button onClick={() => { window.__pearSync?.haptic('light'); setRemoveBpConfirm(bp.pubkey) }}
-                      style={{ background:'none', border:'none', padding:6, cursor:'pointer',
-                        display:'flex', alignItems:'center', color: colors.text.muted, flexShrink:0 }}>
-                      <X size={16} weight="thin" />
-                    </button>
+                    <div style={{ display:'flex', alignItems:'center', gap:2, flexShrink:0 }}>
+                      <button onClick={() => { window.__pearSync?.haptic('light'); startRenameBp(bp) }}
+                        aria-label="Rename blind peer"
+                        style={{ background:'none', border:'none', padding:6, cursor:'pointer',
+                          display:'flex', alignItems:'center', color: colors.text.muted }}>
+                        <PencilSimple size={16} weight="thin" />
+                      </button>
+                      <button onClick={() => { window.__pearSync?.haptic('light'); setRemoveBpConfirm(bp.pubkey) }}
+                        aria-label="Remove blind peer"
+                        style={{ background:'none', border:'none', padding:6, cursor:'pointer',
+                          display:'flex', alignItems:'center', color: colors.text.muted }}>
+                        <X size={16} weight="thin" />
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:28 }}>
@@ -7461,6 +7540,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   <Toggle val={!!bp.autoFollow} accent={colors.primary}
                     onChange={async (v) => { window.__pearSync?.haptic('light'); await db.setSeederAutoFollow?.(bp.pubkey, v).catch(() => {}); loadBlindPeers() }} />
                 </div>
+                </>)}
               </div>
             )
           })}
