@@ -74,6 +74,12 @@ chmod +x "$PAYLOAD_LIB/pearcal-seeder"
 #    postinstall to fill per-user).
 sed "s|__VERSION__|$VERSION|g" "$LAUNCHER/installer/macos/com.pearcal.seeder.plist" > "$PAYLOAD_LIB/installer/com.pearcal.seeder.plist"
 
+# 5·updater (phase C2): ship the root LaunchDaemon plist + the privileged helper
+#    so postinstall can install the one-click auto-updater. The helper lands
+#    beside the wrapper; the daemon plist is installed to /Library/LaunchDaemons.
+cp "$LAUNCHER/installer/macos/com.pearcal.seeder.updater.plist" "$PAYLOAD_LIB/installer/"
+cp "$LAUNCHER/installer/macos/updater-helper.sh" "$PAYLOAD_LIB/updater-helper.sh"; chmod +x "$PAYLOAD_LIB/updater-helper.sh"
+
 # 5. Uninstaller: the teardown script + a clickable Uninstall app.
 cp "$LAUNCHER/installer/macos/uninstall.sh" "$PAYLOAD_LIB/uninstall.sh"; chmod +x "$PAYLOAD_LIB/uninstall.sh"
 UNINSTALL_APP="$PAYLOAD_LIB/Uninstall PearCal Seeder.app"
@@ -147,6 +153,9 @@ fi
 if [ -n "$APP_SIGN_ID" ]; then
   if [ -e "$KEYCHAIN_PATH" ] || [ -e "${KEYCHAIN_PATH}-db" ]; then
     security unlock-keychain -p "" "$KEYCHAIN_PATH" 2>/dev/null || true
+    # Put buildkey on the search list so codesign finds the Developer ID identity
+    # over SSH (the login keychain can't be unlocked non-interactively).
+    security list-keychains -s "$KEYCHAIN_PATH" "$HOME/Library/Keychains/login.keychain-db" /Library/Keychains/System.keychain >/dev/null 2>&1 || true
     security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KEYCHAIN_PATH" >/dev/null 2>&1 || true
   fi
   ENT="$LAUNCHER/installer/macos/entitlements.plist"
@@ -195,6 +204,17 @@ else
   productbuild --distribution "$LAUNCHER/installer/macos/Distribution.xml" \
     --resources "$LAUNCHER/installer/macos/Resources" --package-path "$DIST" "$OUT"
   echo "warning: unsigned .pkg. Install with: sudo installer -allowUntrusted -pkg $OUT -target /"
+fi
+
+# 11. Notarize + staple — only when signed (an unsigned pkg can't be notarized).
+#     Required for the phase-C2 root auto-updater, which refuses any pkg that
+#     isn't notarized. SKIP_NOTARIZE=1 bypasses (e.g. offline signed test builds).
+NOTARY_PROFILE="${NOTARY_PROFILE:-pearcal-notary}"
+if [ -n "$PKG_SIGN_ID" ] && [ "${SKIP_NOTARIZE:-0}" != "1" ]; then
+  NOTARY_KEYCHAIN="$KEYCHAIN_PATH"; [ -e "$NOTARY_KEYCHAIN" ] || NOTARY_KEYCHAIN="${KEYCHAIN_PATH}-db"
+  echo "--> notarizing (waits on Apple)…"
+  xcrun notarytool submit "$OUT" --keychain-profile "$NOTARY_PROFILE" --keychain "$NOTARY_KEYCHAIN" --wait
+  xcrun stapler staple "$OUT"
 fi
 
 echo "built: $OUT"

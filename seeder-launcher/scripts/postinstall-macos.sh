@@ -35,6 +35,29 @@ chmod 0644 "$PLIST_DST"
 launchctl asuser "$USER_UID" launchctl unload "$PLIST_DST" 2>/dev/null || true
 launchctl asuser "$USER_UID" launchctl load "$PLIST_DST"
 
+# --- Privileged updater LaunchDaemon (phase C2) ------------------------------
+# The root auto-updater that applies one-click updates without a sudo prompt. The
+# unprivileged seeder drops a verified-pkg request into REQ_DIR (0733: it can
+# write+traverse but not list); the daemon's WatchPaths fires the helper, which
+# re-verifies (sha256 + team + notarization) and installs. We do NOT bootout an
+# already-loaded updater: during an auto-update THIS postinstall runs *inside*
+# the helper, and booting it out would kill the in-flight install.
+UPDATES_DIR="/Library/Application Support/PearCal Seeder/updates"
+REQ_DIR="$UPDATES_DIR/requests"
+mkdir -p "$REQ_DIR"
+chown root:wheel "$UPDATES_DIR" "$REQ_DIR"
+chmod 0755 "$UPDATES_DIR"
+chmod 0733 "$REQ_DIR"
+DAEMON_SRC="/usr/local/lib/pearcal-seeder/installer/com.pearcal.seeder.updater.plist"
+DAEMON_DST="/Library/LaunchDaemons/com.pearcal.seeder.updater.plist"
+if [ -f "$DAEMON_SRC" ]; then
+  cp "$DAEMON_SRC" "$DAEMON_DST"; chown root:wheel "$DAEMON_DST"; chmod 0644 "$DAEMON_DST"
+  # The helper runs as root, so it must be root-owned + not group/world-writable.
+  chown root:wheel /usr/local/lib/pearcal-seeder/updater-helper.sh 2>/dev/null || true
+  chmod 0755 /usr/local/lib/pearcal-seeder/updater-helper.sh 2>/dev/null || true
+  launchctl bootstrap system "$DAEMON_DST" 2>/dev/null || launchctl load "$DAEMON_DST" 2>/dev/null || true
+fi
+
 # --- Uninstaller app (fresh + update, so it stays current) -------------------
 UNINSTALL_SRC="/usr/local/lib/pearcal-seeder/Uninstall PearCal Seeder.app"
 UNINSTALL_DST="/Applications/Uninstall PearCal Seeder.app"
