@@ -57,6 +57,7 @@ window.addEventListener('pear:pairingFailed',    e => emitter.emit('pairingFaile
 window.addEventListener('pear:pairingExpired',   e => emitter.emit('pairingExpired', e.detail))
 window.addEventListener('pear:profileChanged',   e => emitter.emit('profileChanged', e.detail))
 window.addEventListener('pear:linkedDevicesChanged', e => emitter.emit('linkedDevicesChanged', e.detail))
+window.addEventListener('pear:blindPeersChanged', e => emitter.emit('blindPeersChanged', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),

@@ -25383,6 +25383,11 @@ ${link}`;
     (0, import_react7.useEffect)(() => {
       if (!blindPeerOpen) loadBlindPeers();
     }, [blindPeerOpen, loadBlindPeers]);
+    (0, import_react7.useEffect)(() => {
+      const onBlindPeersChanged = () => loadBlindPeers();
+      emitter.on("blindPeersChanged", onBlindPeersChanged);
+      return () => emitter.off("blindPeersChanged", onBlindPeersChanged);
+    }, [loadBlindPeers]);
     const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
     const [mnemonicReveal, setMnemonicReveal] = (0, import_react7.useState)(null);
     const [mnemonicBusy, setMnemonicBusy] = (0, import_react7.useState)(false);
@@ -27412,6 +27417,7 @@ ${link}`;
   window.addEventListener("pear:pairingExpired", (e62) => emitter.emit("pairingExpired", e62.detail));
   window.addEventListener("pear:profileChanged", (e62) => emitter.emit("profileChanged", e62.detail));
   window.addEventListener("pear:linkedDevicesChanged", (e62) => emitter.emit("linkedDevicesChanged", e62.detail));
+  window.addEventListener("pear:blindPeersChanged", (e62) => emitter.emit("blindPeersChanged", e62.detail));
   var db = {
     getProfile: () => window.__pearDB.call("getProfile"),
     updateProfile: (u) => window.__pearDB.call("updateProfile", u),

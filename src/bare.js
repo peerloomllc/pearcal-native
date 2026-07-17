@@ -898,6 +898,13 @@ async function listBlindPeers () {
   return out
 }
 
+// Nudge the WebView to reload the blind-peer list (#116 facet #2). Emitted
+// whenever a seederFollow row is added/updated/removed so the count + nicknames
+// refresh in place instead of only on the next section reopen.
+function _emitBlindPeersChanged () {
+  try { send({ type: 'event', event: 'blindPeersChanged', data: null }) } catch (e) {}
+}
+
 // Forget a paired blind peer locally (stops the auto-follow / removes it from
 // the list). This does NOT cryptographically revoke — the seeder still holds the
 // ciphertext it was given; true revocation (a signed tombstone across each
@@ -905,6 +912,7 @@ async function listBlindPeers () {
 async function removeBlindPeer (pubkey) {
   if (typeof pubkey !== 'string' || !pubkey) throw new Error('removeBlindPeer: pubkey required')
   await db.del('seederFollow:' + pubkey).catch(() => {})
+  _emitBlindPeersChanged()
   return { ok: true, pubkey }
 }
 
@@ -918,6 +926,7 @@ async function setSeederAutoFollow (pubkey, enabled) {
   const existing = await db.get('seederFollow:' + pubkey).catch(() => null)
   if (!existing?.value) throw new Error('setSeederAutoFollow: unknown blind peer')
   await db.put('seederFollow:' + pubkey, { ...existing.value, autoFollow: !!enabled })
+  _emitBlindPeersChanged()
   if (enabled) await pushAllGroupsToSeeder(pubkey).catch(() => {})
   return { ok: true, pubkey, autoFollow: !!enabled }
 }
@@ -970,6 +979,7 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
         // in via the Blind Peer toggle. Preserve an existing opt-out.
         autoFollow: existing?.value?.autoFollow ?? true,
       }).catch(() => {})
+      _emitBlindPeersChanged()
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
   })
@@ -6492,16 +6502,26 @@ async function _doInit (dir, attempt = 0) {
                     ? hello.nickname.slice(0, 64) : null
                   const groupCount = Number.isInteger(hello.groupCount) ? hello.groupCount : null
                   const existing = await db.get('seederFollow:' + _remotePubkeyHex).catch(() => null)
+                  const nextNickname = nickname || existing?.value?.nickname || null
+                  const nextGroupCount = groupCount ?? existing?.value?.groupCount ?? 0
                   await db.put('seederFollow:' + _remotePubkeyHex, {
                     pubkey: _remotePubkeyHex,
-                    nickname: nickname || existing?.value?.nickname || null,
-                    groupCount: groupCount ?? existing?.value?.groupCount ?? 0,
+                    nickname: nextNickname,
+                    groupCount: nextGroupCount,
                     since: existing?.value?.since ?? existing?.value?.addedAt ?? Date.now(),
                     via: existing?.value?.via ?? 'group-announce',
                     // Preserve any explicit auto-follow choice; a hello never
                     // grants it (default off for hello-recorded seeders).
                     autoFollow: existing?.value?.autoFollow ?? false,
                   })
+                  // Live-refresh the blind-peer list only when something the UI
+                  // shows actually changed — the seeder re-sends this hello when
+                  // its enrolled count changes (#116 facet #2), and also on every
+                  // reconnect where nothing changed (skip those).
+                  const isNew = !existing?.value
+                  if (isNew || existing.value.groupCount !== nextGroupCount || existing.value.nickname !== nextNickname) {
+                    _emitBlindPeersChanged()
+                  }
                 } catch {}
               }
             })

@@ -6632,6 +6632,14 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   // Load on mount and refresh whenever the pairing sheet closes (a scan may have
   // just admitted one).
   useEffect(() => { if (!blindPeerOpen) loadBlindPeers() }, [blindPeerOpen, loadBlindPeers])
+  // Live refresh (#116 facet #2): the bare backend emits blindPeersChanged when a
+  // seederFollow row is added/updated/removed — including a live seeder groupCount
+  // update — so the list reflects it in place without a section reopen.
+  useEffect(() => {
+    const onBlindPeersChanged = () => loadBlindPeers()
+    emitter.on('blindPeersChanged', onBlindPeersChanged)
+    return () => emitter.off('blindPeersChanged', onBlindPeersChanged)
+  }, [loadBlindPeers])
   const [backupStatus,     setBackupStatus]     = useState(null)
   const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
   const [mnemonicBusy,     setMnemonicBusy]     = useState(false)

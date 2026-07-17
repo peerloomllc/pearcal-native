@@ -249,6 +249,19 @@ async function setupSeedEnrollListener (stream) {
 // See SEEDER_HELLO_PROTOCOL. Both sides open the channel (byte-identical to
 // bare.js); we send { nickname } once on open and never consume — members don't
 // announce here — so we register an empty message so the message index matches.
+// Active seeder-hello send handles, one per connection. We re-broadcast the
+// hello whenever our enrolled-group count changes (enroll/leave) so an
+// already-connected member updates its blind-peer count live (#116 facet #2)
+// instead of only on the next reconnect + section reopen.
+const _helloChannels = new Set()
+
+async function broadcastSeederHello () {
+  if (_helloChannels.size === 0) return
+  const nickRow = await db.get('seeder:nickname').catch(() => null)
+  const payload = Buffer.from(JSON.stringify({ nickname: nickRow?.value?.name || null, groupCount: enrolled.size }))
+  for (const msg of _helloChannels) { try { msg.send(payload) } catch {} }
+}
+
 async function setupSeederHelloAnnouncer (stream) {
   try { await stream.noiseStream.opened } catch { return }
   const mux = stream.noiseStream.userData
@@ -258,11 +271,12 @@ async function setupSeederHelloAnnouncer (stream) {
     protocol: SEEDER_HELLO_PROTOCOL,
     id: SEEDER_HELLO_ID,
     async onopen () {
+      _helloChannels.add(msg)
       const nickRow = await db.get('seeder:nickname').catch(() => null)
       const nickname = nickRow?.value?.name || null
       try { msg.send(Buffer.from(JSON.stringify({ nickname, groupCount: enrolled.size }))) } catch {}
     },
-    onclose () {},
+    onclose () { _helloChannels.delete(msg) },
   })
   if (!channel) return
   msg = channel.addMessage({ onmessage () {} })
@@ -416,6 +430,8 @@ async function enrollSeedInvite (invite) {
     enrolled.delete(groupId)
     throw new Error('seeder mount failed: ' + (e?.message ?? String(e)))
   }
+  // Enrolled a new group → push the updated count to connected members (#116 facet #2).
+  broadcastSeederHello().catch(() => {})
   return { ok: true, groupId, name: groupName, alreadyEnrolled: false }
 }
 
@@ -443,6 +459,8 @@ async function leaveSeedGroup (groupId) {
   await db.del('seeder:enrolled:' + groupId).catch(() => {})
   enrolled.delete(groupId)
   console.log('[seed] left group', groupId)
+  // Left a group → push the updated count to connected members (#116 facet #2).
+  broadcastSeederHello().catch(() => {})
   return { ok: true, groupId }
 }
 
