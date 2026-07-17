@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hardened Runtime entitlements for the node + bare binaries. Both have JIT
+     compilers; without these a Developer-ID-signed binary launches but traps on
+     the first JIT-page allocation (signal 5). Only used when APP_SIGN_ID is set
+     (the unsigned/ad-hoc default doesn't apply entitlements). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+</dict>
+</plist>
