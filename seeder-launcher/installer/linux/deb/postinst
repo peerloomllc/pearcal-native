@@ -1,0 +1,156 @@
+#!/bin/bash
+# Debian postinst - installs and starts the PearCal Seeder systemd user service
+# for the user who invoked the install. dpkg runs this as root; $SUDO_USER names
+# the human behind `sudo apt install` / `sudo dpkg -i`.
+set -e
+
+INSTALL_ROOT=/opt/pearcal-seeder
+UNIT_SRC="$INSTALL_ROOT/pearcal-seeder.service"
+
+# Install the privileged auto-updater for a known install user: the root-owned
+# helper (run via pkexec) + a passwordless polkit rule scoped to that user and
+# this one script. Best-effort and on its own subshell with set +e — a missing
+# polkit, an odd filesystem, or a re-run during an unattended update must NEVER
+# fail the package install (mirroring the macOS "first-run/update steps never
+# fail an install" rule).
+install_updater () {
+  local user="$1"
+  ( set +e
+    chown root:root "$INSTALL_ROOT/updater-helper.sh" 2>/dev/null
+    chmod 0755 "$INSTALL_ROOT/updater-helper.sh" 2>/dev/null
+    local rule_src="$INSTALL_ROOT/updater-helper.rules.in"
+    local rule_dir="/etc/polkit-1/rules.d"
+    local rule_dst="$rule_dir/49-pearcal-seeder-updater.rules"
+    if [ -f "$rule_src" ] && [ -d "$rule_dir" ]; then
+      sed "s|__USER__|$user|g" "$rule_src" > "$rule_dst" 2>/dev/null
+      chmod 0644 "$rule_dst" 2>/dev/null
+      echo "pearcal-seeder: one-click auto-update enabled for $user (polkit rule installed)."
+    else
+      echo "pearcal-seeder: polkit rules.d not found; one-click .deb auto-update unavailable."
+      echo "  Updates still work via the dashboard's verified-download fallback."
+    fi
+  )
+  return 0
+}
+
+# Best-effort open the dashboard in a user's graphical session. Used only on a
+# fresh interactive install (see below) — never on an upgrade or the unattended
+# pkexec auto-update. Wrapped so it can never fail the package install: no GUI
+# session, no xdg-open, headless box -> it just returns. Mirrors the macOS rule
+# that first-run UI must never abort an install.
+open_dashboard_for_user () {
+  ( set +e
+    local user="$1" uid runtime sess dtype display
+    uid=$(id -u "$user" 2>/dev/null) || return 0
+    runtime="/run/user/$uid"
+    [ -d "$runtime" ] || return 0
+    # Pick the user's ACTIVE graphical (x11/wayland) session. A user has several
+    # sessions - the systemd manager session has Type=unspecified - so we must
+    # scan for the GUI one rather than taking the first, else we'd bail before
+    # finding it.
+    local s t a wl
+    for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$user" '$3==u{print $1}'); do
+      t=$(loginctl show-session "$s" -p Type --value 2>/dev/null)
+      a=$(loginctl show-session "$s" -p Active --value 2>/dev/null)
+      if { [ "$t" = "wayland" ] || [ "$t" = "x11" ]; } && [ "$a" = "yes" ]; then
+        sess="$s"; dtype="$t"; break
+      fi
+    done
+    [ -n "$sess" ] || return 0
+    display=$(loginctl show-session "$sess" -p Display --value 2>/dev/null)
+    # Wayland socket name (usually wayland-0) for the desktop portal xdg-open uses.
+    wl=$(basename "$(ls "$runtime"/wayland-? 2>/dev/null | head -1)" 2>/dev/null)
+    runuser -u "$user" -- env \
+      XDG_RUNTIME_DIR="$runtime" \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+      DISPLAY="${display:-:0}" \
+      WAYLAND_DISPLAY="${wl:-wayland-0}" \
+      "$INSTALL_ROOT/open-dashboard.sh" >/dev/null 2>&1
+  )
+  return 0
+}
+
+# Refresh the desktop entry + icon caches so the apps-menu shortcut shows up
+# immediately. Best-effort; absent tools on a headless box are fine.
+refresh_desktop_caches () {
+  ( set +e
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database -q /usr/share/applications 2>/dev/null
+    command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -qtf /usr/share/icons/hicolor 2>/dev/null
+    # Refresh the AppStream pool so the new MetaInfo shows in GNOME Software / Discover.
+    command -v appstreamcli >/dev/null 2>&1 && appstreamcli refresh --force 2>/dev/null
+  )
+  return 0
+}
+
+# $2 is the previously-configured version on an upgrade, empty on a fresh
+# install (dpkg calls `postinst configure [<old-version>]`). Used to open the
+# dashboard only on a first install, like the macOS IS_UPDATE skip.
+FRESH_INSTALL=0
+[ "${1:-}" = "configure" ] && [ -z "${2:-}" ] && FRESH_INSTALL=1
+
+# Resolve the human install user from `sudo dpkg -i` / `apt`. A pkexec-driven
+# unattended auto-update sets no SUDO_USER, so this branch is skipped on that
+# path and the postinst stays a no-op for user/systemctl actions — the updater
+# helper owns the service restart there, and the polkit rule + helper are already
+# in place from the original (human) install.
+TARGET_USER="${SUDO_USER:-}"
+if [ -z "$TARGET_USER" ] || [ "$TARGET_USER" = "root" ]; then
+  echo "pearcal-seeder: no non-root install user detected; skipping service setup."
+  echo "  To enable it yourself, as your normal user run:"
+  echo "    mkdir -p ~/.config/systemd/user"
+  echo "    sed 's|__EXEC__|$INSTALL_ROOT/pearcal-seeder|' \\"
+  echo "      $UNIT_SRC > ~/.config/systemd/user/pearcal-seeder.service"
+  echo "    systemctl --user daemon-reload"
+  echo "    systemctl --user enable --now pearcal-seeder.service"
+  echo "    sudo loginctl enable-linger \$USER"
+  exit 0
+fi
+
+TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+TARGET_UID=$(id -u "$TARGET_USER")
+UNIT_DIR="$TARGET_HOME/.config/systemd/user"
+
+# Record the install user so prerm/postrm can clean up the per-user service +
+# linger even when removed through a GUI software centre (GNOME Software /
+# Discover go through PackageKit, which sets no SUDO_USER). Not part of the
+# dpkg manifest, so dpkg leaves it for postrm to read, then delete on purge.
+echo "$TARGET_USER" > "$INSTALL_ROOT/.install-user" 2>/dev/null || true
+
+install -d -o "$TARGET_USER" -g "$TARGET_USER" "$UNIT_DIR"
+sed "s|__EXEC__|$INSTALL_ROOT/pearcal-seeder|g" "$UNIT_SRC" \
+  > "$UNIT_DIR/pearcal-seeder.service"
+chown "$TARGET_USER:$TARGET_USER" "$UNIT_DIR/pearcal-seeder.service"
+
+# Linger first so the user's systemd instance exists even with no login
+# session - that is what makes the seeder a true always-on service.
+loginctl enable-linger "$TARGET_USER" 2>/dev/null || true
+
+export XDG_RUNTIME_DIR="/run/user/$TARGET_UID"
+for _ in 1 2 3 4 5 6; do
+  [ -d "$XDG_RUNTIME_DIR" ] && break
+  sleep 0.5
+done
+
+runuser -u "$TARGET_USER" -- systemctl --user daemon-reload 2>/dev/null || true
+if runuser -u "$TARGET_USER" -- systemctl --user enable --now pearcal-seeder.service 2>/dev/null; then
+  echo "pearcal-seeder: service enabled and started for $TARGET_USER."
+  echo "  Dashboard: run /opt/pearcal-seeder/open-dashboard.sh, or find the token with"
+  echo "    journalctl --user -u pearcal-seeder | grep 'dashboard token'"
+else
+  echo "pearcal-seeder: unit installed but could not be started now."
+  echo "  It starts automatically on $TARGET_USER's next login, or start it now with:"
+  echo "    systemctl --user enable --now pearcal-seeder.service"
+fi
+
+# Enable one-click .deb auto-updates for this user (best-effort; never fails).
+install_updater "$TARGET_USER"
+
+# Make the apps-menu shortcut appear, and on a fresh interactive install open
+# the dashboard in the user's browser. Both best-effort; neither fails install.
+refresh_desktop_caches
+if [ "$FRESH_INSTALL" = "1" ]; then
+  echo "pearcal-seeder: opening the dashboard for $TARGET_USER..."
+  open_dashboard_for_user "$TARGET_USER"
+fi
+
+exit 0

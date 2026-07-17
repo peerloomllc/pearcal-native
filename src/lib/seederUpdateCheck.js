@@ -65,7 +65,15 @@ function archTokens (arch) {
 // sidecars are never returned as the primary asset.
 function selectAsset (assets, platform, arch, installKind) {
   if (!Array.isArray(assets)) return null
-  const named = assets.filter((a) => a && typeof a.name === 'string' && !a.name.endsWith('.sha256'))
+  // Match ONLY seeder-named assets. Every seeder installer carries "seeder" in
+  // its name (PearCalSeeder-*.pkg / *.AppImage / *-Setup-*.exe, pearcal-seeder_*.deb),
+  // while the SAME GitHub release also carries the mobile APK and the DESKTOP
+  // Electron app's own .deb / .AppImage / .exe / .dmg — which share our suffixes
+  // on Linux/Windows. Without this filter a Linux/Windows seeder would select the
+  // desktop app's installer and false-flag it as its own update. (macOS dodged
+  // this only because the desktop app ships a .dmg, not a .pkg.)
+  const named = assets.filter((a) => a && typeof a.name === 'string' &&
+    !a.name.endsWith('.sha256') && a.name.toLowerCase().includes('seeder'))
   const lower = (a) => a.name.toLowerCase()
   const bySuffix = (suffix) => named.filter((a) => lower(a).endsWith(suffix))
   if (platform === 'darwin') return bySuffix('.pkg')[0] || null
