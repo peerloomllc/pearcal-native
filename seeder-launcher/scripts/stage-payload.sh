@@ -90,13 +90,17 @@ cp "$LAUNCHER/package.json" "$OUT_DIR/package.json" 2>/dev/null || true
 # copy beside the host (updateCheck.js requires it via ./seederUpdateCheck in prod).
 cp "$REPO/src/lib/seederUpdateCheck.js" "$OUT_DIR/host/seederUpdateCheck.js"
 
-# 4a. Brand mark: a small copy of the app icon for the dashboard header.
+# 4a. Brand mark: a small copy of the app icon for the dashboard header + tab
+#     favicon. Prefer imagemagick (Linux dev box); fall back to sips on macOS
+#     (no imagemagick there) so a Mac-side .pkg build still gets the icon.
 if command -v magick >/dev/null 2>&1; then
-  magick "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged"
+  magick "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged (magick)"
 elif command -v convert >/dev/null 2>&1; then
-  convert "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged"
+  convert "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged (convert)"
+elif command -v sips >/dev/null 2>&1; then
+  sips -z 64 64 "$REPO/assets/images/icon.png" --out "$OUT_DIR/host/brand.png" >/dev/null 2>&1 && echo "--> brand mark staged (sips)"
 else
-  echo "--> no imagemagick; dashboard uses the ◆ fallback mark"
+  echo "--> no imagemagick/sips; dashboard uses the ◆ fallback mark"
 fi
 
 # 4b. Offline dashboard font: extract the Manrope woff2 @font-face CSS from the
