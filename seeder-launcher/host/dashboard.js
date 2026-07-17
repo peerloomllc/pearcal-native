@@ -6,8 +6,9 @@
 // restyled in PearCal's palette (gold #C8922A) + Manrope, with light + dark.
 //
 // Extras kept: token auth (auth.js), live push via Server-Sent Events, offline
-// fonts + brand image (inlined when staged), and blind-safe metrics.
-// Not applicable to PearCal yet: auto-update bar, per-group revoke/retention.
+// fonts + brand image (inlined when staged), blind-safe metrics, and (phase B)
+// the auto-update UpdateBar — a notify banner fed by the launcher's UpdateChecker
+// (null/hidden on store-managed deploys). Not applicable yet: per-group revoke.
 
 const http = require('node:http')
 const fs = require('node:fs')
@@ -44,7 +45,12 @@ async function snapshot (worklet) {
   return { status, enrolled }
 }
 
-function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null, version = null, log }) {
+function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null, version = null, updateChecker = null, log }) {
+  // Latest cached update-check result (null when the checker is gated off for a
+  // store-managed deploy). Folded into every pushed snapshot so the UpdateBar
+  // reacts live over SSE, and exposed at /api/update.
+  const getUpdate = () => { try { return updateChecker ? updateChecker.get() : null } catch { return null } }
+  const fullSnapshot = async () => ({ ...(await snapshot(worklet)), update: getUpdate() })
   let fontStyle
   try { fontStyle = '<style>' + fs.readFileSync(path.join(__dirname, 'fonts.css'), 'utf8') + '</style>' }
   catch { fontStyle = "<style>@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap');</style>" }
@@ -52,6 +58,7 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
   try { brand = 'data:image/png;base64,' + fs.readFileSync(path.join(__dirname, 'brand.png')).toString('base64') } catch {}
   const page = PAGE
     .replace('<!--FONTS-->', fontStyle)
+    .replace('<!--FAVICON-->', brand ? `<link rel="icon" type="image/png" href="${brand}">` : '')
     .replace('<!--BRAND-->', brand)
     .replace('<!--VERSION-->', version ? 'v' + version : '')
 
@@ -74,10 +81,11 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
       if (req.method === 'GET' && p === '/api/events') {
         res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
         res.write('retry: 3000\n\n'); clients.add(res)
-        snapshot(worklet).then((s) => { try { res.write(`event: status\ndata: ${JSON.stringify(s)}\n\n`) } catch {} })
+        fullSnapshot().then((s) => { try { res.write(`event: status\ndata: ${JSON.stringify(s)}\n\n`) } catch {} })
         req.on('close', () => clients.delete(res)); return
       }
-      if (req.method === 'GET' && p === '/api/status') return sendJson(res, await snapshot(worklet))
+      if (req.method === 'GET' && p === '/api/status') return sendJson(res, await fullSnapshot())
+      if (req.method === 'GET' && p === '/api/update') return sendJson(res, getUpdate() || { disabled: true })
       if (req.method === 'GET' && p === '/api/donate') {
         const t = url.searchParams.get('tab'); const tab = DONATE[t] ? t : 'ln'; const value = DONATE[tab]
         let qr = null; try { qr = await require('qrcode').toDataURL(value, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) } catch {}
@@ -91,21 +99,21 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
       if (req.method === 'POST' && p === '/api/pair/close') return sendJson(res, await worklet.call('seeder:pair:close', {}).catch((e) => ({ error: e.message })))
       if (req.method === 'POST' && p === '/api/enroll') {
         const { invite } = await readBody(req); if (!invite) return sendJson(res, { error: 'invite required' }, 400)
-        const r = await worklet.call('seeder:enroll', { invite }).catch((e) => ({ error: e.message })); broadcast('status', await snapshot(worklet)); return sendJson(res, r)
+        const r = await worklet.call('seeder:enroll', { invite }).catch((e) => ({ error: e.message })); broadcast('status', await fullSnapshot()); return sendJson(res, r)
       }
       if (req.method === 'POST' && p === '/api/leave') {
         const { groupId } = await readBody(req); if (!groupId) return sendJson(res, { error: 'groupId required' }, 400)
-        const r = await worklet.call('seeder:leave', { groupId }).catch((e) => ({ error: e.message })); broadcast('status', await snapshot(worklet)); return sendJson(res, r)
+        const r = await worklet.call('seeder:leave', { groupId }).catch((e) => ({ error: e.message })); broadcast('status', await fullSnapshot()); return sendJson(res, r)
       }
       if (req.method === 'POST' && p === '/api/nickname') {
         const { name } = await readBody(req)
-        const r = await worklet.call('seeder:nickname:set', { name: name || '' }).catch((e) => ({ error: e.message })); broadcast('status', await snapshot(worklet)); return sendJson(res, r)
+        const r = await worklet.call('seeder:nickname:set', { name: name || '' }).catch((e) => ({ error: e.message })); broadcast('status', await fullSnapshot()); return sendJson(res, r)
       }
       if (req.method === 'POST' && p === '/api/restart') { worklet.stop().catch(() => {}); return sendJson(res, { ok: true }) }
       res.writeHead(404); res.end('not found')
     } catch (e) { res.writeHead(500); res.end(String(e && e.message || e)) }
   })
-  const ticker = setInterval(async () => { if (clients.size) { try { broadcast('status', await snapshot(worklet)) } catch {} } }, 2000)
+  const ticker = setInterval(async () => { if (clients.size) { try { broadcast('status', await fullSnapshot()) } catch {} } }, 2000)
   if (typeof ticker.unref === 'function') ticker.unref()
   srv.on('error', (e) => log && log('dashboard', 'error: ' + e.message))
   srv.listen(port, host, () => { const shown = host === '0.0.0.0' ? 'localhost' : host; log && log('dashboard', `listening on http://${shown}:${port}/` + (token ? `?t=${token}` : '')) })
@@ -128,6 +136,7 @@ const I = {
 const PAGE = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PearCal Seeder</title>
+<!--FAVICON-->
 <!--FONTS-->
 <style>
   :root{
@@ -176,6 +185,12 @@ const PAGE = `<!doctype html>
   .menu button:hover{background:var(--surface-hover)} .menu button svg{color:var(--muted)}
   .toast{flex:0 0 auto;display:none;background:color-mix(in srgb,var(--bad) 14%,var(--surface));border:1px solid color-mix(in srgb,var(--bad) 40%,var(--border));color:var(--text);border-radius:var(--radius-sm);padding:9px 13px;margin-bottom:10px;font-size:13.5px}
   .toast.show{display:block}
+  .updatebar{flex:0 0 auto;display:none;align-items:center;gap:12px;background:linear-gradient(180deg,var(--faint),transparent),var(--surface);border:1px solid var(--primary);color:var(--text);border-radius:var(--radius-sm);padding:11px 14px;margin-bottom:10px;font-size:13.5px}
+  .updatebar.show{display:flex}
+  .updatebar .ub-txt{flex:1;min-width:0}
+  .updatebar .ub-txt b{color:var(--primary);font-weight:600}
+  .updatebar a.ub-btn{flex:0 0 auto;text-decoration:none;font-weight:600;font-size:13px;padding:7px 13px;border-radius:9px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary)}
+  .updatebar a.ub-btn:hover{filter:brightness(1.06)}
   .main{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:4px}
   .stats{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
@@ -239,6 +254,7 @@ const PAGE = `<!doctype html>
     </div>
   </header>
   <div class="toast" id="toast"></div>
+  <div class="updatebar" id="updatebar"></div>
   <div class="main">
     <div class="stats">
       <div class="stat hero"><div class="num" id="s-groups">—</div><div class="lbl" id="s-groupslbl">groups kept alive</div><div class="sub" id="s-peers"></div></div>
@@ -325,9 +341,22 @@ $('conf-ok').onclick=()=>{$('confov').classList.remove('open');confResolve&&conf
 // nickname
 let nickDirty=false;$('nick').addEventListener('input',()=>{nickDirty=true;$('nickwrap').classList.add('dirty');});
 $('nicksave').onclick=async()=>{await post('/api/nickname',{name:$('nick').value});nickDirty=false;$('nickwrap').classList.remove('dirty');$('nicksave').classList.add('show');setTimeout(()=>$('nicksave').classList.remove('show'),1200);};
+// update banner (phase B: notify + download link; one-click apply lands with the .pkg)
+function esc(x){return String(x==null?'':x).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));}
+function renderUpdate(u){
+  const bar=$('updatebar');
+  if(!u||!u.updateAvailable){bar.classList.remove('show');bar.innerHTML='';return;}
+  const link=u.assetUrl||u.releaseUrl||'#';
+  const label=u.assetUrl?'Download':'Release notes';
+  bar.innerHTML='<span class="ub-txt">A newer seeder is available: <b>v'+esc(u.latestVersion)+'</b>'
+    +(u.currentVersion?' <span style="color:var(--subtle)">(running v'+esc(u.currentVersion)+')</span>':'')+'</span>'
+    +'<a class="ub-btn" href="'+esc(link)+'" target="_blank" rel="noopener">'+label+'</a>';
+  bar.classList.add('show');
+}
 // render
 function render(r){
   const s=r.status||{},en=r.enrolled||[];
+  renderUpdate(r.update);
   $('s-groups').textContent=s.enrolled??en.length;$('s-groupslbl').textContent=((s.enrolled??en.length)===1?'group kept alive':'groups kept alive');
   $('s-peers').textContent=(s.peers??0)+' peer'+((s.peers??0)===1?'':'s')+' connected';
   $('s-up').textContent=fmtUp(s.uptime);$('s-data').textContent=fmtBytes(s.bytes||0);

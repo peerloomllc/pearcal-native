@@ -60,6 +60,10 @@ Type=simple
 Environment=PATH=$NODE_DIR:/usr/local/bin:/usr/bin:/bin
 Environment=PEARCAL_SEED_DATA=$DATA
 Environment=SEEDER_PORT=$PORT
+# Store-managed deploy (Umbrel today; later a real Umbrel/Start9 app): updates
+# come through the store/marketplace, NOT our in-dashboard updater — so gate the
+# update check + UpdateBar off (proposal 2026-07-17 phase B).
+Environment=SEEDER_NO_UPDATE_CHECK=1
 WorkingDirectory=$DIR
 ExecStart=$DIR/run.sh
 Restart=always
