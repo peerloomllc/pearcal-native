@@ -78,6 +78,39 @@ test('selectAsset: never a wrong-arch binary; null on unknown/empty', () => {
   assert.equal(selectAsset(null, 'darwin', 'x64'), null)
 })
 
+test('selectAsset: desktop-app .deb/.AppImage/.exe/.dmg are NOT seeder installers', () => {
+  // The exact Linux/Windows false-positive: PearCal's GitHub release ALSO carries
+  // the DESKTOP Electron app, whose .deb/.AppImage/.exe share the seeder suffixes
+  // but are named without "seeder". None must be selected for any platform.
+  const appAssets = [
+    { name: 'pearcal-v1.0.33-amd64.deb', browser_download_url: 'u/app-deb' },
+    { name: 'pearcal-v1.0.33-x86_64.AppImage', browser_download_url: 'u/app-appimage' },
+    { name: 'pearcal-Setup-v1.0.33.exe', browser_download_url: 'u/app-exe' },
+    { name: 'pearcal-v1.0.33-mac-arm64.dmg', browser_download_url: 'u/app-dmg' },
+    { name: 'pearcal-v1.0.33.apk', browser_download_url: 'u/apk' },
+  ]
+  assert.equal(selectAsset(appAssets, 'linux', 'x64'), null)
+  assert.equal(selectAsset(appAssets, 'linux', 'arm64'), null)
+  assert.equal(selectAsset(appAssets, 'win32', 'x64'), null)
+  assert.equal(selectAsset(appAssets, 'darwin', 'x64'), null)
+})
+
+test('evaluateRelease: a desktop-app Linux release does not flag a seeder update', () => {
+  // Regression for the bug the Linux install surface exposed: the seeder polling
+  // the app's releases, which carry the desktop app's own .deb + .AppImage.
+  const desktop = {
+    tag_name: 'v1.0.33',
+    assets: [
+      { name: 'pearcal-v1.0.33-amd64.deb', browser_download_url: 'u/app-deb' },
+      { name: 'pearcal-v1.0.33-x86_64.AppImage', browser_download_url: 'u/app-appimage' },
+    ],
+  }
+  const r = evaluateRelease(desktop, { currentVersion: '0.1.0', platform: 'linux', arch: 'x64' })
+  assert.equal(r.latestVersion, '1.0.33') // still reports the tag
+  assert.equal(r.updateAvailable, false)  // but no seeder asset → no banner
+  assert.equal(r.assetUrl, null)
+})
+
 test('selectSha256For: finds the matching sidecar', () => {
   assert.equal(selectSha256For(ASSETS, 'PearCalSeeder-1.0.10.pkg').browser_download_url, 'u/pkg.sha')
   assert.equal(selectSha256For(ASSETS, 'no-such'), null)

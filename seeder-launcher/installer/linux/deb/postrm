@@ -1,0 +1,50 @@
+#!/bin/bash
+# Debian postrm - removes the templated systemd user unit and the updater polkit
+# rule. On `remove` the seeder data directory (~/.pearcal-seed: identity,
+# enrollments, logs) is left intact so a reinstall keeps the seeder identity;
+# `purge` wipes it.
+set -e
+
+INSTALL_ROOT=/opt/pearcal-seeder
+
+# Resolve the install user the same way prerm does: SUDO_USER, else PKEXEC_UID,
+# else the user recorded at install time (covers GUI/PackageKit removal that
+# sets no SUDO_USER). dpkg leaves the unmanaged .install-user marker in place
+# for us to read here; we delete it on purge below.
+resolve_user () {
+  local u="${SUDO_USER:-}"
+  if { [ -z "$u" ] || [ "$u" = "root" ]; } && [ -n "${PKEXEC_UID:-}" ]; then
+    u=$(id -un "$PKEXEC_UID" 2>/dev/null || true)
+  fi
+  if { [ -z "$u" ] || [ "$u" = "root" ]; } && [ -r "$INSTALL_ROOT/.install-user" ]; then
+    u=$(cat "$INSTALL_ROOT/.install-user" 2>/dev/null || true)
+  fi
+  echo "$u"
+}
+
+case "$1" in
+  remove|purge|abort-install)
+    TARGET_USER=$(resolve_user)
+    if [ -n "$TARGET_USER" ] && [ "$TARGET_USER" != "root" ]; then
+      TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+      if [ -n "$TARGET_HOME" ]; then
+        rm -f "$TARGET_HOME/.config/systemd/user/pearcal-seeder.service"
+        if [ "$1" = "purge" ]; then
+          # Full wipe: remove the seeder identity, enrollments and logs.
+          DATA_DIR="${PEARCAL_SEED_DATA:-$TARGET_HOME/.pearcal-seed}"
+          rm -rf "$DATA_DIR"
+        fi
+      fi
+    fi
+    # Drop the passwordless-pkexec polkit rule for the auto-updater.
+    rm -f /etc/polkit-1/rules.d/49-pearcal-seeder-updater.rules
+    # Remove the install-user marker and the install dir if now empty.
+    rm -f "$INSTALL_ROOT/.install-user"
+    rmdir "$INSTALL_ROOT" 2>/dev/null || true
+    # Refresh the desktop entry cache (dpkg already removed the .desktop + icon).
+    command -v update-desktop-database >/dev/null 2>&1 && \
+      update-desktop-database -q /usr/share/applications 2>/dev/null || true
+    ;;
+esac
+
+exit 0

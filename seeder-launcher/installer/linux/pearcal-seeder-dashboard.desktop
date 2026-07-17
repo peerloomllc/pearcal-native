@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=PearCal Seeder
+GenericName=Seeder Dashboard
+Comment=Open the PearCal Seeder monitoring dashboard
+Exec=/opt/pearcal-seeder/open-dashboard.sh
+Icon=pearcal-seeder
+Terminal=false
+Categories=Network;Utility;
+Keywords=pearcal;seeder;p2p;calendar;dashboard;

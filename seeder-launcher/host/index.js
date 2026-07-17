@@ -121,10 +121,16 @@ async function main () {
     // One-click apply (phase C2). macOS hands the verified .pkg to the root
     // updater daemon (requestDir); Linux self-applies an AppImage ($APPIMAGE) or
     // pkexecs a .deb helper. The seeder itself stays unprivileged.
+    // A .deb install runs from /opt/pearcal-seeder (installRoot = ../ from host/),
+    // where the postinst placed the root-owned updater-helper.sh + polkit rule;
+    // the deb applier pkexecs it. An AppImage instead self-applies via $APPIMAGE
+    // (target). Both are wired; the applier chosen follows the release asset type.
+    const installRoot = path.resolve(__dirname, '..')
     updateApplier = new UpdateApplier({
       getUpdate: () => updateChecker.get(),
       requestDir: process.platform === 'darwin' ? MAC_UPDATE_REQUEST_DIR : null,
       target: process.platform === 'linux' ? (process.env.APPIMAGE || null) : null,
+      helperPath: process.platform === 'linux' && !process.env.APPIMAGE ? path.join(installRoot, 'updater-helper.sh') : null,
       user: os.userInfo().username,
       exec: execArgv,
       log,
