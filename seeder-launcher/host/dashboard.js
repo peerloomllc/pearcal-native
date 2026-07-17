@@ -45,12 +45,13 @@ async function snapshot (worklet) {
   return { status, enrolled }
 }
 
-function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null, version = null, updateChecker = null, log }) {
-  // Latest cached update-check result (null when the checker is gated off for a
+function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null, version = null, updateChecker = null, updateApplier = null, log }) {
+  // Latest cached update-check result + apply state (null when gated off for a
   // store-managed deploy). Folded into every pushed snapshot so the UpdateBar
   // reacts live over SSE, and exposed at /api/update.
   const getUpdate = () => { try { return updateChecker ? updateChecker.get() : null } catch { return null } }
-  const fullSnapshot = async () => ({ ...(await snapshot(worklet)), update: getUpdate() })
+  const getApplyState = () => { try { return updateApplier ? updateApplier.getState() : null } catch { return null } }
+  const fullSnapshot = async () => ({ ...(await snapshot(worklet)), update: getUpdate(), applyState: getApplyState() })
   let fontStyle
   try { fontStyle = '<style>' + fs.readFileSync(path.join(__dirname, 'fonts.css'), 'utf8') + '</style>' }
   catch { fontStyle = "<style>@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&display=swap');</style>" }
@@ -86,6 +87,12 @@ function startDashboard ({ worklet, port = 8731, host = '0.0.0.0', token = null,
       }
       if (req.method === 'GET' && p === '/api/status') return sendJson(res, await fullSnapshot())
       if (req.method === 'GET' && p === '/api/update') return sendJson(res, getUpdate() || { disabled: true })
+      if (req.method === 'POST' && p === '/api/update/apply') {
+        if (!updateApplier) return sendJson(res, { error: 'update apply disabled' }, 503)
+        const state = await updateApplier.apply().catch((e) => ({ status: 'error', error: e.message }))
+        broadcast('status', await fullSnapshot())
+        return sendJson(res, state)
+      }
       if (req.method === 'GET' && p === '/api/donate') {
         const t = url.searchParams.get('tab'); const tab = DONATE[t] ? t : 'ln'; const value = DONATE[tab]
         let qr = null; try { qr = await require('qrcode').toDataURL(value, { width: 220, margin: 1, errorCorrectionLevel: 'M' }) } catch {}
@@ -189,8 +196,9 @@ const PAGE = `<!doctype html>
   .updatebar.show{display:flex}
   .updatebar .ub-txt{flex:1;min-width:0}
   .updatebar .ub-txt b{color:var(--primary);font-weight:600}
-  .updatebar a.ub-btn{flex:0 0 auto;text-decoration:none;font-weight:600;font-size:13px;padding:7px 13px;border-radius:9px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary)}
-  .updatebar a.ub-btn:hover{filter:brightness(1.06)}
+  .updatebar .ub-btn{flex:0 0 auto;text-decoration:none;font-weight:600;font-size:13px;padding:7px 13px;border-radius:9px;border:1px solid var(--primary);background:var(--primary);color:var(--on-primary);cursor:pointer}
+  .updatebar .ub-btn:hover{filter:brightness(1.06)} .updatebar .ub-btn:disabled{opacity:.6;cursor:default}
+  .updatebar .ub-note{flex:0 0 auto;color:var(--muted);font-size:12.5px}
   .main{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding-bottom:4px}
   .stats{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:15px 16px;box-shadow:var(--shadow)}
@@ -343,20 +351,28 @@ let nickDirty=false;$('nick').addEventListener('input',()=>{nickDirty=true;$('ni
 $('nicksave').onclick=async()=>{await post('/api/nickname',{name:$('nick').value});nickDirty=false;$('nickwrap').classList.remove('dirty');$('nicksave').classList.add('show');setTimeout(()=>$('nicksave').classList.remove('show'),1200);};
 // update banner (phase B: notify + download link; one-click apply lands with the .pkg)
 function esc(x){return String(x==null?'':x).replace(/[<>&"]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]));}
-function renderUpdate(u){
+function renderUpdate(u,st){
   const bar=$('updatebar');
   if(!u||!u.updateAvailable){bar.classList.remove('show');bar.innerHTML='';return;}
+  const status=st&&st.status;
   const link=u.assetUrl||u.releaseUrl||'#';
-  const label=u.assetUrl?'Download':'Release notes';
+  let right;
+  if(status==='running') right='<span class="ub-note">Downloading &amp; verifying…</span>';
+  else if(status==='applying-via-helper') right='<span class="ub-note">Installing — the seeder will restart shortly.</span>';
+  else if(status==='restarting') right='<span class="ub-note">Restarting on v'+esc(st.version)+'…</span>';
+  else if(status==='needs-helper') right='<a class="ub-btn" href="'+esc((st&&st.assetUrl)||link)+'" target="_blank" rel="noopener">Download</a>';
+  else if(status==='error') right='<span class="ub-note" style="color:var(--bad)">Update failed.</span><a class="ub-btn" href="'+esc(link)+'" target="_blank" rel="noopener">Download</a>';
+  else right='<button class="ub-btn" id="ub-apply">Update now</button>';
   bar.innerHTML='<span class="ub-txt">A newer seeder is available: <b>v'+esc(u.latestVersion)+'</b>'
-    +(u.currentVersion?' <span style="color:var(--subtle)">(running v'+esc(u.currentVersion)+')</span>':'')+'</span>'
-    +'<a class="ub-btn" href="'+esc(link)+'" target="_blank" rel="noopener">'+label+'</a>';
+    +(u.currentVersion?' <span style="color:var(--subtle)">(running v'+esc(u.currentVersion)+')</span>':'')+'</span>'+right;
   bar.classList.add('show');
+  const btn=$('ub-apply');
+  if(btn) btn.onclick=async()=>{btn.disabled=true;btn.textContent='…';try{await post('/api/update/apply');}catch(e){toast(e.message);}};
 }
 // render
 function render(r){
   const s=r.status||{},en=r.enrolled||[];
-  renderUpdate(r.update);
+  renderUpdate(r.update,r.applyState);
   $('s-groups').textContent=s.enrolled??en.length;$('s-groupslbl').textContent=((s.enrolled??en.length)===1?'group kept alive':'groups kept alive');
   $('s-peers').textContent=(s.peers??0)+' peer'+((s.peers??0)===1?'':'s')+' connected';
   $('s-up').textContent=fmtUp(s.uptime);$('s-data').textContent=fmtBytes(s.bytes||0);

@@ -19,6 +19,19 @@ const { Worklet } = require('./worklet')
 const { startDashboard } = require('./dashboard')
 const { loadOrCreateToken } = require('./auth')
 const { UpdateChecker } = require('./updateCheck')
+const { UpdateApplier } = require('./updateApply')
+const { execFile } = require('node:child_process')
+
+// Run one argv as a promise (injected into UpdateApplier for the self-apply
+// platforms; the macOS macpkg path writes a request file and never execs).
+function execArgv (argv) {
+  return new Promise((resolve, reject) => {
+    execFile(argv[0], argv.slice(1), (err, stdout, stderr) => err ? reject(err) : resolve({ stdout, stderr }))
+  })
+}
+// The root updater's watched request dir (macOS). apply() drops apply.json here
+// for the privileged LaunchDaemon; absent (old build) -> needs-helper fallback.
+const MAC_UPDATE_REQUEST_DIR = '/Library/Application Support/PearCal Seeder/updates/requests'
 
 function parseArgs (argv) {
   const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000, port: null, host: '0.0.0.0' }
@@ -102,8 +115,20 @@ async function main () {
   // a /.dockerenv marker. Notify-only for now (banner + download link).
   const updateGated = opts.noUpdateCheck || !!process.env.SEEDER_NO_UPDATE_CHECK || fs.existsSync('/.dockerenv')
   let updateChecker = null
+  let updateApplier = null
   if (!updateGated) {
     updateChecker = new UpdateChecker({ currentVersion: version, log }).start()
+    // One-click apply (phase C2). macOS hands the verified .pkg to the root
+    // updater daemon (requestDir); Linux self-applies an AppImage ($APPIMAGE) or
+    // pkexecs a .deb helper. The seeder itself stays unprivileged.
+    updateApplier = new UpdateApplier({
+      getUpdate: () => updateChecker.get(),
+      requestDir: process.platform === 'darwin' ? MAC_UPDATE_REQUEST_DIR : null,
+      target: process.platform === 'linux' ? (process.env.APPIMAGE || null) : null,
+      user: os.userInfo().username,
+      exec: execArgv,
+      log,
+    })
     log('host', `update check on (v${version || '?'}); source: ${process.env.PEARCAL_UPDATE_LATEST_URL || 'github/peerloomllc/pearcal-native'}`)
   } else {
     log('host', 'update check off (store-managed / --no-update-check)')
@@ -114,7 +139,7 @@ async function main () {
   if (dashPort) {
     // Token auth on by default (persisted in the data dir); --no-auth disables.
     const token = opts.noAuth ? null : loadOrCreateToken(dataDir).token
-    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, updateChecker, log })
+    startDashboard({ worklet: wl, port: dashPort, host: opts.host, token, version, updateChecker, updateApplier, log })
     if (token) log('host', `dashboard token: ${token}`)
   }
 

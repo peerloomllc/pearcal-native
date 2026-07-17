@@ -66,7 +66,16 @@ if [ -n "$USER_UID" ]; then
 fi
 rm -f "$AGENT"
 
-# 2. Dashboard shortcut + the Uninstall app itself (both in /Applications,
+# 2. Root updater LaunchDaemon (phase C2): bootout of the system domain, remove.
+DAEMON="/Library/LaunchDaemons/com.pearcal.seeder.updater.plist"
+launchctl bootout system/com.pearcal.seeder.updater 2>/dev/null \
+  || launchctl unload "$DAEMON" 2>/dev/null || true
+rm -f "$DAEMON"
+
+# 2b. Root updates scratch dir (verified-pkg requests + updater.log).
+rm -rf "/Library/Application Support/PearCal Seeder"
+
+# 3. Dashboard shortcut + the Uninstall app itself (both in /Applications,
 #    unrestricted, so root removes them cleanly).
 rm -rf "/Applications/PearCal Seeder.app"
 rm -rf "/Applications/Uninstall PearCal Seeder.app"

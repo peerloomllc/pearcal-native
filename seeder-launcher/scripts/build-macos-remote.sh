@@ -55,6 +55,7 @@ for A in ${ARCHES}; do
   echo "--- build-pkg-macos.sh arch=\$A ---"
   VERSION='${VERSION}' SEEDER_PKG_ARCH="\$A" \
   APP_SIGN_ID='${APP_SIGN_ID:-}' PKG_SIGN_ID='${PKG_SIGN_ID:-}' \
+  NOTARY_PROFILE='${NOTARY_PROFILE:-pearcal-notary}' SKIP_NOTARIZE='${SKIP_NOTARIZE:-0}' \
     bash seeder-launcher/scripts/build-pkg-macos.sh
 done
 REMOTE
@@ -70,5 +71,10 @@ for A in $ARCHES; do
 done
 
 echo ""
-echo "==> Done. Install (unsigned) on a Mac with:"
-echo "    sudo installer -allowUntrusted -pkg <pkg> -target /"
+if [ -n "${PKG_SIGN_ID:-}" ]; then
+  echo "==> Done (signed + notarized). Install on a Mac by double-click, or:"
+  echo "    sudo installer -pkg <pkg> -target /"
+else
+  echo "==> Done (unsigned). Install on a Mac with:"
+  echo "    sudo installer -allowUntrusted -pkg <pkg> -target /   (or right-click → Open)"
+fi
