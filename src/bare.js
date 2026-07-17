@@ -23,7 +23,7 @@ const {
 } = require('./lib/seedEnroll.js')
 const {
   seederRecordKey, parseSeederRecordKey, buildSeederRecord, acceptSeederRecord,
-  buildSeederRevocation,
+  buildSeederRevocation, resolveSeederDisplayName,
 } = require('./lib/seederRecord.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
@@ -364,6 +364,7 @@ async function handle (method, args) {
     case 'cancelSeederPairScan': return cancelSeederPairScan()
     case 'listBlindPeers':   return listBlindPeers()
     case 'removeBlindPeer':  return removeBlindPeer(args[0])
+    case 'renameBlindPeer':  return renameBlindPeer(args[0], args[1])
     case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
@@ -947,7 +948,10 @@ async function pushGroupToAutoFollowSeeders (groupId) {
 async function writeGroupSeederRecord (pubkeyHex, oneGroupId = null) {
   if (typeof pubkeyHex !== 'string' || !pubkeyHex) return
   const row = await db.get('seederFollow:' + pubkeyHex).catch(() => null)
-  const nickname = row?.value?.nickname ?? null
+  // The group-shared record carries the seeder's OWN advertised name (self-name),
+  // not this member's local override — renames are per-device. Fall back to the
+  // legacy single `nickname` field for rows written before the split.
+  const nickname = row?.value?.seederName ?? row?.value?.nickname ?? null
   const profile = await getProfile().catch(() => null)
   const addedBy = (profile?.identityPublicKey || profile?.publicKey || null)
   for (const [groupId, base] of bases) {
@@ -1025,7 +1029,19 @@ async function revokeGroupSeederRecord (pubkeyHex) {
 async function listBlindPeers () {
   const byPubkey = new Map()
   for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
-    if (value?.pubkey) byPubkey.set(value.pubkey, { ...value })
+    if (!value?.pubkey) continue
+    // `nickname` = this device's local rename override; `seederName` = the seeder's
+    // own advertised name (from hello / QR ack). The list shows the override, else
+    // the self-name (that's why clearing an override reveals the self-name), and
+    // exposes both so the rename input can pre-fill the raw override + placeholder.
+    const override = value.nickname ?? null
+    const seederName = value.seederName ?? null
+    byPubkey.set(value.pubkey, {
+      ...value,
+      override,
+      seederName,
+      nickname: resolveSeederDisplayName({ override, seederName }),
+    })
   }
   for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
     if (!value?.pubkey || value.revoked === true) continue
@@ -1033,14 +1049,18 @@ async function listBlindPeers () {
     // otherwise a leftover mirror row surfaces a seeder for a group the user no
     // longer has (the "reappears seeding 0 groups" orphan).
     if (value.groupId && !bases.has(value.groupId)) continue
+    const groupName = value.nickname ?? null // the seeder's self-name on the record
     const local = byPubkey.get(value.pubkey)
     if (local) {
-      if (!local.nickname && value.nickname) local.nickname = value.nickname
+      if (!local.seederName && groupName) local.seederName = groupName
+      local.nickname = resolveSeederDisplayName({ override: local.override, seederName: local.seederName, groupName })
       local.shared = true
     } else {
       byPubkey.set(value.pubkey, {
         pubkey: value.pubkey,
-        nickname: value.nickname ?? null,
+        override: null,
+        seederName: groupName,
+        nickname: groupName,
         groupCount: null,
         autoFollow: false,
         shared: true,
@@ -1080,6 +1100,36 @@ async function removeBlindPeer (pubkey) {
   return { ok: true, pubkey, revoked: [...revokedGroups] }
 }
 
+// Rename a blind peer (member-side, LOCAL-ONLY). Sets a per-device `nickname`
+// override on the local follow row; the seeder's own advertised name lives in a
+// separate `seederName` field (from its hello / QR ack) and is never touched here,
+// so a rename can't be clobbered by a trailing hello and clearing the override
+// (blank) reveals the seeder's self-name again. Trimmed to 32 chars. Does NOT
+// write the group-shared record — each member names the seeder for themselves.
+// For a seeder known only via a group-shared record (no local follow yet), a
+// local override row is created so the rename sticks on this device.
+async function renameBlindPeer (pubkey, nickname) {
+  if (typeof pubkey !== 'string' || !pubkey) throw new Error('renameBlindPeer: pubkey required')
+  const trimmed = typeof nickname === 'string' ? nickname.trim().slice(0, 32) : ''
+  const name = trimmed || null
+  const existing = await db.get('seederFollow:' + pubkey).catch(() => null)
+  if (existing?.value) {
+    await db.put('seederFollow:' + pubkey, { ...existing.value, nickname: name }).catch(() => {})
+  } else {
+    // Known only via a group-shared record — seed a local override row, carrying
+    // the seeder's self-name (recorded on the group record) as the fallback.
+    let seederName = null
+    for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+      if (value?.pubkey === pubkey) { seederName = value.nickname ?? null; break }
+    }
+    await db.put('seederFollow:' + pubkey, {
+      pubkey, nickname: name, seederName, groupCount: 0, since: Date.now(), via: 'group-record',
+    }).catch(() => {})
+  }
+  _emitBlindPeersChanged()
+  return { ok: true, pubkey, nickname: name }
+}
+
 // Toggle live auto-follow (#116 facet #3) for a blind peer. Enabling shares this
 // peer the topic keys of your groups — present AND future — so it seeds groups
 // you create later automatically; it still can't read event contents (it never
@@ -1098,7 +1148,9 @@ async function setSeederAutoFollow (pubkey, enabled) {
       if (value?.pubkey === pubkey) { shared = value; break }
     }
     if (!shared) throw new Error('setSeederAutoFollow: unknown blind peer')
-    base = { pubkey, nickname: shared.nickname ?? null, groupCount: 0, since: Date.now(), via: 'group-record' }
+    // The group record carries the seeder's self-name → seed it as `seederName`,
+    // leaving `nickname` (the local override) unset.
+    base = { pubkey, nickname: null, seederName: shared.nickname ?? null, groupCount: 0, since: Date.now(), via: 'group-record' }
   }
   await db.put('seederFollow:' + pubkey, { ...base, autoFollow: !!enabled })
   _emitBlindPeersChanged()
@@ -1159,7 +1211,10 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
         since: existing?.value?.since ?? Date.now(),
         pairedAt: Date.now(),
         groupCount: enrolled,
-        nickname: nickname || existing?.value?.nickname || null,
+        // The ack carries the seeder's self-name → `seederName`. A member's local
+        // rename (`nickname` override) is preserved across a re-pair.
+        nickname: existing?.value?.nickname ?? null,
+        seederName: nickname || existing?.value?.seederName || null,
         // QR pairing anchors the seeder's pubkey (we scanned it), so auto-follow
         // future groups by default. A paste-admitted seeder starts off and opts
         // in via the Blind Peer toggle. Preserve an existing opt-out.
@@ -6730,15 +6785,20 @@ async function _doInit (dir, attempt = 0) {
                   // that; an explicit re-admit (QR pair / auto-follow) clears it.
                   const removed = await db.get('seederRemoved:' + _remotePubkeyHex).catch(() => null)
                   if (removed?.value) return
-                  const nickname = (typeof hello.nickname === 'string' && hello.nickname)
+                  const helloName = (typeof hello.nickname === 'string' && hello.nickname)
                     ? hello.nickname.slice(0, 64) : null
                   const groupCount = Number.isInteger(hello.groupCount) ? hello.groupCount : null
                   const existing = await db.get('seederFollow:' + _remotePubkeyHex).catch(() => null)
-                  const nextNickname = nickname || existing?.value?.nickname || null
+                  // The hello carries the seeder's OWN advertised name → `seederName`.
+                  // A member's local rename lives in `nickname` and is never touched
+                  // here, so the hello can't clobber it (namable seeders, local-only).
+                  const nextSeederName = helloName || existing?.value?.seederName || null
                   const nextGroupCount = groupCount ?? existing?.value?.groupCount ?? 0
+                  const override = existing?.value?.nickname ?? null
                   await db.put('seederFollow:' + _remotePubkeyHex, {
                     pubkey: _remotePubkeyHex,
-                    nickname: nextNickname,
+                    nickname: override,
+                    seederName: nextSeederName,
                     groupCount: nextGroupCount,
                     since: existing?.value?.since ?? existing?.value?.addedAt ?? Date.now(),
                     via: existing?.value?.via ?? 'group-announce',
@@ -6746,12 +6806,15 @@ async function _doInit (dir, attempt = 0) {
                     // grants it (default off for hello-recorded seeders).
                     autoFollow: existing?.value?.autoFollow ?? false,
                   })
-                  // Live-refresh the blind-peer list only when something the UI
-                  // shows actually changed — the seeder re-sends this hello when
-                  // its enrolled count changes (#116 facet #2), and also on every
-                  // reconnect where nothing changed (skip those).
+                  // Live-refresh the blind-peer list only when the DISPLAYED name or
+                  // count changed — the seeder re-sends this hello when its enrolled
+                  // count changes (#116 facet #2), and on every reconnect where
+                  // nothing changed (skip those). The self-name only shows when there
+                  // is no local override, so compare the resolved display name.
                   const isNew = !existing?.value
-                  if (isNew || existing.value.groupCount !== nextGroupCount || existing.value.nickname !== nextNickname) {
+                  const prevDisplay = resolveSeederDisplayName({ override, seederName: existing?.value?.seederName ?? null })
+                  const nextDisplay = resolveSeederDisplayName({ override, seederName: nextSeederName })
+                  if (isNew || existing.value.groupCount !== nextGroupCount || prevDisplay !== nextDisplay) {
                     _emitBlindPeersChanged()
                   }
                 } catch {}

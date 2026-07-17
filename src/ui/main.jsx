@@ -98,6 +98,7 @@ const db = {
   cancelSeederPairScan: ()  => window.__pearDB.call('cancelSeederPairScan'),
   listBlindPeers:     ()   => window.__pearDB.call('listBlindPeers'),
   removeBlindPeer:    (pk) => window.__pearDB.call('removeBlindPeer', pk),
+  renameBlindPeer:    (pk, n) => window.__pearDB.call('renameBlindPeer', pk, n),
   setSeederAutoFollow: (pk, on) => window.__pearDB.call('setSeederAutoFollow', pk, on),
   getBackupStatus:    ()  => window.__pearDB.call('getBackupStatus'),
   setBackupEnabled:   (b) => window.__pearDB.call('setBackupEnabled', b),

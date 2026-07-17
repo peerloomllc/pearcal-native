@@ -112,3 +112,24 @@ test('acceptSeederRecord: a revoke wins over the record it revokes; a LATER re-a
   // a stale revoke does NOT overturn a newer re-admit
   assert.equal(acceptSeederRecord({ incoming: rev, existing: readmit, keyPubkey: PK, now: NOW + 5000 }), false)
 })
+
+// ── namable seeders: local-override display resolution ──────────────────────
+// Renames are LOCAL-ONLY (a per-device override); the group-shared record + the
+// seeder's own hello carry the seeder's self-name. resolveSeederDisplayName is
+// the precedence that turns those three sources into the name shown in the list.
+const { resolveSeederDisplayName } = require('../src/lib/seederRecord.js')
+
+test('resolveSeederDisplayName: a local override wins over the seeder self-name', () => {
+  assert.equal(resolveSeederDisplayName({ override: 'Home server', seederName: 'Tim\'s Umbrel', groupName: 'Umbrel' }), 'Home server')
+})
+
+test('resolveSeederDisplayName: clearing the override (null/"") reveals the seeder self-name', () => {
+  assert.equal(resolveSeederDisplayName({ override: null, seederName: 'Tim\'s Umbrel', groupName: null }), 'Tim\'s Umbrel')
+  assert.equal(resolveSeederDisplayName({ override: '', seederName: 'Tim\'s Umbrel' }), 'Tim\'s Umbrel')
+})
+
+test('resolveSeederDisplayName: falls back to the group-record name, then null', () => {
+  assert.equal(resolveSeederDisplayName({ override: null, seederName: null, groupName: 'Shared seeder' }), 'Shared seeder')
+  assert.equal(resolveSeederDisplayName({}), null)
+  assert.equal(resolveSeederDisplayName({ override: '', seederName: '', groupName: '' }), null)
+})
