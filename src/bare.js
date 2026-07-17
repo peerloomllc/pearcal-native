@@ -20,6 +20,9 @@ const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   buildSeedEnrollBatch, parseSeedEnrollAck, autoFollowEligible,
 } = require('./lib/seedEnroll.js')
+const {
+  seederRecordKey, parseSeederRecordKey, buildSeederRecord, acceptSeederRecord,
+} = require('./lib/seederRecord.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
@@ -889,13 +892,56 @@ async function pushGroupToAutoFollowSeeders (groupId) {
   }
 }
 
-// List the blind peers this identity has paired with (for the settings UI).
-async function listBlindPeers () {
-  const out = []
-  for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
-    if (value?.pubkey) out.push(value)
+// Group-shared seeder record (proposal 2026-07-17): write `seeder:{pubkey}` into
+// each group's Autobase view (that this device can write) so the seeder shows in
+// EVERY member's Blind Peer list, not just this admitter's. Gated on the seeder
+// being explicitly trusted (an autoFollow row) — the same gate as the enroll push,
+// so a spoofed hello can't broadcast a bogus seeder to the group. Idempotent + LWW.
+// Pass a single groupId to target one group (e.g. a freshly created one).
+async function writeGroupSeederRecord (pubkeyHex, oneGroupId = null) {
+  if (typeof pubkeyHex !== 'string' || !pubkeyHex) return
+  const row = await db.get('seederFollow:' + pubkeyHex).catch(() => null)
+  const nickname = row?.value?.nickname ?? null
+  const profile = await getProfile().catch(() => null)
+  const addedBy = (profile?.identityPublicKey || profile?.publicKey || null)
+  for (const [groupId, base] of bases) {
+    if (oneGroupId && groupId !== oneGroupId) continue
+    if (!base?.writable) continue
+    try {
+      const key = seederRecordKey(pubkeyHex)
+      const existingNode = await base.view.get(key).catch(() => null)
+      const value = buildSeederRecord({ pubkey: pubkeyHex, nickname, addedBy, existing: existingNode?.value, now: Date.now() })
+      await safeAppend(base, { op: 'put', type: 'seeder', key, value })
+    } catch (e) { /* per-group best-effort */ }
   }
-  return out
+}
+
+// List the blind peers this identity knows: local follows (this device admitted /
+// opted into) UNIONed with group-shared records (admitted by any member of a shared
+// group), de-duped by pubkey. Group-only entries are marked `shared`.
+async function listBlindPeers () {
+  const byPubkey = new Map()
+  for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
+    if (value?.pubkey) byPubkey.set(value.pubkey, { ...value })
+  }
+  for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+    if (!value?.pubkey || value.revoked === true) continue
+    const local = byPubkey.get(value.pubkey)
+    if (local) {
+      if (!local.nickname && value.nickname) local.nickname = value.nickname
+      local.shared = true
+    } else {
+      byPubkey.set(value.pubkey, {
+        pubkey: value.pubkey,
+        nickname: value.nickname ?? null,
+        groupCount: null,
+        autoFollow: false,
+        shared: true,
+        via: 'group-record',
+      })
+    }
+  }
+  return [...byPubkey.values()]
 }
 
 // Nudge the WebView to reload the blind-peer list (#116 facet #2). Emitted
@@ -924,10 +970,25 @@ async function removeBlindPeer (pubkey) {
 async function setSeederAutoFollow (pubkey, enabled) {
   if (typeof pubkey !== 'string' || !pubkey) throw new Error('setSeederAutoFollow: pubkey required')
   const existing = await db.get('seederFollow:' + pubkey).catch(() => null)
-  if (!existing?.value) throw new Error('setSeederAutoFollow: unknown blind peer')
-  await db.put('seederFollow:' + pubkey, { ...existing.value, autoFollow: !!enabled })
+  let base = existing?.value
+  if (!base) {
+    // No local follow yet — this seeder is known only via a group-shared record
+    // (admitted by another member). Opting into auto-follow creates the local row
+    // from that record so the user can push their own groups to it too.
+    let shared = null
+    for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+      if (value?.pubkey === pubkey) { shared = value; break }
+    }
+    if (!shared) throw new Error('setSeederAutoFollow: unknown blind peer')
+    base = { pubkey, nickname: shared.nickname ?? null, groupCount: 0, since: Date.now(), via: 'group-record' }
+  }
+  await db.put('seederFollow:' + pubkey, { ...base, autoFollow: !!enabled })
   _emitBlindPeersChanged()
-  if (enabled) await pushAllGroupsToSeeder(pubkey).catch(() => {})
+  if (enabled) {
+    await pushAllGroupsToSeeder(pubkey).catch(() => {})
+    // Share this admission with the whole group so other members see it too.
+    await writeGroupSeederRecord(pubkey).catch(() => {})
+  }
   return { ok: true, pubkey, autoFollow: !!enabled }
 }
 
@@ -980,6 +1041,9 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
         autoFollow: existing?.value?.autoFollow ?? true,
       }).catch(() => {})
       _emitBlindPeersChanged()
+      // Share this admission across the group (proposal 2026-07-17) so every member
+      // of the seeder's groups sees it, not just this device.
+      writeGroupSeederRecord(session.seederKeyHex).catch(() => {})
       _finishPairScan({ ok: true, enrolled, names, seeder: session.seederKeyHex })
     },
   })
@@ -1952,6 +2016,17 @@ async function _joinGroupImpl (group) {
   // seeder to mount this group over the existing connection. On its enroll ack
   // we re-announce the writer above so it picks up our writer core.
   pushGroupToAutoFollowSeeders(group.id).catch(() => {})
+  // Also record each trusted (auto-follow) seeder in THIS new group's view so its
+  // members see it (proposal 2026-07-17). Best-effort; runs once this base is writable.
+  ;(async () => {
+    try {
+      const base = bases.get(group.id)
+      if (!base?.writable) return
+      for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
+        if (value?.pubkey && value.autoFollow === true) await writeGroupSeederRecord(value.pubkey, group.id).catch(() => {})
+      }
+    } catch (e) {}
+  })().catch(() => {})
 
   // Always use group.groupKey as swarm topic so both sides match
   // (owner updates groupKey to realKey before this point)
@@ -5762,6 +5837,22 @@ async function mirrorToLocal (type, key, value, groupId) {
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
         await db.put(key, value)
         emitSync(groupId, { rsvpsChanged: true })
+      }
+      return
+    }
+    if (type === 'seeder') {
+      // Group-shared blind-seeder record (proposal 2026-07-17). key = 'seeder:{pubkey}'.
+      // Mirror to a group-scoped local key so listBlindPeers unions it with local
+      // follows → the seeder shows in EVERY member's Blind Peer list. Validate +
+      // LWW; skip malformed rows (the raw view row is harmless, listBlindPeers only
+      // reads these mirrored rows).
+      const pk = parseSeederRecordKey(key)
+      if (!pk) return
+      const localKey = 'groupSeeder:' + groupId + ':' + pk
+      const existing = await db.get(localKey).catch(() => null)
+      if (acceptSeederRecord({ incoming: value, existing: existing?.value, keyPubkey: pk })) {
+        await db.put(localKey, { ...value, groupId })
+        _emitBlindPeersChanged()
       }
       return
     }
