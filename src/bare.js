@@ -979,13 +979,38 @@ async function revokeGroupSeederRecord (pubkeyHex) {
   const profile = await getProfile().catch(() => null)
   const revokedBy = (profile?.identityPublicKey || profile?.publicKey || null)
   const key = seederRecordKey(pubkeyHex)
-  for (const [groupId, base] of bases) {
-    if (!base?.writable) continue
+
+  // Source the groups to revoke from the LOCAL `groupSeeder:*` mirror, NOT from
+  // each base's Autobase view. The mirror is written synchronously when the
+  // seeder is recorded (writeGroupSeederRecord + mirrorToLocal), but the view
+  // applies asynchronously — so a quiet single-member group can be recorded in
+  // the mirror while its view lookup still returns null. Reading the view here
+  // would silently skip revoking that group: no leave is sent (the seeder keeps
+  // seeding it) and its un-revoked mirror row makes the seeder reappear in
+  // listBlindPeers. Map groupId → the freshest known record for the revoke base.
+  const recorded = new Map()
+  for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+    if (value?.pubkey === pubkeyHex && value.groupId) recorded.set(value.groupId, value)
+  }
+
+  for (const [groupId, mirrorValue] of recorded) {
+    if (mirrorValue?.revoked === true) { revokedGroups.add(groupId); continue }
+    const base = bases.get(groupId)
+    if (!base) {
+      // The group no longer exists locally (deleted/forgotten): there's no base
+      // to write a group-wide tombstone to, so just drop the orphaned local
+      // mirror — otherwise it keeps surfacing the seeder in listBlindPeers even
+      // after removal (a group deletion doesn't clean these up).
+      await db.del('groupSeeder:' + groupId + ':' + pubkeyHex).catch(() => {})
+      continue
+    }
+    if (!base.writable) continue // read-only member: can't revoke; leave the shared record visible
     try {
-      const existingNode = await base.view.get(key).catch(() => null)
-      if (!existingNode?.value) continue // seeder was never recorded in this group
-      if (existingNode.value.revoked === true) { revokedGroups.add(groupId); continue }
-      const value = buildSeederRevocation({ pubkey: pubkeyHex, existing: existingNode.value, revokedBy, now: Date.now() })
+      // Prefer the view row's fields (freshest addedBy/addedAt) but fall back to
+      // the mirror when the view hasn't applied the record yet — the whole point.
+      const viewNode = await base.view.get(key).catch(() => null)
+      const existing = viewNode?.value || mirrorValue
+      const value = buildSeederRevocation({ pubkey: pubkeyHex, existing, revokedBy, now: Date.now() })
       await safeAppend(base, { op: 'put', type: 'seeder', key, value })
       await db.put('groupSeeder:' + groupId + ':' + pubkeyHex, { ...value, groupId }).catch(() => {})
       revokedGroups.add(groupId)
@@ -1004,6 +1029,10 @@ async function listBlindPeers () {
   }
   for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
     if (!value?.pubkey || value.revoked === true) continue
+    // Skip records for groups that no longer exist locally (deleted/forgotten) —
+    // otherwise a leftover mirror row surfaces a seeder for a group the user no
+    // longer has (the "reappears seeding 0 groups" orphan).
+    if (value.groupId && !bases.has(value.groupId)) continue
     const local = byPubkey.get(value.pubkey)
     if (local) {
       if (!local.nickname && value.nickname) local.nickname = value.nickname
