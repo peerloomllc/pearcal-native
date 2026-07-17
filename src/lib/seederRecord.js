@@ -79,6 +79,27 @@ function buildSeederRecord ({ pubkey, nickname = null, addedBy = null, existing 
   }
 }
 
+// Build a revocation (tombstone) record for group-wide removal (Phase 2,
+// proposal 2026-07-17-seeder-group-revocation). Sets revoked/revokedAt/revokedBy
+// and bumps updatedAt so the tombstone wins LWW; preserves the identity fields
+// (pubkey, nickname, addedBy, addedAt) from the existing row so re-admit history
+// survives. `revokedBy` is the revoking member's identity (informational; not
+// verified — the group base's writer-auth already gates who can append).
+function buildSeederRevocation ({ pubkey, existing = null, revokedBy = null, now = Date.now() }) {
+  const pk = String(pubkey ?? existing?.pubkey ?? '').toLowerCase()
+  return {
+    pubkey: pk,
+    nickname: existing?.nickname ?? null,
+    addedBy: existing?.addedBy ?? null,
+    addedAt: existing?.addedAt ?? now,
+    updatedAt: now,
+    revoked: true,
+    revokedAt: now,
+    revokedBy: revokedBy ?? null,
+    v: 1,
+  }
+}
+
 module.exports = {
   KEY_PREFIX,
   seederRecordKey,
@@ -86,5 +107,6 @@ module.exports = {
   isValidSeederRecord,
   acceptSeederRecord,
   buildSeederRecord,
+  buildSeederRevocation,
   isHex64,
 }

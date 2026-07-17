@@ -5,7 +5,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const {
   seederRecordKey, parseSeederRecordKey, isValidSeederRecord,
-  acceptSeederRecord, buildSeederRecord,
+  acceptSeederRecord, buildSeederRecord, buildSeederRevocation,
 } = require('../src/lib/seederRecord.js')
 
 const PK = 'a'.repeat(64)
@@ -70,4 +70,45 @@ test('acceptSeederRecord: LWW — strictly newer wins, equal does not', () => {
 
 test('acceptSeederRecord: an invalid incoming row is never accepted', () => {
   assert.equal(acceptSeederRecord({ incoming: { pubkey: 'nope' }, existing: null, keyPubkey: PK, now: NOW }), false)
+})
+
+// ── group-wide revocation tombstone (Phase 2) ───────────────────────────────
+test('buildSeederRevocation: sets tombstone fields, preserves history, bumps updatedAt', () => {
+  const first = buildSeederRecord({ pubkey: PK, nickname: 'Umbrel', addedBy: BY, now: NOW })
+  const rev = buildSeederRevocation({ pubkey: PK, existing: first, revokedBy: BY, now: NOW + 9000 })
+  assert.equal(rev.pubkey, PK)
+  assert.equal(rev.revoked, true)
+  assert.equal(rev.revokedAt, NOW + 9000)
+  assert.equal(rev.revokedBy, BY)
+  assert.equal(rev.updatedAt, NOW + 9000) // bumped so it wins LWW
+  assert.equal(rev.addedBy, BY)           // history preserved
+  assert.equal(rev.addedAt, NOW)          // history preserved
+  assert.equal(rev.nickname, 'Umbrel')    // preserved
+  assert.equal(rev.v, 1)
+})
+
+test('buildSeederRevocation: works with no existing row (revoke a bare pubkey)', () => {
+  const rev = buildSeederRevocation({ pubkey: PK, revokedBy: BY, now: NOW })
+  assert.equal(rev.revoked, true)
+  assert.equal(rev.addedAt, NOW)          // defaults to now
+  assert.equal(rev.updatedAt, NOW)
+})
+
+test('isValidSeederRecord: a revoked row is well-formed (revoked needs revokedAt)', () => {
+  const rev = buildSeederRevocation({ pubkey: PK, existing: buildSeederRecord({ pubkey: PK, now: NOW }), revokedBy: BY, now: NOW + 1 })
+  assert.equal(isValidSeederRecord(rev, PK, NOW + 1), true)
+  assert.equal(isValidSeederRecord({ ...rev, revokedAt: undefined }, PK, NOW + 1), false) // revoked without revokedAt
+})
+
+test('acceptSeederRecord: a revoke wins over the record it revokes; a LATER re-admit un-revokes', () => {
+  const rec = buildSeederRecord({ pubkey: PK, nickname: 'A', addedBy: BY, now: NOW })
+  const rev = buildSeederRevocation({ pubkey: PK, existing: rec, revokedBy: BY, now: NOW + 1000 })
+  // revoke is newer than the record → accepted
+  assert.equal(acceptSeederRecord({ incoming: rev, existing: rec, keyPubkey: PK, now: NOW + 5000 }), true)
+  // a re-admit AFTER the revoke (newer updatedAt, no revoked flag) → accepted, clearing the tombstone
+  const readmit = buildSeederRecord({ pubkey: PK, nickname: 'A', addedBy: BY, existing: rev, now: NOW + 2000 })
+  assert.equal(readmit.revoked, undefined)
+  assert.equal(acceptSeederRecord({ incoming: readmit, existing: rev, keyPubkey: PK, now: NOW + 5000 }), true)
+  // a stale revoke does NOT overturn a newer re-admit
+  assert.equal(acceptSeederRecord({ incoming: rev, existing: readmit, keyPubkey: PK, now: NOW + 5000 }), false)
 })
