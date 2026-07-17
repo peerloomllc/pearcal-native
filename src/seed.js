@@ -75,7 +75,14 @@ let dataDir = null
 let _booted = false
 const bootTs = _now()
 const enrolled = new Map() // groupId -> enrollment row
-const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex }
+const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex, discovery }
+
+// Periodic re-announce+re-lookup of every mounted topic so the seeder re-discovers
+// devices that rejoined under a new ephemeral swarm pubkey (RCA
+// proposals/2026-07-17-seeder-discovery-staleness-rca.md). Kept modest — a refresh
+// is a couple of DHT round-trips per topic.
+const DISCOVERY_REFRESH_MS = 90 * 1000
+let _discoveryRefreshTimer = null
 
 // ── Seeder QR pairing (proposal 2026-07-15-pearcal-seeder-port, QR-pairing
 // model). The seeder shows a QR = one-time rendezvous topic + its pubkey; the
@@ -185,10 +192,26 @@ async function mountGroup (enrollment) {
   const core = store.get({ key: b4a.from(groupKey, 'hex') })
   await core.ready()
   core.download({ start: 0, end: -1, linear: false })
-  const topicHex = b4a.toString(topicForGroupKey(groupKey), 'hex')
-  swarm.join(b4a.from(topicHex, 'hex'), { server: true, client: true })
-  const entry = { core, writerCores: new Map(), topicHex }
+  // A blind seeder never holds the encryptionKey, so it cannot tell whether an
+  // enrolled group is ENCRYPTED (bare.js joins the domain-separated blake2b topic)
+  // or LEGACY/unencrypted (bare.js joins the RAW groupKey topic). Joining only the
+  // blake2b topic silently strands every legacy group: members are on the raw
+  // topic, seeders on the blake2b topic, and they never meet over the swarm (only
+  // via the one-time QR rendezvous). So join BOTH — the wrong one is just an empty
+  // extra join. See RCA proposals/2026-07-17-seeder-discovery-staleness-rca.md.
+  const encTopic = topicForGroupKey(groupKey) // encrypted-branch: blake2b(domain, groupKey)
+  const rawTopic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex') // legacy-branch: raw groupKey
+  const topicHex = b4a.toString(encTopic, 'hex')
+  const rawTopicHex = b4a.toString(rawTopic, 'hex')
+  // Keep the PeerDiscovery handles so the periodic refresh (see init) can re-run
+  // announce+lookup — members re-announce under a NEW swarm pubkey on every app
+  // restart (bare.js uses an ephemeral swarm keypair), so a one-shot join would
+  // never re-discover a device that reboots.
+  const discovery = swarm.join(encTopic, { server: true, client: true })
+  const rawDiscovery = rawTopicHex === topicHex ? null : swarm.join(rawTopic, { server: true, client: true })
+  const entry = { core, writerCores: new Map(), topicHex, rawTopicHex, discovery, rawDiscovery }
   mounted.set(groupId, entry)
+  if (rawDiscovery) console.log('[seed] also joined legacy raw topic', rawTopicHex.slice(0, 12) + '… for', groupId)
   console.log('[seed] mounted group', groupId, '— topic', topicHex.slice(0, 12) + '…')
   return entry
 }
@@ -471,6 +494,9 @@ async function leaveSeedGroup (groupId) {
   const entry = mounted.get(groupId)
   if (entry) {
     try { swarm.leave(b4a.from(entry.topicHex, 'hex')).catch(() => {}) } catch {}
+    if (entry.rawTopicHex && entry.rawTopicHex !== entry.topicHex) {
+      try { swarm.leave(b4a.from(entry.rawTopicHex, 'hex')).catch(() => {}) } catch {}
+    }
     try { await entry.core.close() } catch {}
     for (const c of entry.writerCores.values()) { try { await c.close() } catch {} }
     mounted.delete(groupId)
@@ -503,7 +529,23 @@ async function init (dir) {
   swarm = new Hyperswarm({ keyPair: identity })
   // Blind replication: replicate the whole corestore to any connected peer, and
   // open the writer-announce channel so members tell us their writer cores.
-  swarm.on('connection', (conn) => {
+  swarm.on('connection', (conn, info) => {
+    // Diagnostic (seeder-discovery investigation): log who connects, on which
+    // topic(s), and the total peer count — so `peers:N` can be attributed to real
+    // remotes instead of guessed. Cheap; safe to keep while diagnosing.
+    try {
+      const rpk = conn.remotePublicKey ? b4a.toString(conn.remotePublicKey, 'hex').slice(0, 16) : '?'
+      const topics = (info && info.topics) ? info.topics.map((t) => b4a.toString(t, 'hex').slice(0, 12)).join(',') : ''
+      const client = info ? !!info.client : false
+      console.log('[seed] +conn peer', rpk, client ? '(we dialed)' : '(they dialed)',
+                  topics ? 'topics=' + topics : '', '| peers now', swarm.connections.size)
+      conn.on('close', () => {
+        console.log('[seed] -conn peer', rpk, '| peers now', swarm.connections.size)
+        // Prompt re-discovery of the dropped peer (mirrors bare.js's
+        // stream.on('close') -> swarm.flush()) instead of waiting a full tick.
+        try { swarm.flush().catch(() => {}) } catch (e) {}
+      })
+    } catch (e) {}
     const s = store.replicate(conn)
     s.on('error', () => {})
     conn.on('error', () => {})
@@ -517,6 +559,28 @@ async function init (dir) {
   for (const enr of enrolled.values()) {
     await mountGroup(enr).catch((e) => console.warn('[seed] mount error', enr.groupId, e?.message))
   }
+
+  // Discovery refresh loop (RCA proposals/2026-07-17-seeder-discovery-staleness-rca.md).
+  // A one-shot swarm.join only dials the peers present at mount; members re-announce
+  // under a NEW ephemeral swarm pubkey on every app restart, so without a periodic
+  // re-announce+re-lookup the seeder loses devices as they cycle and never re-finds
+  // them (until the seeder itself restarts). Re-refresh each mounted topic + flush.
+  if (_discoveryRefreshTimer) { try { clearInterval(_discoveryRefreshTimer) } catch {} }
+  let _lastPeerCount = -1
+  _discoveryRefreshTimer = setInterval(() => {
+    for (const entry of mounted.values()) {
+      try { entry.discovery?.refresh?.({ client: true, server: true }) } catch (e) {}
+      try { entry.rawDiscovery?.refresh?.({ client: true, server: true }) } catch (e) {}
+    }
+    try { swarm.flush().catch(() => {}) } catch (e) {}
+    // Quiet by default: only log when the connected-peer count changes (the
+    // per-connection +conn/-conn lines already trace individual peers).
+    try {
+      const c = swarm.connections.size
+      if (c !== _lastPeerCount) { console.log('[seed] peers:', c, '(was', _lastPeerCount < 0 ? 0 : _lastPeerCount, ')'); _lastPeerCount = c }
+    } catch (e) {}
+  }, DISCOVERY_REFRESH_MS)
+
   _booted = true
   console.log('[seed] booted — pubkey', b4a.toString(identity.publicKey, 'hex').slice(0, 16) + '…',
               '| enrolled groups:', enrolled.size,
