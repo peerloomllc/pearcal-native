@@ -82,7 +82,13 @@ function log (tag, msg) {
 
 async function main () {
   const opts = parseArgs(process.argv)
-  const dataDir = opts.dataDir || path.join(os.homedir(), '.pearcal-seed')
+  // Default data dir. On Windows the seeder runs as a LocalSystem service whose
+  // os.homedir() is the hidden system profile, so use the machine-wide
+  // %ProgramData%\PearCal Seeder (matches the installer's open-ui.vbs token path);
+  // elsewhere ~/.pearcal-seed (shared with the .pkg / launchd / Umbrel installs).
+  const dataDir = opts.dataDir || (process.platform === 'win32'
+    ? path.join(process.env.ProgramData || os.homedir(), 'PearCal Seeder')
+    : path.join(os.homedir(), '.pearcal-seed'))
   fs.mkdirSync(dataDir, { recursive: true })
   const paths = resolvePaths(opts)
   log('host', `bare=${paths.barePath}`)
