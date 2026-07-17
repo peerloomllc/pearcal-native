@@ -19,9 +19,11 @@ const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   buildSeedEnrollBatch, parseSeedEnrollAck, autoFollowEligible,
+  buildSeedLeave, parseSeedLeaveAck,
 } = require('./lib/seedEnroll.js')
 const {
   seederRecordKey, parseSeederRecordKey, buildSeederRecord, acceptSeederRecord,
+  buildSeederRevocation,
 } = require('./lib/seederRecord.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
@@ -865,6 +867,41 @@ function _sendSeedInvites (msg, invites) {
   try { msg.send(buildSeedEnrollBatch(invites)) } catch (e) {}
 }
 
+// Group-wide revocation (seeder-record Phase 2). The set of groupIds for which
+// THIS seeder has a `revoked` group-shared record locally mirrored — used to (a)
+// exclude a just-revoked group from the auto-follow re-push (else it would
+// resurrect it) and (b) drive the leave-signal replay on channel open.
+async function _revokedGroupIdsForSeeder (pubkeyHex) {
+  const revoked = new Set()
+  if (!pubkeyHex) return revoked
+  try {
+    for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+      if (value?.pubkey === pubkeyHex && value.revoked === true && value.groupId) revoked.add(value.groupId)
+    }
+  } catch (e) { /* best-effort */ }
+  return revoked
+}
+
+// Tell a connected seeder to leave groups it was revoked from. Immediate when
+// the channel is open; otherwise a no-op here — the durable path is the replay
+// on the next channel open (_replaySeederLeaves), driven by the replicated
+// tombstone.
+function _sendSeedLeave (pubkeyHex, groupIds) {
+  const list = [...groupIds].filter(Boolean)
+  if (!list.length) return
+  const msg = seedEnrollChannels.get(pubkeyHex)
+  if (!msg) return
+  try { msg.send(buildSeedLeave(list)) } catch (e) {}
+}
+
+// On a fresh seed-enroll channel, push a leave for every group this seeder is
+// currently revoked from. Any trusted member enforces — this is what makes the
+// seeder eventually leave even if the revoker is offline.
+async function _replaySeederLeaves (pubkeyHex) {
+  const revoked = await _revokedGroupIdsForSeeder(pubkeyHex)
+  if (revoked.size) _sendSeedLeave(pubkeyHex, revoked)
+}
+
 // Push every group the user is in to a specific connected seeder (on channel
 // open, or when the user just enabled auto-follow). Idempotent on the seeder
 // (already-enrolled groups short-circuit).
@@ -873,9 +910,14 @@ async function pushAllGroupsToSeeder (pubkeyHex) {
   if (!msg) return
   if (!(await _isAutoFollowSeeder(pubkeyHex))) return
   try {
-    const { bundle } = await mintSeedBundle()
-    const invites = (bundle || '').split(/[\r\n]+/).map(s => s.trim()).filter(Boolean)
-    _sendSeedInvites(msg, invites)
+    const profile = await getProfile()
+    const inviterId = _seedInviterId(profile)
+    if (!inviterId) return
+    // Never re-enroll a group this seeder was revoked from (else the re-push
+    // resurrects what removeBlindPeer just tombstoned).
+    const revoked = await _revokedGroupIdsForSeeder(pubkeyHex)
+    const groups = (await listGroups()).filter(g => g && g.id && g.groupKey && !revoked.has(g.id))
+    _sendSeedInvites(msg, groups.map(g => buildSeedInvite(g, inviterId)))
   } catch (e) { /* best-effort */ }
 }
 
@@ -885,6 +927,10 @@ async function pushGroupToAutoFollowSeeders (groupId) {
   let invite = null
   for (const [pubkeyHex, msg] of seedEnrollChannels) {
     if (!(await _isAutoFollowSeeder(pubkeyHex))) continue
+    // Don't push a group this seeder was revoked from (rare — a revoked+re-created
+    // group id collision — but keeps the invariant that revoked never re-enrolls).
+    const revoked = await _revokedGroupIdsForSeeder(pubkeyHex)
+    if (revoked.has(groupId)) continue
     if (invite === null) {
       try { invite = (await mintSeedInvite(groupId)).invite } catch (e) { return }
     }
@@ -912,8 +958,40 @@ async function writeGroupSeederRecord (pubkeyHex, oneGroupId = null) {
       const existingNode = await base.view.get(key).catch(() => null)
       const value = buildSeederRecord({ pubkey: pubkeyHex, nickname, addedBy, existing: existingNode?.value, now: Date.now() })
       await safeAppend(base, { op: 'put', type: 'seeder', key, value })
+      // Mirror immediately (not just via apply→mirrorToLocal) so a re-admit clears
+      // a prior local `revoked` groupSeeder mirror synchronously — otherwise the
+      // revoked-filter in pushAllGroupsToSeeder would skip re-enrolling this group.
+      await db.put('groupSeeder:' + groupId + ':' + pubkeyHex, { ...value, groupId }).catch(() => {})
     } catch (e) { /* per-group best-effort */ }
   }
+}
+
+// Group-wide revocation (seeder-record Phase 2, proposal 2026-07-17): tombstone
+// the `seeder:{pubkey}` record in every group it was recorded in. Writes a
+// `revoked` record (LWW-newer) to each group base this device can write →
+// replicates → every member drops it from listBlindPeers + stops pushing to it.
+// Mirrors the tombstone locally immediately so this device's UI + the leave-
+// signal replay react without waiting for the apply round-trip. Returns the set
+// of groupIds revoked (for the immediate leave signal).
+async function revokeGroupSeederRecord (pubkeyHex) {
+  const revokedGroups = new Set()
+  if (typeof pubkeyHex !== 'string' || !pubkeyHex) return revokedGroups
+  const profile = await getProfile().catch(() => null)
+  const revokedBy = (profile?.identityPublicKey || profile?.publicKey || null)
+  const key = seederRecordKey(pubkeyHex)
+  for (const [groupId, base] of bases) {
+    if (!base?.writable) continue
+    try {
+      const existingNode = await base.view.get(key).catch(() => null)
+      if (!existingNode?.value) continue // seeder was never recorded in this group
+      if (existingNode.value.revoked === true) { revokedGroups.add(groupId); continue }
+      const value = buildSeederRevocation({ pubkey: pubkeyHex, existing: existingNode.value, revokedBy, now: Date.now() })
+      await safeAppend(base, { op: 'put', type: 'seeder', key, value })
+      await db.put('groupSeeder:' + groupId + ':' + pubkeyHex, { ...value, groupId }).catch(() => {})
+      revokedGroups.add(groupId)
+    } catch (e) { /* per-group best-effort */ }
+  }
+  return revokedGroups
 }
 
 // List the blind peers this identity knows: local follows (this device admitted /
@@ -951,15 +1029,26 @@ function _emitBlindPeersChanged () {
   try { send({ type: 'event', event: 'blindPeersChanged', data: null }) } catch (e) {}
 }
 
-// Forget a paired blind peer locally (stops the auto-follow / removes it from
-// the list). This does NOT cryptographically revoke — the seeder still holds the
-// ciphertext it was given; true revocation (a signed tombstone across each
-// group's base, PearCircle seederRevocation) is a follow-up.
+// Remove a blind peer — group-wide (seeder-record Phase 2). Drops the local
+// follow AND tombstones the seeder's group-shared record in every group it was
+// recorded in, so every member drops it and the seeder is told to leave (now if
+// connected, else replayed on the next connect by any trusted member). This is
+// availability/hygiene revocation, NOT cryptographic erasure — the seeder only
+// ever held blind ciphertext it could never read; it stops receiving future
+// updates. Re-admitting the same seeder un-revokes it (LWW-newer plain record).
 async function removeBlindPeer (pubkey) {
   if (typeof pubkey !== 'string' || !pubkey) throw new Error('removeBlindPeer: pubkey required')
   await db.del('seederFollow:' + pubkey).catch(() => {})
+  // Local removal tombstone: the seeder-hello handler upserts a seederFollow row
+  // on every connection, so without this a hello arriving right after removal (the
+  // connection is still live for a beat) would resurrect the just-removed seeder in
+  // the list with auto-follow off. The tombstone tells the hello handler not to
+  // re-add it; any explicit re-admit (QR pair / auto-follow opt-in) clears it.
+  await db.put('seederRemoved:' + pubkey, { ts: Date.now() }).catch(() => {})
+  const revokedGroups = await revokeGroupSeederRecord(pubkey)
+  if (revokedGroups.size) _sendSeedLeave(pubkey, revokedGroups)
   _emitBlindPeersChanged()
-  return { ok: true, pubkey }
+  return { ok: true, pubkey, revoked: [...revokedGroups] }
 }
 
 // Toggle live auto-follow (#116 facet #3) for a blind peer. Enabling shares this
@@ -985,9 +1074,13 @@ async function setSeederAutoFollow (pubkey, enabled) {
   await db.put('seederFollow:' + pubkey, { ...base, autoFollow: !!enabled })
   _emitBlindPeersChanged()
   if (enabled) {
-    await pushAllGroupsToSeeder(pubkey).catch(() => {})
-    // Share this admission with the whole group so other members see it too.
+    // Opting back in is an explicit re-admit — clear any removal tombstone so the
+    // hello handler lists it again (Phase 2).
+    await db.del('seederRemoved:' + pubkey).catch(() => {})
+    // Un-revoke FIRST (writes a newer plain record + clears the local revoked
+    // mirror) so the subsequent push doesn't skip these groups as still-revoked.
     await writeGroupSeederRecord(pubkey).catch(() => {})
+    await pushAllGroupsToSeeder(pubkey).catch(() => {})
   }
   return { ok: true, pubkey, autoFollow: !!enabled }
 }
@@ -1028,6 +1121,9 @@ function _maybeSetupPairScanChannel (mux, remotePubkeyHex) {
     },
     onAck: async ({ enrolled, names, nickname }) => {
       // Record the paired blind peer so the UI can list it and offer removal.
+      // Explicit re-admit clears any prior removal tombstone (Phase 2) so the
+      // hello handler will list it again.
+      await db.del('seederRemoved:' + session.seederKeyHex).catch(() => {})
       const existing = await db.get('seederFollow:' + session.seederKeyHex).catch(() => null)
       await db.put('seederFollow:' + session.seederKeyHex, {
         pubkey: session.seederKeyHex,
@@ -6599,6 +6695,12 @@ async function _doInit (dir, attempt = 0) {
               onmessage: async function (buf) {
                 try {
                   const hello = JSON.parse(buf.toString()) || {}
+                  // Don't resurrect a seeder the user explicitly removed (Phase 2).
+                  // Removal leaves the connection live for a beat, so a trailing
+                  // hello would re-add the follow row. The removal tombstone gates
+                  // that; an explicit re-admit (QR pair / auto-follow) clears it.
+                  const removed = await db.get('seederRemoved:' + _remotePubkeyHex).catch(() => null)
+                  if (removed?.value) return
                   const nickname = (typeof hello.nickname === 'string' && hello.nickname)
                     ? hello.nickname.slice(0, 64) : null
                   const groupCount = Number.isInteger(hello.groupCount) ? hello.groupCount : null
@@ -6649,6 +6751,11 @@ async function _doInit (dir, attempt = 0) {
               // If this peer is already an auto-follow seeder, seed it with every
               // group now (idempotent on the seeder side).
               pushAllGroupsToSeeder(_remotePubkeyHex).catch(() => {})
+              // Durable revocation (Phase 2): replay a leave for any group this
+              // seeder was revoked from. Ungated by auto-follow — a revoked seeder
+              // has no local follow row — so ANY trusted member connecting enforces
+              // the leave even if the original revoker is offline.
+              _replaySeederLeaves(_remotePubkeyHex).catch(() => {})
             },
             onclose () {
               if (seedEnrollChannels.get(_remotePubkeyHex) === enrollMsg) {
@@ -6663,6 +6770,11 @@ async function _doInit (dir, attempt = 0) {
                 // writer cores over the open connection so it learns them (#116
                 // facet #1) instead of waiting for the periodic safety net.
                 try {
+                  // Revocation ack (Phase 2): the seeder left these groups. The
+                  // tombstone is permanent + replay is idempotent, so there's
+                  // nothing to clear — just log for observability.
+                  const left = parseSeedLeaveAck(buf)
+                  if (left.length) console.log('[seed-enroll] seeder left', left.length, 'revoked group(s):', left.join(', '))
                   const enrolled = parseSeedEnrollAck(buf)
                   if (!enrolled.length) return
                   const _p = await getProfile().catch(() => null)

@@ -48,6 +48,43 @@ function parseSeedEnrollAck (buf) {
   } catch { return [] }
 }
 
+// ── Group-wide revocation (seeder-record Phase 2, proposal 2026-07-17) ────────
+// A member removing a blind seeder pushes the groupIds it should LEAVE over the
+// SAME seed-enroll channel (no new channel/message index — both ends JSON-parse
+// one message and ignore unknown keys, so this is wire-compatible with an
+// un-upgraded seeder, which simply never leaves). Durability comes from members
+// replaying this on every connect, driven by the replicated `revoked` tombstone
+// — a blind seeder can't read that tombstone itself.
+
+// Member → seeder: groupIds the seeder should stop hosting.
+function buildSeedLeave (groupIds) {
+  const list = Array.isArray(groupIds) ? groupIds.filter(s => typeof s === 'string' && s) : []
+  return Buffer.from(JSON.stringify({ leaveGroups: list }))
+}
+
+// Seeder side: recover the groupIds to leave. Defensive — [] for anything malformed.
+function parseSeedLeave (buf) {
+  try {
+    const parsed = JSON.parse(buf.toString()) || {}
+    if (!Array.isArray(parsed.leaveGroups)) return []
+    return parsed.leaveGroups.filter(s => typeof s === 'string' && s)
+  } catch { return [] }
+}
+
+// Seeder → member: the groupIds the seeder actually left.
+function buildSeedLeaveAck (groupIds) {
+  const list = Array.isArray(groupIds) ? groupIds.filter(s => typeof s === 'string' && s) : []
+  return Buffer.from(JSON.stringify({ left: list }))
+}
+
+function parseSeedLeaveAck (buf) {
+  try {
+    const parsed = JSON.parse(buf.toString()) || {}
+    if (!Array.isArray(parsed.left)) return []
+    return parsed.left.filter(s => typeof s === 'string' && s)
+  } catch { return [] }
+}
+
 // The trust gate. Only a seederFollow row explicitly marked autoFollow:true is
 // eligible for an auto-push. QR pairing sets it (the pubkey was scanned and
 // anchored); a paste-admitted seeder starts false and the user opts in via the
@@ -63,5 +100,9 @@ module.exports = {
   parseSeedEnrollBatch,
   buildSeedEnrollAck,
   parseSeedEnrollAck,
+  buildSeedLeave,
+  parseSeedLeave,
+  buildSeedLeaveAck,
+  parseSeedLeaveAck,
   autoFollowEligible,
 }

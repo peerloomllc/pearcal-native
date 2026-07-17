@@ -9,6 +9,8 @@ const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   buildSeedEnrollBatch, parseSeedEnrollBatch,
   buildSeedEnrollAck, parseSeedEnrollAck,
+  buildSeedLeave, parseSeedLeave,
+  buildSeedLeaveAck, parseSeedLeaveAck,
   autoFollowEligible,
 } = require('../src/lib/seedEnroll.js')
 
@@ -51,6 +53,43 @@ test('parseSeedEnrollAck is defensive against malformed frames', () => {
   assert.deepEqual(parseSeedEnrollAck(Buffer.from('garbage')), [])
   assert.deepEqual(parseSeedEnrollAck(Buffer.from('{"enrolled":null}')), [])
   assert.deepEqual(parseSeedEnrollAck(Buffer.from('{"enrolled":[1]}')), [])
+})
+
+// ── group-wide revocation leave signal (Phase 2) ────────────────────────────
+test('buildSeedLeave / parseSeedLeave round-trips groupIds (member → seeder)', () => {
+  const buf = buildSeedLeave(['gseed01', 'gseed02'])
+  assert.deepEqual(parseSeedLeave(buf), ['gseed01', 'gseed02'])
+})
+
+test('buildSeedLeave drops non-string / empty groupIds', () => {
+  const buf = buildSeedLeave(['gseed01', '', null, 42, 'gseed02', undefined])
+  assert.deepEqual(parseSeedLeave(buf), ['gseed01', 'gseed02'])
+})
+
+test('parseSeedLeave is defensive against malformed frames', () => {
+  assert.deepEqual(parseSeedLeave(Buffer.from('not json')), [])
+  assert.deepEqual(parseSeedLeave(Buffer.from('{}')), [])
+  assert.deepEqual(parseSeedLeave(Buffer.from('{"leaveGroups":"nope"}')), [])
+  assert.deepEqual(parseSeedLeave(Buffer.from('{"leaveGroups":[1,2]}')), [])
+})
+
+test('leave and enroll travel over the SAME message — an enroll frame yields no leave and vice versa', () => {
+  // The channel carries one bidirectional message; each end reads only its keys.
+  const enrollFrame = buildSeedEnrollBatch([INV1])
+  assert.deepEqual(parseSeedLeave(enrollFrame), [])
+  const leaveFrame = buildSeedLeave(['gseed01'])
+  assert.deepEqual(parseSeedEnrollBatch(leaveFrame), [])
+})
+
+test('buildSeedLeaveAck / parseSeedLeaveAck round-trips left groupIds (seeder → member)', () => {
+  const buf = buildSeedLeaveAck(['gseed01'])
+  assert.deepEqual(parseSeedLeaveAck(buf), ['gseed01'])
+})
+
+test('parseSeedLeaveAck is defensive; an enroll ack yields no leave ack', () => {
+  assert.deepEqual(parseSeedLeaveAck(Buffer.from('garbage')), [])
+  assert.deepEqual(parseSeedLeaveAck(Buffer.from('{"left":null}')), [])
+  assert.deepEqual(parseSeedLeaveAck(buildSeedEnrollAck(['g1'])), [])
 })
 
 // ── the trust gate (security boundary) ──────────────────────────────────────

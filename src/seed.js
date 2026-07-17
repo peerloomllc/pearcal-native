@@ -30,6 +30,7 @@ const { setupSeederPairChannel, SEEDER_PAIR_PROTOCOL } = require('./lib/seederPa
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   parseSeedEnrollBatch, buildSeedEnrollAck,
+  parseSeedLeave, buildSeedLeaveAck,
 } = require('./lib/seedEnroll.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
@@ -228,6 +229,7 @@ async function setupSeedEnrollListener (stream) {
   if (!channel) return
   msg = channel.addMessage({
     onmessage: async (buf) => {
+      // Live enroll: mount groups the member pushed (facet #3).
       const invites = parseSeedEnrollBatch(buf)
       const enrolled = []
       for (const invite of invites) {
@@ -239,6 +241,23 @@ async function setupSeedEnrollListener (stream) {
       if (enrolled.length) {
         console.log('[seed] live-enroll: mounted', enrolled.length, 'group(s):', enrolled.join(', '))
         try { msg.send(buildSeedEnrollAck(enrolled)) } catch {}
+      }
+      // Group-wide revocation (Phase 2): a member removed us from these groups.
+      // Leave each (idempotent — leaveSeedGroup on an un-mounted group is a
+      // no-op) and ack so the member logs it. We're blind and can't read the
+      // group's `revoked` tombstone ourselves; this channel signal is how we
+      // learn. Not writer-authenticated — worst case a spurious leave costs
+      // availability only (a legit auto-follow member re-enrolls a non-revoked
+      // group on its next connect), never disclosure.
+      const leaveGroups = parseSeedLeave(buf)
+      const left = []
+      for (const groupId of leaveGroups) {
+        try { await leaveSeedGroup(groupId); left.push(groupId) }
+        catch (e) { /* idempotent; a bad id doesn't abort the batch */ }
+      }
+      if (left.length) {
+        console.log('[seed] revocation: left', left.length, 'group(s):', left.join(', '))
+        try { msg.send(buildSeedLeaveAck(left)) } catch {}
       }
     },
   })
