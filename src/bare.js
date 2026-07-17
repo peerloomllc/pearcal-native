@@ -6337,7 +6337,17 @@ function stopRealtimeSyncTick () {
   if (_realtimeSyncTimer) { clearInterval(_realtimeSyncTimer); _realtimeSyncTimer = null }
 }
 
+// Guard against concurrent shutdowns: on a quick force-close→reopen, the RN
+// shell's teardown sends `shutdown` while the reopen's `init` may also reach the
+// re-init branch (which calls shutdown()). Two concurrent runs would double-close
+// swarm/store/db and can hang. Share one in-flight run instead.
+let _shuttingDown = null
 async function shutdown () {
+  if (_shuttingDown) return _shuttingDown
+  _shuttingDown = _doShutdown()
+  try { await _shuttingDown } finally { _shuttingDown = null }
+}
+async function _doShutdown () {
   try {
     stopRealtimeSyncTick()
     await closePersonalBase()
