@@ -1764,6 +1764,13 @@ async function deleteGroup (id) {
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
     await db.del(key)
   }
+  // Purge this group's blind-seeder mirror rows so a deleted/forgotten group
+  // can't leave orphaned `groupSeeder:{id}:*` rows behind (they'd surface a ghost
+  // seeder for a group the user no longer has). This is the clean fix behind
+  // PR #213's listBlindPeers/removeBlindPeer orphan workarounds.
+  for await (const { key } of db.createReadStream({ gt: 'groupSeeder:' + id + ':', lt: 'groupSeeder:' + id + ':\xff' })) {
+    await db.del(key).catch(() => {})
+  }
   // Clean up events: remove this group from each event's groups array.
   // If an event belongs to no other groups, delete it entirely.
   for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
