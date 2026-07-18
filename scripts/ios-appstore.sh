@@ -106,6 +106,19 @@ security set-key-partition-list \
 # PATH for xcodebuild invocations so the system rsync is found instead.
 XCODE_PATH=$(printf '%s' "$PATH" | sed 's|/opt/homebrew/bin:||g; s|:/opt/homebrew/bin||g')
 
+# ── Sync CocoaPods sandbox with current dependencies ────────────────────────
+# release.sh rsyncs the repo (including the Linux-generated ios/Podfile.lock)
+# to the Mac just before this script runs, but excludes node_modules.  The
+# react-native-bare-kit pod embeds a content hash that differs between the
+# Linux bundle and the Mac's xcframeworks, so the rsynced Podfile.lock never
+# matches the Mac's Pods/Manifest.lock and Xcode's "Check Pods Manifest.lock"
+# phase fails the archive.  Reinstall node deps + pods here — AFTER the rsync,
+# BEFORE archiving — so both lockfiles agree on a Mac-reproducible hash.  Runs
+# with the full PATH (Homebrew node/npm/pod), not the stripped XCODE_PATH.
+echo "Syncing CocoaPods sandbox (npm install + pod install)..."
+( cd "$REPO_ROOT" && npm install --no-audit --no-fund )
+( cd "$REPO_ROOT/ios" && pod install )
+
 # ── Archive ─────────────────────────────────────────────────────────────────
 rm -rf "$ARCHIVE_PATH"
 echo "Archiving..."
@@ -118,6 +131,14 @@ PATH="$XCODE_PATH" xcodebuild \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" \
   archive | grep -E "^(error:|warning:|note:|.*ARCHIVE)" || true
+
+# xcodebuild's exit code is masked by the grep pipe above, so verify the
+# archive actually exists rather than falling through to a confusing
+# "archive not found" during export.
+if [ ! -d "$ARCHIVE_PATH" ]; then
+  echo "Error: archive failed — $ARCHIVE_PATH was not created (see errors above)."
+  exit 1
+fi
 echo "Archive complete: $ARCHIVE_PATH"
 
 # ── Export ──────────────────────────────────────────────────────────────────
