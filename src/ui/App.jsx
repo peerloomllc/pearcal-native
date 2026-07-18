@@ -48,6 +48,9 @@ import {
 injectGlobalStyles()
 
 const IS_IOS = window.__pearPlatform === 'ios'
+// Desktop (Electron) has no camera, so QR-scan buttons are hidden in favour of
+// the paste/copy-link alternatives that sit beside them.
+const IS_DESKTOP = window.__pearPlatform === 'desktop'
 
 // ─── Donation (BTC / Lightning) ─────────────────────────────────────────────
 // Shared across the PeerLoom app family; keep constants identical.
@@ -3396,12 +3399,14 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           </div>
         ) : (
           <>
-            <button onClick={startPairScan}
-              style={{ ...pillBtn, padding:'12px 24px', fontSize:15, 
-                width:'100%', maxWidth:260, boxSizing:'border-box' }}>
-              Scan QR code
-            </button>
-            <div style={{ fontSize:12, color:colors.text.muted, marginTop:4 }}>or paste the link</div>
+            {!IS_DESKTOP && (
+              <button onClick={startPairScan}
+                style={{ ...pillBtn, padding:'12px 24px', fontSize:15,
+                  width:'100%', maxWidth:260, boxSizing:'border-box' }}>
+                Scan QR code
+              </button>
+            )}
+            <div style={{ fontSize:12, color:colors.text.muted, marginTop:4 }}>{IS_DESKTOP ? 'Paste the pairing link' : 'or paste the link'}</div>
             <textarea value={pairInput} onChange={e => { setPairInput(e.target.value); setRestoreError('') }}
               placeholder="pearcal://pair?topic=…"
               rows={2}
@@ -4870,11 +4875,13 @@ function JoinGroupModal ({ onClose, closeRef, db, sync, onJoined, onPendingJoin 
         </div>
         {!pasteMode ? (
           <>
-            <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
-              style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, 
-                display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-              <QrCode size={22} weight="thin" /> Scan QR Code
-            </button>
+            {!IS_DESKTOP && (
+              <button onClick={() => { bsCloseRef.current?.(); setTimeout(() => sync?.qrScan?.(), 50) }}
+                style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15,
+                  display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
+                <QrCode size={22} weight="thin" /> Scan QR Code
+              </button>
+            )}
             <button onClick={() => setPasteMode(true)}
               style={{ ...pillBtn, width:'100%', padding:'14px', fontSize:15, 
                 display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
@@ -5272,26 +5279,30 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
                     {encryptedCount < count && <span> · {encryptedCount} encrypted (blind), {count - encryptedCount} legacy</span>}
                   </div>
                 )}
-                <button data-haptic="light" onClick={startScan}
-                  style={{ ...pillBtn, width:'100%', padding:'12px', fontSize:15,
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                  <QrCode size={18} weight="thin" /> Scan blind peer QR
-                </button>
-                <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginTop:10,
-                  padding:'9px 11px', borderRadius:9, background:'rgba(224,168,86,0.10)',
-                  border:'1px solid rgba(224,168,86,0.28)' }}>
-                  <Warning size={15} weight="thin" color="#E0A856" style={{ flexShrink:0, marginTop:1 }} />
-                  <span style={{ fontSize:11, color: colors.text.muted, lineHeight:1.5 }}>
-                    Scanning needs your phone and the blind peer on <b>different networks</b> — if
-                    they share the same Wi-Fi, the connection often can't form. On the same network,
-                    use <b>Copy invite link</b> below instead.
-                  </span>
-                </div>
-                <div style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 0' }}>
-                  <div style={{ flex:1, height:1, background:colors.border }} />
-                  <span style={{ fontSize:11, color:colors.text.muted }}>or</span>
-                  <div style={{ flex:1, height:1, background:colors.border }} />
-                </div>
+                {!IS_DESKTOP && (
+                  <>
+                    <button data-haptic="light" onClick={startScan}
+                      style={{ ...pillBtn, width:'100%', padding:'12px', fontSize:15,
+                        display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+                      <QrCode size={18} weight="thin" /> Scan blind peer QR
+                    </button>
+                    <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginTop:10,
+                      padding:'9px 11px', borderRadius:9, background:'rgba(224,168,86,0.10)',
+                      border:'1px solid rgba(224,168,86,0.28)' }}>
+                      <Warning size={15} weight="thin" color="#E0A856" style={{ flexShrink:0, marginTop:1 }} />
+                      <span style={{ fontSize:11, color: colors.text.muted, lineHeight:1.5 }}>
+                        Scanning needs your phone and the blind peer on <b>different networks</b> — if
+                        they share the same Wi-Fi, the connection often can't form. On the same network,
+                        use <b>Copy invite link</b> below instead.
+                      </span>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 0' }}>
+                      <div style={{ flex:1, height:1, background:colors.border }} />
+                      <span style={{ fontSize:11, color:colors.text.muted }}>or</span>
+                      <div style={{ flex:1, height:1, background:colors.border }} />
+                    </div>
+                  </>
+                )}
                 <button data-haptic="light" onClick={copyBundle}
                   style={{ width:'100%', padding:'11px', fontSize:14, fontFamily:FONT,
                     background:'none', color:colors.text.primary, cursor:'pointer',

@@ -114,6 +114,96 @@ function _scheduleForEvent (ev, reminders, getMainWindow) {
   if (handles.length) _reminders.set(ev.id, handles)
 }
 
+// ── Top-K reconcile scheduling (the live path the shared UI actually uses) ────
+// The UI calls `computeUpcomingReminders(K)` then `reconcileSchedule(triples)` on
+// every save/edit/foreground (src/ui/main.jsx). Mobile services it natively
+// (app/index.tsx:376); desktop was missing it, so live-scheduled reminders never
+// armed until the daily rehydration. Triples arrive sorted ascending by fireAt.
+// This is a single global batch (not per-event), so cancel is just clearing the
+// array — which keeps the UI's frequent reconciles AND the main-process daily
+// rehydration idempotent (each pass replaces the batch, never duplicates).
+let _reconcileTimers = []
+function _reconcileSchedule (triples, getMainWindow) {
+  for (const h of _reconcileTimers) clearTimeout(h)
+  _reconcileTimers = []
+  const list = Array.isArray(triples) ? triples : []
+  const now = Date.now()
+  for (const t of list) {
+    if (!t || !t.fireAt || t.fireAt <= now) continue
+    const delay = t.fireAt - now
+    if (delay > MAX_TIMEOUT_DELAY) continue // a later reconcile arms it as it nears
+    _reconcileTimers.push(setTimeout(
+      () => _fireNotification(t.title ?? '', t.body ?? '', t.eventId ?? '', getMainWindow),
+      delay
+    ))
+  }
+}
+
+// ── Morning digest (bare emits scheduleMorningDigest/cancelMorningDigest) ─────
+// items: [{ slot, fireAt, title, body }]. Mobile schedules these in
+// app/index.tsx:834; desktop had no consumer so the digest never fired.
+let _digestTimers = []
+function _cancelMorningDigest () {
+  for (const h of _digestTimers) clearTimeout(h)
+  _digestTimers = []
+}
+function _scheduleMorningDigest (items, getMainWindow) {
+  _cancelMorningDigest()
+  const list = Array.isArray(items) ? items : []
+  const now = Date.now()
+  for (const it of list) {
+    if (!it || !it.fireAt || it.fireAt <= now) continue
+    const delay = it.fireAt - now
+    if (delay > MAX_TIMEOUT_DELAY) continue
+    _digestTimers.push(setTimeout(
+      () => _fireNotification(it.title ?? 'Good morning', it.body ?? '', 'morning-digest', getMainWindow),
+      delay
+    ))
+  }
+}
+
+// ── Sync-change notifications (bare emits syncNotify on remote calendar edits) ─
+// Mobile coalesces a burst of remote ops into one notification (app/index.tsx:245);
+// desktop had no consumer at all. Buffer + flush so a sync that applies many ops
+// fires a single "Calendar updated" instead of a stack.
+const SYNC_NOTIFY_COALESCE_MS = 2000
+let _syncBuffer = []
+let _syncTimer = null
+function _handleSyncNotify (data, getMainWindow) {
+  const title = data?.title ?? 'Calendar updated'
+  const body = data?.body ?? ''
+  // Immediate (rejoin requests, etc.) — fire it now with its OWN text, don't
+  // fold it into a coalesced burst where its message would be lost.
+  if (data?.immediate) {
+    _fireNotification(title, body, 'sync', getMainWindow)
+    return
+  }
+  // Ordinary remote edits — coalesce a burst so a sync that applies many ops
+  // fires a single notification instead of a stack.
+  _syncBuffer.push({ title, body })
+  if (!_syncTimer) {
+    _syncTimer = setTimeout(() => {
+      _syncTimer = null
+      const items = _syncBuffer; _syncBuffer = []
+      if (!items.length) return
+      if (items.length === 1) _fireNotification(items[0].title, items[0].body, 'sync', getMainWindow)
+      else _fireNotification('Calendar updated', items.length + ' updates', 'sync', getMainWindow)
+    }, SYNC_NOTIFY_COALESCE_MS)
+  }
+}
+
+// Bare→main events the mobile RN shell consumes NATIVELY (not the WebView).
+// Returns true when consumed, so bare-bridge doesn't also forward to the renderer
+// (which has no listener for them — same as mobile).
+function handleBareEvent (event, data, getMainWindow) {
+  switch (event) {
+    case 'scheduleMorningDigest': _scheduleMorningDigest(data, getMainWindow); return true
+    case 'cancelMorningDigest': _cancelMorningDigest(); return true
+    case 'syncNotify': _handleSyncNotify(data, getMainWindow); return true
+  }
+  return false
+}
+
 // Returns true if `method` was handled here (and the optional result), false
 // if it should fall through to bare. The boolean lets bare-bridge keep its
 // fast-path for everything we don't intercept.
@@ -189,6 +279,10 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
 
     case 'cancelForEvent':
       _cancelForEvent(args?.[0])
+      return { handled: true, result: null }
+
+    case 'reconcileSchedule':
+      _reconcileSchedule(args?.[0], getMainWindow)
       return { handled: true, result: null }
 
     case 'restoreAll':
@@ -299,4 +393,13 @@ function scheduleForEvent (ev, reminders, getMainWindow) {
   _scheduleForEvent(ev, reminders, getMainWindow)
 }
 
-module.exports = { tryHandle, scheduleForEvent }
+// Cold-launch / daily rehydration entry point (main/index.js). Feeds the same
+// `computeUpcomingReminders(K)` triples the UI sends through the top-K reconcile,
+// so a device that has run hidden in the tray for days still arms far-future
+// firings as they cross into the setTimeout window — without duplicating the
+// live UI reconcile (both drive the one _reconcileTimers batch).
+function reconcileSchedule (triples, getMainWindow) {
+  _reconcileSchedule(triples, getMainWindow)
+}
+
+module.exports = { tryHandle, scheduleForEvent, reconcileSchedule, handleBareEvent }
