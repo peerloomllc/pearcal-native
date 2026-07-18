@@ -48,10 +48,30 @@ const ASSETS = [
   { name: 'pearcal-v1.0.10.apk', browser_download_url: 'u/apk' }, // mobile, never picked
 ]
 
-test('selectAsset: macOS pkg + Windows exe are arch-universal', () => {
+test('selectAsset: an arch-universal macOS pkg + Windows exe serve any arch', () => {
+  // An un-suffixed .pkg (a single fat build) is offered to both Mac arches.
   assert.equal(selectAsset(ASSETS, 'darwin', 'x64').browser_download_url, 'u/pkg')
   assert.equal(selectAsset(ASSETS, 'darwin', 'arm64').browser_download_url, 'u/pkg')
   assert.equal(selectAsset(ASSETS, 'win32', 'x64').browser_download_url, 'u/exe')
+})
+
+test('selectAsset: arch-suffixed macOS pkgs match the running arch, never cross', () => {
+  // The real build (build-macos-remote.sh) emits BOTH -arm64.pkg and -x64.pkg.
+  // Each Mac must get its own arch; a wrong-arch .pkg is worse than none.
+  const pkgs = [
+    { name: 'PearCalSeeder-1.0.34-arm64.pkg', browser_download_url: 'u/pkg-arm64' },
+    { name: 'PearCalSeeder-1.0.34-arm64.pkg.sha256', browser_download_url: 'u/pkg-arm64.sha' },
+    { name: 'PearCalSeeder-1.0.34-x64.pkg', browser_download_url: 'u/pkg-x64' },
+    { name: 'PearCalSeeder-1.0.34-x64.pkg.sha256', browser_download_url: 'u/pkg-x64.sha' },
+  ]
+  assert.equal(selectAsset(pkgs, 'darwin', 'arm64').browser_download_url, 'u/pkg-arm64')
+  assert.equal(selectAsset(pkgs, 'darwin', 'x64').browser_download_url, 'u/pkg-x64')
+  // Only the arm64 pkg present → an x64 Mac gets nothing, not the arm64 build.
+  const armOnly = pkgs.filter((a) => a.name.includes('arm64'))
+  assert.equal(selectAsset(armOnly, 'darwin', 'x64'), null)
+  // sha256 sidecar resolves for the arch-matched pkg.
+  const chosen = selectAsset(pkgs, 'darwin', 'x64')
+  assert.equal(selectSha256For(pkgs, chosen.name).browser_download_url, 'u/pkg-x64.sha')
 })
 
 test('selectAsset: linux prefers the ARCH-matching AppImage, then deb', () => {
