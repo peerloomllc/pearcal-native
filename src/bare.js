@@ -15,7 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
-const { shouldIgnoreSelfMemberLeft, canClaimOwnership } = require('./lib/ownerGuard.js')
+const { shouldIgnoreSelfMemberLeft, canClaimOwnership, shouldHonorGroupDeleted } = require('./lib/ownerGuard.js')
 const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
@@ -4688,6 +4688,18 @@ async function syncPutGroup (group) {
 }
 
 async function syncDeleteGroup (groupId) {
+  // Fix (TODO #117 d): write an AUTHORITATIVE, owner-authenticated deletion
+  // record to the group's Autobase BEFORE the local purge. apply() verifies the
+  // op's Autobase-attested author (node.from.key) is the owner and marks a
+  // `deleted` tombstone that replicates to every member — and, via the blind
+  // seeder, to offline ones. Deletion no longer relies on the forgeable plaintext
+  // broadcast below (which stays as a fast-path nudge + for old-code peers). The
+  // owner keeps its base open here (the UI purges local state via db.deleteGroup,
+  // not leaveGroup), so this op flushes to peers + the seeder before any teardown.
+  const base = bases.get(groupId)
+  if (base) {
+    await safeAppend(base, { op: 'deleteGroup', groupId, ts: Date.now() }).catch(() => {})
+  }
   pendingGroupDeletes.add(groupId)
   // Durable delete tombstone: the best-effort send below only reaches seeders
   // connected right now, so record the deletion so a seeder that's offline (or on
@@ -5798,6 +5810,42 @@ function makeApply (groupId) {
           }
         }
         emitSync(val.groupId, { groupChanged: true })
+      } else if (val.op === 'deleteGroup') {
+        // Fix (TODO #117 d): a group deletion is an OWNER-ONLY, destructive
+        // action. Authenticate it by the Autobase-attested author
+        // (node.from.key) — NOT the forgeable plaintext `groupDeleted` broadcast.
+        // Same owner resolution the activity heartbeat below uses: fast path =
+        // ownerMember.writerKey; identity path resolves a paired owner device via
+        // writerIdentity:{group}:{writerKey} → ownerMember.identityPublicKey. A
+        // non-owner writer's deleteGroup op is rejected. On success we mark an
+        // authoritative `deleted` tombstone (LWW by ts) so the plaintext handler
+        // + other peers can corroborate, then purge locally. We deliberately do
+        // NOT leaveGroup() here — that calls base.close() on the very base being
+        // applied; the owner keeps its base open to replicate this op, and remote
+        // peers close their base from the (safe, out-of-apply) plaintext handler.
+        const gid = val.groupId
+        const gKey = NS.groups + gid
+        const gNode = await view.get(gKey).catch(() => null)
+        const g = gNode?.value
+        if (g && g.ownerId && nodeWriterKey) {
+          const ownerMember = (g.members ?? []).find(m => m.id === g.ownerId)
+          let isOwner = !!(ownerMember?.writerKey && ownerMember.writerKey === nodeWriterKey)
+          if (!isOwner && ownerMember?.identityPublicKey) {
+            const wi = await db.get('writerIdentity:' + gid + ':' + nodeWriterKey).catch(() => null)
+            if (wi?.value?.identityPublicKey === ownerMember.identityPublicKey) isOwner = true
+          }
+          if (!isOwner) {
+            console.warn('[deleteGroup] rejected — not owner-authored for', gid)
+          } else {
+            const ts = val.ts || Date.now()
+            if (!g.deleted || ts > (g.deletedAt || 0)) {
+              await view.put(gKey, { ...g, deleted: true, deletedAt: ts, updatedAt: ts })
+            }
+            await deleteGroup(gid).catch(() => {})
+            send({ type: 'event', event: 'groupDeleted', data: gid })
+            emitSync(null, { fullReload: true })
+          }
+        }
       }
 
       // Owner-activity heartbeat: if this op was authored by any device
@@ -7125,6 +7173,27 @@ async function _doInit (dir, attempt = 0) {
             // Handle group delete broadcast from owner
             if (parsed.groupDeleted) {
               const gid = parsed.groupDeleted
+              // Fix (TODO #117 d): `groupDeleted` is UNAUTHENTICATED plaintext —
+              // any connected peer could forge it to purge our group. Honor it
+              // ONLY if the authoritative view carries the owner-authored
+              // `deleted` tombstone (apply() sets it after verifying the op's
+              // node.from.key is the owner's writer). A genuine deletion already
+              // applies via that base op regardless of this message; this path
+              // just lets a corroborated peer tear its now-open base down
+              // promptly (safe here — outside the group-base apply loop).
+              const _base = bases.get(gid)
+              let _honor = false
+              if (_base) {
+                try {
+                  await _base.update()
+                  const _vn = await _base.view.get(NS.groups + gid).catch(() => null)
+                  _honor = shouldHonorGroupDeleted({ viewGroup: _vn?.value ?? null })
+                } catch (e) { _honor = false }
+              }
+              if (!_honor) {
+                console.warn('[groupDeleted] ignoring unauthenticated delete for', gid, '— no owner-authored deletion in the authoritative view')
+                return
+              }
               await deleteGroup(gid)
               await leaveGroup(gid)
               send({ type: 'event', event: 'groupDeleted', data: gid })
