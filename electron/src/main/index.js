@@ -22,7 +22,7 @@ if (process.platform === 'linux') {
 }
 
 const path = require('path')
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require('electron')
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog } = require('electron')
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
 const { reconcileSchedule } = require('./shell-handlers')
@@ -138,6 +138,67 @@ function scheduleNextRehydration () {
   }, REHYDRATE_INTERVAL_MS)
 }
 
+const WEBSITE = 'https://peerloomllc.com'
+const GITHUB_ISSUES = 'https://github.com/peerloomllc/pearcal-native/issues'
+
+// Minimal application menu. PearCal is tray-based and the WebView UI is
+// self-contained, so we ship just Edit (roles — required for Cmd/Ctrl text
+// shortcuts to work in inputs on macOS) + Help (About / website / report an
+// issue), plus the conventional macOS app menu. Replaces the dev-looking default
+// Electron menu on macOS (which exposed DevTools + linked to electronjs.org) and
+// the no-menu state on Windows/Linux.
+function installAppMenu () {
+  const isMac = process.platform === 'darwin'
+  const open = (url) => shell.openExternal(url).catch(() => {})
+  const showAbout = () => {
+    dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+      type: 'info',
+      title: 'About PearCal',
+      message: 'PearCal',
+      detail: 'Version ' + app.getVersion() +
+        '\n\nA peer-to-peer calendar — no accounts, no servers. Your events live only on your devices and sync directly between them.' +
+        '\n\n© PeerLoom LLC · ' + WEBSITE,
+      buttons: ['OK', 'Visit Website'],
+      defaultId: 0,
+      cancelId: 0
+    }).then(({ response }) => { if (response === 1) open(WEBSITE) }).catch(() => {})
+  }
+
+  const template = []
+  if (isMac) {
+    template.push({
+      label: 'PearCal',
+      submenu: [
+        { label: 'About PearCal', click: showAbout },
+        { type: 'separator' },
+        { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit PearCal' }
+      ]
+    })
+  }
+  template.push({
+    label: 'Edit',
+    submenu: [
+      { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+      { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
+      ...(isMac
+        ? [{ role: 'pasteAndMatchStyle' }, { role: 'delete' }, { role: 'selectAll' }]
+        : [{ role: 'delete' }, { type: 'separator' }, { role: 'selectAll' }])
+    ]
+  })
+  template.push({
+    role: 'help',
+    submenu: [
+      { label: 'PearCal Website', click: () => open(WEBSITE) },
+      { label: 'Report an Issue…', click: () => open(GITHUB_ISSUES) },
+      // macOS puts About in the app menu; Win/Linux have no app menu, so add it here.
+      ...(isMac ? [] : [{ type: 'separator' }, { label: 'About PearCal', click: showAbout }])
+    ]
+  })
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1536,
@@ -154,7 +215,7 @@ function createWindow () {
     }
   })
 
-  if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
+  installAppMenu()
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'))
 
   mainWindow.webContents.once('did-finish-load', () => {
