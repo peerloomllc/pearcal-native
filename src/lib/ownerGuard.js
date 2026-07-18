@@ -68,8 +68,27 @@ function canClaimOwnership ({ viewGroup, selfId, now, inactivityMs }) {
   return { ok: true, reason: 'owner-inactive' }
 }
 
+// Decide whether an incoming plaintext `groupDeleted(groupId)` control message —
+// which, like `memberLeft`, is UNAUTHENTICATED and forgeable by any connected
+// peer — should be honored. `groupDeleted` is an OWNER-ONLY action, and a
+// genuine owner deletion is recorded as a `deleted` tombstone on the group's
+// authoritative Autobase view by apply(), only AFTER apply() verifies the op's
+// Autobase-attested author (node.from.key) is the owner's writer. A peer without
+// the encryption key can't forge that view state, so corroborating against it is
+// the security boundary.
+//
+// Honor ONLY when the view positively carries the owner-authored deletion. An
+// unreadable/absent/undecryptable view (`viewGroup` null) or a readable view with
+// no `deleted` flag → do NOT honor. This never loses a real deletion: the same
+// authoritative op that set the flag also drives apply()'s local purge, so an
+// ignored plaintext message is at worst redundant.
+function shouldHonorGroupDeleted ({ viewGroup }) {
+  return viewGroup?.deleted === true
+}
+
 module.exports = {
   isMemberRemovedInView,
   shouldIgnoreSelfMemberLeft,
   canClaimOwnership,
+  shouldHonorGroupDeleted,
 }

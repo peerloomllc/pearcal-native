@@ -8,6 +8,7 @@ const {
   isMemberRemovedInView,
   shouldIgnoreSelfMemberLeft,
   canClaimOwnership,
+  shouldHonorGroupDeleted,
 } = require('../src/lib/ownerGuard.js')
 
 const SELF = 'self-id'
@@ -95,4 +96,24 @@ test('claim falls back to updatedAt when lastOwnerActivityTs is absent (legacy g
   assert.equal(canClaimOwnership({ viewGroup: stale, selfId: SELF, now, inactivityMs: INACTIVITY }).ok, true)
   const fresh = { ownerId: 'owner', members: [{ id: SELF }], updatedAt: now - DAY }
   assert.equal(canClaimOwnership({ viewGroup: fresh, selfId: SELF, now, inactivityMs: INACTIVITY }).ok, false)
+})
+
+// ── shouldHonorGroupDeleted ───────────────────────────────────────────────
+test('groupDeleted honored only when the view carries the owner-authored deletion', () => {
+  // apply() sets `deleted:true` after verifying node.from.key === owner's writer.
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: { deleted: true } }), true)
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: { deleted: true, deletedAt: 123 } }), true)
+})
+
+test('forged groupDeleted ignored when the view shows no deletion', () => {
+  // A keyless peer can't forge the `deleted` flag in the encrypted view.
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: { members: [{ id: SELF }] } }), false)
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: { deleted: false } }), false)
+})
+
+test('groupDeleted ignored when the view is unreadable / absent (no false positive)', () => {
+  // Undecryptable / not-yet-synced view must never read as "deleted" — the
+  // authoritative base op still purges once it applies.
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: null }), false)
+  assert.equal(shouldHonorGroupDeleted({ viewGroup: undefined }), false)
 })
