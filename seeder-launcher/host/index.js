@@ -34,7 +34,11 @@ function execArgv (argv) {
 const MAC_UPDATE_REQUEST_DIR = '/Library/Application Support/PearCal Seeder/updates/requests'
 
 function parseArgs (argv) {
-  const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000, port: null, host: '0.0.0.0' }
+  // Container-friendly env defaults (CLI flags still override): SEEDER_HOST binds
+  // the dashboard (0.0.0.0 so a reverse proxy on the Docker network can reach it),
+  // SEEDER_NO_AUTH drops the in-app bearer token when the platform proxy already
+  // gates access (Umbrel app_proxy / StartOS interface). Port comes from SEEDER_PORT.
+  const out = { dev: false, dataDir: null, barePath: null, bundleEntry: null, enroll: null, statusEveryMs: 30000, port: null, host: process.env.SEEDER_HOST || '0.0.0.0', noAuth: !!process.env.SEEDER_NO_AUTH }
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dev') out.dev = true

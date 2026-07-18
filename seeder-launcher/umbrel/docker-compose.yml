@@ -1,0 +1,31 @@
+version: "3.7"
+
+services:
+  # Umbrel's reverse proxy: gates the UI behind the Umbrel login and forwards to
+  # the seeder container on the app network. APP_HOST is "<app-id>_app_1", and the
+  # app id carries the PeerLoom community-store prefix (Umbrel requires every
+  # app's id to start with the store id; store id = "peerloom").
+  app_proxy:
+    environment:
+      APP_HOST: peerloom-pearcal-seeder_app_1
+      APP_PORT: 8731
+
+  app:
+    # Published, public, multi-arch (amd64 + arm64), pinned by manifest-list
+    # digest. build-umbrel-image.sh rewrites this to :<version>@sha256:<digest>.
+    image: ghcr.io/peerloomllc/pearcal-seeder:1.0.33@sha256:36b9e9407b053c71b840f29a5f0423a67f15c2806827687b2cbec9dd69586c45
+    restart: on-failure
+    stop_grace_period: 1m
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SEEDER_HOST: 0.0.0.0
+      SEEDER_PORT: "8731"
+      SEEDER_NO_AUTH: "1"
+      # Updates are managed by the Umbrel/Community Store (re-pull the image), so
+      # the in-app update checker/banner is disabled here (the image also bakes
+      # this in; explicit + self-documenting).
+      SEEDER_NO_UPDATE_CHECK: "1"
+    volumes:
+      # Seeder identity, per-group enrollments, retention state, logs.
+      - ${APP_DATA_DIR}/data:/data
