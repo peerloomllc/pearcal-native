@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream MetaInfo. Without this, modern GNOME Software / KDE Discover do
+     not list the package (a bare .desktop is no longer enough), so there is no
+     one-click GUI uninstall. Shipping it to /usr/share/metainfo makes the
+     seeder appear under "Installed" with a Remove button, which runs the deb's
+     maintainer scripts through PackageKit. -->
+<component type="desktop-application">
+  <id>com.pearcal.seeder</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <!-- Associate the component with its package. Distro repo metadata generators
+       add this automatically, but a locally-installed .deb never runs one, so
+       without it AppStream has no package link and GNOME Software's Uninstall
+       button has nothing to remove (silent no-op). -->
+  <pkgname>pearcal-seeder</pkgname>
+  <name>PearCal Seeder</name>
+  <summary>Always-on blind seeder for PearCal groups</summary>
+  <description>
+    <p>
+      Runs the PearCal blind-seeder worklet as a background service so a group's
+      data stays available when members are offline. The seeder never sees
+      decrypted events; it only relays encrypted blocks. A localhost dashboard
+      shows enrolled groups and replication status.
+    </p>
+  </description>
+  <launchable type="desktop-id">pearcal-seeder.desktop</launchable>
+  <provides>
+    <binary>pearcal-seeder</binary>
+  </provides>
+  <categories>
+    <category>Network</category>
+    <category>Utility</category>
+  </categories>
+  <url type="homepage">https://peerloomllc.com</url>
+  <developer id="com.pearcal">
+    <name>PeerLoom LLC</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+</component>

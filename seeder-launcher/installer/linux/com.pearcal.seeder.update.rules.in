@@ -1,0 +1,17 @@
+// Passwordless pkexec for the PearCal seeder auto-updater (ported from
+// PearCircle). The .deb postinst templates __USER__ to the install user and
+// writes this to /etc/polkit-1/rules.d/.
+//
+// It lets ONLY that one user run ONLY the root-owned updater script, and only
+// that — with no password — so the unattended background service can apply .deb
+// updates without a human at the console. The script path is absolute and
+// root-owned (pkexec refuses a writable-by-others target), and the helper
+// re-verifies the payload sha256 before installing, so this grants no general
+// root. Requires polkit >= 0.106 (JS rules); modern Debian/Ubuntu ship it.
+polkit.addRule(function (action, subject) {
+  if (action.id === 'org.freedesktop.policykit.exec' &&
+      action.lookup('program') === '/opt/pearcal-seeder/updater-helper.sh' &&
+      subject.user === '__USER__') {
+    return polkit.Result.YES
+  }
+})

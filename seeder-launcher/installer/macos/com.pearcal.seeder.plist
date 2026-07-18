@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- LaunchAgent template loaded into ~/Library/LaunchAgents/ by the .pkg
+     post-install script. Runs the seeder launcher in the user session (not as
+     root) so the data dir lands under the user's home and the daemon survives
+     logout via KeepAlive. __LOG_PATH__ + __VERSION__ are filled in (postinstall
+     per-user, build-time respectively). The wrapper reads PEARCAL_SEED_DATA
+     (default ~/.pearcal-seed) so it stays consistent with the launchd dev
+     deploy (deploy-macos-ssh.sh). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.pearcal.seeder</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/lib/pearcal-seeder/pearcal-seeder</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>SEEDER_PORT</key><string>8731</string>
+    <key>PEARCAL_SEEDER_VERSION</key><string>__VERSION__</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__LOG_PATH__</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_PATH__</string>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

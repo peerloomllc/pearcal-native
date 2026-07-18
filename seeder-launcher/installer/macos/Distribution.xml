@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+  <title>PearCal Seeder</title>
+  <organization>com.pearcal</organization>
+  <domains enable_anywhere="false" enable_currentUserHome="true" enable_localSystem="true"/>
+  <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
+
+  <volume-check>
+    <allowed-os-versions>
+      <os-version min="12.0"/>
+    </allowed-os-versions>
+  </volume-check>
+
+  <welcome file="welcome.html" mime-type="text/html"/>
+
+  <pkg-ref id="com.pearcal.seeder.pkg"/>
+  <choices-outline>
+    <line choice="default">
+      <line choice="com.pearcal.seeder.pkg"/>
+    </line>
+  </choices-outline>
+  <choice id="default"/>
+  <choice id="com.pearcal.seeder.pkg" visible="false">
+    <pkg-ref id="com.pearcal.seeder.pkg"/>
+  </choice>
+  <pkg-ref id="com.pearcal.seeder.pkg" version="0.1.0" onConclusion="none">PearCalSeeder-component.pkg</pkg-ref>
+</installer-gui-script>

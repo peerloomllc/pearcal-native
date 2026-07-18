@@ -1,0 +1,125 @@
+#!/bin/bash
+# AppRun - entrypoint for the PearCal Seeder AppImage.
+#
+# Launch behaviour:
+#   terminal, no args      run the seeder host in the foreground (CLI /
+#                          debugging); prints a token-authed dashboard URL.
+#   desktop launch         double-click in a file manager, or a menu entry
+#   (no terminal)          from a tool like Gear Lever: set the seeder up as
+#                          a background service on first run, then open the
+#                          dashboard in the browser. Later launches just
+#                          open the dashboard.
+#   --install-service      register the systemd user service.
+#   --uninstall-service    remove it.
+#   any other args         passed straight through to the host.
+#
+# The background service's ExecStart points back at this AppImage file, so
+# leave the AppImage where it is after setup. Move it and re-run
+# --install-service (or re-launch from the desktop) to relocate.
+set -euo pipefail
+
+APPDIR="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+PAYLOAD="$APPDIR/usr/lib/pearcal-seeder"
+
+UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+UNIT="$UNIT_DIR/pearcal-seeder.service"
+# Data dir matches every other PearCal seeder install surface (.pkg, launchd /
+# Umbrel deploys) so one machine keeps one seeder identity.
+DATA_DIR="${PEARCAL_SEED_DATA:-$HOME/.pearcal-seed}"
+DASHBOARD_HOST=127.0.0.1
+DASHBOARD_PORT="${SEEDER_PORT:-8731}"
+
+notify () {
+  command -v notify-send >/dev/null 2>&1 && notify-send "$1" "${2:-}" 2>/dev/null || true
+  echo "$1${2:+: $2}"
+}
+
+# True when something is already serving the dashboard port.
+dashboard_up () {
+  (exec 3<>"/dev/tcp/$DASHBOARD_HOST/$DASHBOARD_PORT") 2>/dev/null
+}
+
+# Open the token-authed dashboard URL in the default browser.
+open_dashboard () {
+  local url="http://$DASHBOARD_HOST:$DASHBOARD_PORT/"
+  if [ -f "$DATA_DIR/auth.token" ]; then
+    url="$url?t=$(tr -d '\r\n' < "$DATA_DIR/auth.token")"
+  fi
+  command -v xdg-open >/dev/null 2>&1 && xdg-open "$url" >/dev/null 2>&1 &
+  notify "PearCal Seeder" "Dashboard: $url"
+}
+
+install_service () {
+  if [ -z "${APPIMAGE:-}" ]; then
+    echo "error: --install-service only works when running the .AppImage file" >&2
+    echo "       (an extracted AppDir has no stable path to point the service at)" >&2
+    exit 1
+  fi
+  mkdir -p "$UNIT_DIR"
+  sed "s|__EXEC__|$APPIMAGE --no-open|g" "$APPDIR/pearcal-seeder.service" > "$UNIT"
+  systemctl --user daemon-reload
+  systemctl --user enable --now pearcal-seeder.service
+  if loginctl enable-linger "$USER" 2>/dev/null; then
+    echo "Linger enabled - the seeder will keep running across logout / reboot."
+  else
+    echo "note: could not enable linger. For boot-start run:"
+    echo "      sudo loginctl enable-linger $USER"
+  fi
+  echo "PearCal Seeder service installed and started."
+}
+
+uninstall_service () {
+  systemctl --user disable --now pearcal-seeder.service 2>/dev/null || true
+  rm -f "$UNIT"
+  systemctl --user daemon-reload 2>/dev/null || true
+  # Drop the linger enabled by --install-service; harmless leftover otherwise.
+  loginctl disable-linger "$USER" 2>/dev/null || true
+  if [ "${1:-}" = "--purge" ]; then
+    rm -rf "$DATA_DIR"
+    echo "PearCal Seeder service removed and data directory wiped."
+  else
+    echo "PearCal Seeder service removed. The data directory"
+    echo "$DATA_DIR is left intact (pass --purge to wipe the identity too)."
+  fi
+  echo "Delete the .AppImage file to finish removing the app; if you integrated"
+  echo "it (e.g. via Gear Lever), remove the menu entry there too."
+}
+
+# Desktop launch (double-click / menu / Gear Lever): make sure the seeder is
+# running as a background service, then open the dashboard.
+desktop_launch () {
+  if ! dashboard_up; then
+    if [ -f "$UNIT" ]; then
+      systemctl --user start pearcal-seeder.service 2>/dev/null || true
+    else
+      notify "PearCal Seeder" "Setting up the background service..."
+      install_service
+    fi
+    for _ in $(seq 1 40); do
+      if dashboard_up; then break; fi
+      sleep 0.5
+    done
+  fi
+  if dashboard_up; then
+    open_dashboard
+  else
+    notify "PearCal Seeder" "The service did not start. Check: journalctl --user -u pearcal-seeder"
+    exit 1
+  fi
+}
+
+case "${1:-}" in
+  --install-service)   install_service ;;
+  --uninstall-service) uninstall_service "${2:-}" ;;
+  "")
+    # No args: a terminal launch runs the host in the foreground for CLI
+    # use; a desktop launch (no controlling terminal) sets up the service
+    # and opens the dashboard.
+    if [ -t 1 ]; then
+      exec "$PAYLOAD/pearcal-seeder"
+    else
+      desktop_launch
+    fi
+    ;;
+  *) exec "$PAYLOAD/pearcal-seeder" "$@" ;;
+esac

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=PearCal Seeder
+Comment=Keeps a PearCal group's data online when no member device is
+Exec=pearcal-seeder
+Icon=pearcal-seeder
+Categories=Network;
+Terminal=false

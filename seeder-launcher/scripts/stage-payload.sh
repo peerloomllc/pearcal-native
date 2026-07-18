@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# Stage a self-contained PearCal blind-seeder payload for a given host arch.
+#
+# The arch-generic engine shared by stage-linux.sh + stage-macos.sh (thin
+# wrappers that just default BARE_HOST and delegate here). Cross-staging works
+# because every native addon ships prebuilds for all target arches in its npm
+# package and `bare-runtime-<host>` is npm-packable — so a Linux dev box can
+# stage a darwin-arm64 payload without a Mac (only the signed .pkg build needs
+# a Mac).
+#
+# Produces a flat directory the launcher host runs in prod mode:
+#   <OUT>/bare                      the Bare runtime binary (target arch)
+#   <OUT>/worklet/seed.bundle       bare-packed src/seed.js (--host BARE_HOST)
+#   <OUT>/worklet/node_modules/…    native-addon prebuilds for the host arch
+#   <OUT>/host/…                    the Node launcher host (index.js + worklet.js + dashboard.js + auth.js)
+#   <OUT>/run.sh                    convenience launcher
+#
+# The worklet runs under the Bare runtime (no node_modules needed for it); the
+# host is Node (spawns the Bare subprocess, keeps it alive, sends IPC).
+#
+# Usage:
+#   BARE_HOST=linux-x64    OUT_DIR=/abs/payload  bash scripts/stage-payload.sh
+#   BARE_HOST=darwin-arm64 OUT_DIR=/abs/payload  bash scripts/stage-payload.sh
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+LAUNCHER=$(pwd)
+REPO=$(cd "$LAUNCHER/.." && pwd)
+
+BARE_HOST="${BARE_HOST:?BARE_HOST must be linux-x64|linux-arm64|darwin-arm64|darwin-x64|win32-x64}"
+OUT_DIR="${OUT_DIR:?OUT_DIR must be an absolute payload path}"
+case "$BARE_HOST" in
+  linux-x64|linux-arm64|darwin-arm64|darwin-x64|win32-x64) ;;
+  *) echo "stage-payload: unsupported BARE_HOST '$BARE_HOST'" >&2; exit 1 ;;
+esac
+# The Bare runtime + its output name carry .exe on Windows.
+case "$BARE_HOST" in win32-x64) BARE_EXT=".exe" ;; *) BARE_EXT="" ;; esac
+
+echo "==> staging PearCal seeder  host=$BARE_HOST  ->  $OUT_DIR"
+rm -rf "$OUT_DIR"
+mkdir -p "$OUT_DIR/worklet" "$OUT_DIR/host"
+
+# 1. Bare runtime binary. Not an npm dependency of the app (mobile links its own
+#    runtime), so fetch the pinned version for the target arch via `npm pack`.
+#    Override with BARE_VER=… if the bundle format ever needs a newer runtime.
+BARE_VER="${BARE_VER:-1.28.5}"
+BARE_BIN_SRC="$REPO/node_modules/bare-runtime-$BARE_HOST/bin/bare$BARE_EXT"
+if [ ! -f "$BARE_BIN_SRC" ]; then
+  echo "--> fetching bare-runtime-$BARE_HOST@$BARE_VER"
+  PACKDIR=$(mktemp -d)
+  ( cd "$PACKDIR" && npm pack --loglevel=error "bare-runtime-$BARE_HOST@$BARE_VER" >/dev/null )
+  DEST="$REPO/node_modules/bare-runtime-$BARE_HOST"
+  rm -rf "$DEST"; mkdir -p "$DEST"
+  tar -xzf "$PACKDIR"/*.tgz -C "$DEST" --strip-components=1
+  rm -rf "$PACKDIR"
+  chmod +x "$BARE_BIN_SRC" 2>/dev/null || true
+fi
+[ -f "$BARE_BIN_SRC" ] || { echo "stage-payload: bare binary missing: $BARE_BIN_SRC" >&2; exit 1; }
+cp "$BARE_BIN_SRC" "$OUT_DIR/bare$BARE_EXT"; chmod +x "$OUT_DIR/bare$BARE_EXT" 2>/dev/null || true
+
+# 1a. Strip the bare binary. The upstream bare-runtime binaries ship UNSTRIPPED
+#     (~91 MB); stripping debug/symbol tables takes them to ~63 MB with no
+#     runtime change, shrinking every surface that embeds the payload (the Start9
+#     s9pk + ghcr image + .AppImage/.deb). Only Linux ELF targets are stripped,
+#     and only with a stripper that matches the TARGET arch — a wrong-arch or
+#     mach-O/PE strip is skipped (non-fatal), so cross-arch/mac/win builds are
+#     unaffected. SEEDER_NO_STRIP=1 opts out.
+if [ "${SEEDER_NO_STRIP:-}" != "1" ] && [ -z "$BARE_EXT" ] && [ "${BARE_HOST#linux-}" != "$BARE_HOST" ]; then
+  _host_m="$(uname -m)"
+  _stripper=""
+  case "$BARE_HOST" in
+    linux-x64)
+      if command -v llvm-strip >/dev/null 2>&1; then _stripper="llvm-strip"
+      elif command -v x86_64-linux-gnu-strip >/dev/null 2>&1; then _stripper="x86_64-linux-gnu-strip"
+      elif [ "$_host_m" = x86_64 ] && command -v strip >/dev/null 2>&1; then _stripper="strip"; fi ;;
+    linux-arm64)
+      if command -v llvm-strip >/dev/null 2>&1; then _stripper="llvm-strip"
+      elif command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then _stripper="aarch64-linux-gnu-strip"
+      elif [ "$_host_m" = aarch64 ] && command -v strip >/dev/null 2>&1; then _stripper="strip"; fi ;;
+  esac
+  if [ -n "$_stripper" ]; then
+    _before=$(stat -c%s "$OUT_DIR/bare" 2>/dev/null || echo 0)
+    if "$_stripper" --strip-all "$OUT_DIR/bare" 2>/dev/null && [ -s "$OUT_DIR/bare" ]; then
+      chmod +x "$OUT_DIR/bare" 2>/dev/null || true
+      _after=$(stat -c%s "$OUT_DIR/bare" 2>/dev/null || echo 0)
+      echo "--> stripped bare ($_stripper): $((_before/1024/1024))M -> $((_after/1024/1024))M"
+    else
+      # Strip failed/mangled the file — restore the pristine binary.
+      cp "$BARE_BIN_SRC" "$OUT_DIR/bare"; chmod +x "$OUT_DIR/bare" 2>/dev/null || true
+      echo "--> strip skipped ($_stripper failed; kept unstripped bare)"
+    fi
+  else
+    echo "--> strip skipped (no $BARE_HOST-compatible stripper on PATH)"
+  fi
+fi
+
+# 2. Worklet bundle. bare-pack collapses seed.js's whole module graph into one
+#    bundle; only native addon prebuilds ship beside it. --base one level below
+#    node_modules makes the bundle resolve addons at ../node_modules next to it.
+#    `bare-process`/`bare-fs`/`bare-path` are bundled (installed deps); only the
+#    fs/path aliases are deferred (resolved by the runtime).
+echo "--> worklet bundle (bare-pack --host $BARE_HOST)"
+"$REPO/node_modules/.bin/bare-pack" --host "$BARE_HOST" \
+  --base "$REPO/worklet" --defer fs --defer path \
+  "$REPO/src/seed.js" -o "$OUT_DIR/worklet/seed.bundle"
+
+# 3. Native addon prebuilds the bundle references, staged so ../node_modules
+#    specifiers resolve next to the bundle.
+echo "--> worklet addon prebuilds"
+staged=0
+while read -r d; do
+  [ -z "$d" ] && continue
+  rel="${d#./}"
+  mkdir -p "$OUT_DIR/worklet/node_modules/$(dirname "$rel")"
+  cp -R "$REPO/node_modules/$rel" "$OUT_DIR/worklet/node_modules/$(dirname "$rel")/"
+  staged=$((staged + 1))
+done < <(cd "$REPO/node_modules" && find . -type d -path "*/prebuilds/$BARE_HOST")
+echo "    staged $staged addon prebuild dirs"
+[ "$staged" -gt 0 ] || { echo "stage-payload: no $BARE_HOST prebuilds found; run \`npm install\`" >&2; exit 1; }
+
+# 4. Launcher host (Node) + version (for the dashboard pill).
+cp "$LAUNCHER/host/index.js" "$LAUNCHER/host/worklet.js" "$LAUNCHER/host/dashboard.js" \
+   "$LAUNCHER/host/auth.js" "$LAUNCHER/host/updateCheck.js" "$LAUNCHER/host/updateApply.js" "$OUT_DIR/host/"
+cp "$LAUNCHER/package.json" "$OUT_DIR/package.json" 2>/dev/null || true
+
+# 4·update. The update checker's pure logic lives at src/lib/seederUpdateCheck.js.
+# The host isn't esbuild-bundled, so ../../src/lib isn't in the payload — stage a
+# copy beside the host (updateCheck.js requires it via ./seederUpdateCheck in prod).
+cp "$REPO/src/lib/seederUpdateCheck.js" "$OUT_DIR/host/seederUpdateCheck.js"
+
+# 4a. Brand mark: a small copy of the app icon for the dashboard header + tab
+#     favicon. Prefer imagemagick (Linux dev box); fall back to sips on macOS
+#     (no imagemagick there) so a Mac-side .pkg build still gets the icon.
+if command -v magick >/dev/null 2>&1; then
+  magick "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged (magick)"
+elif command -v convert >/dev/null 2>&1; then
+  convert "$REPO/assets/images/icon.png" -resize 64x64 "$OUT_DIR/host/brand.png" 2>/dev/null && echo "--> brand mark staged (convert)"
+elif command -v sips >/dev/null 2>&1; then
+  sips -z 64 64 "$REPO/assets/images/icon.png" --out "$OUT_DIR/host/brand.png" >/dev/null 2>&1 && echo "--> brand mark staged (sips)"
+else
+  echo "--> no imagemagick/sips; dashboard uses the ◆ fallback mark"
+fi
+
+# 4b. Offline dashboard font: extract the Manrope woff2 @font-face CSS from the
+#     app's fonts.js so the dashboard renders without a Google Fonts round-trip.
+node -e '
+  const fs=require("fs");
+  const t=fs.readFileSync(process.argv[1],"utf8");
+  const m=t.match(/FONT_CSS\s*=\s*("(?:[^"\\]|\\.)*")/s);
+  if(m) fs.writeFileSync(process.argv[2], JSON.parse(m[1]));
+' "$REPO/src/ui/fonts.js" "$OUT_DIR/host/fonts.css" 2>/dev/null && \
+  echo "--> inlined offline font ($(wc -c < "$OUT_DIR/host/fonts.css" 2>/dev/null || echo 0) bytes)" || \
+  echo "--> font extract skipped (dashboard falls back to Google Fonts)"
+
+# 4c. Host runtime deps. The Node host pulls in `qrcode` (the dashboard renders
+#     pairing + support QRs via qrcode.toDataURL; the terminal --pair path uses
+#     it too). Stage qrcode + its runtime deps under host/node_modules so the
+#     payload is self-contained — otherwise the host only resolves qrcode when a
+#     repo checkout happens to sit on NODE_PATH (true on the dev box, false on a
+#     bare deploy target like Umbrel). All pure-JS, so arch-independent.
+echo "--> host runtime deps (qrcode)"
+mkdir -p "$OUT_DIR/host/node_modules"
+for m in qrcode dijkstrajs pngjs; do
+  [ -d "$REPO/node_modules/$m" ] || { echo "stage-payload: missing node_modules/$m; run \`npm install\`" >&2; exit 1; }
+  cp -R "$REPO/node_modules/$m" "$OUT_DIR/host/node_modules/"
+done
+
+# 5. Convenience runner: host in prod mode against this payload.
+cat > "$OUT_DIR/run.sh" <<'RUN'
+#!/usr/bin/env bash
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+DATA="${PEARCAL_SEED_DATA:-$HOME/.pearcal-seed}"
+exec node "$HERE/host/index.js" --bare "$HERE/bare" --bundle "$HERE/worklet/seed.bundle" --data "$DATA" "$@"
+RUN
+chmod +x "$OUT_DIR/run.sh"
+
+echo "==> done. Run: PEARCAL_SEED_DATA=<dir> $OUT_DIR/run.sh"
+echo "    Pair a device: $OUT_DIR/run.sh --pair"

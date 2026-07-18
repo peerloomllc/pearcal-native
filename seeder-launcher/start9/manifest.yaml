@@ -1,0 +1,137 @@
+# PearCal blind-seeder packaged as a StartOS (Start9) service.
+#
+# Targets StartOS 0.3.5.x (the stable channel; the packaging model here is
+# manifest.yaml + a Docker image tar + deno-bundled TS procedures, packed with
+# `start-sdk pack`). The newer 0.4.x TypeScript SDK is a separate follow-up.
+
+# Unique package identifier. Community-registry apps do NOT require a store prefix
+# the way Umbrel does, so this is just the app id.
+id: pearcal-seeder
+title: "PearCal Seeder"
+# emver: up to four dot-separated numbers; the fourth (if present) is the StartOS
+# packaging revision. Kept in lockstep with the seeder image tag.
+version: 1.0.33
+release-notes: |
+  First StartOS release of the PearCal blind-seeder. Runs the seed-mode worklet
+  as an always-on service with a dashboard for enrolling groups and watching
+  replication. Reuses the same published seeder image as the Umbrel app.
+license: MIT
+wrapper-repo: "https://github.com/peerloomllc/pearcal-native"
+upstream-repo: "https://github.com/peerloomllc/pearcal-native"
+support-site: "https://github.com/peerloomllc/pearcal-native/issues"
+marketing-site: "https://peerloomllc.com"
+build: ["make"]
+description:
+  short: Keep your PearCal groups online 24/7.
+  long: |
+    Run a blind seeder for your PearCal groups on your Start9 server so their
+    calendars stay in sync even when every phone is offline.
+
+    PearCal is a peer-to-peer calendar app with no accounts and no servers: a
+    group's events live only on its members' devices and sync directly between
+    them, so a group is only reachable while at least one member's phone is
+    online. This service runs the PearCal seed-mode worklet as an always-on
+    background process that replicates each enrolled group's encrypted blocks,
+    keeping members caught up regardless of who is online.
+
+    It is a "blind" seeder: the blocks it stores and serves stay encrypted, so
+    your server keeps a group's data available without ever being able to read
+    the events, notes, or members inside it. Group members stay in control: they
+    admit the seeder when it enrolls and can revoke it at any time.
+
+    To enroll a group: open the seeder dashboard, then in the PearCal phone app
+    mint a seed invite for the group (Profile -> Advanced -> Blind peer) and
+    paste it in.
+assets:
+  license: LICENSE
+  icon: icon.png
+  instructions: instructions.md
+# The seed worklet is a long-running process. StartOS keeps the main container
+# alive for the lifetime of the service.
+main:
+  type: docker
+  image: main
+  entrypoint: "docker_entrypoint.sh"
+  args: []
+  mounts:
+    # Persistence volume. The seeder writes its identity, per-group enrollments,
+    # retention state, Hyperbee store, and logs under here; the entrypoint points
+    # --data at <mount>/data.
+    main: /root
+  gpu-acceleration: false
+# The pinned base image is a multi-arch manifest list (amd64 + arm64), so both a
+# typical x86 Start9 server and an arm one (Raspberry Pi) are supported.
+hardware-requirements:
+  arch:
+    - x86_64
+    - aarch64
+# HTTP GET against the dashboard proves the worklet host is up and serving.
+health-checks:
+  web-ui:
+    name: Web Interface
+    success-message: The seeder dashboard is reachable
+    type: script
+# No user-facing configuration for v1: the seeder is enrolled from the phone app,
+# not via a config form.
+config: ~
+properties: ~
+volumes:
+  main:
+    type: data
+# Dashboard interface. StartOS terminates TLS and gates access behind the server;
+# the in-app bearer token is disabled (SEEDER_NO_AUTH in the entrypoint) exactly
+# as it is behind Umbrel's app_proxy.
+interfaces:
+  main:
+    name: Seeder Dashboard
+    description: Enroll groups and watch replication status.
+    tor-config:
+      port-mapping:
+        80: "8731"
+    lan-config:
+      443:
+        ssl: true
+        internal: 8731
+    ui: true
+    protocols:
+      - tcp
+      - http
+dependencies: {}
+# Encrypted backups of the seeder state via the StartOS-provided duplicity image.
+# Backs up <mount>/data (identity + enrollments + retention state).
+backup:
+  create:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - create
+      - /mnt/backup
+      - /root/data
+    mounts:
+      BACKUP: "/mnt/backup"
+      main: "/root/data"
+  restore:
+    type: docker
+    image: compat
+    system: true
+    entrypoint: compat
+    args:
+      - duplicity
+      - restore
+      - /mnt/backup
+      - /root/data
+    mounts:
+      BACKUP: "/mnt/backup"
+      main: "/root/data"
+migrations:
+  from:
+    "*":
+      type: script
+      args: ["from"]
+  to:
+    "*":
+      type: script
+      args: ["to"]

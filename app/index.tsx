@@ -32,6 +32,8 @@ const { makeStartLock } = require('../src/lib/backendBootstrap')
 let _worklet: any = null
 let _workletStarted = false
 let _ensureWorkletStarted: null | (() => Promise<any>) = null
+let _terminateTimer: any = null                 // pending delayed terminate from a prior Activity teardown
+let _notifyReady: null | (() => void) = null    // current mount's dbReady setter (routes 'ready' to the live component)
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
 const _eventHandlers = new Map<string, ((data: any) => void)[]>()
@@ -599,6 +601,15 @@ export default function Root () {
   useEffect(() => {
     let buf = ''
 
+    // Adopt a worklet that survived a quick Activity teardown (force-close →
+    // reopen within the cleanup's terminate window): cancel its pending
+    // terminate so the reopen doesn't get its own worklet killed mid-init — the
+    // stuck-on-loading bug. Route 'ready' to THIS mount so re-init leaves the
+    // loading screen even though the once-registered handler closed over a
+    // prior mount's setter.
+    if (_terminateTimer) { clearTimeout(_terminateTimer); _terminateTimer = null }
+    _notifyReady = () => { setDbReady(true); dbReadyRef.current = true }
+
     async function start () {
       // Clear stale bundles — keep only the 2 most recent (bare + UI)
       try {
@@ -655,6 +666,10 @@ export default function Root () {
       const source = await fetch(bundleAsset.localUri!).then(r => r.text())
 
       if (_workletStarted && _worklet) {
+        // Warm reopen: the worklet survived the Activity teardown (its pending
+        // terminate was cancelled at the top of this effect). The teardown's
+        // `shutdown` closed its DB, so re-init to reopen it; init() → 'ready'
+        // then reaches THIS mount via _notifyReady.
         sendToWorklet({ method: 'init', dataDir, platform: Platform.OS })
         return
       }
@@ -693,8 +708,11 @@ export default function Root () {
         if (mod?.writeCache) mod.writeCache(JSON.stringify(payload)).catch?.(() => {})
       })
       onEvent('ready', () => {
-        setDbReady(true)
-        dbReadyRef.current = true
+        // Registered once per process, so route to the CURRENT mount via
+        // _notifyReady rather than this closure's (possibly stale) setDbReady —
+        // otherwise a warm remount's fresh component never leaves the loading screen.
+        if (_notifyReady) _notifyReady()
+        else { setDbReady(true); dbReadyRef.current = true }
         if (Platform.OS === 'ios') {
           PearCalBGSync?.checkPendingBGSync?.().then((pending: boolean) => {
             if (pending) sendToWorklet({ method: 'sync', id: -99, args: [] })
@@ -804,6 +822,15 @@ webViewRef.current?.injectJavaScript(
         )
       })
 
+      // Blind-peer list change (#116 facet #2). Fires when a seederFollow row is
+      // added/updated/removed — including a live seeder groupCount update — so the
+      // Profile → Blind Peer list refreshes in place.
+      onEvent('blindPeersChanged', (data: any) => {
+        webViewRef.current?.injectJavaScript(
+          'window.__pearEvent("blindPeersChanged",' + JSON.stringify(data ?? null) + ');true;'
+        )
+      })
+
       onEvent('scheduleMorningDigest', async (items: any) => {
         try {
           for (let i = 0; i < MORNING_DIGEST_SLOTS; i++) {
@@ -898,9 +925,17 @@ webViewRef.current?.injectJavaScript(
 
     start().catch(e => setError(e.message))
     return () => {
+      // This mount is going away; stop routing 'ready' into its (now stale)
+      // setter. A reopen re-sends init and installs its own _notifyReady, so the
+      // fresh mount gets the 'ready' that leaves the loading screen.
+      _notifyReady = null
       if (_worklet) {
         sendToWorklet({ method: 'shutdown', args: [], id: -1 })
-        setTimeout(() => {
+        // Delay the terminate so a quick reopen can adopt the worklet and CANCEL
+        // this timer (see the effect top) — otherwise it would kill the worklet
+        // out from under the reopened Activity mid-init → stuck loading screen.
+        _terminateTimer = setTimeout(() => {
+          _terminateTimer = null
           try { _worklet?.terminate() } catch(e) {}
           _worklet = null
           _workletStarted = false

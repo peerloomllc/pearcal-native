@@ -36,7 +36,7 @@
     "expo-system-ui": "^6.0.7",
     "hyperbee": "^2.27.3",
     "hypercore": "^11.26.0",
-    "hyperdht": "^6.29.0",
+    "hyperdht": "^6.33.0",
     "hyperswarm": "^4.17.0",
     "keet-identity-key": "^3.1.0",
     "qrcode": "^1.5.4",
@@ -48,7 +48,8 @@
     "react-native-safe-area-context": "^5.4.0",
     "react-native-screens": "^4.23.0",
     "react-native-webview": "13.15.0",
-    "sodium-universal": "^5.0.1"
+    "sodium-universal": "^5.0.1",
+    "bare-process": "^4.4.1"
   },
   "devDependencies": {
     "@types/react": "^19.1.3",

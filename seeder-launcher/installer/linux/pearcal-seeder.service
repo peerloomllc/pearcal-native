@@ -1,0 +1,26 @@
+# systemd user service for the PearCal blind-seeder.
+#
+# Installed to ~/.config/systemd/user/pearcal-seeder.service by the .deb
+# postinst or the AppImage `--install-service` action; the ExecStart line is
+# templated to the install-specific launch command at install time.
+#
+# Runs in the user's login session so the data dir resolves under
+# $HOME/.pearcal-seed. `loginctl enable-linger <user>` keeps it running across
+# logout / reboot - the installers do this automatically. The wrapper it runs
+# bakes in the dashboard port (SEEDER_PORT, default 8731) and build version, so
+# the unit needs no Environment= lines.
+
+[Unit]
+Description=PearCal blind-seeder
+Documentation=https://peerloomllc.com
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=__EXEC__
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

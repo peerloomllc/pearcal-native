@@ -1,0 +1,15 @@
+Package: pearcal-seeder
+Version: __VERSION__
+Architecture: __ARCH__
+Maintainer: PeerLoom LLC <noreply@peerloomllc.com>
+Section: net
+Priority: optional
+Depends: systemd, libc6
+Installed-Size: __SIZE__
+Homepage: https://peerloomllc.com
+Description: PearCal blind-seeder background service
+ Keeps a PearCal group's encrypted data online when no member device is.
+ Runs the blind-seeder worklet as a systemd user service and serves a
+ localhost monitoring dashboard at http://127.0.0.1:8731 for enrolling
+ groups and watching replication. The seeder is "blind": it stores and
+ serves a group's blocks without ever being able to decrypt them.

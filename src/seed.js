@@ -24,6 +24,14 @@ const Hyperswarm = require('hyperswarm')
 const sodium = require('sodium-native')
 const b4a = require('b4a')
 const { parseSeedInvite } = require('./lib/seedInvite.js')
+const { buildSeederPairLink } = require('./lib/seederPairLink.js')
+const { generateRendezvousKey, seederPairTopic } = require('./lib/seederPairTopic.js')
+const { setupSeederPairChannel, SEEDER_PAIR_PROTOCOL } = require('./lib/seederPair.js')
+const {
+  SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
+  parseSeedEnrollBatch, buildSeedEnrollAck,
+  parseSeedLeave, buildSeedLeaveAck,
+} = require('./lib/seedEnroll.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // The seeder speaks the same JSON-newline envelope over whichever duplex the
@@ -67,13 +75,41 @@ let dataDir = null
 let _booted = false
 const bootTs = _now()
 const enrolled = new Map() // groupId -> enrollment row
-const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex }
+const mounted = new Map()  // groupId -> { core, writerCores: Map<hex,core>, topicHex, discovery }
+
+// Periodic re-announce+re-lookup of every mounted topic so the seeder re-discovers
+// devices that rejoined under a new ephemeral swarm pubkey (RCA
+// proposals/2026-07-17-seeder-discovery-staleness-rca.md). Kept modest — a refresh
+// is a couple of DHT round-trips per topic.
+const DISCOVERY_REFRESH_MS = 90 * 1000
+let _discoveryRefreshTimer = null
+
+// ── Seeder QR pairing (proposal 2026-07-15-pearcal-seeder-port, QR-pairing
+// model). The seeder shows a QR = one-time rendezvous topic + its pubkey; the
+// phone scans it, joins the rendezvous, verifies our pubkey, and pushes its seed
+// bundle over a one-time pearcal/seeder-pair/1 channel. No copy-paste.
+const SEEDER_PAIR_TTL_MS = 5 * 60 * 1000 // rendezvous lifetime
+let _pairSession = null   // { rv, topic, topicHex, ttlTimer }
+const _activeMuxes = new Set() // live replication muxers, for opening the pair channel
 
 // Must byte-match src/bare.js's writer-announce channel so members announce
 // their Autobase writer cores to us (we can't read the encrypted view to find
 // them ourselves). We only LISTEN — the seeder never announces a writer.
 const WRITER_ANNOUNCE_PROTOCOL = 'pearcal/writer-announce'
 const WRITER_ANNOUNCE_ID = Buffer.from('pearcal-writer-announce-v1')
+
+// Seeder self-announce. Byte-matches bare.js's listener. On every group
+// connection we send our nickname so a member learns we exist and lists us as
+// its blind peer — even when it enrolled us via a pasted /seed invite and never
+// met us at pair time. Our identity pubkey IS the stream's authenticated remote
+// pubkey on the member side (swarm is keyed with the identity keypair), so the
+// hello need only carry the nickname; the member attributes it to us from the
+// connection, not the message. Only the seeder ever sends here.
+const SEEDER_HELLO_PROTOCOL = 'pearcal/seeder-hello'
+const SEEDER_HELLO_ID = Buffer.from('pearcal-seeder-hello-v1')
+
+// Live seed-enroll wire (TODO #116 facet #3) is defined in ./lib/seedEnroll.js
+// (imported at the top) so the member (bare.js) and seeder ends can't drift.
 
 // Topic for an enrolled group. Seeded groups are ENCRYPTED, so this must match
 // bare.js groupSwarmTopic()'s encrypted branch (domain-separated blake2b) — old
@@ -86,6 +122,18 @@ function topicForGroupKey (groupKey) {
 
 // Date.now() is unavailable in some bare sandboxes at module init; guard it.
 function _now () { try { return Date.now() } catch { return 0 } }
+
+// Blind-safe per-group metrics from the mounted cores: total bytes held, opaque
+// block count (NOT events — we can't decrypt), and writer-core count. Zero if
+// the group isn't mounted yet.
+function _groupMetrics (groupId) {
+  const m = mounted.get(groupId)
+  if (!m) return { bytes: 0, blocks: 0, writers: 0 }
+  let bytes = m.core?.byteLength || 0
+  let blocks = m.core?.length || 0
+  for (const c of m.writerCores.values()) { bytes += c?.byteLength || 0; blocks += c?.length || 0 }
+  return { bytes, blocks, writers: m.writerCores.size }
+}
 
 // ── Seed mode detection ─────────────────────────────────────────────────────
 // True in `--seed` argv (launcher / CLI) or when init passes { mode: 'seed' }.
@@ -144,10 +192,26 @@ async function mountGroup (enrollment) {
   const core = store.get({ key: b4a.from(groupKey, 'hex') })
   await core.ready()
   core.download({ start: 0, end: -1, linear: false })
-  const topicHex = b4a.toString(topicForGroupKey(groupKey), 'hex')
-  swarm.join(b4a.from(topicHex, 'hex'), { server: true, client: true })
-  const entry = { core, writerCores: new Map(), topicHex }
+  // A blind seeder never holds the encryptionKey, so it cannot tell whether an
+  // enrolled group is ENCRYPTED (bare.js joins the domain-separated blake2b topic)
+  // or LEGACY/unencrypted (bare.js joins the RAW groupKey topic). Joining only the
+  // blake2b topic silently strands every legacy group: members are on the raw
+  // topic, seeders on the blake2b topic, and they never meet over the swarm (only
+  // via the one-time QR rendezvous). So join BOTH — the wrong one is just an empty
+  // extra join. See RCA proposals/2026-07-17-seeder-discovery-staleness-rca.md.
+  const encTopic = topicForGroupKey(groupKey) // encrypted-branch: blake2b(domain, groupKey)
+  const rawTopic = b4a.from(groupKey.slice(0, 64).padEnd(64, '0'), 'hex') // legacy-branch: raw groupKey
+  const topicHex = b4a.toString(encTopic, 'hex')
+  const rawTopicHex = b4a.toString(rawTopic, 'hex')
+  // Keep the PeerDiscovery handles so the periodic refresh (see init) can re-run
+  // announce+lookup — members re-announce under a NEW swarm pubkey on every app
+  // restart (bare.js uses an ephemeral swarm keypair), so a one-shot join would
+  // never re-discover a device that reboots.
+  const discovery = swarm.join(encTopic, { server: true, client: true })
+  const rawDiscovery = rawTopicHex === topicHex ? null : swarm.join(rawTopic, { server: true, client: true })
+  const entry = { core, writerCores: new Map(), topicHex, rawTopicHex, discovery, rawDiscovery }
   mounted.set(groupId, entry)
+  if (rawDiscovery) console.log('[seed] also joined legacy raw topic', rawTopicHex.slice(0, 12) + '… for', groupId)
   console.log('[seed] mounted group', groupId, '— topic', topicHex.slice(0, 12) + '…')
   return entry
 }
@@ -168,6 +232,192 @@ async function setupWriterAnnounceListener (stream) {
   if (!channel) return
   channel.addMessage({ onmessage: (buf) => { onWriterAnnounce(buf).catch(() => {}) } })
   channel.open()
+}
+
+// Open the live seed-enroll channel on a replication stream. A member with
+// auto-follow enabled pushes { seedInvites: [...] } for groups created after we
+// were admitted; we enroll each (idempotent) and ack { enrolled: [groupId...] }
+// so the member re-announces those groups' writer cores over the same stream.
+async function setupSeedEnrollListener (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  let msg = null
+  const channel = mux.createChannel({
+    protocol: SEED_ENROLL_PROTOCOL,
+    id: SEED_ENROLL_ID,
+    onopen () {},
+    onclose () {},
+  })
+  if (!channel) return
+  msg = channel.addMessage({
+    onmessage: async (buf) => {
+      // Live enroll: mount groups the member pushed (facet #3).
+      const invites = parseSeedEnrollBatch(buf)
+      const enrolled = []
+      for (const invite of invites) {
+        try {
+          const r = await enrollSeedInvite(invite)
+          if (r?.ok && r.groupId) enrolled.push(r.groupId)
+        } catch (e) { /* one bad invite doesn't abort the batch */ }
+      }
+      if (enrolled.length) {
+        console.log('[seed] live-enroll: mounted', enrolled.length, 'group(s):', enrolled.join(', '))
+        try { msg.send(buildSeedEnrollAck(enrolled)) } catch {}
+      }
+      // Group-wide revocation (Phase 2): a member removed us from these groups.
+      // Leave each (idempotent — leaveSeedGroup on an un-mounted group is a
+      // no-op) and ack so the member logs it. We're blind and can't read the
+      // group's `revoked` tombstone ourselves; this channel signal is how we
+      // learn. Not writer-authenticated — worst case a spurious leave costs
+      // availability only (a legit auto-follow member re-enrolls a non-revoked
+      // group on its next connect), never disclosure.
+      const leaveGroups = parseSeedLeave(buf)
+      const left = []
+      for (const groupId of leaveGroups) {
+        try { await leaveSeedGroup(groupId); left.push(groupId) }
+        catch (e) { /* idempotent; a bad id doesn't abort the batch */ }
+      }
+      if (left.length) {
+        console.log('[seed] revocation: left', left.length, 'group(s):', left.join(', '))
+        try { msg.send(buildSeedLeaveAck(left)) } catch {}
+      }
+    },
+  })
+  channel.open()
+}
+
+// Announce ourselves to a connected member so it can list us as its blind peer.
+// See SEEDER_HELLO_PROTOCOL. Both sides open the channel (byte-identical to
+// bare.js); we send { nickname } once on open and never consume — members don't
+// announce here — so we register an empty message so the message index matches.
+// Active seeder-hello send handles, one per connection. We re-broadcast the
+// hello whenever our enrolled-group count changes (enroll/leave) so an
+// already-connected member updates its blind-peer count live (#116 facet #2)
+// instead of only on the next reconnect + section reopen.
+const _helloChannels = new Set()
+
+async function broadcastSeederHello () {
+  if (_helloChannels.size === 0) return
+  const nickRow = await db.get('seeder:nickname').catch(() => null)
+  const payload = Buffer.from(JSON.stringify({ nickname: nickRow?.value?.name || null, groupCount: enrolled.size }))
+  for (const msg of _helloChannels) { try { msg.send(payload) } catch {} }
+}
+
+async function setupSeederHelloAnnouncer (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  let msg = null
+  const channel = mux.createChannel({
+    protocol: SEEDER_HELLO_PROTOCOL,
+    id: SEEDER_HELLO_ID,
+    async onopen () {
+      _helloChannels.add(msg)
+      const nickRow = await db.get('seeder:nickname').catch(() => null)
+      const nickname = nickRow?.value?.name || null
+      try { msg.send(Buffer.from(JSON.stringify({ nickname, groupCount: enrolled.size }))) } catch {}
+    },
+    onclose () { _helloChannels.delete(msg) },
+  })
+  if (!channel) return
+  msg = channel.addMessage({ onmessage () {} })
+  channel.open()
+}
+
+// Track a live replication mux so a QR-pairing session can open its channel on
+// connections that already exist (a member may connect over the rendezvous topic
+// before, or after, the session is opened).
+async function trackSeederConn (stream) {
+  try { await stream.noiseStream.opened } catch { return }
+  const mux = stream.noiseStream.userData
+  if (!mux) return
+  _activeMuxes.add(mux)
+  // React to the member opening a pair channel (the member always initiates at
+  // scan time). Creating our side *inside* the notify claims the member's
+  // pending open, so timing never races. Opening eagerly instead failed on a
+  // reused connection: we'd open seconds before the member, and protomux rejects
+  // an unclaimed incoming open, closing the channel on both ends.
+  mux.pair({ protocol: SEEDER_PAIR_PROTOCOL }, (id) => {
+    // Create our side using the rv from the MEMBER's incoming channel id — NOT
+    // our current session rv. The QR auto-renews on TTL, so a member can scan rv
+    // X and open just as we renew to rv Y; keying off our session rv would build
+    // a mismatched channel (Y) that never claims the member's open (X). The rv is
+    // only a per-session nonce here; the connection is already authenticated, and
+    // enrolling is not sensitive (PearCircle's "a pairing window is open" trust).
+    if (!_pairSession) return
+    const rv = _rvFromChannelId(id)
+    if (rv) setupSeederPairChannelFor(mux, rv)
+  })
+  stream.on('close', () => {
+    _activeMuxes.delete(mux)
+    try { mux.unpair({ protocol: SEEDER_PAIR_PROTOCOL }) } catch {}
+  })
+}
+
+// The channel id carried on the wire IS the 32-byte rendezvous key; recover the
+// 43-char base64url rv the member scanned so we build a matching channel.
+function _rvFromChannelId (id) {
+  try {
+    if (!id || id.length !== 32) return null
+    return b4a.toString(id, 'base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  } catch { return null }
+}
+
+// Seed side: open the receive channel for a member's pairing open on a mux,
+// keyed by the rv the member scanned (passed in from the incoming channel id).
+function setupSeederPairChannelFor (mux, rv) {
+  if (!_pairSession || !rv) return
+  setupSeederPairChannel({
+    mux,
+    role: 'seed',
+    rv, // the member's scanned rv (from the incoming channel id), not our session rv
+    onBundle: async ({ invites }) => {
+      const res = await enrollSeedBundle(invites.join('\n')).catch(() => ({ results: [] }))
+      const names = []
+      let enrolled = 0
+      for (const r of (res?.results ?? [])) {
+        if (r?.ok) { enrolled++; if (!r.alreadyEnrolled && r.name) names.push(r.name) }
+      }
+      const nickRow = await db.get('seeder:nickname').catch(() => null)
+      const nickname = nickRow?.value?.name || null
+      console.log('[seed] pair: enrolled', enrolled, 'group(s) via QR')
+      try { send({ type: 'event', event: 'seeder:pair:result', data: { enrolled, names } }) } catch {}
+      if (enrolled > 0) closeSeederPairSession('paired') // one-shot: pairing done
+      return { enrolled, names, nickname }
+    },
+  })
+}
+
+// Seed side: mint a fresh rendezvous + join its topic; return the QR link.
+// Idempotent — re-opening returns the same live session's link.
+async function openSeederPairSession () {
+  if (!identity) return { error: 'seeder not booted' }
+  const seederHex = b4a.toString(identity.publicKey, 'hex')
+  if (_pairSession) {
+    return { link: buildSeederPairLink({ rv: _pairSession.rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS, reused: true }
+  }
+  const rv = generateRendezvousKey()
+  const topic = seederPairTopic(rv)
+  const topicHex = b4a.toString(topic, 'hex')
+  try { swarm.join(topic, { server: true, client: true }) } catch (e) {
+    return { error: 'join failed: ' + (e?.message ?? String(e)) }
+  }
+  const ttlTimer = setTimeout(() => closeSeederPairSession('ttl'), SEEDER_PAIR_TTL_MS)
+  if (typeof ttlTimer.unref === 'function') ttlTimer.unref()
+  _pairSession = { rv, topic, topicHex, ttlTimer }
+  // No eager channel creation — each connection's mux.pair handler (registered
+  // in trackSeederConn) reacts to the member's open once this session is live.
+  console.log('[seed] pair session open — rv', rv.slice(0, 8))
+  return { link: buildSeederPairLink({ rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS }
+}
+
+function closeSeederPairSession (reason) {
+  if (!_pairSession) return
+  const s = _pairSession; _pairSession = null
+  try { clearTimeout(s.ttlTimer) } catch {}
+  try { swarm.leave(s.topic) } catch {}
+  console.log('[seed] pair session closed:', reason)
 }
 
 // A member announced { groupId, writerKey, ... }. If we host that group and
@@ -222,6 +472,8 @@ async function enrollSeedInvite (invite) {
     enrolled.delete(groupId)
     throw new Error('seeder mount failed: ' + (e?.message ?? String(e)))
   }
+  // Enrolled a new group → push the updated count to connected members (#116 facet #2).
+  broadcastSeederHello().catch(() => {})
   return { ok: true, groupId, name: groupName, alreadyEnrolled: false }
 }
 
@@ -242,6 +494,9 @@ async function leaveSeedGroup (groupId) {
   const entry = mounted.get(groupId)
   if (entry) {
     try { swarm.leave(b4a.from(entry.topicHex, 'hex')).catch(() => {}) } catch {}
+    if (entry.rawTopicHex && entry.rawTopicHex !== entry.topicHex) {
+      try { swarm.leave(b4a.from(entry.rawTopicHex, 'hex')).catch(() => {}) } catch {}
+    }
     try { await entry.core.close() } catch {}
     for (const c of entry.writerCores.values()) { try { await c.close() } catch {} }
     mounted.delete(groupId)
@@ -249,6 +504,8 @@ async function leaveSeedGroup (groupId) {
   await db.del('seeder:enrolled:' + groupId).catch(() => {})
   enrolled.delete(groupId)
   console.log('[seed] left group', groupId)
+  // Left a group → push the updated count to connected members (#116 facet #2).
+  broadcastSeederHello().catch(() => {})
   return { ok: true, groupId }
 }
 
@@ -264,21 +521,66 @@ async function init (dir) {
   store = new Corestore(dataDir + '/store')
   await store.ready()
 
-  swarm = new Hyperswarm()
+  // Load the seeder identity BEFORE the swarm and key the swarm with it, so the
+  // authenticated remote pubkey a member sees on a rendezvous connection equals
+  // the identity pubkey carried in the QR (the QR-pairing security anchor).
+  identity = await loadOrCreateSeederIdentity()
+
+  swarm = new Hyperswarm({ keyPair: identity })
   // Blind replication: replicate the whole corestore to any connected peer, and
   // open the writer-announce channel so members tell us their writer cores.
-  swarm.on('connection', (conn) => {
+  swarm.on('connection', (conn, info) => {
+    // Diagnostic (seeder-discovery investigation): log who connects, on which
+    // topic(s), and the total peer count — so `peers:N` can be attributed to real
+    // remotes instead of guessed. Cheap; safe to keep while diagnosing.
+    try {
+      const rpk = conn.remotePublicKey ? b4a.toString(conn.remotePublicKey, 'hex').slice(0, 16) : '?'
+      const topics = (info && info.topics) ? info.topics.map((t) => b4a.toString(t, 'hex').slice(0, 12)).join(',') : ''
+      const client = info ? !!info.client : false
+      console.log('[seed] +conn peer', rpk, client ? '(we dialed)' : '(they dialed)',
+                  topics ? 'topics=' + topics : '', '| peers now', swarm.connections.size)
+      conn.on('close', () => {
+        console.log('[seed] -conn peer', rpk, '| peers now', swarm.connections.size)
+        // Prompt re-discovery of the dropped peer (mirrors bare.js's
+        // stream.on('close') -> swarm.flush()) instead of waiting a full tick.
+        try { swarm.flush().catch(() => {}) } catch (e) {}
+      })
+    } catch (e) {}
     const s = store.replicate(conn)
     s.on('error', () => {})
     conn.on('error', () => {})
     setupWriterAnnounceListener(s)
+    setupSeederHelloAnnouncer(s)
+    setupSeedEnrollListener(s)
+    trackSeederConn(s)
   })
 
-  identity = await loadOrCreateSeederIdentity()
   await loadEnrolledGroups()
   for (const enr of enrolled.values()) {
     await mountGroup(enr).catch((e) => console.warn('[seed] mount error', enr.groupId, e?.message))
   }
+
+  // Discovery refresh loop (RCA proposals/2026-07-17-seeder-discovery-staleness-rca.md).
+  // A one-shot swarm.join only dials the peers present at mount; members re-announce
+  // under a NEW ephemeral swarm pubkey on every app restart, so without a periodic
+  // re-announce+re-lookup the seeder loses devices as they cycle and never re-finds
+  // them (until the seeder itself restarts). Re-refresh each mounted topic + flush.
+  if (_discoveryRefreshTimer) { try { clearInterval(_discoveryRefreshTimer) } catch {} }
+  let _lastPeerCount = -1
+  _discoveryRefreshTimer = setInterval(() => {
+    for (const entry of mounted.values()) {
+      try { entry.discovery?.refresh?.({ client: true, server: true }) } catch (e) {}
+      try { entry.rawDiscovery?.refresh?.({ client: true, server: true }) } catch (e) {}
+    }
+    try { swarm.flush().catch(() => {}) } catch (e) {}
+    // Quiet by default: only log when the connected-peer count changes (the
+    // per-connection +conn/-conn lines already trace individual peers).
+    try {
+      const c = swarm.connections.size
+      if (c !== _lastPeerCount) { console.log('[seed] peers:', c, '(was', _lastPeerCount < 0 ? 0 : _lastPeerCount, ')'); _lastPeerCount = c }
+    } catch (e) {}
+  }, DISCOVERY_REFRESH_MS)
+
   _booted = true
   console.log('[seed] booted — pubkey', b4a.toString(identity.publicKey, 'hex').slice(0, 16) + '…',
               '| enrolled groups:', enrolled.size,
@@ -295,16 +597,37 @@ async function handle (method, args) {
         : (a?.dataDir ?? (Array.isArray(a) ? (a[0]?.dataDir ?? a[0]) : null))
       return init(dir)
     }
-    case 'seeder:status':
+    case 'seeder:status': {
+      const nick = await db.get('seeder:nickname').catch(() => null)
+      let bytes = 0, blocks = 0
+      for (const groupId of mounted.keys()) { const m = _groupMetrics(groupId); bytes += m.bytes; blocks += m.blocks }
       return {
         pubkey: identity ? b4a.toString(identity.publicKey, 'hex') : null,
+        nickname: nick?.value?.name ?? null,
         booted: _booted,
         uptime: _now() - bootTs,
         enrolled: enrolled.size,
         mounted: mounted.size,
+        // Blind-safe metrics only: the seeder holds ciphertext, so it can report
+        // storage (bytes) and opaque block counts and peer count — never event
+        // counts, which would require decrypting.
+        peers: (swarm && swarm.connections) ? swarm.connections.size : 0,
+        bytes,
+        blocks,
       }
+    }
+    case 'seeder:nickname:get': {
+      const n = await db.get('seeder:nickname').catch(() => null)
+      return { name: n?.value?.name ?? null }
+    }
+    case 'seeder:nickname:set': {
+      const a = args
+      const name = (typeof a === 'string' ? a : (a?.name ?? (Array.isArray(a) ? a[0] : ''))) || ''
+      await db.put('seeder:nickname', { name: String(name).slice(0, 64), updatedAt: _now() })
+      return { ok: true, name: String(name).slice(0, 64) }
+    }
     case 'seeder:enrolled:list':
-      return [...enrolled.values()]
+      return [...enrolled.values()].map((row) => ({ ...row, ..._groupMetrics(row.groupId) }))
     case 'seeder:enroll': {
       const a = args
       const invite = typeof a === 'string' ? a
@@ -318,6 +641,11 @@ async function handle (method, args) {
         : (a?.groupId ?? (Array.isArray(a) ? a[0] : null))
       return leaveSeedGroup(groupId)
     }
+    case 'seeder:pair:open':
+      return openSeederPairSession()
+    case 'seeder:pair:close':
+      closeSeederPairSession('manual')
+      return { ok: true }
     default:
       throw new Error('Unknown seed method: ' + method)
   }
@@ -378,7 +706,7 @@ if (typeof BareKit !== 'undefined' || typeof Pear !== 'undefined') {
 module.exports = {
   detectSeedMode, loadOrCreateSeederIdentity, loadEnrolledGroups, init, handle,
   mountGroup, onWriterAnnounce, topicForGroupKey,
-  enrollSeedInvite, enrollSeedBundle, leaveSeedGroup,
+  enrollSeedInvite, enrollSeedBundle, leaveSeedGroup, setupSeedEnrollListener,
   // Test/introspection accessors.
   _state: () => ({ enrolled, mounted, identity, store: () => store, swarm: () => swarm }),
 }
