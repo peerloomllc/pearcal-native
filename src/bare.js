@@ -15,6 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
+const { shouldIgnoreSelfMemberLeft, canClaimOwnership } = require('./lib/ownerGuard.js')
 const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
@@ -4860,13 +4861,24 @@ async function claimOwnership (groupId) {
   if (!(group.members ?? []).some(m => m.id === profile.id)) {
     throw new Error('claimOwnership: not a member')
   }
-  const lastActivity = group.lastOwnerActivityTs ?? group.updatedAt ?? 0
-  const elapsed = Date.now() - lastActivity
-  if (elapsed <= CLAIM_OWNERSHIP_INACTIVITY_MS) {
-    throw new Error('claimOwnership: owner still active (elapsed=' + elapsed + 'ms)')
-  }
   const base = bases.get(groupId)
   if (!base) throw new Error('claimOwnership: group base not open')
+  // Fix 2 gate (TODO #117): judge owner-absence from the AUTHORITATIVE view,
+  // never the local mirror. A stale local lastOwnerActivityTs can mean the owner
+  // is genuinely gone (a legit claim) OR merely that we can't read the owner's
+  // recent activity — an undecryptable encrypted view, or a base that hasn't
+  // caught up. Catch up and read the view; canClaimOwnership refuses on an
+  // unreadable view rather than seize the group on stale local state (the
+  // owner-recovery landmine). apply() re-enforces the same rule against the view.
+  await base.update().catch(() => {})
+  const vNode = await base.view.get(NS.groups + groupId).catch(() => null)
+  const decision = canClaimOwnership({
+    viewGroup: vNode?.value ?? null,
+    selfId: profile.id,
+    now: Date.now(),
+    inactivityMs: CLAIM_OWNERSHIP_INACTIVITY_MS,
+  })
+  if (!decision.ok) throw new Error('claimOwnership: ' + decision.reason)
   if (!(await safeAppend(base, {
     promoteOwner: profile.id,
     promotedBy: profile.id,
@@ -7012,6 +7024,26 @@ async function _doInit (dir, attempt = 0) {
                 const profile = await getProfile()
                 // If we are the removed member, treat as group deletion
                 if (profile && memberId === profile.id) {
+                  // Fix 2 guard: `memberLeft` is UNAUTHENTICATED plaintext over
+                  // the control channel — any connected peer could forge
+                  // memberLeft(us) to make us self-delete (the EncTestv-class
+                  // corruption). A genuine removal is recorded in the group's
+                  // authoritative view (`removedMembers`) by an authorized writer,
+                  // which — for an encrypted group — a peer without the key cannot
+                  // forge. So corroborate against the view before acting; if we can
+                  // read it and are NOT actually removed, ignore the message.
+                  const _base = bases.get(groupId)
+                  if (_base) {
+                    try {
+                      await _base.update()
+                      const _vn = await _base.view.get(NS.groups + groupId).catch(() => null)
+                      const _blocked = await db.get('blockedFromGroup:' + groupId).catch(() => null)
+                      if (shouldIgnoreSelfMemberLeft({ viewGroup: _vn?.value ?? null, blocked: !!_blocked?.value, selfId: profile.id })) {
+                        console.warn('[memberLeft] ignoring unauthenticated self-remove for', groupId, '— not in authoritative removedMembers')
+                        return
+                      }
+                    } catch (e) { /* unreadable view: fall through (legacy/best-effort) */ }
+                  }
                   // Notify removed member before deleting group
                   const ownerMember = (group?.members ?? []).find(m => m.id === group?.ownerId)
                   const ownerName = ownerMember?.name || 'The owner'
