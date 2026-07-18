@@ -14,7 +14,7 @@
 
 const { ipcMain, app } = require('electron')
 const { dispatchNativeRequest } = require('./native-handlers')
-const { tryHandle: tryHandleShell } = require('./shell-handlers')
+const { tryHandle: tryHandleShell, handleBareEvent } = require('./shell-handlers')
 
 function installBridge ({ shim, getMainWindow, requestQuit }) {
   const pendingCalls = new Map()  // id → { resolve, reject }
@@ -59,6 +59,11 @@ function installBridge ({ shim, getMainWindow, requestQuit }) {
       }
 
       if (msg.type === 'event') {
+        // Some bare events are consumed NATIVELY (OS notifications) — morning
+        // digest + sync-change — exactly as mobile's RN shell handles them
+        // instead of the WebView. handleBareEvent returns true for those, so we
+        // don't also forward them to the renderer (which has no listener).
+        if (handleBareEvent(msg.event, msg.data, getMainWindow)) continue
         const win = getMainWindow()
         if (win && !win.isDestroyed()) {
           win.webContents.send('bare-event', msg)

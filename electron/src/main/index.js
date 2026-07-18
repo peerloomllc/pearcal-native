@@ -25,7 +25,7 @@ const path = require('path')
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage } = require('electron')
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
-const { scheduleForEvent: scheduleForEventOnBoot } = require('./shell-handlers')
+const { reconcileSchedule } = require('./shell-handlers')
 const updateChecker = require('./update-checker')
 const autoUpdater = require('./auto-updater')
 
@@ -105,64 +105,30 @@ app.whenReady().then(() => {
   }
 })
 
-// Rehydration window. setTimeout's max delay is 2^31-1 ms (~24.8 days);
-// any longer delay overflows to 0 and fires immediately. Recurring
-// events with occurrences months out would all schedule into the past,
-// flooding the user with notifications at cold launch. Capping at 7
-// days keeps every scheduled timer well under the overflow boundary,
-// and the daily re-rehydration loop pulls events into the window as
-// they get closer.
-const REHYDRATE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+// Daily rolling rehydration interval. Desktop's setTimeout reminders die with
+// the process (mobile's OS alarms survive), and firings past setTimeout's
+// ~24.8-day ceiling can't be armed yet, so we re-run the reconcile daily to pull
+// far-future firings in as they approach.
 const REHYDRATE_INTERVAL_MS = 24 * 60 * 60 * 1000
 
-function _eventStartMs (ev) {
-  if (!ev?.date) return null
-  const [y, mo, d] = ev.date.split('-').map(Number)
-  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null
-  let h = 9, m = 0
-  if (!ev.allDay && ev.start) {
-    const parts = ev.start.split(':').map(Number)
-    if (Number.isFinite(parts[0]) && Number.isFinite(parts[1])) {
-      h = parts[0]; m = parts[1]
-    }
-  }
-  const ms = new Date(y, mo - 1, d, h, m, 0, 0).getTime()
-  return Number.isFinite(ms) ? ms : null
-}
-
+// Re-arm reminders through the SAME top-K reconcile the shared UI uses live
+// (computeUpcomingReminders → reconcileSchedule). Both drive the one
+// _reconcileTimers batch in shell-handlers, so the cold-launch/daily rehydration
+// and the UI's save/edit/foreground reconciles replace each other rather than
+// double-fire. This is what makes a reminder created while the window is hidden
+// in the tray actually arm without waiting for the next daily tick or a restart.
 async function rehydrateReminders () {
-  const events = await bridge.callBare('listEvents', [])
-  if (!Array.isArray(events) || events.length === 0) return
-  const now = Date.now()
-  const cutoff = now + REHYDRATE_WINDOW_MS
-  let scheduled = 0
-  let outOfWindow = 0
-  for (const ev of events) {
-    if (!ev || !ev.id) continue
-    const startMs = _eventStartMs(ev)
-    // Skip events outside the rehydration window. Events more than 7
-    // days out get scheduled by a future re-rehydration tick. Events
-    // more than 1 hour past would be filtered by the schedule logic
-    // anyway, but bailing here saves the bare-call round-trip.
-    if (startMs == null || startMs < now - 60 * 60 * 1000 || startMs > cutoff) {
-      outOfWindow++
-      continue
-    }
-    const reminders = await bridge.callBare('getReminders', [ev.id]).catch(() => null)
-    if (!Array.isArray(reminders) || reminders.length === 0) continue
-    scheduleForEventOnBoot(ev, reminders, () => mainWindow)
-    scheduled++
-  }
-  if (scheduled > 0 || outOfWindow > 0) {
-    console.log('[main] rehydrated reminders: scheduled=' + scheduled + ' outOfWindow=' + outOfWindow)
-  }
+  let tzName = null
+  try { tzName = Intl.DateTimeFormat().resolvedOptions().timeZone } catch (_) {}
+  const triples = await bridge.callBare('computeUpcomingReminders', [50, tzName])
+  const list = Array.isArray(triples) ? triples : []
+  reconcileSchedule(list, () => mainWindow)
+  if (list.length) console.log('[main] rehydrated reminders: armed ' + list.length + ' upcoming firing(s)')
 }
 
-// Daily rolling rehydration so events sitting just past the 7-day
-// window get picked up as they get closer, without requiring the user
-// to restart the app. _scheduleForEvent's per-event _cancelForEvent
-// makes the re-call idempotent — already-scheduled timers in the same
-// window get replaced rather than duplicated.
+// Daily rolling rehydration so firings past setTimeout's ~24.8-day ceiling get
+// armed as they approach, without requiring the user to restart. The reconcile
+// batch replaces itself each pass, so re-running is idempotent (never duplicates).
 let _rehydrateTimer = null
 function scheduleNextRehydration () {
   if (_rehydrateTimer) clearTimeout(_rehydrateTimer)
