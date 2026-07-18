@@ -1,0 +1,47 @@
+manifestVersion: 1
+# id carries the community-store prefix: Umbrel requires every app's id to start
+# with the store id (store id = "peerloom"). Published at
+# https://github.com/peerloomllc/peerloom-umbrel-app-store
+id: peerloom-pearcal-seeder
+name: PearCal Seeder
+tagline: Keep your PearCal groups in sync 24/7
+category: networking
+version: "1.0.33"
+port: 8731
+description: >-
+  Run a blind seeder for your PearCal groups on your Umbrel so their calendars
+  stay in sync even when every phone is offline.
+
+
+  PearCal is a peer-to-peer calendar app with no accounts and no servers: a
+  group's events live only on its members' devices and sync directly between
+  them. That means a group is only reachable while at least one member's phone is
+  online. This app runs the PearCal seed-mode worklet as an always-on background
+  service that replicates each enrolled group's encrypted blocks, so members stay
+  caught up regardless of who's online.
+
+
+  It is a "blind" seeder: the blocks it stores and serves stay encrypted, so your
+  Umbrel keeps a group's data available without ever being able to read the
+  events, notes, or members inside it. Group members stay in control — they admit
+  the seeder when it enrolls and can revoke it at any time.
+
+
+  To enroll a group: open the seeder dashboard, then in the PearCal phone app
+  mint a seed invite for the group (Profile → Advanced → Blind peer) and paste it
+  in.
+developer: PeerLoom
+website: https://peerloomllc.com
+dependencies: []
+repo: https://github.com/peerloomllc/pearcal-native
+support: https://github.com/peerloomllc/pearcal-native/issues
+gallery: []
+releaseNotes: >-
+  First release of the PearCal seeder for Umbrel. Runs the blind-seeder worklet
+  as an always-on service with a dashboard for enrolling groups and watching
+  replication.
+path: ""
+defaultUsername: ""
+defaultPassword: ""
+submitter: PeerLoom
+submission: https://github.com/peerloomllc/pearcal-native

@@ -1,0 +1,28 @@
+# Build context for seeder-launcher/umbrel/Dockerfile is the repo root. The
+# builder runs `npm ci` to regenerate node_modules (so the native prebuilds
+# match), so the huge/irrelevant trees are excluded to keep the context small.
+# Keep: package.json, package-lock.json, src/, seeder-launcher/.
+node_modules
+**/node_modules
+.git
+.gitignore
+android
+ios
+.expo
+dist
+build
+seeder-launcher/dist
+electron
+# Large prebuilt bundles the image rebuilds from source (keep assets/images for
+# the dashboard brand icon).
+assets/*.bundle
+*.apk
+*.aab
+*.ipa
+*.keystore
+*.jks
+metadata
+proposals
+.github
+TODO.md
+DONE.md
