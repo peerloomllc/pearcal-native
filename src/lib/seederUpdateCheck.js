@@ -55,14 +55,21 @@ function archTokens (arch) {
   return arch ? [String(arch).toLowerCase()] : []
 }
 
+// Every arch token that may appear in a seeder installer name, across all
+// platforms. Used to tell an arch-suffixed asset from an arch-universal one.
+const ALL_ARCH_TOKENS = ['x86_64', 'amd64', 'x64', 'aarch64', 'arm64']
+
 // Pick this platform+arch's installer asset from a GitHub release's `assets`
 // array. platform is process.platform ('darwin' | 'win32' | 'linux'), arch is
-// process.arch ('x64' | 'arm64'). macOS `.pkg` and Windows `.exe` ship as a
-// single (universal) asset, so arch is not required there. On Linux the
+// process.arch ('x64' | 'arm64'). Windows `.exe` ships as a single (universal)
+// asset, so arch is not required there. macOS `.pkg` and Linux `.AppImage`/`.deb`
+// are built per-arch (the .pkg name carries `-arm64`/`-x64`), so we match the
+// running arch and never hand back a wrong-arch binary — a wrong-arch install is
+// worse than none, so we fall back to null. A macOS `.pkg` with no arch token in
+// its name is treated as arch-universal (a single fat build). On Linux the
 // `installKind` hint decides which artifact a running seeder gets so the apply
-// path matches how it was installed. Only an arch-matching asset is returned - a
-// wrong-arch binary is worse than none, so we fall back to null. .sha256
-// sidecars are never returned as the primary asset.
+// path matches how it was installed. .sha256 sidecars are never returned as the
+// primary asset.
 function selectAsset (assets, platform, arch, installKind) {
   if (!Array.isArray(assets)) return null
   // Match ONLY seeder-named assets. Every seeder installer carries "seeder" in
@@ -76,11 +83,17 @@ function selectAsset (assets, platform, arch, installKind) {
     !a.name.endsWith('.sha256') && a.name.toLowerCase().includes('seeder'))
   const lower = (a) => a.name.toLowerCase()
   const bySuffix = (suffix) => named.filter((a) => lower(a).endsWith(suffix))
-  if (platform === 'darwin') return bySuffix('.pkg')[0] || null
+  const toks = archTokens(arch)
+  const matchArch = (list) => list.find((a) => toks.some((t) => lower(a).includes(t))) || null
+  if (platform === 'darwin') {
+    const pkgs = bySuffix('.pkg')
+    // Prefer an arch-matching build; otherwise accept an arch-universal pkg (no
+    // arch token in the name). Never return the wrong arch's suffixed pkg.
+    const universal = pkgs.find((a) => !ALL_ARCH_TOKENS.some((t) => lower(a).includes(t))) || null
+    return matchArch(pkgs) || universal
+  }
   if (platform === 'win32') return bySuffix('.exe')[0] || null
   if (platform === 'linux') {
-    const toks = archTokens(arch)
-    const matchArch = (list) => list.find((a) => toks.some((t) => lower(a).includes(t))) || null
     const appimage = () => matchArch(bySuffix('.appimage'))
     const deb = () => matchArch(bySuffix('.deb'))
     return installKind === 'deb'
