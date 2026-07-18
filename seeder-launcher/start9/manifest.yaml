@@ -59,14 +59,12 @@ main:
     # --data at <mount>/data.
     main: /root
   gpu-acceleration: false
-# x86_64 ONLY. StartOS serves one .s9pk per package from the registry (no
-# per-arch download), so a universal package would ship BOTH arch images and
-# double every server's download for the arch it can't run. Start9's hardware is
-# x86_64, so we ship x86_64 alone and keep the .s9pk small; arm StartOS hosts run
-# the seeder via the multi-arch Docker image instead (seeder-launcher/umbrel).
+# The pinned base image is a multi-arch manifest list (amd64 + arm64), so both a
+# typical x86 Start9 server and an arm one (Raspberry Pi) are supported.
 hardware-requirements:
   arch:
     - x86_64
+    - aarch64
 # HTTP GET against the dashboard proves the worklet host is up and serving.
 health-checks:
   web-ui:

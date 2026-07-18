@@ -80,8 +80,8 @@ WEBSITE_DIR=/path/to/website \
 
 ## Arch note
 
-The PearCal Start9 package is **x86_64-only** (see
-`../manifest.yaml` hardware-requirements) to keep the s9pk small — StartOS serves
-one s9pk per package, so a universal both-arch package would double every
-server's download. arm StartOS hosts run the seeder from the multi-arch Docker
-image (`seeder-launcher/umbrel`) instead.
+The PearCal Start9 package is **universal** (x86_64 + aarch64; see
+`../manifest.yaml` hardware-requirements), matching the PearCircle seeder — one
+`.s9pk` installs on both a typical x86 Start9 server and an arm one
+(Raspberry Pi). The bare runtime binary is stripped at stage time
+(`stage-payload.sh`), which trims the package without dropping an arch.
