@@ -1,14 +1,13 @@
 # Build the PearCal seeder .s9pk for StartOS 0.3.5.x.
 #
-#   make            build + verify a universal s9pk (x86_64 + aarch64)
+#   make            build + verify an x86_64 s9pk
 #   make install    install to the server in ~/.embassy/config.yaml
 #   make clean      remove build artifacts
 #
-# The pinned base image is a multi-arch manifest list (amd64 + arm64), so each
-# arch tar just pulls its own layer. Building the arm64 tar on an amd64 host runs
-# a tiny apt step under qemu emulation, so qemu-user-static (binfmt) must be
-# registered. Requires: deno, yq, the StartOS SDK (start-sdk / start-cli), and
-# either docker (buildx) OR podman. See scripts/build-image-tar.sh.
+# x86_64-only (see manifest.yaml hardware-requirements): the x86_64 tar pulls the
+# amd64 layer from the pinned multi-arch base image. Requires: deno, yq, the
+# StartOS SDK (start-sdk / start-cli), and either docker (buildx) OR podman. See
+# scripts/build-image-tar.sh.
 
 PKG_ID := $(shell yq e ".id" < manifest.yaml)
 PKG_VERSION := $(shell yq e ".version" < manifest.yaml)
@@ -48,11 +47,9 @@ scripts/embassy.js: $(TS_FILES)
 docker-images/x86_64.tar: Dockerfile docker_entrypoint.sh scripts/build-image-tar.sh
 	bash scripts/build-image-tar.sh $(PKG_ID) $(PKG_VERSION) docker-images/x86_64.tar linux/amd64
 
-docker-images/aarch64.tar: Dockerfile docker_entrypoint.sh scripts/build-image-tar.sh
-	bash scripts/build-image-tar.sh $(PKG_ID) $(PKG_VERSION) docker-images/aarch64.tar linux/arm64
-
-# Universal s9pk carries both arch images; the manifest's hardware-requirements
-# lists x86_64 + aarch64 so StartOS installs the right one per server.
-$(PKG_ID).s9pk: manifest.yaml instructions.md icon.png LICENSE scripts/embassy.js docker-images/x86_64.tar docker-images/aarch64.tar
-	@echo "start-sdk: packing $(PKG_ID) v$(PKG_VERSION) (x86_64 + aarch64) ..."
+# x86_64-only s9pk (see manifest.yaml hardware-requirements): StartOS serves one
+# .s9pk per package, so shipping a single arch halves the download. arm StartOS
+# hosts use the multi-arch Docker image instead.
+$(PKG_ID).s9pk: manifest.yaml instructions.md icon.png LICENSE scripts/embassy.js docker-images/x86_64.tar
+	@echo "start-sdk: packing $(PKG_ID) v$(PKG_VERSION) (x86_64) ..."
 	@start-sdk pack

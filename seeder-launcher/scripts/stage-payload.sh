@@ -58,6 +58,42 @@ fi
 [ -f "$BARE_BIN_SRC" ] || { echo "stage-payload: bare binary missing: $BARE_BIN_SRC" >&2; exit 1; }
 cp "$BARE_BIN_SRC" "$OUT_DIR/bare$BARE_EXT"; chmod +x "$OUT_DIR/bare$BARE_EXT" 2>/dev/null || true
 
+# 1a. Strip the bare binary. The upstream bare-runtime binaries ship UNSTRIPPED
+#     (~91 MB); stripping debug/symbol tables takes them to ~63 MB with no
+#     runtime change, shrinking every surface that embeds the payload (the Start9
+#     s9pk + ghcr image + .AppImage/.deb). Only Linux ELF targets are stripped,
+#     and only with a stripper that matches the TARGET arch — a wrong-arch or
+#     mach-O/PE strip is skipped (non-fatal), so cross-arch/mac/win builds are
+#     unaffected. SEEDER_NO_STRIP=1 opts out.
+if [ "${SEEDER_NO_STRIP:-}" != "1" ] && [ -z "$BARE_EXT" ] && [ "${BARE_HOST#linux-}" != "$BARE_HOST" ]; then
+  _host_m="$(uname -m)"
+  _stripper=""
+  case "$BARE_HOST" in
+    linux-x64)
+      if command -v llvm-strip >/dev/null 2>&1; then _stripper="llvm-strip"
+      elif command -v x86_64-linux-gnu-strip >/dev/null 2>&1; then _stripper="x86_64-linux-gnu-strip"
+      elif [ "$_host_m" = x86_64 ] && command -v strip >/dev/null 2>&1; then _stripper="strip"; fi ;;
+    linux-arm64)
+      if command -v llvm-strip >/dev/null 2>&1; then _stripper="llvm-strip"
+      elif command -v aarch64-linux-gnu-strip >/dev/null 2>&1; then _stripper="aarch64-linux-gnu-strip"
+      elif [ "$_host_m" = aarch64 ] && command -v strip >/dev/null 2>&1; then _stripper="strip"; fi ;;
+  esac
+  if [ -n "$_stripper" ]; then
+    _before=$(stat -c%s "$OUT_DIR/bare" 2>/dev/null || echo 0)
+    if "$_stripper" --strip-all "$OUT_DIR/bare" 2>/dev/null && [ -s "$OUT_DIR/bare" ]; then
+      chmod +x "$OUT_DIR/bare" 2>/dev/null || true
+      _after=$(stat -c%s "$OUT_DIR/bare" 2>/dev/null || echo 0)
+      echo "--> stripped bare ($_stripper): $((_before/1024/1024))M -> $((_after/1024/1024))M"
+    else
+      # Strip failed/mangled the file — restore the pristine binary.
+      cp "$BARE_BIN_SRC" "$OUT_DIR/bare"; chmod +x "$OUT_DIR/bare" 2>/dev/null || true
+      echo "--> strip skipped ($_stripper failed; kept unstripped bare)"
+    fi
+  else
+    echo "--> strip skipped (no $BARE_HOST-compatible stripper on PATH)"
+  fi
+fi
+
 # 2. Worklet bundle. bare-pack collapses seed.js's whole module graph into one
 #    bundle; only native addon prebuilds ship beside it. --base one level below
 #    node_modules makes the bundle resolve addons at ../node_modules next to it.

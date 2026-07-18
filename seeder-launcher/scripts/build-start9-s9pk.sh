@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build a versioned universal PearCal seeder .s9pk for StartOS (Start9).
+# Build a versioned x86_64 PearCal seeder .s9pk for StartOS (Start9).
 #
 # Run AFTER build-umbrel-image.sh — it resolves the IMAGE:VERSION manifest-list
 # digest from the registry (so that image must already be pushed), pins the
@@ -13,8 +13,7 @@
 # Env:
 #   IMAGE   base image repo (default ghcr.io/peerloomllc/pearcal-seeder)
 #
-# Requires: the StartOS SDK (start-sdk), deno, yq, skopeo, and docker or podman
-# (+ qemu-user-static for the arm64 image tar on an x86 host).
+# Requires: the StartOS SDK (start-sdk), deno, yq, skopeo, and docker or podman.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -55,7 +54,7 @@ fi
 DIGEST="sha256:$(printf '%s' "$RAW" | sha256sum | cut -d' ' -f1)"
 echo "    digest=$DIGEST"
 printf '%s' "$RAW" | grep -q '"manifests"' \
-  || echo "    WARNING: $IMAGE:$VERSION is not a manifest list — the aarch64 tar build will fail." >&2
+  || echo "    NOTE: $IMAGE:$VERSION is a single-image manifest (not a list) — the x86_64 tar build still works if it is an amd64 image." >&2
 
 # --- pin the version-bearing files -----------------------------------------
 echo "==> pinning manifest.yaml / migrations.ts / Dockerfile to $VERSION ..."
@@ -68,7 +67,7 @@ sed -i -E "s#^FROM ${IMAGE}:[0-9.]+(@sha256:[0-9a-f]+)?#FROM ${IMAGE}:${VERSION}
 grep -q "^FROM ${IMAGE}:${VERSION}@${DIGEST}\$" "$START9_DIR/Dockerfile" \
   || { echo "build-start9-s9pk: failed to rewrite Dockerfile FROM" >&2; exit 1; }
 
-# --- build + verify the universal s9pk (make handles both arch tars) --------
+# --- build + verify the x86_64 s9pk (make builds the amd64 image tar) -------
 echo "==> building s9pk (make) ..."
 make -C "$START9_DIR"
 S9PK="$START9_DIR/pearcal-seeder.s9pk"
