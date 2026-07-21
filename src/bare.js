@@ -12,6 +12,9 @@ const bip39         = require('bip39-mnemonic')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
+const {
+  groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
+} = require('./lib/eventTombstone.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -330,7 +333,7 @@ async function handle (method, args) {
     case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
@@ -1394,6 +1397,36 @@ async function putEvent (event) {
   }
   scheduleWidgetCacheRefresh()
   return event
+}
+
+// Is this event blocked from being mirrored into `groupId`? Blocked either by a
+// global delete (gone everywhere) or by an unshare from this specific group.
+// Decision logic in src/lib/eventTombstone.js (TODO #122).
+async function isEventTombstoned (eventId, groupId) {
+  const globalTombstone = await db.get(NS.deleted + eventId).catch(() => null)
+  if (!groupId) return !!globalTombstone
+  const scopedTombstone = globalTombstone
+    ? null
+    : await db.get(groupDeletedKey(groupId, eventId)).catch(() => null)
+  return shouldBlockMirror({ globalTombstone, scopedTombstone })
+}
+
+// Remove `groupId` from a local event's groups[]. Deletes the row only once no
+// groups remain — the event has then left every group it was shared into. Used
+// by the group-scoped del branch in apply() so moving an event between groups
+// stops destroying it (TODO #122).
+async function unshareEventFromGroup (eventKey, groupId) {
+  const node = await db.get(eventKey).catch(() => null)
+  const ev = node?.value
+  if (!ev) return
+  const remaining = remainingGroupsAfterUnshare(ev.groups, groupId)
+  if (remaining.length > 0) {
+    await db.put(eventKey, { ...ev, groups: remaining }).catch(() => {})
+    return
+  }
+  // Last group gone. Mirror deleteFromLocal's cleanup for a now-orphaned event.
+  await db.del(eventKey).catch(() => {})
+  scheduleWidgetCacheRefresh()
 }
 
 async function deleteEvent (date, id) {
@@ -4671,12 +4704,20 @@ async function syncPutEvent (groupId, event) {
   await safeAppend(base, { op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle) {
+// `scope` distinguishes the two very different things this op has always meant:
+//   undefined  — delete the event outright ("Delete for Everyone", recurrence
+//                regeneration, shadow cleanup). Tombstoned globally.
+//   'group'    — the user merely unshared the event FROM this group; it may well
+//                still live in another group. Tombstoned per-group so the copy in
+//                the other group is not destroyed (TODO #122).
+// Old peers ignore the field and fall back to the global behavior.
+async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle, scope) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
   if (recurrenceId) payload.recurrenceId = recurrenceId
   if (eventTitle) payload.eventTitle = eventTitle
+  if (scope === 'group') payload.scope = 'group'
   await safeAppend(base, payload)
 }
 
@@ -5037,10 +5078,11 @@ async function resyncGroup (groupId) {
     for await (const { key, value } of view.createReadStream()) {
       if (!value) continue
       if (key.startsWith('events:')) {
-        // Respect local delete tombstone — never resurrect user-deleted events
+        // Respect local delete tombstone — never resurrect user-deleted events.
+        // Scoped by group so an unshare from ANOTHER group doesn't block this
+        // group's copy (TODO #122).
         const eventId = eventIdFromKey(key)
-        const tombstone = await db.get(NS.deleted + eventId).catch(() => null)
-        if (tombstone) continue
+        if (await isEventTombstoned(eventId, groupId)) continue
         const existing = await db.get(key).catch(() => null)
         if (existing?.value && sameExceptUpdatedAt(existing.value, value)) continue
         await db.put(key, value)
@@ -5699,10 +5741,19 @@ function makeApply (groupId) {
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
-        // Skip local delete for the writer's own event del ops —
-        // owner may still hold the event locally (e.g. unshared from a group).
-        // For "Delete for Everyone", db.deleteEvent already ran before sync.deleteEvent.
-        if (isRemote || val.type !== 'event') await deleteFromLocal(val.type, val.key)
+        // A group-scoped del (TODO #122) means "unshared from THIS group", not
+        // "deleted". Drop this group from the event's groups[] instead of
+        // removing the row, so a copy that also lives in another group survives.
+        // Only when the last group is gone is the local row actually removed.
+        const isGroupScopedDel = isGroupScopedDelete(val)
+        if (isGroupScopedDel && isRemote) {
+          await unshareEventFromGroup(val.key, groupId)
+        } else if (isRemote || val.type !== 'event') {
+          // Skip local delete for the writer's own event del ops —
+          // owner may still hold the event locally (e.g. unshared from a group).
+          // For "Delete for Everyone", db.deleteEvent already ran before sync.deleteEvent.
+          await deleteFromLocal(val.type, val.key)
+        }
         if (val.type === 'group' && isRemote) {
           // Owner deleted the group — clean up locally and notify UI
           await deleteGroup(groupId)
@@ -5727,7 +5778,9 @@ function makeApply (groupId) {
             // sibling device of MY identity (TODO #11 Phase 4).
             const selfAuthoredDel = await isSelfAuthoredOp(groupId, nodeWriterKey)
             const delTombstone = await db.get(NS.deleted + eventId).catch(() => null)
-            if (!delTombstone && !isShadowKey && !selfAuthoredDel && !recentDeleteNotifs.has(eventId)) {
+            // An unshare is not a deletion — telling members "X deleted an event"
+            // when it merely moved to another group is misleading (TODO #122).
+            if (!delTombstone && !isShadowKey && !selfAuthoredDel && !isGroupScopedDel && !recentDeleteNotifs.has(eventId)) {
               recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
@@ -5743,7 +5796,13 @@ function makeApply (groupId) {
             // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire.
             // Applies to shadows too — without it, a peer receiving the shadow delete op on initial
             // sync replay has no guard against a later re-put resurrecting the shadow.
-            await db.put(NS.deleted + eventId, { ts: Date.now() }).catch(() => {})
+            // Group-scoped unshares tombstone per-group: the global key would also
+            // block the copy this event still has in whatever group it moved TO,
+            // which is exactly the data loss TODO #122 fixes.
+            await db.put(
+              isGroupScopedDel ? groupDeletedKey(groupId, eventId) : NS.deleted + eventId,
+              { ts: Date.now(), ...(isGroupScopedDel ? { groupId } : {}) },
+            ).catch(() => {})
           }
         }
       } else if (val.op === 'reinviteMember') {
@@ -6166,9 +6225,10 @@ async function mirrorToLocal (type, key, value, groupId) {
       return
     }
     if (type === 'event') {
-      // If user locally deleted this event, don't resurrect it from sync
-      const tombstone = await db.get(NS.deleted + value.id).catch(() => null)
-      if (tombstone) return
+      // If user locally deleted this event, don't resurrect it from sync. Scoped
+      // by group: an unshare from another group must not block this group's copy,
+      // which is what silently destroyed moved events (TODO #122).
+      if (await isEventTombstoned(value.id, groupId)) return
       // If date changed, remove old local entry to prevent duplicate
       if (value._prevDate && value._prevDate !== value.date) {
         await db.del('events:' + value._prevDate + ':' + value.id).catch(() => {})
