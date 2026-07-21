@@ -1763,6 +1763,26 @@ async function listGroups () {
       deleteGroup(value.id).catch(() => {})
       continue
     }
+    // Owner-authored deletion tombstone (apply() sets `deleted` on the view
+    // record, which then mirrors back into the local record). deleteGroup()
+    // purges the local row, but mirrorToLocal replays the tombstoned view row
+    // straight back, so the record legitimately exists here with deleted:true.
+    // Without this filter the group stays visible forever on every device that
+    // wasn't the one that deleted it. Lazy cleanup as above.
+    if (value?.deleted) {
+      if (value.id) deleteGroup(value.id).catch(() => {})
+      continue
+    }
+    // Husk record: a linked-device seed that never received the group's
+    // metadata (no name, no owner) and whose personalGroups pointer is gone —
+    // the sibling deleted the group, and the `del groupMembership` handler only
+    // purges locally when we were kicked, never when the owner deleted it. The
+    // UI renders one row per record, so a nameless husk shows as a blank row.
+    if (value?.id && !value.name && !value.ownerId) {
+      console.log('[groups] dropping husk group record (no name/owner):', value.id)
+      deleteGroup(value.id).catch(() => {})
+      continue
+    }
     groups.push(await rehydrateGroupMembers(value))
   }
   return groups
@@ -1771,6 +1791,58 @@ async function listGroups () {
 async function putGroup (group) {
   await db.put(NS.groups + group.id, { ...group, updatedAt: Date.now() })
   return group
+}
+
+// The block-encryption key is local-only: appendGroupWithAvatarSplit strips it
+// before every view append, so any record read back out of the Autobase view is
+// keyless. Writing such a record straight to the local DB silently destroys the
+// key — the base then reopens unencrypted on the wrong swarm topic and the group
+// stops syncing, while new invites drop `&enc=`. Re-attach it from whatever the
+// local record already holds before persisting a view-derived group record.
+async function withLocalEncryptionKey (groupKey, value) {
+  if (value?.encryptionKey) return value
+  const existing = await db.get(groupKey).catch(() => null)
+  const key = existing?.value?.encryptionKey
+  return key ? { ...value, encryptionKey: key } : value
+}
+
+// Repair a group whose local record is missing the block-encryption key that the
+// personal-base fan-out carries (the pre-fix damage from the strip described in
+// withLocalEncryptionKey, and any device seeded from a keyless record). Back-fill
+// the key, then — if the base was already opened unencrypted — tear it down
+// locally and rejoin so it reopens on the correct encrypted swarm topic. This is
+// a LOCAL repair only: no membership change is announced, so it must not call
+// leaveGroup(), which would also drop the personal-base mirror.
+async function reconcileGroupEncryptionKey (groupId, encryptionKey) {
+  if (!groupId || !encryptionKey) return false
+  const node = await db.get(NS.groups + groupId).catch(() => null)
+  const local = node?.value
+  if (!local || local.encryptionKey === encryptionKey) return false
+  if (local.encryptionKey) {
+    console.warn('[personal] encryptionKey conflict for', groupId, '— keeping local')
+    return false
+  }
+  const repaired = { ...local, encryptionKey }
+  await db.put(NS.groups + groupId, repaired).catch(() => {})
+  console.log('[personal] back-filled missing encryptionKey for', groupId)
+
+  const base = bases.get(groupId)
+  if (!base) return true
+  // Opened unencrypted ⇒ it is announcing on the legacy raw-groupKey topic and
+  // can never meet keyed peers. Close, leave the wrong topic, rejoin encrypted.
+  try {
+    await base.close()
+    bases.delete(groupId)
+    try {
+      const staleTopic = groupSwarmTopic(local.groupKey, null)
+      await swarm.leave(staleTopic).catch(() => {})
+    } catch (e) { console.warn('[personal] stale topic leave failed:', groupId, e?.message) }
+    await joinGroup(repaired)
+    console.log('[personal] reopened', groupId, 'on the encrypted swarm topic')
+  } catch (e) {
+    console.error('[personal] encrypted reopen failed for', groupId, e?.message)
+  }
+  return true
 }
 
 async function reinviteMember (groupId, memberId) {
@@ -2516,6 +2588,12 @@ function makePersonalApply () {
         // sibling pointer should not resurrect a ghost group locally.
         const blocked = groupId ? await db.get('blockedFromGroup:' + groupId).catch(() => null) : null
         if (blocked?.value) continue
+        // Repair BEFORE the seed branch below, and deliberately outside its
+        // `!bases.has(groupId)` guard: the damaged case is precisely a group we
+        // already hold and have already opened — unencrypted, on the wrong
+        // topic — so the guard would skip the device that most needs fixing.
+        await reconcileGroupEncryptionKey(groupId, val.value.encryptionKey)
+          .catch(e => console.warn('[personal] encryptionKey reconcile failed for', groupId, e?.message))
         if (groupId && groupKey && !bases.has(groupId)) {
           const existingGroup = await db.get(NS.groups + groupId).catch(() => null)
           if (!existingGroup?.value) {
@@ -2648,6 +2726,12 @@ async function ensurePersonalBase () {
     // landed before the live self-kick path existed (or during sync replay)
     // leave stale pointers that paired siblings auto-join into ghost groups.
     cleanupStalePersonalGroups().catch(e => console.warn('[personal] cleanup sweep:', e.message))
+    // Repair groups already damaged by the encryptionKey strip. apply() only
+    // fires for newly-linearised nodes, so a device whose groupMembership op was
+    // applied before the preserve fix landed would never self-heal without this
+    // sweep on every personal-base open.
+    backfillMissingGroupEncryptionKeys()
+      .catch(e => console.warn('[personal] encryptionKey backfill sweep:', e.message))
     // Self-heal any stale `deviceMetaHidden:{localKey}` marker — local writer
     // is never hidden in our model. Could exist on installs where a sibling's
     // remove was applied before the apply-skip-self fix landed.
@@ -3030,6 +3114,26 @@ async function runGroupWriterRedundancyTick () {
 // Runs on every personal-base open; only acts when this device is writable, so
 // the entry is appended via this device's writer key. Idempotent — re-running
 // is cheap because the iteration short-circuits when nothing matches.
+// One-shot repair sweep for groups whose local record lost (or never received)
+// the block-encryption key while the personal base still advertises it. Runs on
+// every personal-base open and is a no-op once every group is keyed. Read-only
+// unless something is actually broken. Deliberately NOT gated on
+// `personalBase.writable` — a read-only secondary is exactly the device most
+// likely to be holding a keyless record.
+async function backfillMissingGroupEncryptionKeys () {
+  if (!personalBase?.view) return
+  let repaired = 0
+  for await (const { value } of personalBase.view.createReadStream({
+    gt: 'personalGroups:', lt: 'personalGroups:\xff'
+  })) {
+    if (!value?.groupId || !value.encryptionKey) continue
+    const did = await reconcileGroupEncryptionKey(value.groupId, value.encryptionKey)
+      .catch(e => { console.warn('[personal] backfill failed for', value.groupId, e?.message); return false })
+    if (did) repaired++
+  }
+  if (repaired) console.log('[personal] encryptionKey backfill repaired', repaired, 'group(s)')
+}
+
 async function cleanupStalePersonalGroups () {
   if (!personalBase?.writable) return
   let dropped = 0
@@ -5688,6 +5792,14 @@ function makeApply (groupId) {
               name:    winningValue.name    || lv?.name    || val.value.name,
               emoji:   winningValue.emoji   || lv?.emoji   || val.value.emoji,
               icon:    winningValue.icon    ?? lv?.icon    ?? val.value.icon,
+              // Local-only block-encryption key. NEITHER side of this merge can
+              // carry it — appendGroupWithAvatarSplit strips it before the view
+              // append, so winningValue (a view record) and the incoming op are
+              // both keyless. Without this line the first join-triggered merge
+              // silently wipes the owner's key: later invites lose `&enc=`, the
+              // base reopens unencrypted on the wrong swarm topic, and the group
+              // stops syncing. Same preserve rule as mirrorToLocal's group branch.
+              encryptionKey: lv?.encryptionKey || winningValue.encryptionKey || val.value.encryptionKey,
               removedMembers: [...removedMap.values()],
               members: splitMembers,
             }
@@ -5758,7 +5870,10 @@ function makeApply (groupId) {
               ...(memberRecord ? [memberRecord] : [])],
           }
           await view.put(gKey, updated)
-          await db.put(gKey, updated)
+          // View records never carry the local-only encryptionKey — merge it back
+          // from the local record so a reinvite doesn't strip it (see the group
+          // LWW merge above).
+          await db.put(gKey, await withLocalEncryptionKey(gKey, updated))
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.ts }).catch(() => {})
           // Clear blockedWriter and knownWriter keys for this member so they can rejoin
@@ -5789,7 +5904,7 @@ function makeApply (groupId) {
             removedMembers: (gNode.value.removedMembers ?? []).filter(m => (m.id ?? m) !== val.memberId),
           }
           await view.put(gKey, updated)
-          await db.put(gKey, updated)
+          await db.put(gKey, await withLocalEncryptionKey(gKey, updated))
           await db.del(NS.members + val.groupId + ':' + val.memberId).catch(() => {})
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
