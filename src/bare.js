@@ -2079,6 +2079,18 @@ async function _joinGroupImpl (group) {
     console.warn('[group] early swarm.join failed:', group.id, e?.message)
   }
 
+  // Watchdog for a join that never lands (TODO #119). Two failure modes produce
+  // an identical, totally silent hang on the "Inviter" placeholder: the owner
+  // refuses our writer-announce and we never surface it, or we never meet the
+  // owner at all (e.g. an encrypted group whose members announce on a
+  // domain-separated topic this build doesn't derive).
+  //
+  // Armed HERE, deliberately before `await base.ready()`. When nobody serves the
+  // bootstrap core's blocks — precisely the never-meet case — ready() blocks
+  // indefinitely, so anything after it would never arm and the hang would stay
+  // as silent as it is today.
+  armJoinWatchdog(group.id)
+
   await base.ready()
   attachConflictListeners(base)
 
@@ -2279,7 +2291,46 @@ async function _joinGroupImpl (group) {
   await personalBaseAddGroupWriter(group.id, writerKey).catch(() => {})
 }
 
+// A freshly redeemed invite writes a placeholder member literally named
+// 'Inviter' (see src/invite.js); the owner's authoritative record replaces it on
+// first replication. Still there after the grace period ⇒ nothing ever arrived.
+const JOIN_WATCHDOG_MS = 90 * 1000
+const _joinWatchdogs = new Map()
+
+function hasInviterPlaceholder (group) {
+  return (group?.members ?? []).some(m => m?.name === 'Inviter')
+}
+
+function armJoinWatchdog (groupId) {
+  if (!groupId || _joinWatchdogs.has(groupId)) return
+  db.get(NS.groups + groupId).then((node) => {
+    // Only arm for a join still showing the placeholder — never for the routine
+    // reopen of a group that has long since synced.
+    if (!hasInviterPlaceholder(node?.value)) return
+    const timer = setTimeout(async () => {
+      _joinWatchdogs.delete(groupId)
+      const now = await db.get(NS.groups + groupId).catch(() => null)
+      if (!now?.value || !hasInviterPlaceholder(now.value)) return  // landed after all
+      const name = now.value.name || 'the group'
+      console.warn('[join] watchdog: no owner contact for', groupId, 'after', JOIN_WATCHDOG_MS, 'ms')
+      send({ type: 'event', event: 'syncNotify', data: {
+        title: 'Still trying to join ' + name,
+        body: 'No one from this group has responded yet. They may be offline, or on an older version of PearCal.',
+        tab: 'groups',
+      }})
+      send({ type: 'event', event: 'joinStalled', data: { groupId, groupName: name } })
+    }, JOIN_WATCHDOG_MS)
+    if (typeof timer.unref === 'function') timer.unref()
+    _joinWatchdogs.set(groupId, timer)
+  }).catch(() => {})
+}
+
 async function leaveGroup (groupId) {
+  const pendingWatchdog = _joinWatchdogs.get(groupId)
+  if (pendingWatchdog) {
+    clearTimeout(pendingWatchdog)
+    _joinWatchdogs.delete(groupId)
+  }
   const base = bases.get(groupId)
   if (base) {
     await base.close()
@@ -7167,6 +7218,31 @@ async function _doInit (dir, attempt = 0) {
                 await deleteGroup(gid).catch(() => {})
                 await leaveGroup(gid).catch(() => {})
                 send({ type: 'event', event: 'inviteBlocked', data: gid })
+              }
+              return
+            }
+            // Handle admission rejection — the owner (or any member) refused our
+            // writer-announce, so this join can never complete. Owners have sent
+            // this since v1.0.32 but NOTHING consumed it, so a refused joiner sat
+            // on the "Inviter" placeholder forever with no error, no spinner and
+            // no timeout (TODO #119). Surface it and clean up the half-joined
+            // stub, mirroring the `blocked` path above.
+            if (parsed.rejected) {
+              const gid = parsed.groupId
+              if (gid) {
+                const rejGroup = await getGroup(gid).catch(() => null)
+                const rejName = rejGroup?.name || 'that group'
+                const reason = parsed.rejected === 'missing_identity_proof'
+                  ? 'This device could not prove its identity to the group. Update PearCal on both devices, then ask for a fresh invite.'
+                  : 'The group refused this device. Ask for a fresh invite link.'
+                send({ type: 'event', event: 'syncNotify', data: {
+                  title: 'Could not join ' + rejName,
+                  body: reason,
+                  tab: 'groups',
+                }})
+                await deleteGroup(gid).catch(() => {})
+                await leaveGroup(gid).catch(() => {})
+                send({ type: 'event', event: 'joinFailed', data: { groupId: gid, reason: parsed.rejected, message: reason } })
               }
               return
             }

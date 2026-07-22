@@ -46,6 +46,11 @@ window.addEventListener('pear:cameraResult', e => emitter.emit('cameraResult', e
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
+// A join that was refused outright, and one that simply never landed (TODO #119).
+// joinFailed already tore the stub group down in the worklet, so drop it from the
+// UI's list too; joinStalled is advisory and leaves the group in place to retry.
+window.addEventListener('pear:joinFailed', (e) => { emitter.emit('groupDeleted', e.detail?.groupId); emitter.emit('joinFailed', e.detail) })
+window.addEventListener('pear:joinStalled', e => emitter.emit('joinStalled', e.detail))
 window.addEventListener('pear:syncing', e => emitter.emit('syncing', e.detail))
 window.addEventListener('pear:synced', e => emitter.emit('synced', e.detail))
 window.addEventListener('pear:pendingRejoin', e => emitter.emit('pendingRejoin', e.detail))
