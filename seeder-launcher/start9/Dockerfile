@@ -9,7 +9,7 @@
 #
 # build-start9-s9pk.sh rewrites this FROM line to the freshly-pushed version +
 # manifest-list digest.
-FROM ghcr.io/peerloomllc/pearcal-seeder:1.0.34@sha256:6273ea9b8bb34a841768598587b601ef02a7b066625952633f08b24bb76111c6
+FROM ghcr.io/peerloomllc/pearcal-seeder:1.0.35@sha256:6e3bd20529e8eb2f0cefeb9770b2e200d1bcbfed545beb8ea0c8b967775800da
 
 # The published image is node:22-bookworm-slim (Debian), which has no init.
 RUN apt-get update \
