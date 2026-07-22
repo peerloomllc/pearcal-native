@@ -12,6 +12,7 @@ const bip39         = require('bip39-mnemonic')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
+const { resolveGroupEncryptionKey } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -1789,26 +1790,38 @@ async function listGroups () {
 }
 
 async function putGroup (group) {
-  await db.put(NS.groups + group.id, { ...group, updatedAt: Date.now() })
+  await putGroupRecord(group.id, { ...group, updatedAt: Date.now() }, 'putGroup')
   return group
 }
 
-// The block-encryption key is local-only: appendGroupWithAvatarSplit strips it
-// before every view append, so any record read back out of the Autobase view is
-// keyless. Writing such a record straight to the local DB silently destroys the
-// key — the base then reopens unencrypted on the wrong swarm topic and the group
-// stops syncing, while new invites drop `&enc=`. Re-attach it from whatever the
-// local record already holds before persisting a view-derived group record.
-async function withLocalEncryptionKey (groupKey, value) {
-  if (value?.encryptionKey) return value
-  const existing = await db.get(groupKey).catch(() => null)
-  const key = existing?.value?.encryptionKey
-  return key ? { ...value, encryptionKey: key } : value
+// THE choke point for local group-record writes (TODO #123). Four separate call
+// sites were each found dropping the local-only encryptionKey, and chasing them
+// one at a time is a losing game: the loss is silent, and by the time a user
+// notices, the evidence (which write did it) is long gone. So instead of trusting
+// every caller, funnel every write through here and make the drop structurally
+// impossible.
+//
+// `tag` identifies the caller purely so the warning below names the culprit if
+// this ever fires in the wild — the reported symptom was never reproduced across
+// six scenarios, so a live log line may be the only way it is ever identified.
+async function putGroupRecord (groupId, value, tag) {
+  const key = NS.groups + groupId
+  const existing = await db.get(key).catch(() => null)
+  const resolved = resolveGroupEncryptionKey({
+    priorKey: existing?.value?.encryptionKey,
+    incomingKey: value?.encryptionKey,
+  })
+  if (resolved.blocked) {
+    console.error('[groups] BLOCKED encryptionKey', resolved.reason, 'for', groupId, 'at', tag || 'unknown')
+  }
+  const next = resolved.key ? { ...value, encryptionKey: resolved.key } : value
+  await db.put(key, next)
+  return next
 }
 
 // Repair a group whose local record is missing the block-encryption key that the
 // personal-base fan-out carries (the pre-fix damage from the strip described in
-// withLocalEncryptionKey, and any device seeded from a keyless record). Back-fill
+// putGroupRecord, and any device seeded from a keyless record). Back-fill
 // the key, then — if the base was already opened unencrypted — tear it down
 // locally and rejoin so it reopens on the correct encrypted swarm topic. This is
 // a LOCAL repair only: no membership change is announced, so it must not call
@@ -1823,7 +1836,7 @@ async function reconcileGroupEncryptionKey (groupId, encryptionKey) {
     return false
   }
   const repaired = { ...local, encryptionKey }
-  await db.put(NS.groups + groupId, repaired).catch(() => {})
+  await putGroupRecord(groupId, repaired, 'reconcileGroupEncryptionKey').catch(() => {})
   console.log('[personal] back-filled missing encryptionKey for', groupId)
 
   const base = bases.get(groupId)
@@ -1856,7 +1869,7 @@ async function reinviteMember (groupId, memberId) {
     pendingInvites.push(memberRecord)
   }
   const updated = { ...group, removedMembers, pendingInvites }
-  await db.put(NS.groups + group.id, updated).catch(() => {})
+  await putGroupRecord(group.id, updated, 'reinviteMember').catch(() => {})
   // Clear all blockedWriter keys for this member locally
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
@@ -1905,11 +1918,11 @@ async function deleteGroup (id) {
 async function markGroupBroken (groupId, error) {
   const cur = await db.get(NS.groups + groupId).catch(() => null)
   if (!cur?.value) return
-  await db.put(NS.groups + groupId, {
+  await putGroupRecord(groupId, {
     ...cur.value,
     brokenAt: Date.now(),
     brokenError: String(error?.message || error || 'unknown')
-  }).catch(() => {})
+  }, 'markGroupBroken').catch(() => {})
 }
 
 async function clearGroupBroken (groupId) {
@@ -1917,7 +1930,7 @@ async function clearGroupBroken (groupId) {
   if (!cur?.value) return
   if (cur.value.brokenAt == null && cur.value.brokenError == null) return
   const { brokenAt, brokenError, ...rest } = cur.value
-  await db.put(NS.groups + groupId, rest).catch(() => {})
+  await putGroupRecord(groupId, rest, 'clearGroupBroken').catch(() => {})
 }
 
 // Durable tombstone preventing a removed broken group from being
@@ -2619,7 +2632,7 @@ function makePersonalApply () {
               members:  selfMember ? [selfMember] : [],
               joinedAt: val.value.joinedAt ?? Date.now(),
             }
-            await db.put(NS.groups + groupId, seed).catch(() => {})
+            await putGroupRecord(groupId, seed, 'personalGroups-adopt').catch(() => {})
             await db.put('joinedAt:' + groupId, { ts: seed.joinedAt }).catch(() => {})
           }
           // Stamp "ever-seen" marker AFTER ensuring local group is seeded.
@@ -3918,7 +3931,7 @@ async function _seedGroupsFromPair (groups) {
       members:  selfMember ? [selfMember] : [],
       joinedAt: g.joinedAt ?? Date.now(),
     }
-    await db.put(NS.groups + g.id, seed).catch(() => {})
+    await putGroupRecord(g.id, seed, 'seedGroupsFromPair').catch(() => {})
     await db.put('joinedAt:' + g.id, { ts: seed.joinedAt }).catch(() => {})
     joinGroup(seed).catch(e => console.warn('[pair] seedGroups joinGroup error for', g.id, e.message))
     newCount++
@@ -4127,12 +4140,12 @@ async function commitRekey (oldGroupId) {
   // Mark old local group record as migrated (UI can hide / de-emphasize).
   const oldNode = await db.get(NS.groups + oldGroupId).catch(() => null)
   if (oldNode?.value) {
-    await db.put(NS.groups + oldGroupId, {
+    await putGroupRecord(oldGroupId, {
       ...oldNode.value,
       migratedTo: descriptor.newGroupId,
       migratedAt: Date.now(),
       updatedAt:  Date.now(),
-    })
+    }, 'commitRekey:mark-migrated')
   }
 
   // joinGroup runs full apply (mirrors events/rsvps to local DB), joins the
@@ -4213,12 +4226,12 @@ async function adoptGroupMigration (oldGroupId, marker) {
   }
 
   if (!oldGroup.migratedTo) {
-    await db.put(NS.groups + oldGroupId, {
+    await putGroupRecord(oldGroupId, {
       ...oldGroup,
       migratedTo: newGroupId,
       migratedAt: Date.now(),
       updatedAt:  Date.now(),
-    })
+    }, 'adoptMigration:mark-migrated')
   }
 
   // Belt-and-suspenders with the new base's own apply→mirror: ensure any
@@ -5052,7 +5065,7 @@ async function foregroundSync () {
         if (viewMembers.length !== localMembers.length ||
             !viewMembers.every(vm => localMembers.some(lm => lm.id === vm.id))) {
           const lv = localNode?.value
-          await db.put(NS.groups + groupId, {
+          await putGroupRecord(groupId, {
             ...gNode.value,
             color: gNode.value.color || lv?.color,
             name:  gNode.value.name  || lv?.name,
@@ -5065,7 +5078,7 @@ async function foregroundSync () {
             // foreground sync after such a drift would silently disable the
             // group's encryption and strip `enc` from every later invite.
             encryptionKey: lv?.encryptionKey || gNode.value.encryptionKey,
-          })
+          }, 'foregroundSync:re-mirror')
           emitSync(groupId, { groupChanged: true })
         }
       }
@@ -5609,7 +5622,7 @@ function makeApply (groupId) {
                 if (localGroup?.value?.pendingInvites?.some(p => p.id === m.id)) {
                   const updatedPending = { ...localGroup.value,
                     pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
-                  await db.put(NS.groups + groupId, updatedPending).catch(() => {})
+                  await putGroupRecord(groupId, updatedPending, 'clear-pendingInvite').catch(() => {})
                   emitSync(groupId, { groupChanged: true })
                 }
               }
@@ -5808,7 +5821,7 @@ function makeApply (groupId) {
               removedMembers: [...removedMap.values()],
               members: splitMembers,
             }
-            await db.put(val.key, merged)
+            await putGroupRecord(groupId, merged, 'apply:group-LWW-merge')
             emitSync(groupId, { groupChanged: true })
           } else {
             await mirrorToLocal(val.type, val.key, existing.value, groupId)
@@ -5878,7 +5891,7 @@ function makeApply (groupId) {
           // View records never carry the local-only encryptionKey — merge it back
           // from the local record so a reinvite doesn't strip it (see the group
           // LWW merge above).
-          await db.put(gKey, await withLocalEncryptionKey(gKey, updated))
+          await putGroupRecord(val.groupId, updated, 'apply:reinviteMember')
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.ts }).catch(() => {})
           // Clear blockedWriter and knownWriter keys for this member so they can rejoin
@@ -5909,7 +5922,7 @@ function makeApply (groupId) {
             removedMembers: (gNode.value.removedMembers ?? []).filter(m => (m.id ?? m) !== val.memberId),
           }
           await view.put(gKey, updated)
-          await db.put(gKey, await withLocalEncryptionKey(gKey, updated))
+          await putGroupRecord(val.groupId, updated, 'apply:purgeMember')
           await db.del(NS.members + val.groupId + ':' + val.memberId).catch(() => {})
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
@@ -6375,7 +6388,7 @@ async function mirrorToLocal (type, key, value, groupId) {
         updatedAt: value.updatedAt || Date.now()
       }
       if (existing?.value && sameExceptUpdatedAt(existing.value, merged)) return
-      await db.put(key, merged)
+      await putGroupRecord(groupId, merged, 'mirrorToLocal:group')
       emitSync(groupId, { groupChanged: true })
       // Owner-bypass in widget filter depends on group.ownerId — when Autobase
       // replay corrects ownerId from the invite-link placeholder to the
@@ -7822,7 +7835,7 @@ async function _doInit (dir, attempt = 0) {
           for (const m of (g.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
           for (const m of staleRemoved)              removedMap.set(m.id, m)
           const cleaned = { ...g, members: [...deduped.values()], removedMembers: [...removedMap.values()] }
-          await db.put(NS.groups + g.id, cleaned).catch(() => {})
+          await putGroupRecord(g.id, cleaned, 'startup-dedup').catch(() => {})
           console.log('[STARTUP_DEDUP] cleaned duplicate members in group:', g.id, 'removed:', staleRemoved.map(m => m.name))
         }
       }
