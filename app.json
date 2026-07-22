@@ -34,7 +34,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.pearcal",
-      "buildNumber": "38",
+      "buildNumber": "39",
       "infoPlist": {
         "NSCameraUsageDescription": "Used to set your profile photo",
         "NSPhotoLibraryUsageDescription": "Used to set your profile photo",

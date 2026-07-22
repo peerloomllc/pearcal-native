@@ -1,15 +1,15 @@
 🐛 Bug Fixes
 
-  - Moving an event from one group to another no longer deletes it. Before this fix the event vanished from everyone else's calendar and could not be brought back.
-  - Groups that had quietly stopped syncing now repair themselves the next time you open the app.
-  - Deleted groups no longer linger in your group list, and empty blank rows are gone.
-  - Joining a group now tells you when something went wrong. It used to sit on a blank "Inviter" card forever with no explanation, whether you had been declined or simply could not reach anyone.
-  - Android: fixed a frozen screen when returning to the app after it had been in the background for a while. Taps still worked but nothing redrew.
+-Moving an event from one group to another no longer deletes it. Before this fix the event vanished from everyone else's calendar and could not be brought back.
+-Groups that had quietly stopped syncing now repair themselves the next time you open the app.
+-Deleted groups no longer linger in your group list, and empty blank rows are gone.
+-Joining a group now tells you when something went wrong. It used to sit on a blank "Inviter" card forever with no explanation, whether you had been declined or simply could not reach anyone.
+-Android: fixed a frozen screen when returning to the app after it had been in the background for a while. Taps still worked but nothing redrew.
 
-  🔒 Security & Privacy
+🔒 Security & Privacy
 
-  - Fixed a problem where a group could lose the key that keeps its contents private. When that happened the group stopped syncing, and invites shared from that device left the key out so new members could not join properly. Affected devices now repair themselves automatically.
+-Fixed a problem where a group could lose the key that keeps its contents private. When that happened the group stopped syncing, and invites shared from that device left the key out so new members could not join properly. Affected devices now repair themselves automatically.
 
-  ✨ Improvements
+✨ Improvements
 
-  - The invite QR code now slides up as a sheet you can swipe away, matching the rest of the app.
+-The invite QR code now slides up as a sheet you can swipe away, matching the rest of the app.
