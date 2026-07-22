@@ -470,6 +470,8 @@ export default function App ({ db, notifs, sync }) {
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const [settingsGroup, setSettingsGroup] = useState(null)
   const [blockedToast,  setBlockedToast]  = useState(false)
+  // A join that was refused or that never landed (TODO #119). { message, tone }.
+  const [joinToast,     setJoinToast]     = useState(null)
   const [pendingApprovalGroups, setPendingApprovalGroups] = useState(() => new Set())
   const [qrGroup,       setQrGroup]       = useState(null)  // { group, link }
   const [joinOpen,       setJoinOpen]       = useState(false)
@@ -714,6 +716,23 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('inviteBlocked', onInviteBlocked)
 
+    // TODO #119: these two used to be completely silent. A refused join sat on
+    // the "? Inviter" placeholder forever; so did one where the peers never met.
+    function onJoinFailed (detail) {
+      setJoinToast({ message: detail?.message || 'Could not join that group.', tone: 'error' })
+      setTimeout(() => setJoinToast(null), 8000)
+    }
+    function onJoinStalled (detail) {
+      setJoinToast({
+        message: 'Still trying to join ' + (detail?.groupName || 'the group')
+          + '. No one has responded yet - they may be offline or on an older version.',
+        tone: 'warn',
+      })
+      setTimeout(() => setJoinToast(null), 8000)
+    }
+    emitter.on('joinFailed', onJoinFailed)
+    emitter.on('joinStalled', onJoinStalled)
+
     async function onGroupJoined(group) {
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
       if (db) {
@@ -778,6 +797,8 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('synced',  onSynced)
       emitter.off('groupDeleted', onGroupDeleted)
       emitter.off('inviteBlocked', onInviteBlocked)
+      emitter.off('joinFailed', onJoinFailed)
+      emitter.off('joinStalled', onJoinStalled)
       emitter.off('group:joined', onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
       window.removeEventListener('pear:setTab', onDomSetTab)
@@ -1566,6 +1587,19 @@ export default function App ({ db, notifs, sync }) {
               padding:'12px 16px', fontSize:13, zIndex:400,
               textAlign:'center', lineHeight:1.5 }}>
               You were removed from this group and cannot rejoin with this link.
+            </div>
+          )}
+          {joinToast && (
+            <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
+              left:'50%', transform:'translateX(-50%)',
+              width:'calc(100% - 32px)', maxWidth:398,
+              background: joinToast.tone === 'error' ? 'var(--color-destructive)' : 'var(--color-surface-card)',
+              color: joinToast.tone === 'error' ? '#fff' : 'var(--color-text)',
+              border: joinToast.tone === 'error' ? 'none' : `1px solid ${colors.border}`,
+              borderRadius:'var(--radius-lg)',
+              padding:'12px 16px', fontSize:13, zIndex:400,
+              textAlign:'center', lineHeight:1.5 }}>
+              {joinToast.message}
             </div>
           )}
           {syncingGroups.size > 0 && (
