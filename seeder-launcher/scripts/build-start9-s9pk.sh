@@ -69,14 +69,57 @@ yq -i ".version = \"$VERSION\"" "$START9_DIR/manifest.yaml"
 # and FAILED HARD when missing, so that cannot silently happen again.
 NOTES_FILE="$START9_DIR/release-notes.yaml"
 [ -f "$NOTES_FILE" ] || { echo "build-start9-s9pk: missing $NOTES_FILE" >&2; exit 1; }
-if [ "$(yq -r "has(\"$VERSION\")" "$NOTES_FILE")" != "true" ]; then
-  echo "build-start9-s9pk: no release notes for $VERSION in $NOTES_FILE." >&2
-  echo "  Add a \"$VERSION\": | entry describing what changes for a StartOS operator." >&2
+
+# Most releases change the app but not the seeder: between v1.0.34 and v1.0.35
+# src/seed.js and src/lib/seed*.js were byte-identical and only the packaging
+# version strings moved. Demanding hand-written notes for those releases invites
+# pasting the MOBILE APP's notes into a StartOS package, whose operators run a
+# server and may never use the calendar app.
+#
+# So ask git whether the seeder actually changed since the previous release tag.
+# Changed -> a hand-written entry is required. Unchanged -> generate an honest
+# note rather than inventing one. Version pins are excluded from the comparison
+# because this script rewrites them on every build, which would make every
+# release look changed.
+_prev_tag="$(git -C "$REPO_ROOT" describe --tags --abbrev=0 "v${VERSION}^" 2>/dev/null \
+  || git -C "$REPO_ROOT" tag --sort=-version:refname | grep -v "^v${VERSION}$" | head -1)"
+_seeder_changed=unknown
+if [ -n "$_prev_tag" ]; then
+  if git -C "$REPO_ROOT" diff --quiet "$_prev_tag" -- \
+       src/seed.js src/lib/seedInvite.js src/lib/seedEnroll.js \
+       src/lib/seederPair.js src/lib/seederPairLink.js src/lib/seederPairTopic.js \
+       seeder-launcher/host seeder-launcher/start9/docker_entrypoint.sh \
+       seeder-launcher/start9/write-stats.js 2>/dev/null; then
+    _seeder_changed=no
+  else
+    _seeder_changed=yes
+  fi
+fi
+
+if [ "$(yq -r "has(\"$VERSION\")" "$NOTES_FILE")" = "true" ]; then
+  NOTES="$(yq -r ".\"$VERSION\"" "$NOTES_FILE")" \
+    yq -i '.["release-notes"] = strenv(NOTES)' "$START9_DIR/manifest.yaml"
+  echo "    release-notes <- release-notes.yaml[$VERSION]"
+elif [ "$_seeder_changed" = "no" ]; then
+  NOTES="No seeder changes in this release. The version was raised to stay aligned
+with the PearCal app." \
+    yq -i '.["release-notes"] = strenv(NOTES)' "$START9_DIR/manifest.yaml"
+  echo "    release-notes <- generated (seeder unchanged since $_prev_tag)"
+else
+  echo "build-start9-s9pk: no release notes for $VERSION in $NOTES_FILE," >&2
+  if [ "$_seeder_changed" = "yes" ]; then
+    echo "  and the seeder DID change since $_prev_tag:" >&2
+    git -C "$REPO_ROOT" diff --name-only "$_prev_tag" -- \
+      src/seed.js src/lib/seed*.js src/lib/seeder*.js seeder-launcher/host \
+      seeder-launcher/start9/docker_entrypoint.sh seeder-launcher/start9/write-stats.js \
+      2>/dev/null | sed 's/^/    /' >&2
+  else
+    echo "  and the seeder diff could not be determined (no previous tag?)." >&2
+  fi
+  echo "  Add a \"$VERSION\": | entry describing what changes for a StartOS OPERATOR." >&2
+  echo "  They run a server and may not use the app, so do not paste the app notes." >&2
   exit 1
 fi
-NOTES="$(yq -r ".\"$VERSION\"" "$NOTES_FILE")" \
-  yq -i '.["release-notes"] = strenv(NOTES)' "$START9_DIR/manifest.yaml"
-echo "    release-notes <- release-notes.yaml[$VERSION]"
 sed -i -E "s/fromMapping\(\{\}, \"[0-9.]+\"\)/fromMapping({}, \"$VERSION\")/" \
   "$START9_DIR/scripts/procedures/migrations.ts"
 # FROM <image>:<ver>[@sha256:<digest>]  ->  new ver + digest
