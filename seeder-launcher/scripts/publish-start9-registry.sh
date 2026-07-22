@@ -48,7 +48,32 @@ base="main"
 if [ "$AUTO" = 1 ]; then
   git -C "$WEBSITE_DIR" fetch -q origin
   base="$(git -C "$WEBSITE_DIR" remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')"; base="${base:-main}"
+  # An earlier aborted run leaves its generated output in exactly the paths this
+  # script rewrites, and `checkout -B` then refuses to switch over them:
+  #   error: Your local changes to the following files would be overwritten by
+  #   checkout: _redirects, package/v0/index, package/v0/latest
+  # Worse, that leftover is generated against whatever main was at the time, so
+  # keeping it would make the upsert below merge onto a stale base and could
+  # revert a previous publish. It is pure generated output and is regenerated a
+  # few lines down, so clear it. Scoped to the registry paths ONLY, so unrelated
+  # edits elsewhere in the clone (CLAUDE.md, site content) are never touched.
+  if [ -n "$(git -C "$WEBSITE_DIR" status --porcelain -- package _redirects)" ]; then
+    echo "    clearing leftover registry output from a previous run (package/, _redirects)"
+    git -C "$WEBSITE_DIR" checkout -q -- package _redirects 2>/dev/null || true
+    git -C "$WEBSITE_DIR" clean -qfd -- package 2>/dev/null || true
+  fi
   git -C "$WEBSITE_DIR" checkout -q -B "$BRANCH" "origin/${base}"
+else
+  # Manual path: no branch is cut, so the upsert merges into whatever this clone
+  # currently holds. A clone behind origin silently produces a stale-base merge
+  # that drops entries added upstream since, so say so rather than fail quietly.
+  git -C "$WEBSITE_DIR" fetch -q origin 2>/dev/null || true
+  _behind="$(git -C "$WEBSITE_DIR" rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+  if [ "${_behind:-0}" -gt 0 ]; then
+    echo "    WARNING: $WEBSITE_DIR is $_behind commit(s) behind origin/main." >&2
+    echo "             The upsert merges into this tree, so a stale base can revert a" >&2
+    echo "             previous publish. Run: git -C \"$WEBSITE_DIR\" pull --ff-only origin main" >&2
+  fi
 fi
 
 # Merge the pearcal-seeder metadata into the (possibly multi-package) tree.
