@@ -3747,7 +3747,9 @@ function PairingHostModal ({ data, error, onRegenerate, onCancel }) {
 function QRModal ({ link, onClose }) {
   const canvasRef = useRef(null)
   const [qrError, setQrError] = useState(null)
-  useBackHandler(true, onClose)
+  const bsCloseRef = useRef(null)
+  // No useBackHandler here: BottomSheet registers its own, so that Back plays the
+  // slide-out instead of snapping the sheet away. Two handlers would double-fire.
   useEffect(() => {
     if (!canvasRef.current || !link) return
     try {
@@ -3756,24 +3758,27 @@ function QRModal ({ link, onClose }) {
       })
     } catch(e) { setQrError(e.message) }
   }, [link])
+  // zIndex above the 300-tier sheets: the QR is opened from group settings, which
+  // is itself a sheet, so it has to sit on top of its opener.
   return (
-    <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, zIndex:9999,
-      background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center' }}
-      onClick={onClose}>
-      <div style={{ background: colors.surface.card, borderRadius:16, padding:24, display:'flex',
-        flexDirection:'column', alignItems:'center', gap:16, width:280 }}
-        onClick={e => e.stopPropagation()}>
-        <div style={{ fontSize:16, fontWeight:400, color: colors.text.primary }}>Scan to Join</div>
+    <BottomSheet onClose={onClose} zIndex={400} closeRef={bsCloseRef}>
+      <div style={{ position:'sticky', top:0, zIndex:10, background:'var(--color-bg)',
+        padding:'12px 20px', display:'flex', justifyContent:'space-between', alignItems:'center',
+        gap:10, borderBottom:`1px solid ${colors.border}` }}>
+        <span style={{ fontSize:17, color: colors.text.primary }}>Scan to Join</span>
+        <button onClick={() => bsCloseRef.current?.()} style={{ ...pillBtn, padding:'6px 14px', fontSize:13 }}>
+          Close
+        </button>
+      </div>
+      <div style={{ padding:'20px', display:'flex', flexDirection:'column',
+        alignItems:'center', gap:16 }}>
         {qrError
           ? <div style={{ fontSize:11, color:'red' }}>QR error: {qrError}</div>
           : <canvas ref={canvasRef} style={{ borderRadius:8 }} />}
         <div style={{ fontSize:11, color:colors.text.muted, textAlign:'center',
           wordBreak:'break-all' }}>{link}</div>
-        <button onClick={onClose} style={{ ...pillBtn, width:'100%', padding:'10px', fontSize:14 }}>
-          Close
-        </button>
       </div>
-    </div>
+    </BottomSheet>
   )
 }
 
