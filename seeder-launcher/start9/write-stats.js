@@ -77,6 +77,20 @@ async function tick () {
   }
 }
 
-tick()
-const t = setInterval(tick, INTERVAL_MS)
-if (typeof t.unref === 'function') t.unref()
+// Exported for tests. Requiring this module must not start a timer, so the
+// poller only runs when this file is the process entry point.
+module.exports = { render, tick }
+
+if (require.main === module) {
+  tick()
+  // NO unref() here. This runs as its own process (`node write-stats.js &` from
+  // docker_entrypoint.sh), so this interval is the only thing holding the event
+  // loop open — unref'ing it let the process exit as soon as the first tick
+  // settled. That first tick fires at container boot, before the seeder's HTTP
+  // API is listening, so it wrote nothing and Properties stayed empty forever,
+  // which is the exact problem this file was added to solve.
+  //
+  // unref() is right for a timer inside a host process that has other work
+  // keeping it alive. It is wrong for a standalone poller.
+  setInterval(tick, INTERVAL_MS)
+}
