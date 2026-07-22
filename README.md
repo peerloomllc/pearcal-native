@@ -29,7 +29,7 @@ Part of the [PeerLoom](https://peerloomllc.com) suite of account-free, peer-to-p
 PearCal uses **peer-to-peer technology** powered by [Hypercore Protocol](https://hypercore-protocol.org) to sync your calendar directly between devices.
 
 ### No servers
-Most calendar apps (Google Calendar, Apple Calendar, etc.) store your data on a central server. The app company can read your events, sell your data, get hacked, go down, or shut down. PearCal has no central server. Your calendar data never leaves your devices.
+Most calendar apps (Google Calendar, Apple Calendar, etc.) store your data on a central server. The app company can read your events, sell your data, get hacked, go down or shut down. PearCal has no central server. Your calendar data never leaves your devices.
 
 ### How sync works
 When two devices in the same group are online at the same time - whether on the same Wi-Fi network or anywhere on the internet - they find each other using a distributed hash table (DHT), a technology similar to how BitTorrent works. Once connected, they sync directly, device to device, with no middleman.
@@ -41,7 +41,7 @@ All data is encrypted in transit using the same cryptographic primitives that se
 PearCal is designed to handle this gracefully. If you add an event while offline, it will sync to your group members the next time your devices connect. Conflicts are resolved automatically using a last-write-wins strategy.
 
 ### Invites
-Joining a group works via an invite link or QR code. The link encodes the cryptographic address of the group - there's no server involved. Share it however you like: copy it to a message, share it via the Android share sheet, or let someone scan your QR code directly. If you remove a member, their link expires and they can no longer sync.
+Joining a group works via an invite link or QR code. The link encodes the cryptographic address of the group - there's no server involved. Share it however you like: copy it to a message, share it via the system share sheet or let someone scan your QR code directly. If you remove a member, their link expires and they can no longer sync.
 
 ### Optional blind seeder
 Because there is no server, a group syncs only while two of its devices are
@@ -54,7 +54,8 @@ no key that could decrypt an event. The group admits a seeder explicitly and can
 revoke it group-wide.
 
 Packaging lives in [`seeder-launcher/`](seeder-launcher/), including an Umbrel
-app manifest and a Start9 `.s9pk`. Running one is entirely optional; PearCal
+app manifest and a script that builds the Start9 `.s9pk`. Running one is entirely
+optional; PearCal
 works without it.
 
 ---
