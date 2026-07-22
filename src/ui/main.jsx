@@ -186,7 +186,9 @@ const sync = {
   leaveGroup:  (id)         => window.__pearDB.call('leaveGroup', id),
   deleteGroup: (id)         => window.__pearDB.call('deleteGroup:sync', id),
   putEvent:    (gid, ev)    => window.__pearDB.call('putEvent:sync', gid, ev),
-  deleteEvent: (gid, id, d, who, whoId, rid, evTitle) => window.__pearDB.call('deleteEvent:sync', gid, id, d, who, whoId, rid, evTitle),
+  // `scope` is optional: pass 'group' to unshare the event from this group only,
+  // leaving copies in other groups intact (TODO #122). Omit for a real delete.
+  deleteEvent: (gid, id, d, who, whoId, rid, evTitle, scope) => window.__pearDB.call('deleteEvent:sync', gid, id, d, who, whoId, rid, evTitle, scope),
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
   purgeMember: (groupId, memberId) => window.__pearDB.call('purgeMember:sync', groupId, memberId),

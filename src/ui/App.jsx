@@ -1046,7 +1046,10 @@ export default function App ({ db, notifs, sync }) {
           const existingOcc = events.find(e => e.id === occ.id)
           const removedGroups = (existingOcc?.groups ?? []).filter(g => !(occ.groups ?? []).includes(g))
           for (const gid of removedGroups) {
-            sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '').catch(() => {})
+            // scope:'group' — the user unshared this event from `gid`, they did
+            // not delete it. Without the scope the peer-side tombstone is global
+            // and destroys the copy the event was just moved INTO (TODO #122).
+            sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '', '', '', 'group').catch(() => {})
           }
         }
         // Single global top-K reconcile. Now safe — all local writes have

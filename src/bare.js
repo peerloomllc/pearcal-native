@@ -12,6 +12,10 @@ const bip39         = require('bip39-mnemonic')
 const { computeTodayCache } = require('./widget-cache.js')
 const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
+const {
+  groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
+} = require('./lib/eventTombstone.js')
+const { resolveGroupEncryptionKey } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -330,7 +334,7 @@ async function handle (method, args) {
     case 'openLightning': ipc.emit('openLightning', args[0]); break
     case 'nativeShare':      return send({ type: 'event', event: 'nativeShare', data: { title: args[0], text: args[1] } })
     case 'putEvent:sync':    return syncPutEvent(args[0], args[1])
-    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5], args[6])
+    case 'deleteEvent:sync': return syncDeleteEvent(args[0], args[1], args[2], args[3], args[4], args[5], args[6], args[7])
     case 'putGroup:sync':    return syncPutGroup(args[0])
     case 'deleteGroup:sync':  return syncDeleteGroup(args[0])
     case 'memberLeft:sync':   return syncMemberLeft(args[0], args[1])
@@ -1396,6 +1400,36 @@ async function putEvent (event) {
   return event
 }
 
+// Is this event blocked from being mirrored into `groupId`? Blocked either by a
+// global delete (gone everywhere) or by an unshare from this specific group.
+// Decision logic in src/lib/eventTombstone.js (TODO #122).
+async function isEventTombstoned (eventId, groupId) {
+  const globalTombstone = await db.get(NS.deleted + eventId).catch(() => null)
+  if (!groupId) return !!globalTombstone
+  const scopedTombstone = globalTombstone
+    ? null
+    : await db.get(groupDeletedKey(groupId, eventId)).catch(() => null)
+  return shouldBlockMirror({ globalTombstone, scopedTombstone })
+}
+
+// Remove `groupId` from a local event's groups[]. Deletes the row only once no
+// groups remain — the event has then left every group it was shared into. Used
+// by the group-scoped del branch in apply() so moving an event between groups
+// stops destroying it (TODO #122).
+async function unshareEventFromGroup (eventKey, groupId) {
+  const node = await db.get(eventKey).catch(() => null)
+  const ev = node?.value
+  if (!ev) return
+  const remaining = remainingGroupsAfterUnshare(ev.groups, groupId)
+  if (remaining.length > 0) {
+    await db.put(eventKey, { ...ev, groups: remaining }).catch(() => {})
+    return
+  }
+  // Last group gone. Mirror deleteFromLocal's cleanup for a now-orphaned event.
+  await db.del(eventKey).catch(() => {})
+  scheduleWidgetCacheRefresh()
+}
+
 async function deleteEvent (date, id) {
   // Read the event first so we can decide whether to wipe reminders. Series
   // reminders live at the series-root key (TODO #82 Phase 1) and must
@@ -1763,14 +1797,98 @@ async function listGroups () {
       deleteGroup(value.id).catch(() => {})
       continue
     }
+    // Owner-authored deletion tombstone (apply() sets `deleted` on the view
+    // record, which then mirrors back into the local record). deleteGroup()
+    // purges the local row, but mirrorToLocal replays the tombstoned view row
+    // straight back, so the record legitimately exists here with deleted:true.
+    // Without this filter the group stays visible forever on every device that
+    // wasn't the one that deleted it. Lazy cleanup as above.
+    if (value?.deleted) {
+      if (value.id) deleteGroup(value.id).catch(() => {})
+      continue
+    }
+    // Husk record: a linked-device seed that never received the group's
+    // metadata (no name, no owner) and whose personalGroups pointer is gone —
+    // the sibling deleted the group, and the `del groupMembership` handler only
+    // purges locally when we were kicked, never when the owner deleted it. The
+    // UI renders one row per record, so a nameless husk shows as a blank row.
+    if (value?.id && !value.name && !value.ownerId) {
+      console.log('[groups] dropping husk group record (no name/owner):', value.id)
+      deleteGroup(value.id).catch(() => {})
+      continue
+    }
     groups.push(await rehydrateGroupMembers(value))
   }
   return groups
 }
 
 async function putGroup (group) {
-  await db.put(NS.groups + group.id, { ...group, updatedAt: Date.now() })
+  await putGroupRecord(group.id, { ...group, updatedAt: Date.now() }, 'putGroup')
   return group
+}
+
+// THE choke point for local group-record writes (TODO #123). Four separate call
+// sites were each found dropping the local-only encryptionKey, and chasing them
+// one at a time is a losing game: the loss is silent, and by the time a user
+// notices, the evidence (which write did it) is long gone. So instead of trusting
+// every caller, funnel every write through here and make the drop structurally
+// impossible.
+//
+// `tag` identifies the caller purely so the warning below names the culprit if
+// this ever fires in the wild — the reported symptom was never reproduced across
+// six scenarios, so a live log line may be the only way it is ever identified.
+async function putGroupRecord (groupId, value, tag) {
+  const key = NS.groups + groupId
+  const existing = await db.get(key).catch(() => null)
+  const resolved = resolveGroupEncryptionKey({
+    priorKey: existing?.value?.encryptionKey,
+    incomingKey: value?.encryptionKey,
+  })
+  if (resolved.blocked) {
+    console.error('[groups] BLOCKED encryptionKey', resolved.reason, 'for', groupId, 'at', tag || 'unknown')
+  }
+  const next = resolved.key ? { ...value, encryptionKey: resolved.key } : value
+  await db.put(key, next)
+  return next
+}
+
+// Repair a group whose local record is missing the block-encryption key that the
+// personal-base fan-out carries (the pre-fix damage from the strip described in
+// putGroupRecord, and any device seeded from a keyless record). Back-fill
+// the key, then — if the base was already opened unencrypted — tear it down
+// locally and rejoin so it reopens on the correct encrypted swarm topic. This is
+// a LOCAL repair only: no membership change is announced, so it must not call
+// leaveGroup(), which would also drop the personal-base mirror.
+async function reconcileGroupEncryptionKey (groupId, encryptionKey) {
+  if (!groupId || !encryptionKey) return false
+  const node = await db.get(NS.groups + groupId).catch(() => null)
+  const local = node?.value
+  if (!local || local.encryptionKey === encryptionKey) return false
+  if (local.encryptionKey) {
+    console.warn('[personal] encryptionKey conflict for', groupId, '— keeping local')
+    return false
+  }
+  const repaired = { ...local, encryptionKey }
+  await putGroupRecord(groupId, repaired, 'reconcileGroupEncryptionKey').catch(() => {})
+  console.log('[personal] back-filled missing encryptionKey for', groupId)
+
+  const base = bases.get(groupId)
+  if (!base) return true
+  // Opened unencrypted ⇒ it is announcing on the legacy raw-groupKey topic and
+  // can never meet keyed peers. Close, leave the wrong topic, rejoin encrypted.
+  try {
+    await base.close()
+    bases.delete(groupId)
+    try {
+      const staleTopic = groupSwarmTopic(local.groupKey, null)
+      await swarm.leave(staleTopic).catch(() => {})
+    } catch (e) { console.warn('[personal] stale topic leave failed:', groupId, e?.message) }
+    await joinGroup(repaired)
+    console.log('[personal] reopened', groupId, 'on the encrypted swarm topic')
+  } catch (e) {
+    console.error('[personal] encrypted reopen failed for', groupId, e?.message)
+  }
+  return true
 }
 
 async function reinviteMember (groupId, memberId) {
@@ -1784,7 +1902,7 @@ async function reinviteMember (groupId, memberId) {
     pendingInvites.push(memberRecord)
   }
   const updated = { ...group, removedMembers, pendingInvites }
-  await db.put(NS.groups + group.id, updated).catch(() => {})
+  await putGroupRecord(group.id, updated, 'reinviteMember').catch(() => {})
   // Clear all blockedWriter keys for this member locally
   for await (const { key, value } of db.createReadStream({ gt: 'blockedWriter:' + groupId + ':', lt: 'blockedWriter:' + groupId + ':ÿ' })) {
     if (value?.memberId === memberId) await db.del(key).catch(() => {})
@@ -1833,11 +1951,11 @@ async function deleteGroup (id) {
 async function markGroupBroken (groupId, error) {
   const cur = await db.get(NS.groups + groupId).catch(() => null)
   if (!cur?.value) return
-  await db.put(NS.groups + groupId, {
+  await putGroupRecord(groupId, {
     ...cur.value,
     brokenAt: Date.now(),
     brokenError: String(error?.message || error || 'unknown')
-  }).catch(() => {})
+  }, 'markGroupBroken').catch(() => {})
 }
 
 async function clearGroupBroken (groupId) {
@@ -1845,7 +1963,7 @@ async function clearGroupBroken (groupId) {
   if (!cur?.value) return
   if (cur.value.brokenAt == null && cur.value.brokenError == null) return
   const { brokenAt, brokenError, ...rest } = cur.value
-  await db.put(NS.groups + groupId, rest).catch(() => {})
+  await putGroupRecord(groupId, rest, 'clearGroupBroken').catch(() => {})
 }
 
 // Durable tombstone preventing a removed broken group from being
@@ -2567,6 +2685,12 @@ function makePersonalApply () {
         // sibling pointer should not resurrect a ghost group locally.
         const blocked = groupId ? await db.get('blockedFromGroup:' + groupId).catch(() => null) : null
         if (blocked?.value) continue
+        // Repair BEFORE the seed branch below, and deliberately outside its
+        // `!bases.has(groupId)` guard: the damaged case is precisely a group we
+        // already hold and have already opened — unencrypted, on the wrong
+        // topic — so the guard would skip the device that most needs fixing.
+        await reconcileGroupEncryptionKey(groupId, val.value.encryptionKey)
+          .catch(e => console.warn('[personal] encryptionKey reconcile failed for', groupId, e?.message))
         if (groupId && groupKey && !bases.has(groupId)) {
           const existingGroup = await db.get(NS.groups + groupId).catch(() => null)
           if (!existingGroup?.value) {
@@ -2592,7 +2716,7 @@ function makePersonalApply () {
               members:  selfMember ? [selfMember] : [],
               joinedAt: val.value.joinedAt ?? Date.now(),
             }
-            await db.put(NS.groups + groupId, seed).catch(() => {})
+            await putGroupRecord(groupId, seed, 'personalGroups-adopt').catch(() => {})
             await db.put('joinedAt:' + groupId, { ts: seed.joinedAt }).catch(() => {})
           }
           // Stamp "ever-seen" marker AFTER ensuring local group is seeded.
@@ -2699,6 +2823,12 @@ async function ensurePersonalBase () {
     // landed before the live self-kick path existed (or during sync replay)
     // leave stale pointers that paired siblings auto-join into ghost groups.
     cleanupStalePersonalGroups().catch(e => console.warn('[personal] cleanup sweep:', e.message))
+    // Repair groups already damaged by the encryptionKey strip. apply() only
+    // fires for newly-linearised nodes, so a device whose groupMembership op was
+    // applied before the preserve fix landed would never self-heal without this
+    // sweep on every personal-base open.
+    backfillMissingGroupEncryptionKeys()
+      .catch(e => console.warn('[personal] encryptionKey backfill sweep:', e.message))
     // Self-heal any stale `deviceMetaHidden:{localKey}` marker — local writer
     // is never hidden in our model. Could exist on installs where a sibling's
     // remove was applied before the apply-skip-self fix landed.
@@ -3081,6 +3211,26 @@ async function runGroupWriterRedundancyTick () {
 // Runs on every personal-base open; only acts when this device is writable, so
 // the entry is appended via this device's writer key. Idempotent — re-running
 // is cheap because the iteration short-circuits when nothing matches.
+// One-shot repair sweep for groups whose local record lost (or never received)
+// the block-encryption key while the personal base still advertises it. Runs on
+// every personal-base open and is a no-op once every group is keyed. Read-only
+// unless something is actually broken. Deliberately NOT gated on
+// `personalBase.writable` — a read-only secondary is exactly the device most
+// likely to be holding a keyless record.
+async function backfillMissingGroupEncryptionKeys () {
+  if (!personalBase?.view) return
+  let repaired = 0
+  for await (const { value } of personalBase.view.createReadStream({
+    gt: 'personalGroups:', lt: 'personalGroups:\xff'
+  })) {
+    if (!value?.groupId || !value.encryptionKey) continue
+    const did = await reconcileGroupEncryptionKey(value.groupId, value.encryptionKey)
+      .catch(e => { console.warn('[personal] backfill failed for', value.groupId, e?.message); return false })
+    if (did) repaired++
+  }
+  if (repaired) console.log('[personal] encryptionKey backfill repaired', repaired, 'group(s)')
+}
+
 async function cleanupStalePersonalGroups () {
   if (!personalBase?.writable) return
   let dropped = 0
@@ -3865,7 +4015,7 @@ async function _seedGroupsFromPair (groups) {
       members:  selfMember ? [selfMember] : [],
       joinedAt: g.joinedAt ?? Date.now(),
     }
-    await db.put(NS.groups + g.id, seed).catch(() => {})
+    await putGroupRecord(g.id, seed, 'seedGroupsFromPair').catch(() => {})
     await db.put('joinedAt:' + g.id, { ts: seed.joinedAt }).catch(() => {})
     joinGroup(seed).catch(e => console.warn('[pair] seedGroups joinGroup error for', g.id, e.message))
     newCount++
@@ -4074,12 +4224,12 @@ async function commitRekey (oldGroupId) {
   // Mark old local group record as migrated (UI can hide / de-emphasize).
   const oldNode = await db.get(NS.groups + oldGroupId).catch(() => null)
   if (oldNode?.value) {
-    await db.put(NS.groups + oldGroupId, {
+    await putGroupRecord(oldGroupId, {
       ...oldNode.value,
       migratedTo: descriptor.newGroupId,
       migratedAt: Date.now(),
       updatedAt:  Date.now(),
-    })
+    }, 'commitRekey:mark-migrated')
   }
 
   // joinGroup runs full apply (mirrors events/rsvps to local DB), joins the
@@ -4160,12 +4310,12 @@ async function adoptGroupMigration (oldGroupId, marker) {
   }
 
   if (!oldGroup.migratedTo) {
-    await db.put(NS.groups + oldGroupId, {
+    await putGroupRecord(oldGroupId, {
       ...oldGroup,
       migratedTo: newGroupId,
       migratedAt: Date.now(),
       updatedAt:  Date.now(),
-    })
+    }, 'adoptMigration:mark-migrated')
   }
 
   // Belt-and-suspenders with the new base's own apply→mirror: ensure any
@@ -4722,12 +4872,20 @@ async function syncPutEvent (groupId, event) {
   await safeAppend(base, { op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }
 
-async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle) {
+// `scope` distinguishes the two very different things this op has always meant:
+//   undefined  — delete the event outright ("Delete for Everyone", recurrence
+//                regeneration, shadow cleanup). Tombstoned globally.
+//   'group'    — the user merely unshared the event FROM this group; it may well
+//                still live in another group. Tombstoned per-group so the copy in
+//                the other group is not destroyed (TODO #122).
+// Old peers ignore the field and fall back to the global behavior.
+async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle, scope) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
   if (recurrenceId) payload.recurrenceId = recurrenceId
   if (eventTitle) payload.eventTitle = eventTitle
+  if (scope === 'group') payload.scope = 'group'
   await safeAppend(base, payload)
 }
 
@@ -4999,7 +5157,7 @@ async function foregroundSync () {
         if (viewMembers.length !== localMembers.length ||
             !viewMembers.every(vm => localMembers.some(lm => lm.id === vm.id))) {
           const lv = localNode?.value
-          await db.put(NS.groups + groupId, {
+          await putGroupRecord(groupId, {
             ...gNode.value,
             color: gNode.value.color || lv?.color,
             name:  gNode.value.name  || lv?.name,
@@ -5007,7 +5165,12 @@ async function foregroundSync () {
             icon:  gNode.value.icon  ?? lv?.icon,
             joinedAt: lv?.joinedAt || gNode.value.joinedAt,
             nickname: lv?.nickname || gNode.value.nickname,
-          })
+            // Fourth view-to-local write that dropped the local-only key. Fires
+            // whenever the view's member set has drifted from local, so a single
+            // foreground sync after such a drift would silently disable the
+            // group's encryption and strip `enc` from every later invite.
+            encryptionKey: lv?.encryptionKey || gNode.value.encryptionKey,
+          }, 'foregroundSync:re-mirror')
           emitSync(groupId, { groupChanged: true })
         }
       }
@@ -5088,10 +5251,11 @@ async function resyncGroup (groupId) {
     for await (const { key, value } of view.createReadStream()) {
       if (!value) continue
       if (key.startsWith('events:')) {
-        // Respect local delete tombstone — never resurrect user-deleted events
+        // Respect local delete tombstone — never resurrect user-deleted events.
+        // Scoped by group so an unshare from ANOTHER group doesn't block this
+        // group's copy (TODO #122).
         const eventId = eventIdFromKey(key)
-        const tombstone = await db.get(NS.deleted + eventId).catch(() => null)
-        if (tombstone) continue
+        if (await isEventTombstoned(eventId, groupId)) continue
         const existing = await db.get(key).catch(() => null)
         if (existing?.value && sameExceptUpdatedAt(existing.value, value)) continue
         await db.put(key, value)
@@ -5551,7 +5715,7 @@ function makeApply (groupId) {
                 if (localGroup?.value?.pendingInvites?.some(p => p.id === m.id)) {
                   const updatedPending = { ...localGroup.value,
                     pendingInvites: (localGroup.value.pendingInvites ?? []).filter(p => p.id !== m.id) }
-                  await db.put(NS.groups + groupId, updatedPending).catch(() => {})
+                  await putGroupRecord(groupId, updatedPending, 'clear-pendingInvite').catch(() => {})
                   emitSync(groupId, { groupChanged: true })
                 }
               }
@@ -5739,10 +5903,18 @@ function makeApply (groupId) {
               name:    winningValue.name    || lv?.name    || val.value.name,
               emoji:   winningValue.emoji   || lv?.emoji   || val.value.emoji,
               icon:    winningValue.icon    ?? lv?.icon    ?? val.value.icon,
+              // Local-only block-encryption key. NEITHER side of this merge can
+              // carry it — appendGroupWithAvatarSplit strips it before the view
+              // append, so winningValue (a view record) and the incoming op are
+              // both keyless. Without this line the first join-triggered merge
+              // silently wipes the owner's key: later invites lose `&enc=`, the
+              // base reopens unencrypted on the wrong swarm topic, and the group
+              // stops syncing. Same preserve rule as mirrorToLocal's group branch.
+              encryptionKey: lv?.encryptionKey || winningValue.encryptionKey || val.value.encryptionKey,
               removedMembers: [...removedMap.values()],
               members: splitMembers,
             }
-            await db.put(val.key, merged)
+            await putGroupRecord(groupId, merged, 'apply:group-LWW-merge')
             emitSync(groupId, { groupChanged: true })
           } else {
             await mirrorToLocal(val.type, val.key, existing.value, groupId)
@@ -5750,10 +5922,19 @@ function makeApply (groupId) {
         }
       } else if (val.op === 'del') {
         await view.del(val.key)
-        // Skip local delete for the writer's own event del ops —
-        // owner may still hold the event locally (e.g. unshared from a group).
-        // For "Delete for Everyone", db.deleteEvent already ran before sync.deleteEvent.
-        if (isRemote || val.type !== 'event') await deleteFromLocal(val.type, val.key)
+        // A group-scoped del (TODO #122) means "unshared from THIS group", not
+        // "deleted". Drop this group from the event's groups[] instead of
+        // removing the row, so a copy that also lives in another group survives.
+        // Only when the last group is gone is the local row actually removed.
+        const isGroupScopedDel = isGroupScopedDelete(val)
+        if (isGroupScopedDel && isRemote) {
+          await unshareEventFromGroup(val.key, groupId)
+        } else if (isRemote || val.type !== 'event') {
+          // Skip local delete for the writer's own event del ops —
+          // owner may still hold the event locally (e.g. unshared from a group).
+          // For "Delete for Everyone", db.deleteEvent already ran before sync.deleteEvent.
+          await deleteFromLocal(val.type, val.key)
+        }
         if (val.type === 'group' && isRemote) {
           // Owner deleted the group — clean up locally and notify UI
           await deleteGroup(groupId)
@@ -5778,7 +5959,9 @@ function makeApply (groupId) {
             // sibling device of MY identity (TODO #11 Phase 4).
             const selfAuthoredDel = await isSelfAuthoredOp(groupId, nodeWriterKey)
             const delTombstone = await db.get(NS.deleted + eventId).catch(() => null)
-            if (!delTombstone && !isShadowKey && !selfAuthoredDel && !recentDeleteNotifs.has(eventId)) {
+            // An unshare is not a deletion — telling members "X deleted an event"
+            // when it merely moved to another group is misleading (TODO #122).
+            if (!delTombstone && !isShadowKey && !selfAuthoredDel && !isGroupScopedDel && !recentDeleteNotifs.has(eventId)) {
               recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
@@ -5794,7 +5977,13 @@ function makeApply (groupId) {
             // Write tombstone AFTER notification check so re-linearization (foregroundSync, bgSync) won't re-fire.
             // Applies to shadows too — without it, a peer receiving the shadow delete op on initial
             // sync replay has no guard against a later re-put resurrecting the shadow.
-            await db.put(NS.deleted + eventId, { ts: Date.now() }).catch(() => {})
+            // Group-scoped unshares tombstone per-group: the global key would also
+            // block the copy this event still has in whatever group it moved TO,
+            // which is exactly the data loss TODO #122 fixes.
+            await db.put(
+              isGroupScopedDel ? groupDeletedKey(groupId, eventId) : NS.deleted + eventId,
+              { ts: Date.now(), ...(isGroupScopedDel ? { groupId } : {}) },
+            ).catch(() => {})
           }
         }
       } else if (val.op === 'reinviteMember') {
@@ -5809,7 +5998,10 @@ function makeApply (groupId) {
               ...(memberRecord ? [memberRecord] : [])],
           }
           await view.put(gKey, updated)
-          await db.put(gKey, updated)
+          // View records never carry the local-only encryptionKey — merge it back
+          // from the local record so a reinvite doesn't strip it (see the group
+          // LWW merge above).
+          await putGroupRecord(val.groupId, updated, 'apply:reinviteMember')
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.ts }).catch(() => {})
           // Clear blockedWriter and knownWriter keys for this member so they can rejoin
@@ -5840,7 +6032,7 @@ function makeApply (groupId) {
             removedMembers: (gNode.value.removedMembers ?? []).filter(m => (m.id ?? m) !== val.memberId),
           }
           await view.put(gKey, updated)
-          await db.put(gKey, updated)
+          await putGroupRecord(val.groupId, updated, 'apply:purgeMember')
           await db.del(NS.members + val.groupId + ':' + val.memberId).catch(() => {})
           // Mark member as reinstated so mirrorToLocal won't re-add them to removedMembers
           await db.put('reinstated:' + val.groupId + ':' + val.memberId, { ts: val.purgedAt }).catch(() => {})
@@ -6217,9 +6409,10 @@ async function mirrorToLocal (type, key, value, groupId) {
       return
     }
     if (type === 'event') {
-      // If user locally deleted this event, don't resurrect it from sync
-      const tombstone = await db.get(NS.deleted + value.id).catch(() => null)
-      if (tombstone) return
+      // If user locally deleted this event, don't resurrect it from sync. Scoped
+      // by group: an unshare from another group must not block this group's copy,
+      // which is what silently destroyed moved events (TODO #122).
+      if (await isEventTombstoned(value.id, groupId)) return
       // If date changed, remove old local entry to prevent duplicate
       if (value._prevDate && value._prevDate !== value.date) {
         await db.del('events:' + value._prevDate + ':' + value.id).catch(() => {})
@@ -6306,7 +6499,7 @@ async function mirrorToLocal (type, key, value, groupId) {
         updatedAt: value.updatedAt || Date.now()
       }
       if (existing?.value && sameExceptUpdatedAt(existing.value, merged)) return
-      await db.put(key, merged)
+      await putGroupRecord(groupId, merged, 'mirrorToLocal:group')
       emitSync(groupId, { groupChanged: true })
       // Owner-bypass in widget filter depends on group.ownerId — when Autobase
       // replay corrects ownerId from the invite-link placeholder to the
@@ -7778,7 +7971,7 @@ async function _doInit (dir, attempt = 0) {
           for (const m of (g.removedMembers ?? [])) removedMap.set(m.id ?? m, m)
           for (const m of staleRemoved)              removedMap.set(m.id, m)
           const cleaned = { ...g, members: [...deduped.values()], removedMembers: [...removedMap.values()] }
-          await db.put(NS.groups + g.id, cleaned).catch(() => {})
+          await putGroupRecord(g.id, cleaned, 'startup-dedup').catch(() => {})
           console.log('[STARTUP_DEDUP] cleaned duplicate members in group:', g.id, 'removed:', staleRemoved.map(m => m.name))
         }
       }
