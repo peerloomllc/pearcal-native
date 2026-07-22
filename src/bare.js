@@ -5060,6 +5060,11 @@ async function foregroundSync () {
             icon:  gNode.value.icon  ?? lv?.icon,
             joinedAt: lv?.joinedAt || gNode.value.joinedAt,
             nickname: lv?.nickname || gNode.value.nickname,
+            // Fourth view-to-local write that dropped the local-only key. Fires
+            // whenever the view's member set has drifted from local, so a single
+            // foreground sync after such a drift would silently disable the
+            // group's encryption and strip `enc` from every later invite.
+            encryptionKey: lv?.encryptionKey || gNode.value.encryptionKey,
           })
           emitSync(groupId, { groupChanged: true })
         }
