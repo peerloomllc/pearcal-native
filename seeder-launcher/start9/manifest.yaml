@@ -20,6 +20,8 @@ wrapper-repo: "https://github.com/peerloomllc/pearcal-native"
 upstream-repo: "https://github.com/peerloomllc/pearcal-native"
 support-site: "https://github.com/peerloomllc/pearcal-native/issues"
 marketing-site: "https://peerloomllc.com"
+# Support Development card lives on the website's About page.
+donation-url: "https://peerloomllc.com/about"
 build: ["make"]
 description:
   short: Keep your PearCal groups online 24/7.
@@ -74,6 +76,9 @@ health-checks:
 # No user-facing configuration for v1: the seeder is enrolled from the phone app,
 # not via a config form.
 config: ~
+# Populated at runtime: the entrypoint writes /root/start9/stats.yaml (compat
+# format) so Properties shows the seeder public key, nickname and enrolment
+# counts. Without that file this page renders empty.
 properties: ~
 volumes:
   main:
