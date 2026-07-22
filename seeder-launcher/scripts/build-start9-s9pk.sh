@@ -60,6 +60,23 @@ printf '%s' "$RAW" | grep -q '"manifests"' \
 # --- pin the version-bearing files -----------------------------------------
 echo "==> pinning manifest.yaml / migrations.ts / Dockerfile to $VERSION ..."
 yq -i ".version = \"$VERSION\"" "$START9_DIR/manifest.yaml"
+
+# release-notes feeds the StartOS Updates page: it is baked into the .s9pk and
+# published by build-registry.sh to /package/v0/release-notes/<id>, the
+# version-keyed map StartOS reads. Nothing used to rewrite it, so every release
+# after the first shipped the original submission blurb and operators updating
+# were told it was the "First StartOS release". Sourced from release-notes.yaml
+# and FAILED HARD when missing, so that cannot silently happen again.
+NOTES_FILE="$START9_DIR/release-notes.yaml"
+[ -f "$NOTES_FILE" ] || { echo "build-start9-s9pk: missing $NOTES_FILE" >&2; exit 1; }
+if [ "$(yq -r "has(\"$VERSION\")" "$NOTES_FILE")" != "true" ]; then
+  echo "build-start9-s9pk: no release notes for $VERSION in $NOTES_FILE." >&2
+  echo "  Add a \"$VERSION\": | entry describing what changes for a StartOS operator." >&2
+  exit 1
+fi
+NOTES="$(yq -r ".\"$VERSION\"" "$NOTES_FILE")" \
+  yq -i '.["release-notes"] = strenv(NOTES)' "$START9_DIR/manifest.yaml"
+echo "    release-notes <- release-notes.yaml[$VERSION]"
 sed -i -E "s/fromMapping\(\{\}, \"[0-9.]+\"\)/fromMapping({}, \"$VERSION\")/" \
   "$START9_DIR/scripts/procedures/migrations.ts"
 # FROM <image>:<ver>[@sha256:<digest>]  ->  new ver + digest

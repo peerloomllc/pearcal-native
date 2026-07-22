@@ -11,10 +11,14 @@ title: "PearCal Seeder"
 # emver: up to four dot-separated numbers; the fourth (if present) is the StartOS
 # packaging revision. Kept in lockstep with the seeder image tag.
 version: 1.0.35
-release-notes: |
-  First StartOS release of the PearCal blind-seeder. Runs the seed-mode worklet
-  as an always-on service with a dashboard for enrolling groups and watching
-  replication. Reuses the same published seeder image as the Umbrel app.
+release-notes: |-
+  The Properties page now shows this seeder's public key, nickname, how many
+  groups it is seeding, connected peers and how much encrypted data it holds.
+  Check the public key against what the PearCal app displays when you admit
+  this seeder, to confirm you paired with the right one.
+
+  Adds a donation link, and fixes a bug where the Properties page could stay
+  empty after a restart.
 license: MIT
 wrapper-repo: "https://github.com/peerloomllc/pearcal-native"
 upstream-repo: "https://github.com/peerloomllc/pearcal-native"
