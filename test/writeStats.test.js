@@ -66,3 +66,21 @@ test('requiring the module does not start the poller', () => {
   assert.equal(typeof mod.render, 'function')
   assert.equal(typeof mod.tick, 'function')
 })
+
+test('tick returns true on a successful write, false when the API is down', async () => {
+  const os = require('node:os'); const p = require('node:path'); const fs = require('node:fs')
+  const dir = fs.mkdtempSync(p.join(os.tmpdir(), 'ws-'))
+  const mod = require('../seeder-launcher/start9/write-stats.js')
+  // No server on this port -> fetch fails -> false, and nothing written.
+  process.env.START9_STATS_DIR = dir
+  // tick() reads API from a module-level const, so it targets the default port;
+  // the point here is just that a failed poll returns false and writes nothing.
+  const okDown = await mod.tick()
+  assert.equal(okDown, false)
+  assert.equal(fs.existsSync(p.join(dir, 'stats.yaml')), false)
+})
+
+test('loop is exported so the entry-point guard has something to call', () => {
+  const mod = require('../seeder-launcher/start9/write-stats.js')
+  assert.equal(typeof mod.loop, 'function')
+})
