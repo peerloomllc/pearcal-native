@@ -1,28 +1,15 @@
-🎉 New Features
-  
-  - Blind Peers — always-on backup & sync for your shared groups. Pair an always-on "blind peer" to a group and it keeps everyone in sync and backed up around the clock — even when every member's phone is offline — and it can never read your events. Scan a QR to admit one, name each peer, watch its status live, and remove it anytime.
-  - Encrypted groups. Group data is now encrypted per group, so blind peers (and any helper along the way) only store scrambled data they can't decrypt. Existing groups get a one-time heads-up when encryption turns on.
+🐛 Bug Fixes
 
-  ✨ Improvements
-
-  - More reliable sync when two devices share a Wi-Fi network.
-  - Desktop: application menu (Edit + Help/About); notification behavior now matches mobile; irrelevant buttons hidden.
-  - Blind peers can be renamed inline, and names show up across your devices.
-
-  🐛 Bug Fixes
-
-  - Android: fixed the stuck-on-loading-screen after force-close + quick reopen.
-  - iOS: fixed a launch crash.
-  - App no longer gets stuck at startup if one group fails to open.
-  - A group's sync helper no longer lingers after the group is deleted.
+  - Moving an event from one group to another no longer deletes it. Before this fix the event vanished from everyone else's calendar and could not be brought back.
+  - Groups that had quietly stopped syncing now repair themselves the next time you open the app.
+  - Deleted groups no longer linger in your group list, and empty blank rows are gone.
+  - Joining a group now tells you when something went wrong. It used to sit on a blank "Inviter" card forever with no explanation, whether you had been declined or simply could not reach anyone.
+  - Android: fixed a frozen screen when returning to the app after it had been in the background for a while. Taps still worked but nothing redrew.
 
   🔒 Security & Privacy
 
-  - Deleting a group, leaving a group, and transferring ownership are now verified against the real owner — a removed/malicious member can't delete or hijack a group.
-  - Group data is encrypted end-to-end across sync helpers.
+  - Fixed a problem where a group could lose the key that keeps its contents private. When that happened the group stopped syncing, and invites shared from that device left the key out so new members could not join properly. Affected devices now repair themselves automatically.
 
-  🖥 Desktop & Seeder (GitHub builds)
+  ✨ Improvements
 
-  - Blind-peer app installable on Linux, Windows, macOS, Umbrel, and Start9, with auto-update.
-  - Windows desktop builds now run locally without a build VM.
-
+  - The invite QR code now slides up as a sheet you can swipe away, matching the rest of the app.
