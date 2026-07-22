@@ -13,7 +13,7 @@
     "postinstall": "patch-package"
   },
   "author": "Holepunch",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/holepunchto/bare-expo/issues"
   },
