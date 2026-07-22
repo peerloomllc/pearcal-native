@@ -26,6 +26,18 @@ const { PearCalDeepLink } = NativeModules
 const { PearCalBGSync } = NativeModules
 const { PearCalBlockStore } = NativeModules
 const { PearCalICloudKeychain } = NativeModules
+// GrapheneOS/Vanadium WebView resume-freeze recovery (WEBVIEW_FREEZE_FIX_PORT.md).
+// Android's cached-app freezer freezes the out-of-process Vanadium renderer while
+// we're backgrounded; after the 2026-07-19 Vanadium 151 update its compositor
+// never re-attaches to the new window surface on resume, so the screen never
+// repaints even though JS, input and haptics all still work. Only a FRESH render
+// process recovers it — a view-remount just rebinds the same pooled stale one.
+const { WebViewRecovery } = NativeModules
+let _backgroundedAt = 0
+// Returning after a short background is fine and reloading then would be a
+// gratuitous ~1-2s flash, so only recover after a background long enough for the
+// freezer to have actually kicked in. Tunable up if it feels eager.
+const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 
 const { makeStartLock } = require('../src/lib/backendBootstrap')
 
@@ -956,6 +968,21 @@ webViewRef.current?.injectJavaScript(
   // Trigger resync when app returns to foreground
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state: string) => {
+      // Renderer recovery runs BEFORE (and independently of) the resync branch
+      // below: that one is gated on dbReadyRef, but a frozen WebView has nothing
+      // to do with whether the DB is up, and gating it there would skip recovery
+      // on exactly the slow-start cases most likely to have been backgrounded.
+      if (Platform.OS === 'android') {
+        if (state === 'background' || state === 'inactive') {
+          if (_backgroundedAt === 0) _backgroundedAt = Date.now()
+        } else if (state === 'active') {
+          const bgMs = _backgroundedAt ? Date.now() - _backgroundedAt : 0
+          _backgroundedAt = 0
+          if (bgMs >= WEBVIEW_RECOVERY_MIN_BG_MS && WebViewRecovery?.terminateRenderer) {
+            WebViewRecovery.terminateRenderer().catch(() => {})
+          }
+        }
+      }
       if (state === 'active' && dbReadyRef.current) {
         sendToWorklet({ method: 'foregroundSync', id: -98, args: [] })
         sendToWorklet({ method: 'refreshWidgetCache', id: -97, args: [] })
@@ -1004,6 +1031,16 @@ webViewRef.current?.injectJavaScript(
         return `window.__PEARCAL_SCREENSHOT_SCENE=${scene};window.__PEARCAL_SCREENSHOT_DARK=${dark};`
       })()}true;`}
       onLoadEnd={() => setWebViewReady(true)}
+      // Fires when the renderer dies — including the deliberate terminate above
+      // (didCrash=false). Reloading rebinds a FRESH render process to the current
+      // window surface, which is the whole point; without this the terminate
+      // would leave a blank WebView. webViewReady must drop first, or the effects
+      // gated on it would inject into a WebView that no longer exists.
+      onRenderProcessGone={(e: any) => {
+        console.warn('[webview] render process gone, didCrash=' + e?.nativeEvent?.didCrash + ' -> reload')
+        setWebViewReady(false)
+        webViewRef.current?.reload()
+      }}
       onError={e => setError(e.nativeEvent.description)}
     />
   )

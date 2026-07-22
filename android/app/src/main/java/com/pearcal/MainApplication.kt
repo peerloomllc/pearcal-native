@@ -34,6 +34,7 @@ class MainApplication : Application(), ReactApplication {
               add(ScreenshotPackage())
               add(WidgetCachePackage())
               add(BlockStorePackage())
+              add(WebViewRecoveryPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
