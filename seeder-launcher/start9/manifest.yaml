@@ -10,7 +10,7 @@ id: pearcal-seeder
 title: "PearCal Seeder"
 # emver: up to four dot-separated numbers; the fourth (if present) is the StartOS
 # packaging revision. Kept in lockstep with the seeder image tag.
-version: 1.0.33
+version: 1.0.34
 release-notes: |
   First StartOS release of the PearCal blind-seeder. Runs the seed-mode worklet
   as an always-on service with a dashboard for enrolling groups and watching

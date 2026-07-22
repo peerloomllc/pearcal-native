@@ -1,13 +1,28 @@
-## What's Changed
+🎉 New Features
+  
+  - Blind Peers — always-on backup & sync for your shared groups. Pair an always-on "blind peer" to a group and it keeps everyone in sync and backed up around the clock — even when every member's phone is offline — and it can never read your events. Scan a QR to admit one, name each peer, watch its status live, and remove it anytime.
+  - Encrypted groups. Group data is now encrypted per group, so blind peers (and any helper along the way) only store scrambled data they can't decrypt. Existing groups get a one-time heads-up when encryption turns on.
 
-### ✨ Improvements
+  ✨ Improvements
 
-- custom interval recurrence + editable series end date
-- optional show-upcoming-events on the daily widget (toggle under Profile --> Personal settings)
-- in-place auto-update for NSIS + AppImage
+  - More reliable sync when two devices share a Wi-Fi network.
+  - Desktop: application menu (Edit + Help/About); notification behavior now matches mobile; irrelevant buttons hidden.
+  - Blind peers can be renamed inline, and names show up across your devices.
 
-### 🐛 Bug Fixes
+  🐛 Bug Fixes
 
-- restore reminders after reboot and app update
-- event-editor field parity + centered modal (desktop)
+  - Android: fixed the stuck-on-loading-screen after force-close + quick reopen.
+  - iOS: fixed a launch crash.
+  - App no longer gets stuck at startup if one group fails to open.
+  - A group's sync helper no longer lingers after the group is deleted.
+
+  🔒 Security & Privacy
+
+  - Deleting a group, leaving a group, and transferring ownership are now verified against the real owner — a removed/malicious member can't delete or hijack a group.
+  - Group data is encrypted end-to-end across sync helpers.
+
+  🖥 Desktop & Seeder (GitHub builds)
+
+  - Blind-peer app installable on Linux, Windows, macOS, Umbrel, and Start9, with auto-update.
+  - Windows desktop builds now run locally without a build VM.
 
