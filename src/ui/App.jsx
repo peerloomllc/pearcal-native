@@ -5110,7 +5110,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             {g.keyless && (
               <div style={{ background:'#E5484D1A', border:'1px solid #E5484D55', borderRadius:10,
                 padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <div style={{ fontSize:18, lineHeight:1 }}>🔒</div>
+                <Lock size={18} weight="thin" color="#E5484D" style={{ flexShrink:0, marginTop:1 }} />
                 <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
                   <div style={{ fontWeight:400, marginBottom:2 }}>
                     {g.keyless.certainty === 'certain'
