@@ -38,7 +38,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple, GridFour, PencilSimple,
+  FunnelSimple, GridFour, PencilSimple, Broadcast,
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -6736,6 +6736,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const loadBlindPeers = useCallback(() => {
     db.listBlindPeers?.().then(list => setBlindPeers(list ?? [])).catch(() => {})
   }, [db])
+  // The off-LAN relay backstop (TODO #130). Default ON — it is what makes the app
+  // connect at all on a carrier NAT that can never hole-punch, and PearCal is
+  // phone-to-phone so both ends are often on one. OFF is the privacy-maximalist
+  // choice: pure peer-to-peer, accepting that such a network simply won't connect.
+  const [relayStatus, setRelayStatus] = useState(null)
+  const loadRelayStatus = useCallback(() => {
+    db.getRelayStatus?.().then(s => setRelayStatus(s ?? null)).catch(() => {})
+  }, [db])
+  useEffect(() => { loadRelayStatus() }, [loadRelayStatus])
   // Load on mount and refresh whenever the pairing sheet closes (a scan may have
   // just admitted one).
   useEffect(() => { if (!blindPeerOpen) loadBlindPeers() }, [blindPeerOpen, loadBlindPeers])
@@ -7547,6 +7556,53 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             </button>
         </div>
       </div>
+
+      {/* Connection — the off-LAN relay backstop (TODO #130) */}
+      {relayStatus?.configured && (<>
+        <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+          CONNECTION
+        </div>
+        <div style={{ marginBottom:12 }}>
+          <div style={{ padding:'0 16px 14px' }}>
+            <div style={{ padding:'12px 14px', borderRadius:10, border:`1px solid ${colors.border}`,
+              display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <Broadcast size={18} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:14, color: colors.text.primary }}>Use a relay when direct fails</div>
+                  <div style={{ fontSize:11, color: colors.text.muted, lineHeight:1.4 }}>
+                    Some mobile networks block phones from connecting straight to each
+                    other. When that happens, PearCal routes through a relay run by
+                    PeerLoom. It only ever carries scrambled data it can’t read, and
+                    it’s only used after a direct connection has already failed.
+                  </div>
+                </div>
+                <Toggle val={relayStatus.useRelay !== false} accent={colors.primary}
+                  onChange={async (v) => {
+                    window.__pearSync?.haptic('light')
+                    setRelayStatus(prev => prev ? { ...prev, useRelay: v } : prev)
+                    await db.setUseRelay?.(v).catch(() => {})
+                    loadRelayStatus()
+                  }} />
+              </div>
+              {relayStatus.useRelay !== false && (relayStatus.offers > 0 || (relayStatus.relaying?.successes ?? 0) > 0) && (
+                <div style={{ fontSize:11, color: colors.text.muted, paddingLeft:28 }}>
+                  Used since the app started: {relayStatus.offers} outgoing
+                  {(relayStatus.relaying?.successes ?? 0) > 0
+                    ? `, ${relayStatus.relaying.successes} incoming`
+                    : ''}
+                </div>
+              )}
+              {relayStatus.useRelay === false && (
+                <div style={{ fontSize:11, color: colors.text.muted, paddingLeft:28, lineHeight:1.4 }}>
+                  Off — connections stay strictly device to device. On a network that
+                  blocks them, syncing may not work at all.
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </>)}
 
       {/* Blind peer (always-on group replicator) */}
       <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>

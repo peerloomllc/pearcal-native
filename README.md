@@ -58,6 +58,27 @@ app manifest and a script that builds the Start9 `.s9pk`. Running one is entirel
 optional; PearCal
 works without it.
 
+### When phones can't reach each other directly
+Most of the time your devices connect straight to one another. Some mobile
+networks make that impossible, and on those networks a purely direct app simply
+never connects. So when - and only when - a direct connection has already failed,
+PearCal falls back to a **relay** run by PeerLoom: one public machine both
+devices can reach, which passes the scrambled data between them.
+
+Being honest about what that means:
+
+- The relay cannot read anything. Your devices encrypt end to end and the relay
+  never holds a key. It forwards scrambled bytes and forgets them; it stores
+  nothing.
+- It does see that two devices are talking and roughly how much - the usual
+  disclosure for any relay. That is not nothing, so we say so plainly rather
+  than calling it zero-knowledge.
+- It is a last resort, never a first choice. A direct connection is always tried
+  first, and if one becomes possible later the relay is dropped.
+- You can turn it off. **Profile → Connection → "Use a relay when direct
+  fails"**. Off means strictly device to device, at the cost of not connecting at
+  all on a network that blocks it.
+
 ---
 
 ## Screenshots

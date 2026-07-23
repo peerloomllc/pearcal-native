@@ -34,6 +34,7 @@ const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
+const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -115,6 +116,17 @@ let personalBase = null
 // Used to seed deviceMeta:{writerKey}.platform for the linked-devices list.
 let _platform = null
 let buf = ''
+// TODO #130 — the off-LAN blind-relay privacy toggle, held in memory because the
+// swarm's relayThrough fn is called on EVERY outbound connect and cannot await a
+// DB read. Loaded from 'deviceSetting:useRelay' at init and updated by setUseRelay,
+// so a change applies to the next dial with no reconnect. Default on: the relay is
+// the reliability backstop and a phone-to-phone app needs it most.
+let _useRelay = true
+// How many times our policy actually offered the relay for a dial (i.e. a direct
+// punch had already failed, or this NAT can never punch). Local, process-lifetime
+// only — hyperdht's own stats.relaying counters are bumped on the ACCEPTING side,
+// so on the dialling device they stay 0 and tell you nothing.
+let _relayOffers = 0
 let _dbReady = false
 let _dbReadyResolve = null
 const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
@@ -362,6 +374,8 @@ async function handle (method, args) {
     case 'cancelForEvent':   return null
     case 'restoreAll':       return null
     case 'setMemberNickname': return setMemberNickname(args[0], args[1])
+    case 'getRelayStatus':   return getRelayStatus()
+    case 'setUseRelay':      return setUseRelay(args[0])
     case 'getBlindPeerKey':  return getBlindPeerKey()
     case 'setBlindPeerKey':  return setBlindPeerKey(args[0])
     case 'removeBlindPeerKey': return removeBlindPeerKey()
@@ -785,6 +799,48 @@ async function buildWriterAnnounce (groupId, writerKey, memberId) {
     console.warn('[identity] buildWriterAnnounce: proof unavailable for', groupId, e.message)
   }
   return Buffer.from(JSON.stringify(payload))
+}
+
+// ── Off-LAN blind relay (TODO #130) ──────────────────────────────────────────
+
+// Load the persisted privacy toggle into memory. Device-local and never mirrored
+// to any Autobase: whether THIS phone is willing to use the relay is a property of
+// this phone's network and this user's preference, not of any group.
+async function loadUseRelaySetting () {
+  try {
+    const node = await db.get('deviceSetting:useRelay').catch(() => null)
+    // Absent means never set, which is the default-on case.
+    _useRelay = node?.value?.on !== false
+  } catch {
+    _useRelay = true
+  }
+  console.log('[relay] backstop', _useRelay ? 'enabled' : 'disabled',
+    RELAY_PUBLIC_KEY ? '(relay configured)' : '(no relay configured)')
+  return _useRelay
+}
+
+// Flip the toggle. Persisted AND applied in memory, so the next dial honours it
+// without a reconnect — the swarm's relayThrough fn reads _useRelay live.
+async function setUseRelay (on) {
+  _useRelay = on !== false
+  await db.put('deviceSetting:useRelay', { on: _useRelay, updatedAt: Date.now() }).catch(() => {})
+  console.log('[relay] backstop', _useRelay ? 'enabled' : 'disabled', 'by user')
+  return { useRelay: _useRelay }
+}
+
+// What the UI shows under the toggle. `offers` is our own count of dials where the
+// policy escalated; `relaying` is hyperdht's, which only moves on the ACCEPTING
+// side of a relayed connection — so a phone that relays outbound sees offers climb
+// while relaying stays 0, and both are worth showing.
+function getRelayStatus () {
+  const relaying = swarm?.dht?.stats?.relaying ?? null
+  return {
+    useRelay: _useRelay,
+    configured: !!RELAY_PUBLIC_KEY,
+    relayKey: RELAY_PUBLIC_KEY_Z,
+    offers: _relayOffers,
+    relaying: relaying ? { ...relaying } : null
+  }
 }
 
 // ── Blind peer key management ────────────────────────────────────────────────
@@ -7178,8 +7234,33 @@ async function _doInit (dir, attempt = 0) {
     await store.ready()
     startStoreFlushCadence()
 
-    // Hyperswarm
-    swarm = new Hyperswarm()
+    // The off-LAN relay privacy toggle (TODO #130). Read before the swarm exists
+    // so the very first dial already honours it.
+    await loadUseRelaySetting()
+
+    // Hyperswarm.
+    //
+    // relayThrough is a FUNCTION, not a static key, so the toggle is read LIVE on
+    // every outbound connect and a change needs no reconnect. It is direct-first:
+    // null on the normal attempt, the relay key only once Hyperswarm has set
+    // force=true after a HOLEPUNCH_ABORTED for that peer (TODO #130). With the
+    // toggle off, or no relay key baked, it always returns null — a pure no-op.
+    swarm = new Hyperswarm({
+      relayThrough: (force, s) => {
+        const key = relayThroughFor({
+          force,
+          randomized: !!(s && s.dht && s.dht.randomized),
+          useRelay: _useRelay,
+          relayKey: RELAY_PUBLIC_KEY
+        })
+        if (key) {
+          _relayOffers++
+          console.log('[relay] offering relay for this dial (force=' + !!force +
+            ', randomized=' + !!(s && s.dht && s.dht.randomized) + '), offers=' + _relayOffers)
+        }
+        return key
+      }
+    })
 
     swarm.on('connection', async (conn, info) => {
 
