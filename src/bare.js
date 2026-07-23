@@ -15,7 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
 } = require('./lib/eventTombstone.js')
-const { resolveGroupEncryptionKey } = require('./lib/groupRecord.js')
+const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -316,6 +316,8 @@ async function handle (method, args) {
     case 'putGroup':         return putGroup(args[0])
     case 'deleteGroup':      return deleteGroup(args[0])
     case 'removeBrokenGroup': return removeBrokenGroup(args[0])
+    case 'keylessGroupStatus':      return keylessGroupStatus(args[0])
+    case 'repairKeylessGroup':      return repairKeylessGroupFromInvite(args[0], args[1])
     case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
     case 'clearBlockedFromGroup': return db.del('blockedFromGroup:' + args[0]).catch(() => {})
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
@@ -1817,7 +1819,15 @@ async function listGroups () {
       deleteGroup(value.id).catch(() => {})
       continue
     }
-    groups.push(await rehydrateGroupMembers(value))
+    const hydrated = await rehydrateGroupMembers(value)
+    // TODO #124: tag encrypted-but-keyless groups so the UI can warn. Such a
+    // device never meets a keyed peer (it is on the raw-groupKey topic while
+    // they are on the domain-separated one), so it will never sync and every
+    // invite it mints omits `enc=`, breaking whoever accepts it. Nothing else
+    // tells the user, and the only cure is a fresh invite from a keyed member.
+    const keyless = await keylessGroupStatus(value.id).catch(() => null)
+    if (keyless?.damaged) hydrated.keyless = { certainty: keyless.certainty, reason: keyless.reason }
+    groups.push(hydrated)
   }
   return groups
 }
@@ -1847,9 +1857,64 @@ async function putGroupRecord (groupId, value, tag) {
   if (resolved.blocked) {
     console.error('[groups] BLOCKED encryptionKey', resolved.reason, 'for', groupId, 'at', tag || 'unknown')
   }
-  const next = resolved.key ? { ...value, encryptionKey: resolved.key } : value
+  let next = resolved.key ? { ...value, encryptionKey: resolved.key } : value
+  // TODO #124: one-way "this group is encrypted" latch. Rides the same choke
+  // point as the key guard so it cannot be cleared by the view-derived writes
+  // that lose the key. It is what lets a device that HAS lost the key still know
+  // the group was encrypted, which is otherwise indistinguishable from a legacy
+  // unencrypted group.
+  const encrypted = resolveGroupEncryptedFlag({
+    priorEncrypted:    existing?.value?.encrypted,
+    priorKey:          existing?.value?.encryptionKey,
+    incomingEncrypted: value?.encrypted,
+    incomingKey:       value?.encryptionKey,
+  })
+  if (encrypted && !next.encrypted) next = { ...next, encrypted: true }
   await db.put(key, next)
   return next
+}
+
+// A group is joined for this long with no peer-supplied membership before the
+// never-synced heuristic calls it damaged. Long enough that a group whose other
+// members are simply offline is not accused; short enough to still be useful.
+const KEYLESS_STALE_AFTER_MS = 24 * 60 * 60 * 1000
+
+// TODO #124: is this local group encrypted-but-keyless, i.e. permanently unable
+// to sync and quietly minting invites that break whoever accepts them?
+// Decision is pure (src/lib/groupRecord.js); this just feeds it local state.
+async function keylessGroupStatus (groupId) {
+  const node = await db.get(NS.groups + groupId).catch(() => null)
+  const g = node?.value
+  if (!g) return { damaged: false, certainty: 'no', reason: 'no-record' }
+  const joinNode = await db.get('joinedAt:' + groupId).catch(() => null)
+  return classifyKeylessGroup({
+    encrypted:    g.encrypted,
+    encryptionKey: g.encryptionKey,
+    joinedAt:     joinNode?.value?.ts ?? g.joinedAt ?? null,
+    memberCount:  (g.members ?? []).length,
+    now:          Date.now(),
+    staleAfterMs: KEYLESS_STALE_AFTER_MS,
+  })
+}
+
+// Repair path for a keyless member (TODO #124). The user pasted a fresh invite
+// carrying `enc=` for a group this device ALREADY holds, keyless. joinGroup()
+// cannot help: it early-returns on `bases.has(group.id)` because the group is
+// present, just broken. reconcileGroupEncryptionKey does exactly the right
+// thing instead - back-fill the key, close the base opened on the wrong topic,
+// leave that topic and rejoin encrypted.
+//
+// Returns { repaired, reason } so the UI can say something honest either way.
+async function repairKeylessGroupFromInvite (groupId, encryptionKey) {
+  if (!groupId || !encryptionKey) return { repaired: false, reason: 'missing-args' }
+  const node = await db.get(NS.groups + groupId).catch(() => null)
+  if (!node?.value) return { repaired: false, reason: 'not-a-member' }
+  if (node.value.encryptionKey) {
+    return { repaired: false, reason: node.value.encryptionKey === encryptionKey ? 'already-keyed' : 'key-conflict' }
+  }
+  const ok = await reconcileGroupEncryptionKey(groupId, encryptionKey)
+  if (ok) console.log('[groups] #124 repaired keyless group', groupId, 'from a fresh invite')
+  return { repaired: !!ok, reason: ok ? 'repaired' : 'reconcile-failed' }
 }
 
 // Repair a group whose local record is missing the block-encryption key that the

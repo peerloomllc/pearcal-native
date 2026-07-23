@@ -1313,6 +1313,16 @@ export default function App ({ db, notifs, sync }) {
       })
     }
     if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
+    // TODO #124: the invite repaired a group we already held but could not
+    // decrypt. Refresh from the DB so the warning banner clears and the newly
+    // reachable events land.
+    if (result?.repaired) {
+      db.listGroups().then(gs => setGroups(gs)).catch(() => {})
+      db.resyncGroup(result.group.id).catch(() => {}).then(async () => {
+        const evts = await db.listEvents().catch(() => null)
+        if (evts) setEvents(evts)
+      })
+    }
     setPendingJoin(null)
     return result
   }, [db, sync, profile])
@@ -5073,6 +5083,33 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
                   <div style={{ color:colors.text.muted }}>
                     The owner must approve your return before you'll see the group's members and events.
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TODO #124: this device holds no block-encryption key for an
+                encrypted group, so it sits on the raw-groupKey swarm topic
+                while every keyed peer is on the domain-separated one. It will
+                never sync, and every invite it mints omits `enc=`, quietly
+                breaking whoever accepts it. A fresh invite from a current
+                member is the only cure and nothing used to say so. */}
+            {g.keyless && (
+              <div style={{ background:'#E5484D1A', border:'1px solid #E5484D55', borderRadius:10,
+                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
+                <div style={{ fontSize:18, lineHeight:1 }}>🔒</div>
+                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                  <div style={{ fontWeight:400, marginBottom:2 }}>
+                    {g.keyless.certainty === 'certain'
+                      ? "This group can't sync on this device"
+                      : "This group hasn't synced since you joined"}
+                  </div>
+                  <div style={{ color:colors.text.muted }}>
+                    {g.keyless.certainty === 'certain'
+                      ? 'It is encrypted and this device is missing the key, so it cannot reach the other members.'
+                      : 'It may be encrypted with a key this device is missing, or the others may simply be offline.'}
+                    {' '}Ask a member to send you a fresh invite link, then paste it into Join Group to repair it.
+                  </div>
+                  <div style={{ color:colors.text.muted, marginTop:4, fontSize:11 }}>Group ID: {g.id}</div>
                 </div>
               </div>
             )}
