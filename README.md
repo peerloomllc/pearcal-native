@@ -75,9 +75,11 @@ Being honest about what that means:
   than calling it zero-knowledge.
 - It is a last resort, never a first choice. A direct connection is always tried
   first, and if one becomes possible later the relay is dropped.
-- You can turn it off. **Profile → Connection → "Use a relay when direct
-  fails"**. Off means strictly device to device, at the cost of not connecting at
-  all on a network that blocks it.
+- You can turn it off **on Android and iOS**: **Profile → Advanced → Connection
+  → "Use a relay when direct fails"**. Off means strictly device to device, at
+  the cost of not connecting at all on a network that blocks it. The desktop
+  apps use the relay on the same direct-first terms but do not expose the switch
+  yet - it is on there and cannot currently be turned off.
 
 ---
 
