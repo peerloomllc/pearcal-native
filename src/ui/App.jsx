@@ -31,7 +31,7 @@ export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
   CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
-  Trash, SignOut, Repeat, Lock, Key,
+  Trash, SignOut, Repeat, Lock, Key, Hourglass,
   CaretRight, CaretLeft, QrCode, Plus, UserPlus,
   Check, CheckCircle, Copy, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
@@ -5091,7 +5091,7 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             {pendingApprovalGroups?.has(g.id) && (
               <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
                 padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <div style={{ fontSize:18, lineHeight:1 }}>⏳</div>
+                <Hourglass size={18} weight="thin" color="#F5C474" style={{ flexShrink:0, marginTop:1 }} />
                 <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
                   <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
                   <div style={{ color:colors.text.muted }}>
@@ -5527,7 +5527,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
           {pendingApproval && (
             <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:12,
               padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
-              <div style={{ fontSize:20, lineHeight:1 }}>⏳</div>
+              <Hourglass size={20} weight="thin" color="#F5C474" style={{ flexShrink:0, marginTop:1 }} />
               <div style={{ flex:1, fontSize:13, color: colors.text.primary, lineHeight:1.45 }}>
                 <div style={{ fontWeight:400, marginBottom:3 }}>Waiting for owner approval</div>
                 <div style={{ color:colors.text.muted }}>
