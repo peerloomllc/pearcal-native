@@ -15,7 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
 } = require('./lib/eventTombstone.js')
-const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup } = require('./lib/groupRecord.js')
+const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -1887,11 +1887,14 @@ async function keylessGroupStatus (groupId) {
   const g = node?.value
   if (!g) return { damaged: false, certainty: 'no', reason: 'no-record' }
   const joinNode = await db.get('joinedAt:' + groupId).catch(() => null)
+  const profile = await getProfile().catch(() => null)
   return classifyKeylessGroup({
     encrypted:    g.encrypted,
     encryptionKey: g.encryptionKey,
     joinedAt:     joinNode?.value?.ts ?? g.joinedAt ?? null,
-    memberCount:  (g.members ?? []).length,
+    // Resolved peers, not raw member count: a keyless invite-join always carries
+    // self + the "Inviter" placeholder, so the raw count never falls to 1.
+    peerCount:    resolvedPeerCount(g.members, profile?.id),
     now:          Date.now(),
     staleAfterMs: KEYLESS_STALE_AFTER_MS,
   })

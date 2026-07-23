@@ -72,10 +72,16 @@ function resolveGroupEncryptedFlag ({ priorEncrypted, priorKey, incomingEncrypte
 //               offline looks the same, hence 'likely' and a soft warning.
 //   'no'      - healthy, or a legitimate legacy unencrypted group.
 //
-// `memberCount` is the number of members the record carries. A keyless device
-// never learns anyone, so <= 1 (just itself, or nobody) is the signal.
+// `peerCount` is the number of RESOLVED peers the record carries: members that
+// are neither this device nor the unresolved "Inviter" placeholder that the
+// invite-join path seeds. That distinction matters and device testing proved
+// it: a keyless group joined by invite always starts at TWO raw members (self +
+// placeholder), so a naive member count never drops to 1 and the heuristic
+// would never fire for the exact real-world case. A device that has actually
+// met a peer has the owner's real record in place of the placeholder, so
+// peerCount >= 1. A keyless device meets no one, so peerCount === 0.
 function classifyKeylessGroup ({
-  encrypted, encryptionKey, joinedAt, memberCount, now, staleAfterMs,
+  encrypted, encryptionKey, joinedAt, peerCount, now, staleAfterMs,
 }) {
   if (encryptionKey) return { damaged: false, certainty: 'no', reason: 'has-key' }
   if (encrypted) return { damaged: true, certainty: 'certain', reason: 'latched-encrypted-no-key' }
@@ -85,12 +91,28 @@ function classifyKeylessGroup ({
     return { damaged: false, certainty: 'no', reason: 'unknown-age' }
   }
   if ((now - joinedAt) < staleAfterMs) return { damaged: false, certainty: 'no', reason: 'too-recent' }
-  if ((memberCount ?? 0) > 1) return { damaged: false, certainty: 'no', reason: 'has-peers' }
+  if ((peerCount ?? 0) > 0) return { damaged: false, certainty: 'no', reason: 'has-peers' }
   return { damaged: true, certainty: 'likely', reason: 'never-synced' }
+}
+
+// Count members that prove this device has actually synced with the group: not
+// itself, and not the "Inviter" placeholder (name 'Inviter' + avatar '?') that
+// handleInviteLink seeds and the owner's real record later overwrites. See
+// classifyKeylessGroup for why the placeholder must be excluded.
+function resolvedPeerCount (members, selfId) {
+  if (!Array.isArray(members)) return 0
+  let n = 0
+  for (const m of members) {
+    if (!m || m.id === selfId) continue
+    if (m.name === 'Inviter' && m.avatar === '?') continue
+    n++
+  }
+  return n
 }
 
 module.exports = {
   resolveGroupEncryptionKey,
   resolveGroupEncryptedFlag,
   classifyKeylessGroup,
+  resolvedPeerCount,
 }

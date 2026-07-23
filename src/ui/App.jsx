@@ -1291,10 +1291,24 @@ export default function App ({ db, notifs, sync }) {
     } catch { return null }
   }
 
+  function urlHasEnc(url) {
+    try { return !!new URL(url.replace(/^pear:\/\//, 'https://')).searchParams.get('enc') } catch { return false }
+  }
+
   function openPendingJoin(url) {
     const groupName = (() => { try { return new URL(url.replace(/^pear:\/\//, 'https://')).searchParams.get('name') || 'a group' } catch { return 'a group' } })()
     const gid = parseGroupIdFromUrl(url)
-    if (gid && groupsRef.current.find(g => g.id === gid)) { setTab('groups'); return }
+    const existing = gid && groupsRef.current.find(g => g.id === gid)
+    if (existing) {
+      // Already a member — normally just focus the group. BUT a keyless copy of
+      // an encrypted group is the one case where re-consuming an invite is the
+      // whole point: an invite carrying `enc=` back-fills the missing key and
+      // repairs sync (TODO #124). Let it through to the join flow, which routes
+      // into handleInviteLink → repairKeylessGroup. Without this the repair path
+      // is unreachable, since every invite entry point funnels through here.
+      if (existing.keyless && urlHasEnc(url)) { setPendingJoin({ url, groupName }); return }
+      setTab('groups'); return
+    }
     setPendingJoin({ url, groupName })
   }
 

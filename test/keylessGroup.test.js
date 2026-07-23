@@ -2,7 +2,7 @@
 // (src/lib/groupRecord.js). Proposal: proposals/2026-07-23-keyless-member-recovery.md
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { resolveGroupEncryptedFlag, classifyKeylessGroup } = require('../src/lib/groupRecord.js')
+const { resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount } = require('../src/lib/groupRecord.js')
 
 const KEY = 'a'.repeat(64)
 const DAY = 24 * 60 * 60 * 1000
@@ -39,7 +39,7 @@ test('a legacy unencrypted group never latches', () => {
 
 test('a healthy keyed group is never flagged', () => {
   const r = classifyKeylessGroup({
-    encrypted: true, encryptionKey: KEY, joinedAt: 0, memberCount: 1,
+    encrypted: true, encryptionKey: KEY, joinedAt: 0, peerCount: 0,
     now: 10 * DAY, staleAfterMs: DAY,
   })
   assert.equal(r.damaged, false)
@@ -48,7 +48,7 @@ test('a healthy keyed group is never flagged', () => {
 
 test('CERTAIN: latched encrypted with no key is damaged, no heuristic needed', () => {
   const r = classifyKeylessGroup({
-    encrypted: true, encryptionKey: null, joinedAt: Date.now(), memberCount: 5,
+    encrypted: true, encryptionKey: null, joinedAt: Date.now(), peerCount: 4,
     now: Date.now(), staleAfterMs: DAY,
   })
   assert.equal(r.damaged, true)
@@ -57,7 +57,7 @@ test('CERTAIN: latched encrypted with no key is damaged, no heuristic needed', (
 
 test('LIKELY: no latch, joined long ago, still nobody else', () => {
   const r = classifyKeylessGroup({
-    encrypted: undefined, encryptionKey: null, joinedAt: 0, memberCount: 1,
+    encrypted: undefined, encryptionKey: null, joinedAt: 0, peerCount: 0,
     now: 3 * DAY, staleAfterMs: DAY,
   })
   assert.equal(r.damaged, true)
@@ -67,7 +67,7 @@ test('LIKELY: no latch, joined long ago, still nobody else', () => {
 
 test('a legacy group that DID sync is not flagged', () => {
   const r = classifyKeylessGroup({
-    encrypted: undefined, encryptionKey: null, joinedAt: 0, memberCount: 4,
+    encrypted: undefined, encryptionKey: null, joinedAt: 0, peerCount: 3,
     now: 30 * DAY, staleAfterMs: DAY,
   })
   assert.equal(r.damaged, false, 'it has peers, so the raw topic is working fine')
@@ -76,7 +76,7 @@ test('a legacy group that DID sync is not flagged', () => {
 
 test('a freshly joined group is given time before being accused', () => {
   const r = classifyKeylessGroup({
-    encrypted: undefined, encryptionKey: null, joinedAt: 1000, memberCount: 1,
+    encrypted: undefined, encryptionKey: null, joinedAt: 1000, peerCount: 0,
     now: 1000 + DAY / 2, staleAfterMs: DAY,
   })
   assert.equal(r.damaged, false)
@@ -87,7 +87,7 @@ test('the certain path does NOT wait for the staleness window', () => {
   // A latched-encrypted keyless group is broken the moment we see it. Making the
   // user wait a day for a definite answer would be pointless.
   const r = classifyKeylessGroup({
-    encrypted: true, encryptionKey: null, joinedAt: 1000, memberCount: 1,
+    encrypted: true, encryptionKey: null, joinedAt: 1000, peerCount: 0,
     now: 1001, staleAfterMs: DAY,
   })
   assert.equal(r.damaged, true)
@@ -96,9 +96,49 @@ test('the certain path does NOT wait for the staleness window', () => {
 
 test('an unknown join time is never guessed at', () => {
   const r = classifyKeylessGroup({
-    encrypted: undefined, encryptionKey: null, joinedAt: null, memberCount: 0,
+    encrypted: undefined, encryptionKey: null, joinedAt: null, peerCount: 0,
     now: Date.now(), staleAfterMs: DAY,
   })
   assert.equal(r.damaged, false)
   assert.equal(r.reason, 'unknown-age')
+})
+
+// ── resolvedPeerCount: the placeholder trap device testing exposed ───────────
+
+test('resolvedPeerCount ignores self and the Inviter placeholder', () => {
+  const members = [
+    { id: 'me', name: 'TCL' },
+    { id: 'owner', name: 'Inviter', avatar: '?' },   // unresolved placeholder
+  ]
+  assert.equal(resolvedPeerCount(members, 'me'), 0,
+    'a keyless invite-join looks like this: self + placeholder, zero real peers')
+})
+
+test('resolvedPeerCount counts a resolved owner record', () => {
+  const members = [
+    { id: 'me', name: 'TCL' },
+    { id: 'owner', name: 'Harness', avatar: 'H', identityPublicKey: 'abc' },
+  ]
+  assert.equal(resolvedPeerCount(members, 'me'), 1, 'the owner record has synced in')
+})
+
+test('#124 REGRESSION: an invite-joined keyless group IS flagged', () => {
+  // The exact shape the device test produced and the old memberCount check
+  // missed: joined long ago, self + placeholder only.
+  const members = [
+    { id: 'me', name: 'TCL' },
+    { id: 'owner', name: 'Inviter', avatar: '?' },
+  ]
+  const r = classifyKeylessGroup({
+    encrypted: undefined, encryptionKey: null, joinedAt: 0,
+    peerCount: resolvedPeerCount(members, 'me'),
+    now: 3 * DAY, staleAfterMs: DAY,
+  })
+  assert.equal(r.damaged, true)
+  assert.equal(r.certainty, 'likely')
+})
+
+test('resolvedPeerCount handles a missing/odd member list', () => {
+  assert.equal(resolvedPeerCount(undefined, 'me'), 0)
+  assert.equal(resolvedPeerCount([null, { id: 'me' }], 'me'), 0)
 })
