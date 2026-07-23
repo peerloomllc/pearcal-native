@@ -7048,8 +7048,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           </div>
           {photoSaving && (
             <div style={{ position:'absolute', inset:0, borderRadius:'50%',
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>
-              ⏳
+              display:'flex', alignItems:'center', justifyContent:'center',
+              background:'rgba(0,0,0,0.45)' }}>
+              <ArrowsClockwise size={20} weight="thin" color="#FFFFFF"
+                style={{ animation: 'pearSpin 800ms linear infinite' }} />
             </div>
           )}
         </div>
