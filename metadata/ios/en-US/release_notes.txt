@@ -1,15 +1,25 @@
-🐛 Bug Fixes
+## What's Changed
 
--Moving an event from one group to another no longer deletes it. Before this fix the event vanished from everyone else's calendar and could not be brought back.
--Groups that had quietly stopped syncing now repair themselves the next time you open the app.
--Deleted groups no longer linger in your group list, and empty blank rows are gone.
--Joining a group now tells you when something went wrong. It used to sit on a blank "Inviter" card forever with no explanation, whether you had been declined or simply could not reach anyone.
--Android: fixed a frozen screen when returning to the app after it had been in the background for a while. Taps still worked but nothing redrew.
+ ## New Features
 
-🔒 Security & Privacy
+  **Connects on networks that used to block it.** Some mobile networks stop phones from reaching each other directly, and on those networks PearCal simply never connected. Now, after a direct connection has already failed, your devices fall back to a relay run by PeerLoom - a machine that passes the scrambled data along without being able to read any of it.
 
--Fixed a problem where a group could lose the key that keeps its contents private. When that happened the group stopped syncing, and invites shared from that device left the key out so new members could not join properly. Affected devices now repair themselves automatically.
+  You're in control of this. Profile -> Advanced -> Connection has a switch, "Use a relay when direct fails", on by default. Turn it off and your devices only ever talk to each other directly, at the cost of not connecting at all on a network that blocks them.
 
-✨ Improvements
+  To be plain about what the relay sees: nothing readable. Your calendar is encrypted the whole way and the relay holds no key. It can tell that two devices are talking and roughly how much, which is true of any relay, and we'd rather say so than pretend otherwise. It stores nothing and it's only ever used as a last resort.
 
--The invite QR code now slides up as a sheet you can swipe away, matching the rest of the app.
+  ## Bug Fixes
+  
+  **Moving an event between groups no longer makes it disappear.** If you moved an event from one group to another, it vanished from the calendar of the phone you made the change on. Nothing was ever actually lost, and it came back when you reopened the app, but it looked like your event was gone. Fixed.
+
+  **One notification per change, not three.** A single new event could burst of changes into one summary wasn't working while the app was in the background, which is exactly when you'd get a flood of them. A busy sync now arrives as a single "Calendar updated" line that updates in place.
+
+  **Rejoining a group that stopped syncing.** In rare cases a device could lose the key to a shared group. It would quietly stop receiving events, and any invite it created would be broken for whoever accepted it. PearCal now spots this, tells you, and fixes itself when someone sends you a fresh invite link.
+
+  ## For anyone running a blind seeder
+
+  **The Start9 Properties page works.** It was blank before; it now shows your seeder's key and live stats.
+
+  **Update notes are accurate.** Every update used to show the original "first release" text no matter which version you were installing.
+
+  **Faster startup reporting.** Seeder stats appear within seconds of starting rather than after a minute and a half.
