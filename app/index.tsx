@@ -41,6 +41,10 @@ const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 
 const { makeStartLock } = require('../src/lib/backendBootstrap')
 const { createEventRegistry } = require('../src/lib/eventRegistry')
+const {
+  createSyncNotifyState, decideSyncNotify, contentId, contentKey,
+  SUMMARY_ID: SYNC_SUMMARY_ID,
+} = require('../src/lib/syncNotifyPolicy')
 
 let _worklet: any = null
 let _workletStarted = false
@@ -235,48 +239,72 @@ let _reconcileChain: Promise<void> = Promise.resolve()
 const SYNC_NOTIFY_COALESCE_MS = 5000
 let _syncNotifyBuffer: Array<{ title: string, body: string, tab: string, groupSettingsId?: string }> = []
 let _syncNotifyTimer: any = null
+// Timer-free policy state for anything posted OUTSIDE the foreground buffer
+// (TODO #128). See src/lib/syncNotifyPolicy.js for why it cannot use a timer.
+const _syncNotifyState = createSyncNotifyState()
+
+function postSyncNotification (opts: any) {
+  PearCalNotifications?.postNow?.(opts).catch?.(() => {})
+}
 
 function flushSyncNotify () {
   _syncNotifyTimer = null
   const buf = _syncNotifyBuffer
   _syncNotifyBuffer = []
   if (buf.length === 0) return
-  const id = Math.floor(Math.random() * 2000000) + 1000000
   if (buf.length === 1) {
     const { title, body, tab, groupSettingsId } = buf[0]
-    PearCalNotifications?.postNow?.({ id, title, body, tab, groupSettingsId }).catch?.(() => {})
+    // Content-derived id, so an identical repeat REPLACES rather than stacks.
+    postSyncNotification({ id: contentId(contentKey(title, body)), title, body, tab, groupSettingsId })
     return
   }
-  PearCalNotifications?.postNow?.({
-    id,
+  postSyncNotification({
+    id: SYNC_SUMMARY_ID,
     title: 'Calendar updated',
     body: buf.length + ' changes',
     tab: buf[0].tab || 'calendar',
-  }).catch?.(() => {})
+  })
 }
 
 function queueSyncNotify (data: any) {
-  _syncNotifyBuffer.push({
-    title: data?.title ?? 'Calendar updated',
-    body:  data?.body  ?? '',
-    tab:   data?.tab   ?? '',
-    groupSettingsId: data?.groupSettingsId,
-  })
-  // Bypass the coalesce window for one-off important alerts (rejoin requests, etc),
-  // AND whenever we're not in the foreground. The coalesce relies on a JS
-  // setTimeout, but RN freezes JS timers while the app is backgrounded — so a
-  // deferred flush never runs until the app is foregrounded again, which is
-  // exactly why background sync notifications didn't fire until you opened the
-  // app (#100). Posting synchronously here works because the syncNotify handler
-  // itself still runs in the background (the worklet keeps applying remote ops).
-  if (data?.immediate || AppState.currentState !== 'active') {
-    if (_syncNotifyTimer) { clearTimeout(_syncNotifyTimer); _syncNotifyTimer = null }
-    flushSyncNotify()
+  // Foreground: buffer and coalesce on a timer. Safe here because JS timers run
+  // while the app is active. Unchanged behaviour.
+  if (AppState.currentState === 'active' && !data?.immediate) {
+    _syncNotifyBuffer.push({
+      title: data?.title ?? 'Calendar updated',
+      body:  data?.body  ?? '',
+      tab:   data?.tab   ?? '',
+      groupSettingsId: data?.groupSettingsId,
+    })
+    if (!_syncNotifyTimer) {
+      _syncNotifyTimer = setTimeout(flushSyncNotify, SYNC_NOTIFY_COALESCE_MS)
+    }
     return
   }
-  if (!_syncNotifyTimer) {
-    _syncNotifyTimer = setTimeout(flushSyncNotify, SYNC_NOTIFY_COALESCE_MS)
-  }
+  // Backgrounded, or a one-off important alert. A deferred flush would never run
+  // here: RN freezes JS timers while the app is backgrounded, so the flush only
+  // happens once the app is foregrounded again, which is why background sync
+  // notifications used to not fire at all (#100). Measured 2026-07-23 on a Pixel
+  // 9 Pro: a 3s timer scheduled at background time had still not fired after 12s
+  // and only ran on resume. So post synchronously.
+  //
+  // But posting synchronously per event is what turned an overnight catch-up
+  // into a wall of notifications, because the flood guard above is skipped
+  // entirely. Route through the timer-free policy instead, which suppresses
+  // exact repeats and collapses a burst into one summary that updates in place
+  // (TODO #128).
+  if (_syncNotifyTimer) { clearTimeout(_syncNotifyTimer); _syncNotifyTimer = null }
+  // Don't strand anything the foreground path had already buffered.
+  flushSyncNotify()
+  const decision = decideSyncNotify(data, _syncNotifyState, Date.now())
+  if (!decision.post) return
+  postSyncNotification({
+    id: decision.id,
+    title: decision.title,
+    body: decision.body,
+    tab: decision.tab,
+    groupSettingsId: decision.groupSettingsId,
+  })
 }
 
 function calcFireTime (event: any): number | null {
