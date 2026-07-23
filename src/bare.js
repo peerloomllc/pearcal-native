@@ -5941,13 +5941,29 @@ function makeApply (groupId) {
           await leaveGroup(groupId)
           send({ type: 'event', event: 'groupDeleted', data: groupId })
         } else {
-          const delDelta = val.type === 'event'
-            ? { removedIds: [eventIdFromKey(val.key)] }
-            : val.type === 'rsvp'
-              ? { rsvpsChanged: true }
-              : val.type === 'group' || val.type === 'groupMembers'
-                ? { groupChanged: true }
-                : { fullReload: true }
+          // A group-scoped del is an UNSHARE, not a deletion: the event usually
+          // still exists locally with one group fewer, and on the AUTHORING
+          // device it was never touched at all (the isRemote guard above skips
+          // both branches). Emitting `removedIds` there tells the UI to drop an
+          // event that is still in the DB, so it vanishes from the calendar and
+          // comes back on the next restart — the reported symptom. Emit the
+          // surviving record instead, and fall back to removedIds only when the
+          // row really is gone (a true delete, or an unshare that left the event
+          // with no groups at all).
+          let _delDelta = null
+          if (val.type === 'event') {
+            const _survivor = isGroupScopedDel
+              ? (await db.get(val.key).catch(() => null))?.value
+              : null
+            _delDelta = _survivor
+              ? { changedEvents: [_survivor] }
+              : { removedIds: [eventIdFromKey(val.key)] }
+          }
+          const delDelta = _delDelta ?? (val.type === 'rsvp'
+            ? { rsvpsChanged: true }
+            : val.type === 'group' || val.type === 'groupMembers'
+              ? { groupChanged: true }
+              : { fullReload: true })
           emitSync(groupId, delDelta)
           if (isRemote && val.type === 'event') {
             const eventId = eventIdFromKey(val.key)
