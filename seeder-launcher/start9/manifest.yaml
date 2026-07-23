@@ -80,10 +80,19 @@ health-checks:
 # No user-facing configuration for v1: the seeder is enrolled from the phone app,
 # not via a config form.
 config: ~
-# Populated at runtime: the entrypoint writes /root/start9/stats.yaml (compat
-# format) so Properties shows the seeder public key, nickname and enrolment
-# counts. Without that file this page renders empty.
-properties: ~
+# MUST be an object, not null. `properties: ~` serialises into the s9pk manifest
+# as `"properties":""`, which StartOS reads as "this package has no properties
+# procedure" — so it never invokes properties.ts and the page shows
+# "No properties." even though the runtime is exporting it and the data file is
+# on disk. A working package (filebrowser) declares `"properties":{"type":"script"}`.
+# Confirmed on a live StartOS box: stats.yaml was present and correct, and
+# journalctl showed health checks every 15s with NO properties invocation at all.
+#
+# The data itself is written at runtime: the entrypoint runs write-stats.js,
+# which polls the seeder API and writes <volume main>/start9/stats.yaml — the
+# exact path compat.properties reads.
+properties:
+  type: script
 volumes:
   main:
     type: data
