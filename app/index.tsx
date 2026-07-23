@@ -40,6 +40,7 @@ let _backgroundedAt = 0
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 
 const { makeStartLock } = require('../src/lib/backendBootstrap')
+const { createEventRegistry } = require('../src/lib/eventRegistry')
 
 let _worklet: any = null
 let _workletStarted = false
@@ -48,12 +49,12 @@ let _terminateTimer: any = null                 // pending delayed terminate fro
 let _notifyReady: null | (() => void) = null    // current mount's dbReady setter (routes 'ready' to the live component)
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
-const _eventHandlers = new Map<string, ((data: any) => void)[]>()
+// Module-level, so it outlives any single mount. See src/lib/eventRegistry.js
+// for why that lifetime mismatch mattered (TODO #126).
+const _events = createEventRegistry()
 
 function onEvent (event: string, fn: (data: any) => void) {
-  const handlers = _eventHandlers.get(event) ?? []
-  handlers.push(fn)
-  _eventHandlers.set(event, handlers)
+  _events.on(event, fn)
 }
 
 function sendToWorklet (msg: object) {
@@ -691,6 +692,16 @@ export default function Root () {
         // Autobase writer core is never opened twice. Body kept at its existing
         // indent to keep the diff to the wrapper lines only.
         _ensureWorkletStarted = makeStartLock(async () => {
+      // This body registers the COMPLETE set of IPC event handlers, and
+      // `_eventHandlers` is module-level so it outlives any single mount. The
+      // teardown below nulls `_ensureWorkletStarted` but cannot clear the map
+      // (a warm reopen adopts the live worklet and its handlers), so without
+      // this every cold re-entry appended a second, third, Nth copy of every
+      // handler and each one fired on the same IPC message. One `syncNotify`
+      // then became N identical notifications at the same instant (TODO #126).
+      // Clearing here rather than in the teardown makes it idempotent by
+      // construction: whatever path got us here, exactly one copy survives.
+      _events.reset()
       _workletStarted = true
       _worklet = new Worklet()
 
@@ -703,7 +714,7 @@ export default function Root () {
           try {
             const msg = JSON.parse(line)
             if (msg.type === 'event') {
-              (_eventHandlers.get(msg.event) ?? []).forEach(fn => fn(msg.data))
+              _events.dispatch(msg.event, msg.data)
             } else if (msg.type === 'response') {
               const resolve = _pending.get(msg.id)
               if (resolve) { _pending.delete(msg.id); resolve(msg) }
