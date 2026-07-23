@@ -54,7 +54,14 @@ fi
 TEAM_ID="${ASC_TEAM_ID:-G79ALD29NA}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-/tmp/${APP_NAME}.xcarchive}"
 EXPORT_PATH="/tmp/${APP_NAME}-appstore"
-EXPORT_OPTIONS="/tmp/ExportOptions.plist"
+# Namespaced per app: every PeerLoom app ships a copy of this script and they
+# share the Mac Mini's /tmp.  A fixed /tmp/ExportOptions.plist means a sibling
+# release running concurrently overwrites this one during the (slow) archive
+# step, and the export then runs against the wrong app's provisioningProfiles
+# dict.  With no entry for our bundle IDs, xcodebuild silently falls back to
+# automatic profile selection and fails with "requires a provisioning profile
+# with the App Groups ... features".
+EXPORT_OPTIONS="/tmp/${APP_NAME}-ExportOptions.plist"
 
 # ── Write ExportOptions.plist ───────────────────────────────────────────────
 cat > "$EXPORT_OPTIONS" << EOF
@@ -82,6 +89,46 @@ cat > "$EXPORT_OPTIONS" << EOF
 </dict>
 </plist>
 EOF
+
+# ── Preflight: make sure Xcode can see the profiles we name ────────────────
+# Xcode 16+ reads provisioning profiles from ~/Library/Developer/Xcode/UserData,
+# NOT the legacy ~/Library/MobileDevice path.  Profiles downloaded before that
+# move still live in the legacy dir, where current Xcode cannot see them.  When
+# a named profile is missing, xcodebuild does not say so: it quietly reverts to
+# automatic selection, picks whatever else matches the bundle ID, and fails on
+# the entitlements the fallback profile lacks.  Mirror legacy profiles forward
+# and hard-fail if one is genuinely absent.
+PROFILE_DIR_NEW="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+PROFILE_DIR_OLD="$HOME/Library/MobileDevice/Provisioning Profiles"
+
+_profile_name() { security cms -D -i "$1" 2>/dev/null | plutil -extract Name raw -o - - 2>/dev/null; }
+
+_require_profile() {
+  local want="$1" f u
+  [ -n "$want" ] || return 0
+  for f in "$PROFILE_DIR_NEW"/*.mobileprovision; do
+    [ -f "$f" ] && [ "$(_profile_name "$f")" = "$want" ] && return 0
+  done
+  for f in "$PROFILE_DIR_OLD"/*.mobileprovision; do
+    [ -f "$f" ] || continue
+    if [ "$(_profile_name "$f")" = "$want" ]; then
+      u=$(security cms -D -i "$f" | plutil -extract UUID raw -o - -)
+      mkdir -p "$PROFILE_DIR_NEW"
+      cp "$f" "$PROFILE_DIR_NEW/$u.mobileprovision"
+      echo "    Installed profile '$want' into Xcode's profile dir."
+      return 0
+    fi
+  done
+  echo "Error: provisioning profile '$want' is not installed."
+  echo "  Looked in: $PROFILE_DIR_NEW"
+  echo "         and: $PROFILE_DIR_OLD"
+  echo "  Download it from the Apple Developer portal and place it in the first path."
+  exit 1
+}
+
+echo "Checking provisioning profiles..."
+_require_profile "$IOS_PROVISIONING_PROFILE"
+_require_profile "${IOS_WIDGET_PROVISIONING_PROFILE:-}"
 
 # ── Unlock signing keychain and grant codesign access ───────────────────────
 # unlock-keychain: allows access in this session
