@@ -31,7 +31,7 @@ export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
   CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
-  Trash, SignOut, Repeat, Lock, Key,
+  Trash, SignOut, Repeat, Lock, Key, Hourglass,
   CaretRight, CaretLeft, QrCode, Plus, UserPlus,
   Check, CheckCircle, Copy, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
@@ -1291,10 +1291,24 @@ export default function App ({ db, notifs, sync }) {
     } catch { return null }
   }
 
+  function urlHasEnc(url) {
+    try { return !!new URL(url.replace(/^pear:\/\//, 'https://')).searchParams.get('enc') } catch { return false }
+  }
+
   function openPendingJoin(url) {
     const groupName = (() => { try { return new URL(url.replace(/^pear:\/\//, 'https://')).searchParams.get('name') || 'a group' } catch { return 'a group' } })()
     const gid = parseGroupIdFromUrl(url)
-    if (gid && groupsRef.current.find(g => g.id === gid)) { setTab('groups'); return }
+    const existing = gid && groupsRef.current.find(g => g.id === gid)
+    if (existing) {
+      // Already a member — normally just focus the group. BUT a keyless copy of
+      // an encrypted group is the one case where re-consuming an invite is the
+      // whole point: an invite carrying `enc=` back-fills the missing key and
+      // repairs sync (TODO #124). Let it through to the join flow, which routes
+      // into handleInviteLink → repairKeylessGroup. Without this the repair path
+      // is unreachable, since every invite entry point funnels through here.
+      if (existing.keyless && urlHasEnc(url)) { setPendingJoin({ url, groupName }); return }
+      setTab('groups'); return
+    }
     setPendingJoin({ url, groupName })
   }
 
@@ -1313,6 +1327,16 @@ export default function App ({ db, notifs, sync }) {
       })
     }
     if (result?.error === 'blocked_from_group') { setBlockedToast(true); setTimeout(() => setBlockedToast(false), 4000) }
+    // TODO #124: the invite repaired a group we already held but could not
+    // decrypt. Refresh from the DB so the warning banner clears and the newly
+    // reachable events land.
+    if (result?.repaired) {
+      db.listGroups().then(gs => setGroups(gs)).catch(() => {})
+      db.resyncGroup(result.group.id).catch(() => {}).then(async () => {
+        const evts = await db.listEvents().catch(() => null)
+        if (evts) setEvents(evts)
+      })
+    }
     setPendingJoin(null)
     return result
   }, [db, sync, profile])
@@ -5067,12 +5091,39 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             {pendingApprovalGroups?.has(g.id) && (
               <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
                 padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <div style={{ fontSize:18, lineHeight:1 }}>⏳</div>
+                <Hourglass size={18} weight="thin" color="#F5C474" style={{ flexShrink:0, marginTop:1 }} />
                 <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
                   <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
                   <div style={{ color:colors.text.muted }}>
                     The owner must approve your return before you'll see the group's members and events.
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* TODO #124: this device holds no block-encryption key for an
+                encrypted group, so it sits on the raw-groupKey swarm topic
+                while every keyed peer is on the domain-separated one. It will
+                never sync, and every invite it mints omits `enc=`, quietly
+                breaking whoever accepts it. A fresh invite from a current
+                member is the only cure and nothing used to say so. */}
+            {g.keyless && (
+              <div style={{ background:'#E5484D1A', border:'1px solid #E5484D55', borderRadius:10,
+                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
+                <Lock size={18} weight="thin" color="#E5484D" style={{ flexShrink:0, marginTop:1 }} />
+                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                  <div style={{ fontWeight:400, marginBottom:2 }}>
+                    {g.keyless.certainty === 'certain'
+                      ? "This group can't sync on this device"
+                      : "This group hasn't synced since you joined"}
+                  </div>
+                  <div style={{ color:colors.text.muted }}>
+                    {g.keyless.certainty === 'certain'
+                      ? 'It is encrypted and this device is missing the key, so it cannot reach the other members.'
+                      : 'It may be encrypted with a key this device is missing, or the others may simply be offline.'}
+                    {' '}Ask a member to send you a fresh invite link, then paste it into Join Group to repair it.
+                  </div>
+                  <div style={{ color:colors.text.muted, marginTop:4, fontSize:11 }}>Group ID: {g.id}</div>
                 </div>
               </div>
             )}
@@ -5476,7 +5527,7 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
           {pendingApproval && (
             <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:12,
               padding:'12px 14px', display:'flex', gap:10, alignItems:'flex-start' }}>
-              <div style={{ fontSize:20, lineHeight:1 }}>⏳</div>
+              <Hourglass size={20} weight="thin" color="#F5C474" style={{ flexShrink:0, marginTop:1 }} />
               <div style={{ flex:1, fontSize:13, color: colors.text.primary, lineHeight:1.45 }}>
                 <div style={{ fontWeight:400, marginBottom:3 }}>Waiting for owner approval</div>
                 <div style={{ color:colors.text.muted }}>
@@ -6997,8 +7048,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           </div>
           {photoSaving && (
             <div style={{ position:'absolute', inset:0, borderRadius:'50%',
-              display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>
-              ⏳
+              display:'flex', alignItems:'center', justifyContent:'center',
+              background:'rgba(0,0,0,0.45)' }}>
+              <ArrowsClockwise size={20} weight="thin" color="#FFFFFF"
+                style={{ animation: 'pearSpin 800ms linear infinite' }} />
             </div>
           )}
         </div>

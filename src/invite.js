@@ -70,6 +70,21 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
 
   const existing = await db.getGroup(groupId)
   if (existing && !isReinvite) {
+    // TODO #124: a member that lost the group's block-encryption key is stuck
+    // forever - it opens the group unencrypted on the raw groupKey topic, so it
+    // never meets a keyed peer, never syncs, and every invite it mints omits
+    // `enc=`, breaking whoever accepts it. A fresh invite from a keyed member is
+    // the ONLY cure, and returning already_member here is exactly what made that
+    // cure a dead end. Route it into the repair instead.
+    if (encryptionKey && !existing.encryptionKey && db.repairKeylessGroup) {
+      const res = await db.repairKeylessGroup(groupId, encryptionKey).catch(() => null)
+      if (res?.repaired) {
+        const healed = { ...existing, encryptionKey, encrypted: true }
+        if (onJoined) onJoined(healed)
+        return { ok: true, repaired: true, group: healed }
+      }
+      return { ok: false, error: 'repair_failed', group: existing }
+    }
     return { ok: false, error: 'already_member', group: existing }
   }
   // Reinvite + already have group: member was removed while offline (never got
