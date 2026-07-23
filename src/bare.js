@@ -2030,8 +2030,9 @@ const activeChannels = new Set() // active writer-announce message objects
 const activeChannelPubkeys = new Map() // writer-announce msg → authenticated remote pubkey hex (for seeder-targeted re-announce)
 const seedEnrollChannels = new Map() // remote pubkey hex → seed-enroll send msg (member→seeder live enroll, #116 facet #3)
 const pendingGroupDeletes = new Set() // groupIds deleted by owner, pending broadcast to late-connecting peers
-const recentSeriesNotifs = new Map()  // groupId:recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls
+const recentSeriesNotifs = new Map()  // recurrenceId:op → timeout handle; deduplicates recurring series notifications across apply() calls AND across groups
 const recentDeleteNotifs = new Map()  // eventId → timeout handle; deduplicates cross-group delete notifications
+const recentPutNotifs = new Map()     // eventId → timeout handle; deduplicates cross-group put notifications
 const notifiedMemberJoins = new Map() // groupId → Set<memberId>; prevents duplicate member-join notifications across apply() replays
 const pendingMemberLeaves = new Set()  // {groupId,memberId} JSON strings, pending broadcast to late-connecting peers
 const notifiedRsvps = new Set()        // 'eventId:memberId:updatedAt' — prevents duplicate RSVP notifications across apply() replays
@@ -5822,12 +5823,25 @@ function makeApply (groupId) {
               const rid = val.value.recurrenceId
               if (rid) {
                 // Deduplicate across apply() calls: only fire once per series per op within a 5s window
-                const deupKey = groupId + ':' + rid + ':put'
+                const deupKey = rid + ':put'
                 if (!recentSeriesNotifs.has(deupKey)) {
                   recentSeriesNotifs.set(deupKey, setTimeout(() => recentSeriesNotifs.delete(deupKey), 5000))
                   notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId, isSeries: true })
                 }
-              } else {
+              } else if (!recentPutNotifs.has(val.value.id || eventIdFromKey(val.key))) {
+                // Deduplicate across groups (TODO #126). An event shared into N
+                // groups is appended to N Autobases, whose apply() loops run
+                // concurrently and independently. Each reads localPrev before any
+                // of them has mirrored the event, so all N see prev === null and
+                // fire an identical "X added <title>": one logical change, N
+                // notifications at the same instant. notifySyncChange's noChange
+                // guard can't catch it: it only fires once a mirror has landed,
+                // which is why serialised appends collapse to one and concurrent
+                // ones do not. Same shape and TTL as the delete side above.
+                // Fall back to the key's id segment so a value missing `id` can
+                // never key the guard as `undefined` and swallow an unrelated event.
+                const putId = val.value.id || eventIdFromKey(val.key)
+                if (putId) recentPutNotifs.set(putId, setTimeout(() => recentPutNotifs.delete(putId), 5000))
                 notifySyncChange({ op: 'put', value: val.value, prev: localPrev, groupId })
               }
             }
@@ -5981,7 +5995,7 @@ function makeApply (groupId) {
               recentDeleteNotifs.set(eventId, setTimeout(() => recentDeleteNotifs.delete(eventId), 5000))
               const delRid = val.recurrenceId || val.value?.recurrenceId || null
               if (delRid) {
-                const dedupKey = groupId + ':' + delRid + ':del'
+                const dedupKey = delRid + ':del'
                 if (!recentSeriesNotifs.has(dedupKey)) {
                   recentSeriesNotifs.set(dedupKey, setTimeout(() => recentSeriesNotifs.delete(dedupKey), 5000))
                   notifySyncChange({ op: 'del', key: val.key, updatedByName: val.updatedByName, updatedById: val.updatedById, groupId, isSeries: true, eventTitle: val.eventTitle })
