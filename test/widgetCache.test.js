@@ -206,3 +206,26 @@ test('a shadow copy of a spanning event is ignored', async () => {
 test('a spanning event is never pruned by the time of day', async () => {
   assert.deepEqual(await idsAt(23, 59, [TRIP]), ['trip'], 'still live late on an intermediate day')
 })
+
+// --- upcoming: enough for the largest widget to draw from (#137) --------------
+
+test('more than three upcoming events reach the cache', async () => {
+  // The widgets each take a prefix sized to their own space, so the cache has to
+  // carry enough for the largest of them. It used to stop at 3, which capped every
+  // widget at 3 no matter how much room it had.
+  const future = []
+  for (let d = 15; d <= 27; d++) {
+    future.push({ id: 'e' + d, title: 'Day ' + d, allDay: true, date: '2026-07-' + d })
+  }
+  const cache = await cacheAt(10, 0, future)
+  assert.equal(cache.upcoming, null, 'off by default, the setting gates it')
+
+  mock.timers.enable({ apis: ['Date'], now: new Date(2026, 6, 14, 10, 0, 0).getTime() })
+  try {
+    const on = await computeTodayCache(dbWith(future), { widgetShowUpcoming: true })
+    assert.equal(on.upcoming.length, 10, 'capped at UPCOMING_LIMIT, not 3')
+    assert.deepEqual(on.upcoming.slice(0, 3).map(e => e.id), ['e15', 'e16', 'e17'], 'still chronological')
+  } finally {
+    mock.timers.reset()
+  }
+})

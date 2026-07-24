@@ -7,7 +7,7 @@
     android:minResizeWidth="180dp"
     android:minResizeHeight="110dp"
     android:maxResizeWidth="360dp"
-    android:maxResizeHeight="220dp"
+    android:maxResizeHeight="400dp"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:initialLayout="@layout/widget_daily"

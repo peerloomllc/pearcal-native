@@ -24,6 +24,11 @@ function tomorrowDateString () {
 // realistic trip or holiday, rather than an unbounded walk to the first event ever.
 const SPAN_LOOKBACK_DAYS = 370
 
+// How many future events to put in the cache. The widgets each take a prefix of
+// this sized to the space they have, so it only needs to cover the largest of
+// them (an iOS .systemLarge or a resized Android widget), not the small ones.
+const UPCOMING_LIMIT = 10
+
 function daysAgoDateString (n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -209,7 +214,7 @@ async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupI
     // Surface the next few events across future days *alongside* today's — a
     // holiday (or any event) today no longer hides what's coming up. The widget
     // shows today's events first, then fills remaining space with these.
-    const next = await readUpcomingEvents(db, tomorrowDateString(), 3, { profileId, isInvitedToEvent, ownedGroupIds })
+    const next = await readUpcomingEvents(db, tomorrowDateString(), UPCOMING_LIMIT, { profileId, isInvitedToEvent, ownedGroupIds })
     if (next.length > 0) upcoming = next
   } else if (events.length === 0) {
     // Setting off + empty today: keep the lightweight tomorrow-only preview.
