@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Bundle
 import android.text.format.DateFormat
 import android.view.View
 import android.widget.RemoteViews
@@ -25,6 +26,17 @@ class DailyWidgetReceiver : AppWidgetProvider() {
         for (id in ids) render(context, mgr, id)
     }
 
+    // A resize changes how many rows fit, and the budget is computed per render,
+    // so the widget has to be redrawn rather than left until the next data change.
+    override fun onAppWidgetOptionsChanged(
+        context: Context,
+        mgr: AppWidgetManager,
+        id: Int,
+        newOptions: Bundle?,
+    ) {
+        render(context, mgr, id)
+    }
+
     override fun onEnabled(context: Context) {
         DailyWidgetWorker.schedule(context)
     }
@@ -34,7 +46,51 @@ class DailyWidgetReceiver : AppWidgetProvider() {
     }
 
     companion object {
-        private const val ROW_COUNT = 5
+        // The layout ships MAX_ROWS slots. How many are usable is a question of
+        // HEIGHT, not a fixed count: RemoteViews clips silently rather than telling
+        // us it ran out of room, so overfilling would just push the last rows and
+        // the overflow line off the bottom edge. A row with a location renders two
+        // lines and is ~50% taller than a plain one, so a flat per-row count either
+        // clips (when rows carry locations) or wastes space (when they don't) - the
+        // fill below instead accumulates each row's estimated height. (#137)
+        private const val MAX_ROWS = 10
+        private const val DEFAULT_ROWS = 5
+        private const val CHROME_DP = 48          // 12dp root padding x2 + 13sp header + its 6dp gap
+        private const val ROW_DP = 22             // one line: 12sp title + 3dp padding top and bottom
+        private const val ROW_LOC_EXTRA_DP = 13   // the second line a located event adds (10sp)
+        private const val OVERFLOW_DP = 16        // the "+ N more" line, always reserved
+
+        // The dp available for event rows, after the header and a reserved overflow
+        // line. Falls back to the historical five plain rows when the host reports
+        // no height, which some launchers do on the first update after placement.
+        private fun availableRowsDp(options: Bundle?): Int {
+            val heightDp = portraitHeightDp(options)
+            if (heightDp <= 0) return DEFAULT_ROWS * ROW_DP
+            return (heightDp - CHROME_DP - OVERFLOW_DP).coerceAtLeast(ROW_DP)
+        }
+
+        // A rendered row's estimated height. A paired slot is one line; a single
+        // event with a location is two. Mirrors what the fill loop actually draws.
+        private fun slotHeightDp(slot: List<Int>, events: List<EventRow>): Int {
+            if (slot.size >= 2) return ROW_DP
+            val loc = events[slot[0]].location
+            return if (loc.isNullOrEmpty()) ROW_DP else ROW_DP + ROW_LOC_EXTRA_DP
+        }
+
+        // The height the widget occupies on a portrait home screen. The framework
+        // reports TWO heights: OPTION_APPWIDGET_MAX_HEIGHT is the portrait one and
+        // MIN_HEIGHT is the (shorter) landscape one, since a portrait cell is tall
+        // and narrow. A home screen is almost always portrait, so budgeting off
+        // MIN_HEIGHT sized the widget for landscape and showed a single row in the
+        // common case. Prefer MAX_HEIGHT, fall back to MIN_HEIGHT, then to 0 so the
+        // caller can apply DEFAULT_ROWS.
+        private fun portraitHeightDp(options: Bundle?): Int {
+            if (options == null) return 0
+            val maxH = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0)
+            if (maxH > 0) return maxH
+            return options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 0)
+        }
+
         private const val COLOR_TEXT = "#F2EFE8"
         private const val COLOR_MUTED = "#8A8478"
         private const val COLOR_ACCENT = "#C8922A"
@@ -49,6 +105,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
         private fun render(context: Context, mgr: AppWidgetManager, id: Int) {
             val views = RemoteViews(context.packageName, R.layout.widget_daily)
             val cache = readCache(context)
+            val availableDp = availableRowsDp(mgr.getAppWidgetOptions(id))
             val dateLabel = SimpleDateFormat("EEE · MMM d", Locale.getDefault()).format(Date())
             views.setTextViewText(R.id.widget_date, dateLabel)
 
@@ -62,13 +119,13 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_root, pi)
             }
 
-            val rowIds = arrayOf(R.id.widget_event_0, R.id.widget_event_1, R.id.widget_event_2, R.id.widget_event_3, R.id.widget_event_4)
-            val colorIds = arrayOf(R.id.widget_color_0, R.id.widget_color_1, R.id.widget_color_2, R.id.widget_color_3, R.id.widget_color_4)
-            val timeIds = arrayOf(R.id.widget_time_0, R.id.widget_time_1, R.id.widget_time_2, R.id.widget_time_3, R.id.widget_time_4)
-            val titleIds = arrayOf(R.id.widget_title_0, R.id.widget_title_1, R.id.widget_title_2, R.id.widget_title_3, R.id.widget_title_4)
-            val locationIds = arrayOf(R.id.widget_location_0, R.id.widget_location_1, R.id.widget_location_2, R.id.widget_location_3, R.id.widget_location_4)
-            val rightColorIds = arrayOf(R.id.widget_color_right_0, R.id.widget_color_right_1, R.id.widget_color_right_2, R.id.widget_color_right_3, R.id.widget_color_right_4)
-            val rightTitleIds = arrayOf(R.id.widget_title_right_0, R.id.widget_title_right_1, R.id.widget_title_right_2, R.id.widget_title_right_3, R.id.widget_title_right_4)
+            val rowIds = arrayOf(R.id.widget_event_0, R.id.widget_event_1, R.id.widget_event_2, R.id.widget_event_3, R.id.widget_event_4, R.id.widget_event_5, R.id.widget_event_6, R.id.widget_event_7, R.id.widget_event_8, R.id.widget_event_9)
+            val colorIds = arrayOf(R.id.widget_color_0, R.id.widget_color_1, R.id.widget_color_2, R.id.widget_color_3, R.id.widget_color_4, R.id.widget_color_5, R.id.widget_color_6, R.id.widget_color_7, R.id.widget_color_8, R.id.widget_color_9)
+            val timeIds = arrayOf(R.id.widget_time_0, R.id.widget_time_1, R.id.widget_time_2, R.id.widget_time_3, R.id.widget_time_4, R.id.widget_time_5, R.id.widget_time_6, R.id.widget_time_7, R.id.widget_time_8, R.id.widget_time_9)
+            val titleIds = arrayOf(R.id.widget_title_0, R.id.widget_title_1, R.id.widget_title_2, R.id.widget_title_3, R.id.widget_title_4, R.id.widget_title_5, R.id.widget_title_6, R.id.widget_title_7, R.id.widget_title_8, R.id.widget_title_9)
+            val locationIds = arrayOf(R.id.widget_location_0, R.id.widget_location_1, R.id.widget_location_2, R.id.widget_location_3, R.id.widget_location_4, R.id.widget_location_5, R.id.widget_location_6, R.id.widget_location_7, R.id.widget_location_8, R.id.widget_location_9)
+            val rightColorIds = arrayOf(R.id.widget_color_right_0, R.id.widget_color_right_1, R.id.widget_color_right_2, R.id.widget_color_right_3, R.id.widget_color_right_4, R.id.widget_color_right_5, R.id.widget_color_right_6, R.id.widget_color_right_7, R.id.widget_color_right_8, R.id.widget_color_right_9)
+            val rightTitleIds = arrayOf(R.id.widget_title_right_0, R.id.widget_title_right_1, R.id.widget_title_right_2, R.id.widget_title_right_3, R.id.widget_title_right_4, R.id.widget_title_right_5, R.id.widget_title_right_6, R.id.widget_title_right_7, R.id.widget_title_right_8, R.id.widget_title_right_9)
 
             if (cache.events.isEmpty() && cache.upcoming.isEmpty()) {
                 views.setViewVisibility(R.id.widget_empty_container, View.VISIBLE)
@@ -78,7 +135,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 } else {
                     views.setViewVisibility(R.id.widget_tomorrow, View.GONE)
                 }
-                for (i in 0 until ROW_COUNT) views.setViewVisibility(rowIds[i], View.GONE)
+                for (i in 0 until MAX_ROWS) views.setViewVisibility(rowIds[i], View.GONE)
                 views.setViewVisibility(R.id.widget_overflow, View.GONE)
             } else {
                 views.setViewVisibility(R.id.widget_empty_container, View.GONE)
@@ -88,11 +145,14 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 val nextUpSet = findNextUp(events, nowMin)
                 // Today's events claim rows first; "show upcoming" rows (#107)
                 // then fill whatever remains (with their date where time goes).
-                val todaySlots = minOf(slots.size, ROW_COUNT)
                 var eventsShown = 0
                 var rowIdx = 0
-                while (rowIdx < todaySlots) {
+                var usedDp = 0
+                while (rowIdx < slots.size && rowIdx < MAX_ROWS) {
                     val slot = slots[rowIdx]
+                    val slotDp = slotHeightDp(slot, events)
+                    if (usedDp + slotDp > availableDp) break
+                    usedDp += slotDp
                     val leftIdx = slot[0]
                     val e = events[leftIdx]
                     views.setViewVisibility(rowIds[rowIdx], View.VISIBLE)
@@ -146,7 +206,8 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 }
                 // Upcoming events fill the remaining rows.
                 for (e in cache.upcoming) {
-                    if (rowIdx >= ROW_COUNT) break
+                    if (rowIdx >= MAX_ROWS || usedDp + ROW_DP > availableDp) break
+                    usedDp += ROW_DP
                     views.setViewVisibility(rowIds[rowIdx], View.VISIBLE)
                     views.setTextViewText(timeIds[rowIdx], e.timeLabel)
                     views.setTextViewText(titleIds[rowIdx], e.title)
@@ -158,7 +219,7 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                     views.setViewVisibility(locationIds[rowIdx], View.GONE)
                     rowIdx++
                 }
-                while (rowIdx < ROW_COUNT) {
+                while (rowIdx < MAX_ROWS) {
                     views.setViewVisibility(rowIds[rowIdx], View.GONE)
                     rowIdx++
                 }

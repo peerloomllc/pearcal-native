@@ -287,6 +287,10 @@ struct SmallView: View {
 
 struct MediumView: View {
   let entry: PearCalEntry
+  // Rows this family has room for. .systemMedium keeps its historical 4; a
+  // .systemLarge is roughly two and a half times the height, so it takes 10.
+  // iOS widgets cannot scroll, so this is the whole of what a large one shows.
+  var rowBudget: Int = 4
 
   var body: some View {
     let allEvents = entry.payload?.events ?? []
@@ -295,9 +299,8 @@ struct MediumView: View {
     let tomorrow = entry.payload?.tomorrowFirst
     let nowMin = currentMinutes()
     let nextUp = findNextUp(allEvents, nowMin: nowMin)
-    // Today's events take rows first; upcoming (TODO #107) fills the rest of a
-    // fixed budget so a holiday today no longer hides what's coming up.
-    let rowBudget = 4
+    // Today's events take rows first; upcoming (TODO #107) fills the rest of the
+    // budget so a holiday today no longer hides what's coming up.
     let shownSlots = Array(allSlots.prefix(rowBudget))
     let shownEventCount = shownSlots.reduce(0) { $0 + $1.count }
     let remaining = allEvents.count - shownEventCount
@@ -406,6 +409,7 @@ struct PearCalWidgetEntryView: View {
 
   var body: some View {
     switch family {
+    case .systemLarge: MediumView(entry: entry, rowBudget: 10)
     case .systemMedium: MediumView(entry: entry)
     default: SmallView(entry: entry)
     }
@@ -433,6 +437,6 @@ struct PearCalWidget: Widget {
     }
     .configurationDisplayName("Today")
     .description("Your PearCal events for today.")
-    .supportedFamilies([.systemSmall, .systemMedium])
+    .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
   }
 }
