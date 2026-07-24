@@ -401,6 +401,74 @@ _asc_auth_linux() {
     --private-key "$key_file" >/dev/null 2>&1
 }
 
+# ---------------------------------------------------------------------------
+# _asc_version_id <versionString>
+#
+# Prints the App Store version record's UUID, or nothing if it does not exist.
+# ---------------------------------------------------------------------------
+_asc_version_id() {
+  asc versions list --app "$ASC_APP_ID" --version "$1" --output json 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = d.get('data', d if isinstance(d, list) else [])
+if items:
+    print(items[0].get('id', ''))
+" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# _asc_prior_encryption
+#
+# Prints how this app's most recent ANSWERED build declared export compliance,
+# as "false", "true", or empty when no prior build has answered. Used to show
+# the actual precedent at the declaration prompt rather than asserting one.
+# ---------------------------------------------------------------------------
+_asc_prior_encryption() {
+  asc builds list --app "$ASC_APP_ID" --limit 20 --output json 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for x in d.get('data', d if isinstance(d, list) else []):
+    v = x.get('attributes', x).get('usesNonExemptEncryption')
+    if v is not None:
+        print(str(v).lower())
+        break
+" 2>/dev/null
+}
+
+# ---------------------------------------------------------------------------
+# _asc_build_id <buildNumber>
+#
+# Prints "<uuid> <processingState>" for the build with that CFBundleVersion, or
+# nothing if App Store Connect has not registered it yet. `asc builds list`
+# reports CFBundleVersion in `version` (NOT the marketing version), and build
+# numbers are unique per app, so this is an exact match rather than a guess.
+# ---------------------------------------------------------------------------
+_asc_build_id() {
+  asc builds list --app "$ASC_APP_ID" --limit 20 --output json 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+items = d.get('data', d if isinstance(d, list) else [])
+want = str('$1').strip()
+for x in items:
+    a = x.get('attributes', x)
+    if str(a.get('version', '')).strip() == want:
+        print('%s %s' % (x.get('id', ''), a.get('processingState', 'UNKNOWN')))
+        break
+" 2>/dev/null
+}
+
 # Uses $REPO_ROOT so this works regardless of invocation directory.
 # ---------------------------------------------------------------------------
 _android_package_name() {
@@ -2448,6 +2516,9 @@ else
   echo "==> Upload complete. Build is processing on App Store Connect."
 
   # ── Step 3: Apply metadata (Linux-side, asc only) ──
+  # Resolved by the version-record step below and read again by Step 4. Empty
+  # means "no usable version record", which gates both metadata and submission.
+  ASC_VERSION_ID=""
   METADATA_DIR="$REPO_ROOT/metadata/ios"
   if $USE_ASC_REMOTE && [ -d "$METADATA_DIR" ] && command -v asc &>/dev/null; then
     echo ""
@@ -2458,15 +2529,112 @@ else
 
     # Ensure the App Store version record exists (required for pull/apply).
     # A freshly uploaded build does NOT auto-create the version record.
+    #
+    # App Store Connect allows only ONE in-flight version at a time, so a bare
+    # `versions create` fails with "You cannot create a new version of the App
+    # in the current state" whenever an earlier version is still open. That
+    # bit PearPetal on 2026-07-23 (1.0.3 refused while 1.0.2 sat in review),
+    # and every later step then failed as a knock-on. Two cases, opposite
+    # handling:
+    #
+    #   EDITABLE  (PREPARE_FOR_SUBMISSION, DEVELOPER_REJECTED, REJECTED,
+    #             METADATA_REJECTED, INVALID_BINARY) - the open version has not
+    #             shipped, so RENAME it to this version. That is Apple's
+    #             supported way to supersede an unreleased version.
+    #   BLOCKING  (WAITING_FOR_REVIEW, IN_REVIEW, PENDING_DEVELOPER_RELEASE,
+    #             PROCESSING_FOR_APP_STORE) - Apple owns it. Nothing local can
+    #             fix it, so say so once and skip the rest instead of emitting
+    #             a cascade of misleading warnings.
+    #
+    # ASC_VERSION_ID is the handle every later step needs; empty means "not
+    # ready", which gates both metadata apply and submission.
+    ASC_VERSION_ID=""
     if _asc_auth_linux; then
-      VERSION_EXISTS=$(asc versions list --app "$ASC_APP_ID" --version "$APP_VERSION" --output json 2>/dev/null \
-        | python3 -c "import json,sys; d=json.load(sys.stdin); print(len(d.get('data', d if isinstance(d,list) else [])))" 2>/dev/null || echo 0)
-      if [ "${VERSION_EXISTS:-0}" = "0" ]; then
-        echo "    App Store version ${APP_VERSION} does not exist yet — creating..."
-        PRIOR_VERSION=$(asc versions list --app "$ASC_APP_ID" --paginate --output json 2>/dev/null \
-          | python3 -c "
+      _V_CASE=""; _V_ID=""; _V_FROM=""; _V_STATE=""
+      eval "$(asc versions list --app "$ASC_APP_ID" --paginate --output json 2>/dev/null \
+        | python3 -c "
+import json, shlex, sys
+
+EDITABLE = {'PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED', 'REJECTED',
+            'METADATA_REJECTED', 'INVALID_BINARY'}
+BLOCKING = {'WAITING_FOR_REVIEW', 'IN_REVIEW', 'PENDING_DEVELOPER_RELEASE',
+            'PENDING_APPLE_RELEASE', 'PROCESSING_FOR_APP_STORE'}
+
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    d = {}
+items = d.get('data', d if isinstance(d, list) else [])
+
+def attr(x, *keys):
+    a = x.get('attributes', {})
+    for k in keys:
+        if a.get(k) or x.get(k):
+            return a.get(k) or x.get(k)
+    return ''
+
+target = '${APP_VERSION}'
+match = editable = blocking = None
+for x in items:
+    v = attr(x, 'versionString')
+    state = attr(x, 'appStoreState', 'appVersionState')
+    if v == target:
+        match = (x.get('id'), state)
+    elif state in EDITABLE and editable is None:
+        editable = (x.get('id'), v, state)
+    elif state in BLOCKING and blocking is None:
+        blocking = (v, state)
+
+def emit(**kv):
+    for k, v in kv.items():
+        print('%s=%s' % (k, shlex.quote(str(v or ''))))
+
+if match:
+    emit(_V_CASE='exists', _V_ID=match[0], _V_STATE=match[1])
+elif editable:
+    emit(_V_CASE='rename', _V_ID=editable[0], _V_FROM=editable[1], _V_STATE=editable[2])
+elif blocking:
+    emit(_V_CASE='blocked', _V_FROM=blocking[0], _V_STATE=blocking[1])
+else:
+    emit(_V_CASE='create')
+" 2>/dev/null)"
+
+      case "${_V_CASE:-create}" in
+        exists)
+          ASC_VERSION_ID="$_V_ID"
+          echo "    App Store version ${APP_VERSION} already exists (${_V_STATE})."
+          ;;
+
+        rename)
+          echo "    App Store version ${APP_VERSION} does not exist, and version"
+          echo "    ${_V_FROM} is still open in state ${_V_STATE}."
+          echo "    App Store Connect allows only one in-flight version, so ${APP_VERSION}"
+          echo "    cannot be created alongside it. Renaming the open version is the"
+          echo "    supported way to supersede something that never shipped."
+          _confirm "Rename App Store version ${_V_FROM} to ${APP_VERSION}?"
+          if asc versions update --version-id "$_V_ID" --version "$APP_VERSION" >/dev/null; then
+            ASC_VERSION_ID="$_V_ID"
+            echo "    Renamed ${_V_FROM} -> ${APP_VERSION}."
+          else
+            echo "    WARNING: rename failed - skipping metadata apply and submission."
+          fi
+          ;;
+
+        blocked)
+          echo "    CANNOT PROCEED: version ${_V_FROM} is ${_V_STATE}."
+          echo "    Apple owns that version right now, so ${APP_VERSION} cannot be created."
+          echo "    Your build IS uploaded and safe in TestFlight - nothing is lost."
+          echo "    Either wait for ${_V_FROM} to finish review, or cancel it:"
+          echo "      asc review status --app ${ASC_APP_ID}"
+          echo "      asc submit cancel --app ${ASC_APP_ID} --id <SUBMISSION_ID> --confirm"
+          echo "    Then re-run the release. Skipping metadata apply and submission."
+          ;;
+
+        create)
+          echo "    App Store version ${APP_VERSION} does not exist yet - creating..."
+          PRIOR_VERSION=$(asc versions list --app "$ASC_APP_ID" --paginate --output json 2>/dev/null \
+            | python3 -c "
 import json, sys
-from functools import cmp_to_key
 d = json.load(sys.stdin)
 items = d.get('data', d if isinstance(d, list) else [])
 def ver(x):
@@ -2479,19 +2647,24 @@ priors.sort(key=ver, reverse=True)
 if priors:
     print(priors[0].get('attributes', {}).get('versionString') or priors[0].get('versionString', ''))
 " 2>/dev/null)
-        if [ -n "$PRIOR_VERSION" ]; then
-          echo "    Copying metadata from prior version ${PRIOR_VERSION}..."
-          if asc versions create --app "$ASC_APP_ID" --version "$APP_VERSION" --copy-metadata-from "$PRIOR_VERSION"; then
+          if [ -n "$PRIOR_VERSION" ]; then
+            echo "    Copying metadata from prior version ${PRIOR_VERSION}..."
+            asc versions create --app "$ASC_APP_ID" --version "$APP_VERSION" \
+              --copy-metadata-from "$PRIOR_VERSION" >/dev/null \
+              || echo "    WARNING: versions create failed."
+          else
+            echo "    No prior version found - creating ${APP_VERSION} without metadata copy."
+            asc versions create --app "$ASC_APP_ID" --version "$APP_VERSION" >/dev/null \
+              || echo "    WARNING: versions create failed."
+          fi
+          ASC_VERSION_ID=$(_asc_version_id "$APP_VERSION")
+          if [ -n "$ASC_VERSION_ID" ]; then
             echo "    Created version ${APP_VERSION}."
           else
-            echo "    WARNING: versions create failed — metadata apply will likely fail."
+            echo "    WARNING: version ${APP_VERSION} still not found - skipping metadata apply."
           fi
-        else
-          echo "    No prior version found — creating ${APP_VERSION} without metadata copy."
-          asc versions create --app "$ASC_APP_ID" --version "$APP_VERSION" || \
-            echo "    WARNING: versions create failed."
-        fi
-      fi
+          ;;
+      esac
     fi
 
     # Bootstrap: if no canonical .json files exist anywhere, pull current state
@@ -2514,8 +2687,13 @@ if priors:
       fi
     fi
 
-    # Create versioned metadata with whatsNew from release notes
-    if [ -n "$DEFAULT_DIR" ] && [ -d "$DEFAULT_DIR" ] && [ ! -d "$VERSION_DIR" ]; then
+    # Create versioned metadata with whatsNew from release notes.
+    #
+    # Regenerated on EVERY run, not just when $VERSION_DIR is absent: a failed
+    # release leaves a version dir behind, and the old "create only if missing"
+    # test meant the retry silently shipped the first run's notes even after
+    # release_notes.md had been fixed.
+    if [ -n "$DEFAULT_DIR" ] && [ -d "$DEFAULT_DIR" ]; then
       mkdir -p "$VERSION_DIR"
       for f in "$DEFAULT_DIR"/*.json; do
         WHATS_NEW=""
@@ -2536,7 +2714,9 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
       done
     fi
 
-    if _asc_auth_linux; then
+    if [ -z "$ASC_VERSION_ID" ]; then
+      echo "    Skipping metadata apply - no usable App Store version record."
+    elif _asc_auth_linux; then
       echo "    Dry run:"
       asc metadata apply --app "$ASC_APP_ID" --version "$APP_VERSION" \
         --dir "$METADATA_DIR" --dry-run || true
@@ -2554,35 +2734,110 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
   fi
 
   # ── Step 4: Submit for App Review (Linux-side, asc only) ──
+  #
+  # NOT `asc publish appstore --submit`. That command requires --ipa (or a
+  # local Xcode build) because it owns the whole upload-then-submit flow, and
+  # the .ipa only ever exists on the Mac mini - so from this box it failed with
+  # "Error: --ipa is required" on every release. Step 2 already uploaded the
+  # build, so what is left is the lower-level submission lifecycle:
+  #
+  #   attach build -> declare export compliance -> validate -> submit
+  #
+  # `asc review submissions-*` is the API path for that, and it needs no .ipa.
   if $USE_ASC_REMOTE && command -v asc &>/dev/null; then
     echo ""
     echo "==> Submit for App Store review"
-    echo "    Note: builds typically take 5-15 minutes to process after upload."
-    echo "    If the build is still processing, submission will fail - retry later."
-    _confirm "Submit version ${APP_VERSION} for App Store review?"
 
-    if _asc_auth_linux; then
-      echo "    Submitting ${APP_VERSION} for review..."
-      if asc publish appstore \
-           --app "$ASC_APP_ID" \
-           --version "$APP_VERSION" \
-           --submit --confirm; then
-        echo "    Submitted for review."
-
-        # ── Step 5: Check review status ──
-        echo ""
-        echo "==> Checking review status..."
-        asc review status --app "$ASC_APP_ID" || true
-        echo ""
-        echo "    Monitor status:    asc review status --app $ASC_APP_ID"
-        echo "    Diagnose issues:   asc review doctor --app $ASC_APP_ID"
-      else
-        echo "    WARNING: Submission failed - build may still be processing."
-        echo "    Retry: asc publish appstore --app $ASC_APP_ID --version $APP_VERSION --submit --confirm"
-      fi
+    if [ -z "${ASC_VERSION_ID:-}" ]; then
+      echo "    Skipping submission - no usable App Store version record."
+      echo "    The build IS uploaded; submit from App Store Connect once the"
+      echo "    blocking version above is resolved."
+    elif ! _asc_auth_linux; then
+      echo "    WARNING: asc auth failed on Linux. Submit via App Store Connect."
     else
-      echo "    WARNING: asc auth failed on Linux. Submit manually:"
-      echo "    asc publish appstore --app $ASC_APP_ID --version $APP_VERSION --submit --confirm"
+      # Attach the build. `asc builds list` needs a few minutes after upload
+      # before the record appears, so say which is which rather than failing
+      # with a bare 404.
+      _BUILD_INFO=$(_asc_build_id "${_ios_build_number:-}")
+      _BUILD_ID="${_BUILD_INFO%% *}"
+      _BUILD_STATE="${_BUILD_INFO##* }"
+
+      if [ -z "$_BUILD_ID" ]; then
+        echo "    Build ${_ios_build_number} is not registered on App Store Connect yet."
+        echo "    Builds take 5-15 minutes to process. Once it appears, run:"
+        echo "      asc versions attach-build --version-id ${ASC_VERSION_ID} --build <BUILD_ID>"
+        echo "    Skipping submission."
+      elif [ "$_BUILD_STATE" != "VALID" ]; then
+        echo "    Build ${_ios_build_number} is still ${_BUILD_STATE}, not VALID."
+        echo "    Wait for processing to finish, then re-run. Skipping submission."
+      else
+        echo "    Attaching build ${_ios_build_number} (${_BUILD_ID})..."
+        asc versions attach-build --version-id "$ASC_VERSION_ID" --build "$_BUILD_ID" >/dev/null \
+          || echo "    WARNING: attach-build failed (it may already be attached)."
+
+        # Export compliance. Apple blocks submission until every build answers
+        # this, and it is set per BUILD, so a new build always starts unset.
+        # It is a legal declaration, so ask rather than assume.
+        # `asc validate` exits non-zero when it finds blocking errors, which is
+        # exactly the case we care about, so capture first rather than piping
+        # into grep under `set -o pipefail`.
+        _VALIDATE_JSON=$(asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" \
+          --output json 2>/dev/null || true)
+        if printf '%s' "$_VALIDATE_JSON" | grep -q 'build.encryption.missing'; then
+          _PRIOR_ENC=$(_asc_prior_encryption)
+          echo ""
+          echo "    Apple needs an export-compliance answer for build ${_ios_build_number}."
+          echo "    It is set per build, so a new build always starts unset, and it is a"
+          echo "    legal declaration - so this asks rather than assuming."
+          if [ -n "$_PRIOR_ENC" ]; then
+            echo "    Most recent answered build of this app declared:"
+            echo "      uses non-exempt encryption = ${_PRIOR_ENC}"
+          else
+            echo "    No prior build of this app has answered, so there is no precedent."
+          fi
+          _confirm "Declare build ${_ios_build_number} as NOT using non-exempt encryption?"
+          asc builds update --build-id "$_BUILD_ID" --uses-non-exempt-encryption=false >/dev/null \
+            || echo "    WARNING: could not set export compliance."
+        fi
+
+        echo "    Readiness check:"
+        asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" || true
+        echo ""
+        echo "    Note: submission fails if the build is still processing."
+        _confirm "Submit version ${APP_VERSION} for App Store review?"
+
+        echo "    Submitting ${APP_VERSION} for review..."
+        _SUBMISSION_ID=$(asc review submissions-create --app "$ASC_APP_ID" --platform IOS --output json 2>/dev/null \
+          | python3 -c "
+import json, sys
+try:
+    print(json.load(sys.stdin).get('data', {}).get('id', ''))
+except Exception:
+    pass
+" 2>/dev/null)
+
+        if [ -z "$_SUBMISSION_ID" ]; then
+          echo "    WARNING: could not create a review submission."
+          echo "    Submit manually: https://appstoreconnect.apple.com/apps/${ASC_APP_ID}"
+        elif ! asc review items-add --submission "$_SUBMISSION_ID" \
+                --item-type appStoreVersions --item-id "$ASC_VERSION_ID" >/dev/null; then
+          echo "    WARNING: could not add version ${APP_VERSION} to the submission."
+          echo "    Cancel the empty submission: asc submit cancel --app ${ASC_APP_ID} --id ${_SUBMISSION_ID} --confirm"
+        elif asc review submissions-submit --id "$_SUBMISSION_ID" --confirm >/dev/null; then
+          echo "    Submitted for review."
+
+          # ── Step 5: Check review status ──
+          echo ""
+          echo "==> Checking review status..."
+          asc review status --app "$ASC_APP_ID" || true
+          echo ""
+          echo "    Monitor status:    asc review status --app $ASC_APP_ID"
+          echo "    Diagnose issues:   asc review doctor --app $ASC_APP_ID"
+        else
+          echo "    WARNING: Submission failed - build may still be processing."
+          echo "    Retry: asc review submissions-submit --id ${_SUBMISSION_ID} --confirm"
+        fi
+      fi
     fi
   else
     echo "    Build will appear in TestFlight within a few minutes."
