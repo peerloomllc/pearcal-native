@@ -18,6 +18,18 @@ function tomorrowDateString () {
   return dateStringFor(d)
 }
 
+// A multi-day event is stored as ONE record under its START date carrying an
+// `endDate`, so a span in progress lies outside today's key range. Bound how far
+// back readSpanningEvents looks for one: a single range scan, wide enough for any
+// realistic trip or holiday, rather than an unbounded walk to the first event ever.
+const SPAN_LOOKBACK_DAYS = 370
+
+function daysAgoDateString (n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return dateStringFor(d)
+}
+
 function yesterdayDateString () {
   const d = new Date()
   d.setDate(d.getDate() - 1)
@@ -51,6 +63,12 @@ function normalize (value) {
   }
 }
 
+function byDayOrder (a, b) {
+  if (a.allDay && !b.allDay) return -1
+  if (!a.allDay && b.allDay) return 1
+  return (a.start || '').localeCompare(b.start || '')
+}
+
 async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM }) {
   const gt = 'events:' + date + ':'
   const lt = 'events:' + date + ':\xff'
@@ -70,13 +88,34 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
     const prev = byId.get(value.id)
     if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
-  const out = [...byId.values()].map(normalize)
-  out.sort((a, b) => {
-    if (a.allDay && !b.allDay) return -1
-    if (!a.allDay && b.allDay) return 1
-    return (a.start || '').localeCompare(b.start || '')
-  })
-  return out
+  return [...byId.values()].map(normalize).sort(byDayOrder)
+}
+
+// Multi-day events that started on an earlier day and are still running today.
+// Only the start day gets a key (`events:{startDate}:{id}`); the span lives in the
+// record's `endDate`, which today's key range never sees, so without this the
+// widget showed such an event on day one and then dropped it for the rest of its
+// run, while the app's own day view (`e.date <= d && (e.endDate || e.date) >= d`)
+// kept showing it. Recurring events were unaffected because each occurrence is
+// materialised as its own dated record. (TODO #136)
+//
+// One range scan over [today - SPAN_LOOKBACK_DAYS, today), so today's own records
+// stay the job of readDayEvents and can't be picked up twice.
+async function readSpanningEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds }) {
+  const gt = 'events:' + daysAgoDateString(SPAN_LOOKBACK_DAYS) + ':'
+  const lt = 'events:' + date + ':'
+  const byId = new Map()
+  for await (const { value } of db.createReadStream({ gt, lt })) {
+    if (value.isShadow) continue
+    // A real span that has not finished yet. `endDate` is inclusive, so an event
+    // ending today is still live today.
+    if (!value.endDate || value.endDate <= value.date) continue
+    if (value.endDate < date) continue
+    if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    const prev = byId.get(value.id)
+    if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
+  }
+  return [...byId.values()].map(normalize)
 }
 
 // Yesterday's events that run past midnight and are *still* running right now.
@@ -158,8 +197,11 @@ async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupI
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
   const today = await readDayEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
+  const spanning = await readSpanningEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds })
   const carried = await readCarriedEvents(db, yesterdayDateString(), { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
-  const events = mergeCarried(today, carried)
+  // A span in progress is an all-day row for today, so it merges into the day list
+  // and re-sorts to the top alongside today's own all-day events.
+  const events = mergeCarried([...today, ...spanning].sort(byDayOrder), carried)
   const slots = buildSlots(events)
   let tomorrowFirst = null
   let upcoming = null
