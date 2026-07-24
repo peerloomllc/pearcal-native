@@ -147,3 +147,62 @@ test('a carried event is never paired side-by-side with a same-start event', asy
   assert.deepEqual(cache.events.map(e => e.id), ['shift', 'tonight'])
   assert.deepEqual(cache.slots, [[0], [1]], 'each event gets its own row')
 })
+
+
+// --- multi-day spans: one record on the start date, live until endDate (#136) -
+
+// Stored once under its start date; only `endDate` says it is still running. The
+// user-reported case: "begins on a day and ends a day or more later, the widget
+// ignores this date" - while the same thing entered as a recurring event worked,
+// because recurrence materialises a separate record per occurrence date.
+const TRIP = { id: 'trip', title: 'Ski Trip', allDay: true, date: '2026-07-12', endDate: '2026-07-16' }
+
+test('a multi-day event shows on a day in the middle of its span', async () => {
+  assert.deepEqual(await idsAt(10, 0, [TRIP]), ['trip'])
+})
+
+test('a multi-day event shows on its final day and drops off after it', async () => {
+  const endsToday = { ...TRIP, endDate: TODAY }
+  assert.deepEqual(await idsAt(10, 0, [endsToday]), ['trip'], 'endDate is inclusive')
+  const endedYesterday = { ...TRIP, endDate: YESTERDAY }
+  assert.deepEqual(await idsAt(10, 0, [endedYesterday]), [], 'the span is over')
+})
+
+test('a multi-day event still shows exactly once on its start day', async () => {
+  // Today's key range already yields it; the span scan must not add a second copy.
+  const startsToday = { ...TRIP, date: TODAY, endDate: '2026-07-18' }
+  assert.deepEqual(await idsAt(10, 0, [startsToday]), ['trip'])
+})
+
+test('an earlier single-day event is not mistaken for a span', async () => {
+  const ids = await idsAt(10, 0, [
+    { id: 'past', title: 'Last week', allDay: true, date: '2026-07-10' },
+    { id: 'sameday', title: 'Same day', allDay: true, date: '2026-07-10', endDate: '2026-07-10' },
+    { id: 'bogus', title: 'Backwards', allDay: true, date: '2026-07-10', endDate: '2026-07-09' },
+  ])
+  assert.deepEqual(ids, [], 'no endDate, an equal endDate and a backwards one are all single-day')
+})
+
+test('a spanning event is not resurrected from beyond the lookback window', async () => {
+  // Guards the one range scan from becoming an unbounded walk to the first event
+  // ever stored. A span older than SPAN_LOOKBACK_DAYS is out of scope by design.
+  const ancient = { id: 'ancient', title: 'Ancient', allDay: true, date: '2020-01-01', endDate: '2030-01-01' }
+  assert.deepEqual(await idsAt(10, 0, [ancient]), [])
+})
+
+test('a spanning event leads the day alongside the other all-day rows', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'standup', title: 'Standup', start: '09:30', end: '17:00' },
+    TRIP,
+    { id: 'holiday', title: 'Holiday', allDay: true },
+  ])
+  assert.deepEqual(cache.events.map(e => e.id), ['holiday', 'trip', 'standup'])
+})
+
+test('a shadow copy of a spanning event is ignored', async () => {
+  assert.deepEqual(await idsAt(10, 0, [{ ...TRIP, isShadow: true }]), [])
+})
+
+test('a spanning event is never pruned by the time of day', async () => {
+  assert.deepEqual(await idsAt(23, 59, [TRIP]), ['trip'], 'still live late on an intermediate day')
+})
