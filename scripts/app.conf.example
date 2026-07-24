@@ -3,6 +3,7 @@
 # android-screenshots.sh, screenshots.sh.
 
 APP_NAME="PearCal"
+ARTIFACT_PREFIX=pearcal                     # Prefix for APK/AAB filenames (e.g. pearcal-v1.0.0.apk)
 BUNDLE_ID="com.pearcal"
 XCODE_WORKSPACE="ios/PearCal.xcworkspace"
 XCODE_SCHEME="PearCal"
