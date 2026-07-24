@@ -10,9 +10,13 @@
 #
 # Usage: ./scripts/resume-appstore.sh [X.Y.Z]
 #
-# Version defaults to app.json's expo.version.  Reads the same scripts/app.conf
-# and scripts/.env as release.sh, and expects the API-key vars: ASC_KEY_ID,
-# ASC_ISSUER_ID, ASC_APP_ID.
+# Version defaults to the newest vX.Y.Z git tag, which is what release.sh
+# itself treats as the source of truth (it derives APP_VERSION from the tag and
+# then WRITES app.json).  Do not default to app.json: its bump lands in a
+# release commit that is only pushed at the end of the run, so a release that
+# died partway through leaves app.json behind the version actually built.
+# Reads the same scripts/app.conf and scripts/.env as release.sh, and expects
+# the API-key vars: ASC_KEY_ID, ASC_ISSUER_ID, ASC_APP_ID.
 
 set -euo pipefail
 
@@ -23,7 +27,19 @@ cd "$REPO_ROOT"
 if [ -f "$SCRIPT_DIR/app.conf" ]; then set -a; source "$SCRIPT_DIR/app.conf"; set +a; fi
 if [ -f "$SCRIPT_DIR/.env" ]; then set -a; source "$SCRIPT_DIR/.env"; set +a; fi
 
-APP_VERSION="${1:-$(node -p "require('./app.json').expo.version")}"
+if [ -n "${1:-}" ]; then
+  APP_VERSION="$1"
+else
+  _LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+  APP_VERSION="${_LATEST_TAG#v}"
+  [ -n "$APP_VERSION" ] || APP_VERSION=$(node -p "require('./app.json').expo.version")
+  _JSON_VERSION=$(node -p "require('./app.json').expo.version")
+  if [ "$_JSON_VERSION" != "$APP_VERSION" ]; then
+    echo "Note: app.json says ${_JSON_VERSION} but the newest tag is ${APP_VERSION}."
+    echo "      Using ${APP_VERSION}. This gap means the release commit for"
+    echo "      ${APP_VERSION} was never merged - worth fixing separately."
+  fi
+fi
 MAC_MINI="${MAC_MINI_HOST:-Tims-Mac-mini.local}"
 MAC_REPO="${MAC_MINI_REPO_PATH:-peerloomllc/pearcal-native}"
 METADATA_DIR="$REPO_ROOT/metadata/ios"
@@ -71,6 +87,8 @@ _IPA_VERSION=$(ssh "$MAC_MINI" "cd /tmp && rm -rf .resume-ipa && mkdir .resume-i
 if [ "$_IPA_VERSION" != "$APP_VERSION" ]; then
   echo "Error: the exported IPA is version ${_IPA_VERSION}, not ${APP_VERSION}."
   echo "  Refusing to upload a build that does not match the version being released."
+  echo "  If ${_IPA_VERSION} is the one you meant to ship, re-run as:"
+  echo "    ./scripts/resume-appstore.sh ${_IPA_VERSION}"
   exit 1
 fi
 echo "    IPA version confirmed: ${_IPA_VERSION}"
