@@ -14,6 +14,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
+import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
 import QRCode from 'qrcode'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
@@ -5266,10 +5267,17 @@ function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRe
 function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
   const bsCloseRef = useRef(null)
   const [groupInfo, setGroupInfo] = useState({ loading: true })
-  // phase: 'idle' | 'scanning' | 'success' | 'error'
+  // phase: 'idle' | 'scanning' | 'pairing' | 'success' | 'error'
+  // 'scanning' is the camera being up; 'pairing' is the worklet on the
+  // rendezvous, which is the only phase with a deadline to count down.
   const [phase, setPhase] = useState('idle')
   const [result, setResult] = useState(null)
   const [copied, setCopied] = useState(false)
+  // Seconds left before seederPairScan gives up. Started when the worklet takes
+  // the scanned link, so it counts the same 60s the worklet's own timer does
+  // (issue #265 - the sheet used to sit on a static "Pairing…" with no way to
+  // tell a working pair from a stalled one).
+  const [secsLeft, setSecsLeft] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -5281,7 +5289,7 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
 
   useEffect(() => {
     function onResult (r) {
-      if (r?.pending) { setPhase('scanning'); return }
+      if (r?.pending) { setPhase('pairing'); return }
       if (r?.cancelled) { setPhase('idle'); return }
       if (r?.ok) { setResult(r); setPhase('success'); window.__pearSync?.haptic('success') }
       else { setResult(r); setPhase('error') }
@@ -5289,6 +5297,20 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
     emitter.on('seederPairResult', onResult)
     return () => emitter.off('seederPairResult', onResult)
   }, [])
+
+  // Tick once a second for as long as the worklet is on the rendezvous. Derived
+  // from a start timestamp rather than by decrementing, so a dropped or delayed
+  // tick (a backgrounded WebView, a slow render) self-corrects instead of
+  // leaving the countdown permanently behind the real deadline.
+  useEffect(() => {
+    if (phase !== 'pairing') { setSecsLeft(null); return }
+    const startedAt = Date.now()
+    setSecsLeft(secondsRemaining(0, SEEDER_PAIR_SCAN_TIMEOUT_MS))
+    const t = setInterval(() => {
+      setSecsLeft(secondsRemaining(Date.now() - startedAt, SEEDER_PAIR_SCAN_TIMEOUT_MS))
+    }, 1000)
+    return () => clearInterval(t)
+  }, [phase])
 
   const count = groupInfo.count ?? 0
   const encryptedCount = (groupInfo.groups ?? []).filter(g => g.encrypted).length
@@ -5342,13 +5364,27 @@ function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
               Done
             </button>
           </div>
-        ) : phase === 'scanning' ? (
+        ) : (phase === 'pairing' || phase === 'scanning') ? (
           <div style={{ textAlign:'center', padding:'20px 0' }}>
-            <div style={{ fontSize:14, color: colors.text.primary }}>Pairing…</div>
+            <ArrowsClockwise size={30} weight="thin" color="var(--color-accent)"
+              style={{ animation:'pearSpin 900ms linear infinite' }} />
+            <div style={{ fontSize:14, color: colors.text.primary, marginTop:10 }}>
+              {phase === 'scanning' ? 'Scanning…' : 'Pairing…'}
+            </div>
             <div style={{ fontSize:13, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
               Connecting to the blind peer. Make sure you scanned the QR currently on its
               screen — a QR that's already been used won't connect.
             </div>
+            {/* The deadline is the worklet's, not this timer's: at 0 the scan
+                itself fails and the error phase takes over, so the countdown
+                only ever reports. */}
+            {phase === 'pairing' && secsLeft != null && (
+              <div style={{ fontSize:12, color: colors.text.muted, marginTop:10 }}>
+                {secsLeft > 0
+                  ? 'Giving up in ' + formatCountdown(secsLeft)
+                  : 'Taking longer than expected…'}
+              </div>
+            )}
             <button onClick={() => { db.cancelSeederPairScan?.().catch(() => {}); setPhase('idle') }}
               style={{ background:'none', border:`1px solid ${colors.border}`, color: colors.text.muted,
                 fontFamily:FONT, padding:'8px 20px', fontSize:13, cursor:'pointer', borderRadius:8, marginTop:18 }}>
