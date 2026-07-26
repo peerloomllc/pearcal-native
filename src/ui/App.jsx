@@ -1024,9 +1024,12 @@ export default function App ({ db, notifs, sync }) {
             sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '', occ.recurrenceId ?? '', occ.title ?? '').catch(() => {})
           }
         }
-        if (_prevDate && _prevDate !== ev.date) {
-          await db.deleteEvent(_prevDate, ev.id).catch(() => {})
-        }
+        // A date change is handed to putEvent as `_prevDate` and relocates the
+        // row there. It used to be a deleteEvent(_prevDate) before the put, but
+        // deleteEvent cleans up by event id, so it tombstoned the id and wiped
+        // the reminders, private note and RSVPs of the row being written at the
+        // new date - and on a paired device the replicated delete beat the put
+        // and lost the event for good (issue #264).
         // Reminders are series-keyed (TODO #82 Phase 1) — write once per save
         // instead of per-occurrence. Use the series root id when available so
         // every occurrence resolves to the same record.
@@ -1035,11 +1038,14 @@ export default function App ({ db, notifs, sync }) {
           await db.putReminders(reminderId, reminders).catch(() => {})
         }
         for (const occ of withAuthor) {
-          await db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
+          // Only the edited occurrence moved. Series siblings keep their own
+          // dates, so they must not be told they came from _prevDate.
+          const occToPut = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+          await db.putEvent(occToPut).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
           // Cancel any pre-Phase-2 alarms scheduled under the legacy notifId
           // range so they don't double-fire alongside the new top-K alarms.
           notifs?.cancelForEvent(occ.id).catch(() => {})
-          const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+          const evToSync = occToPut
           for (const gid of occ.groups ?? []) {
             sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
           }
@@ -1276,10 +1282,14 @@ export default function App ({ db, notifs, sync }) {
         updatedByName: myName,
         updatedById: myId,
       }
-      if (sh.date !== src.date) {
-        db.deleteEvent(sh.date, sh.id).catch(() => {})
-      }
-      sync.putEvent(gid, updated).catch(e => console.warn('[SHADOW-RESYNC-ERR]', e?.message))
+      // Source moved, so the busy-time shadow follows it. Sent as `_prevDate` on
+      // the put, which mirrorToLocal turns into a relocation on every device -
+      // this one included, since apply runs on the author too. A local
+      // deleteEvent here instead would tombstone the shadow id and then block
+      // the very mirror meant to re-place it (issue #264), and peers would keep
+      // a stale shadow at the old date.
+      const shadowToSync = sh.date !== src.date ? { ...updated, _prevDate: sh.date } : updated
+      sync.putEvent(gid, shadowToSync).catch(e => console.warn('[SHADOW-RESYNC-ERR]', e?.message))
     }
   }, [events, db, sync, profile, groups])
 
