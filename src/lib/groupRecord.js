@@ -110,9 +110,37 @@ function resolvedPeerCount (members, selfId) {
   return n
 }
 
+// TODO #142 - is this record one the latch should already have been set on?
+//
+// The latch is only ever set as a side effect of a group-record write, and it
+// shipped (2026-07-23) after groups that already held keys, so those records sit
+// at `encryptionKey` present + `encrypted` false: plainly encrypted, but not
+// saying so. That is the exact state the latch exists to prevent. Lose the key
+// from such a record via one of the #123 paths and nothing distinguishes it from
+// a legacy unencrypted group - classifyKeylessGroup drops from 'certain' to a
+// soft 'likely' at best, and the device reopens the group in the clear.
+//
+// Holding a key is proof, so this needs no heuristic and no network: it is a
+// one-pass boot repair over local records.
+function needsEncryptedLatchBackfill (record) {
+  return !!(record && record.encryptionKey && !record.encrypted)
+}
+
+// The other half of the same sweep's value: a record that claims encrypted and
+// holds NO key is a device that has definitively lost it (TODO #123/#124). There
+// is nothing to repair locally - recovery needs a fresh invite or a sibling - so
+// the sweep only reports these, but reporting them at all is new. Deliberately
+// not folded into the function above: one returns work to do, this one returns a
+// thing to say.
+function isEncryptedButKeyless (record) {
+  return !!(record && record.encrypted && !record.encryptionKey)
+}
+
 module.exports = {
   resolveGroupEncryptionKey,
   resolveGroupEncryptedFlag,
   classifyKeylessGroup,
   resolvedPeerCount,
+  needsEncryptedLatchBackfill,
+  isEncryptedButKeyless,
 }
