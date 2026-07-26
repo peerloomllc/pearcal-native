@@ -1198,12 +1198,12 @@ _confirm "app.json version looks correct — proceed with bundle builds?"
 # Constitution §5 gate: the unit tests run first and a red suite aborts the
 # release via set -e, then every bundle the release ships is rebuilt.
 #
-# The bundle commands are inlined rather than delegated to `npm run verify`
-# because package.json's bundle:ui still points at the old src/ui/App.jsx
-# entrypoint with the manual JSX factory, while the release has been shipping
-# src/ui/main.jsx with automatic JSX. Calling verify here would silently change
-# the shipped UI bundle. Reconciling package.json is tracked separately; a
-# consistency pass is the wrong place to change an artifact.
+# The bundle commands stay inlined rather than delegated to `npm run verify`,
+# so what a release builds is visible right here rather than one indirection
+# away. They are no longer DIFFERENT, though: as of #132, package.json's
+# bundle:ui builds this exact command and reproduces the shipped bundle
+# byte-for-byte, and `npm run verify` no longer writes to the tracked artifact
+# at all (it builds the UI to a throwaway path purely to prove it compiles).
 # ---------------------------------------------------------------------------
 echo "==> Running unit tests..."
 npm test
