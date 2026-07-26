@@ -16,6 +16,7 @@ const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
+const { mergeSyncDelta } = require('./lib/syncDelta.js')
 const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
 const {
   resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount,
@@ -70,22 +71,6 @@ const send = (msg) => ipc.write(Buffer.from(JSON.stringify(msg) + '\n'))
 const SYNC_EMIT_DEBOUNCE_MS = 50
 const _syncEmitTimers = new Map()
 const _syncEmitPending = new Map()
-function mergeSyncDelta (a, b) {
-  if (!a) return b
-  if (!b) return a
-  const out = {}
-  if (a.fullReload || b.fullReload) out.fullReload = true
-  if (a.groupChanged || b.groupChanged) out.groupChanged = true
-  if (a.rsvpsChanged || b.rsvpsChanged) out.rsvpsChanged = true
-  const eventMap = new Map()
-  for (const e of (a.changedEvents ?? [])) eventMap.set(e.id, e)
-  for (const e of (b.changedEvents ?? [])) eventMap.set(e.id, e)
-  const removed = new Set([...(a.removedIds ?? []), ...(b.removedIds ?? [])])
-  for (const id of removed) eventMap.delete(id)
-  if (eventMap.size) out.changedEvents = [...eventMap.values()]
-  if (removed.size) out.removedIds = [...removed]
-  return out
-}
 function emitSync (groupId, delta) {
   const key = groupId == null ? '__global__' : groupId
   const incoming = delta ?? { fullReload: true }
