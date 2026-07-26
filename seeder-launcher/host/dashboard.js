@@ -259,6 +259,8 @@ const PAGE = `<!doctype html>
   @keyframes menuIn{from{opacity:0;transform:translateY(-5px) scale(.97)}to{opacity:1;transform:none}}
   @keyframes rowIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
   @keyframes livePulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.72}}
+  @keyframes pairSpin{to{transform:rotate(360deg)}}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:pairSpin .8s linear infinite;vertical-align:-3px;margin-right:7px}
   .overlay.open{animation:ovIn .18s var(--ease) both}
   .overlay.open .modal{animation:mdIn .24s var(--ease) both}
   .toast.show{animation:barIn .2s var(--ease) both}
@@ -308,7 +310,7 @@ const PAGE = `<!doctype html>
   <div class="tabs"><button class="primary" id="tab-pair">Pair a device</button><button class="ghost" id="tab-paste">Paste invite</button></div>
   <div id="pane-pair" class="stack">
     <div class="hint center">Scan in PearCal → Profile → Advanced → Blind peer → Admit a blind peer.</div>
-    <div id="qrbox" class="qr" style="display:none;text-align:center"><img id="qr" alt="pairing QR"/><div class="hint" id="pairmsg" style="margin-top:8px"></div></div>
+    <div id="qrbox" class="qr" style="display:none;text-align:center"><img id="qr" alt="pairing QR"/><div class="hint center" id="pairwait" style="margin-top:8px;display:none"><span class="spin"></span><span id="pairwaittext">Waiting for your phone…</span></div><div class="hint" id="pairmsg" style="margin-top:8px"></div></div>
     <button class="primary" id="pairbtn" style="width:100%;justify-content:center">Show pairing QR</button>
   </div>
   <div id="pane-paste" class="stack" style="display:none;align-items:stretch">
@@ -419,11 +421,33 @@ function render(r){
   }
   prevGroupIds=nextIds;
 }
+// Pairing countdown (issue #265). Driven off a deadline rather than by
+// decrementing, so a throttled background tab resumes at the right number
+// instead of lagging. The QR lifetime comes from the seeder's own ttlMs, so this
+// page never carries a second copy of the duration to drift from.
+let pairT=null,pairDeadline=0;
+function fmtLeft(s){return s<60?s+'s':Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+function stopPairCountdown(){clearInterval(pairT);pairT=null;}
+function pairTick(){const left=pairDeadline-Date.now();
+  if(left<=0){stopPairCountdown();$('pairwait').style.display='none';$('qr').style.display='none';$('pairmsg').className='hint';$('pairmsg').textContent='That QR expired - show a new one.';return;}
+  $('pairwaittext').textContent='Waiting for your phone\u2026 \u00b7 valid '+fmtLeft(Math.ceil(left/1000));}
+function startPairCountdown(ttlMs){if(!ttlMs){$('pairwait').style.display='none';return;}
+  pairDeadline=Date.now()+ttlMs;$('pairwait').style.display='';stopPairCountdown();pairTick();pairT=setInterval(pairTick,1000);}
+function resetPairPane(){stopPairCountdown();$('qrbox').style.display='none';$('qr').style.display='none';$('pairwait').style.display='none';$('pairmsg').className='hint';$('pairmsg').textContent='';}
+function closeAdd(){stopPairCountdown();$('addov').classList.remove('open');post('/api/pair/close').catch(()=>{});}
 // live push (SSE); pill = dashboard↔seeder connection
 function setLive(on){$('dot').className='dot '+(on?'good':'bad');$('live').textContent=on?'live':'offline';}
 function connect(){const es=new EventSource(q('/api/events'));
   es.addEventListener('status',e=>{setLive(true);try{render(JSON.parse(e.data));}catch(_){}} );
-  es.addEventListener('pair',e=>{try{const d=JSON.parse(e.data);$('qrbox').style.display='block';$('qr').style.display='none';$('pairmsg').textContent='✓ Paired — now seeding '+(d.enrolled||0)+' group'+((d.enrolled||0)===1?'':'s')+(d.names&&d.names.length?': '+d.names.join(', '):'');}catch(_){}} );
+  es.addEventListener('pair',e=>{try{const d=JSON.parse(e.data);
+    stopPairCountdown();$('qrbox').style.display='block';$('qr').style.display='none';$('pairwait').style.display='none';
+    const msg='Paired - now seeding '+(d.enrolled||0)+' group'+((d.enrolled||0)===1?'':'s')+(d.names&&d.names.length?': '+d.names.join(', '):'');
+    $('pairmsg').className='flash ok';$('pairmsg').textContent='\u2713 '+msg;
+    // Auto-close once the confirmation has been read, and hand the same line to
+    // the toast so it outlives the modal (issue #265 - it used to sit open on a
+    // spent QR until dismissed by hand).
+    setTimeout(()=>{if(!$('addov').classList.contains('open'))return;closeAdd();toast('\u2713 '+msg);},2400);
+  }catch(_){}} );
   es.onerror=()=>setLive(false);}
 connect();
 // copy
@@ -435,10 +459,15 @@ $('m-maint').onclick=()=>{$('menu').classList.remove('open');$('maintov').classL
 $('maint-x').onclick=()=>$('maintov').classList.remove('open');
 // add
 function setTab(t){const pair=t==='pair';$('tab-pair').className=pair?'primary':'ghost';$('tab-paste').className=pair?'ghost':'primary';$('pane-pair').style.display=pair?'flex':'none';$('pane-paste').style.display=pair?'none':'flex';}
-$('add').onclick=()=>{$('addov').classList.add('open');setTab('pair');};
-$('add-x').onclick=()=>{$('addov').classList.remove('open');post('/api/pair/close').catch(()=>{});};
+$('add').onclick=()=>{resetPairPane();$('addov').classList.add('open');setTab('pair');};
+$('add-x').onclick=()=>closeAdd();
 $('tab-pair').onclick=()=>setTab('pair');$('tab-paste').onclick=()=>setTab('paste');
-$('pairbtn').onclick=async()=>{$('pairbtn').textContent='…';try{const r=await post('/api/pair/open');if(r.qr){$('qr').src=r.qr;$('qr').style.display='';$('qrbox').style.display='block';$('pairmsg').textContent='Valid ~5 min · scan in PearCal';}else{$('qrbox').style.display='block';$('pairmsg').textContent=r.error||'could not open pairing';}}catch(e){toast(e.message);}$('pairbtn').textContent='Show pairing QR';};
+$('pairbtn').onclick=async()=>{$('pairbtn').disabled=true;$('pairbtn').innerHTML='<span class="spin"></span>Opening\u2026';$('pairmsg').className='hint';$('pairmsg').textContent='';
+  try{const r=await post('/api/pair/open');
+    if(r.qr){$('qr').src=r.qr;$('qr').style.display='';$('qrbox').style.display='block';startPairCountdown(r.ttlMs);}
+    else{$('qrbox').style.display='block';$('pairwait').style.display='none';$('pairmsg').className='flash err';$('pairmsg').textContent=r.error||'could not open pairing';}
+  }catch(e){toast(e.message);}
+  $('pairbtn').disabled=false;$('pairbtn').textContent='Show pairing QR';};
 $('enroll').onclick=async()=>{const inv=$('inv').value.trim();if(!inv)return;$('enroll').disabled=true;$('enrollmsg').textContent='';try{const r=await post('/api/enroll',{invite:inv});if(r.error){$('enrollmsg').className='flash err';$('enrollmsg').textContent=r.error;}else{$('enrollmsg').className='flash ok';$('enrollmsg').textContent='Enrolled';$('inv').value='';}}catch(e){$('enrollmsg').className='flash err';$('enrollmsg').textContent=e.message;}$('enroll').disabled=false;};
 // support
 let supTab='ln';

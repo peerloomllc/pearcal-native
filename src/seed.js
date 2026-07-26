@@ -27,6 +27,7 @@ const { parseSeedInvite } = require('./lib/seedInvite.js')
 const { buildSeederPairLink } = require('./lib/seederPairLink.js')
 const { generateRendezvousKey, seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel, SEEDER_PAIR_PROTOCOL } = require('./lib/seederPair.js')
+const { SEEDER_PAIR_TTL_MS } = require('./lib/seederPairTiming.js')
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   parseSeedEnrollBatch, buildSeedEnrollAck,
@@ -88,7 +89,6 @@ let _discoveryRefreshTimer = null
 // model). The seeder shows a QR = one-time rendezvous topic + its pubkey; the
 // phone scans it, joins the rendezvous, verifies our pubkey, and pushes its seed
 // bundle over a one-time pearcal/seeder-pair/1 channel. No copy-paste.
-const SEEDER_PAIR_TTL_MS = 5 * 60 * 1000 // rendezvous lifetime
 let _pairSession = null   // { rv, topic, topicHex, ttlTimer }
 const _activeMuxes = new Set() // live replication muxers, for opening the pair channel
 
@@ -395,7 +395,11 @@ async function openSeederPairSession () {
   if (!identity) return { error: 'seeder not booted' }
   const seederHex = b4a.toString(identity.publicKey, 'hex')
   if (_pairSession) {
-    return { link: buildSeederPairLink({ rv: _pairSession.rv, seeder: seederHex }), ttlMs: SEEDER_PAIR_TTL_MS, reused: true }
+    // Re-opening returns what is LEFT of the live session, not a fresh TTL. The
+    // dashboard counts this down (issue #265), so handing back the full 5 min
+    // here would show a QR as valid for minutes after its rendezvous had gone.
+    const left = Math.max(0, SEEDER_PAIR_TTL_MS - (Date.now() - _pairSession.openedAt))
+    return { link: buildSeederPairLink({ rv: _pairSession.rv, seeder: seederHex }), ttlMs: left, reused: true }
   }
   const rv = generateRendezvousKey()
   const topic = seederPairTopic(rv)
@@ -405,7 +409,7 @@ async function openSeederPairSession () {
   }
   const ttlTimer = setTimeout(() => closeSeederPairSession('ttl'), SEEDER_PAIR_TTL_MS)
   if (typeof ttlTimer.unref === 'function') ttlTimer.unref()
-  _pairSession = { rv, topic, topicHex, ttlTimer }
+  _pairSession = { rv, topic, topicHex, ttlTimer, openedAt: Date.now() }
   // No eager channel creation — each connection's mux.pair handler (registered
   // in trackSeederConn) reacts to the member's open once this session is live.
   console.log('[seed] pair session open — rv', rv.slice(0, 8))

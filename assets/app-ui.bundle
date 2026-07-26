@@ -12318,6 +12318,31 @@
     }
   });
 
+  // src/lib/seederPairTiming.js
+  var require_seederPairTiming = __commonJS({
+    "src/lib/seederPairTiming.js"(exports, module) {
+      "use strict";
+      var SEEDER_PAIR_SCAN_TIMEOUT_MS2 = 60 * 1e3;
+      var SEEDER_PAIR_TTL_MS = 5 * 60 * 1e3;
+      function secondsRemaining2(elapsedMs, totalMs) {
+        const total = Math.ceil(totalMs / 1e3);
+        if (!Number.isFinite(elapsedMs) || elapsedMs < 0) return total;
+        return Math.max(0, Math.min(total, Math.ceil((totalMs - elapsedMs) / 1e3)));
+      }
+      function formatCountdown2(seconds) {
+        const s12 = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+        if (s12 < 60) return s12 + "s";
+        return Math.floor(s12 / 60) + ":" + String(s12 % 60).padStart(2, "0");
+      }
+      module.exports = {
+        SEEDER_PAIR_SCAN_TIMEOUT_MS: SEEDER_PAIR_SCAN_TIMEOUT_MS2,
+        SEEDER_PAIR_TTL_MS,
+        secondsRemaining: secondsRemaining2,
+        formatCountdown: formatCountdown2
+      };
+    }
+  });
+
   // node_modules/qrcode/lib/can-promise.js
   var require_can_promise = __commonJS({
     "node_modules/qrcode/lib/can-promise.js"(exports, module) {
@@ -14625,6 +14650,7 @@
   // src/ui/App.jsx
   var import_react7 = __toESM(require_react());
   var import_react_dom = __toESM(require_react_dom());
+  var import_seederPairTiming = __toESM(require_seederPairTiming());
   var import_qrcode = __toESM(require_browser());
 
   // src/ui/fonts.js
@@ -23505,6 +23531,7 @@ ${link}`;
     const [phase, setPhase] = (0, import_react7.useState)("idle");
     const [result, setResult] = (0, import_react7.useState)(null);
     const [copied, setCopied] = (0, import_react7.useState)(false);
+    const [secsLeft, setSecsLeft] = (0, import_react7.useState)(null);
     (0, import_react7.useEffect)(() => {
       let cancelled = false;
       db2.mintSeedBundle?.().then((r11) => {
@@ -23519,7 +23546,7 @@ ${link}`;
     (0, import_react7.useEffect)(() => {
       function onResult(r11) {
         if (r11?.pending) {
-          setPhase("scanning");
+          setPhase("pairing");
           return;
         }
         if (r11?.cancelled) {
@@ -23538,6 +23565,18 @@ ${link}`;
       emitter.on("seederPairResult", onResult);
       return () => emitter.off("seederPairResult", onResult);
     }, []);
+    (0, import_react7.useEffect)(() => {
+      if (phase !== "pairing") {
+        setSecsLeft(null);
+        return;
+      }
+      const startedAt = Date.now();
+      setSecsLeft((0, import_seederPairTiming.secondsRemaining)(0, import_seederPairTiming.SEEDER_PAIR_SCAN_TIMEOUT_MS));
+      const t7 = setInterval(() => {
+        setSecsLeft((0, import_seederPairTiming.secondsRemaining)(Date.now() - startedAt, import_seederPairTiming.SEEDER_PAIR_SCAN_TIMEOUT_MS));
+      }, 1e3);
+      return () => clearInterval(t7);
+    }, [phase]);
     const count = groupInfo.count ?? 0;
     const encryptedCount = (groupInfo.groups ?? []).filter((g) => g.encrypted).length;
     const startScan = () => {
@@ -23578,9 +23617,19 @@ ${link}`;
             children: "Done"
           }
         )
-      ] }) : phase === "scanning" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", padding: "20px 0" }, children: [
-        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "Pairing\u2026" }),
+      ] }) : phase === "pairing" || phase === "scanning" ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { textAlign: "center", padding: "20px 0" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          m,
+          {
+            size: 30,
+            weight: "thin",
+            color: "var(--color-accent)",
+            style: { animation: "pearSpin 900ms linear infinite" }
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary, marginTop: 10 }, children: phase === "scanning" ? "Scanning\u2026" : "Pairing\u2026" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, marginTop: 8, lineHeight: 1.5 }, children: "Connecting to the blind peer. Make sure you scanned the QR currently on its screen \u2014 a QR that's already been used won't connect." }),
+        phase === "pairing" && secsLeft != null && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginTop: 10 }, children: secsLeft > 0 ? "Giving up in " + (0, import_seederPairTiming.formatCountdown)(secsLeft) : "Taking longer than expected\u2026" }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {

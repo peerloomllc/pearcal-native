@@ -16,6 +16,7 @@ const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
+const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
 const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
@@ -1280,7 +1281,6 @@ async function setSeederAutoFollow (pubkey, enabled) {
 // seeder acks the enroll, or after a timeout. Also marks the seeder followed so
 // future groups auto-enroll (the steady-state sync already carries them once the
 // seeder holds the group topic).
-const SEEDER_PAIR_SCAN_TIMEOUT_MS = 60 * 1000
 let _pairScan = null // { rv, topic, seederKeyHex, timer, resolve, done }
 
 function _finishPairScan (result) {
