@@ -117,13 +117,19 @@ export function useEventActions ({ db, notifs, sync, profile, events, setEvents 
           sync?.deleteEvent(gid, occ.id, occ.date, profile?.name ?? 'Someone', profile?.id ?? '', occ.recurrenceId ?? '', occ.title ?? '').catch(() => {})
         }
       }
-      if (_prevDate && _prevDate !== ev.date) {
-        await db.deleteEvent(_prevDate, ev.id).catch(() => {})
-      }
+      // A date change is handed to putEvent as `_prevDate`, which relocates the
+      // row in the worklet. It used to be a deleteEvent(_prevDate) before the
+      // put, but deleteEvent cleans up by event id, so it tombstoned the id and
+      // wiped the reminders, private note and RSVPs of the row being written at
+      // the new date. Desktop lost the reminders twice over: applyReminders
+      // re-reads them below, and by then the delete had already removed them
+      // (issue #264 - same fix as mobile src/ui/App.jsx).
       for (const occ of withAuthor) {
-        await db.putEvent(occ).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
+        // Only the edited occurrence moved; series siblings keep their own dates.
+        const occToPut = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+        await db.putEvent(occToPut).catch(e => console.warn('[PUT-EVENT-ERR]', e?.message))
         await applyReminders(occ)
-        const evToSync = (_prevDate && occ.id === ev.id) ? { ...occ, _prevDate } : occ
+        const evToSync = occToPut
         for (const gid of occ.groups ?? []) {
           sync?.putEvent(gid, evToSync).catch(e => console.warn('[SYNC-ERR]', e?.message))
         }
