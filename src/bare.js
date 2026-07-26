@@ -17,7 +17,10 @@ const {
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
 const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
-const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount } = require('./lib/groupRecord.js')
+const {
+  resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount,
+  needsEncryptedLatchBackfill, isEncryptedButKeyless,
+} = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -8129,6 +8132,31 @@ async function _doInit (dir, attempt = 0) {
         }
       }
     } catch (e) { console.warn('[REKEY] startup purge error:', e.message) }
+
+    // TODO #142: set the `encrypted` latch on every group that already holds a
+    // key. The latch (#124) is only ever written as a side effect of
+    // putGroupRecord, and it shipped after groups that were already keyed, so
+    // those records say `encrypted: false` while plainly being encrypted - the
+    // one state the latch exists to prevent. Lose the key from such a record via
+    // one of the #123 paths and it is indistinguishable from a legacy
+    // unencrypted group, so keylessGroupStatus can no longer call it damaged and
+    // the group silently reopens in the clear.
+    //
+    // Local-only, idempotent, one pass. Deliberately NOT gated on the personal
+    // base like backfillMissingGroupEncryptionKeys: a single-device install has
+    // no personal base and needs this most. Writing through putGroupRecord means
+    // the latch is applied by the same guard as every other write.
+    for (const g of groups) {
+      if (needsEncryptedLatchBackfill(g)) {
+        await putGroupRecord(g.id, g, 'latch-backfill').catch(() => {})
+        console.log('[GROUPS] set encrypted latch on keyed group:', g.id)
+      } else if (isEncryptedButKeyless(g)) {
+        // Nothing to repair locally - recovery needs a fresh invite carrying
+        // `enc=` or a keyed sibling. Say so loudly; this is a device that will
+        // otherwise sit on the wrong swarm topic forever (TODO #123).
+        console.warn('[GROUPS] group is encrypted but this device holds NO key:', g.id, '- needs a fresh invite to recover')
+      }
+    }
 
     // Startup dedup: clean up same-name duplicate members left over from
     // reinstall/wipe rejoins that occurred before the dedup logic was deployed.
