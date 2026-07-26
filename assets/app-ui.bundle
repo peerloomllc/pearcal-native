@@ -17989,20 +17989,17 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
               });
             }
           }
-          if (_prevDate && _prevDate !== ev2.date) {
-            await db2.deleteEvent(_prevDate, ev2.id).catch(() => {
-            });
-          }
           if (withAuthor.length > 0) {
             const reminderId = withAuthor[0].recurrenceId || withAuthor[0].id;
             await db2.putReminders(reminderId, reminders).catch(() => {
             });
           }
           for (const occ of withAuthor) {
-            await db2.putEvent(occ).catch((e66) => console.warn("[PUT-EVENT-ERR]", e66?.message));
+            const occToPut = _prevDate && occ.id === ev2.id ? { ...occ, _prevDate } : occ;
+            await db2.putEvent(occToPut).catch((e66) => console.warn("[PUT-EVENT-ERR]", e66?.message));
             notifs2?.cancelForEvent(occ.id).catch(() => {
             });
-            const evToSync = _prevDate && occ.id === ev2.id ? { ...occ, _prevDate } : occ;
+            const evToSync = occToPut;
             for (const gid of occ.groups ?? []) {
               sync2?.putEvent(gid, evToSync).catch((e66) => console.warn("[SYNC-ERR]", e66?.message));
             }
@@ -18201,11 +18198,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           updatedByName: myName,
           updatedById: myId
         };
-        if (sh.date !== src.date) {
-          db2.deleteEvent(sh.date, sh.id).catch(() => {
-          });
-        }
-        sync2.putEvent(gid, updated).catch((e66) => console.warn("[SHADOW-RESYNC-ERR]", e66?.message));
+        const shadowToSync = sh.date !== src.date ? { ...updated, _prevDate: sh.date } : updated;
+        sync2.putEvent(gid, shadowToSync).catch((e66) => console.warn("[SHADOW-RESYNC-ERR]", e66?.message));
       }
     }, [events, db2, sync2, profile, groups]);
     function parseGroupIdFromUrl(url) {

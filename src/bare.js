@@ -15,6 +15,7 @@ const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
 } = require('./lib/eventTombstone.js')
+const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
 const { resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
@@ -1441,13 +1442,25 @@ async function dedupeStaleEventKeys () {
 }
 
 async function putEvent (event) {
-  const { privateNote, ...rest } = event
+  const { privateNote, _prevDate, ...rest } = event
   const toStore = { ...rest, updatedAt: Date.now() }
-  await db.put(NS.events + event.date + ':' + event.id, toStore)
+  // A date change relocates one row rather than deleting an event and creating
+  // another, so the vacated key is dropped right here. Routing the caller
+  // through deleteEvent() instead is what caused issue #264: every cleanup that
+  // function performs is keyed by event id, so it tombstoned, unreminded and
+  // un-noted the row we are writing at the new date. Plan in src/lib/eventMove.js.
+  const plan = planEventWrite({ ...toStore, _prevDate })
+  await db.put(plan.putKey, toStore)
+  for (const key of plan.delKeys) await db.del(key).catch(() => {})
+  // An explicit save contradicts a tombstone for the same id. Clearing it heals
+  // events moved by a build that wrote one, whose leftover tombstone still
+  // refuses every mirror of a row that is plainly alive locally.
+  await db.del(plan.clearTombstoneKey).catch(() => {})
   if (privateNote !== undefined) await putPrivateNote(event.id, privateNote)
   // Mirror to personal base if this is a personal-scope event (no groups) and
-  // multi-device is enabled. No-op otherwise.
-  await personalBaseAppendEvent(toStore).catch(() => {})
+  // multi-device is enabled. No-op otherwise. On a move, `_prevDate` rides along
+  // so a sibling relocates its own row instead of keeping a copy at each date.
+  await personalBaseAppendEvent(personalAppendValue(toStore, plan.movedFrom)).catch(() => {})
   // Consolidation marker (TODO #11 backup-integrity): record that this device's
   // own core already carries this event version, so runPersonalConsolidation
   // won't redundantly re-publish events we authored. Personal-scope only.
