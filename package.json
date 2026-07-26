@@ -7,9 +7,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "bundle:bare": "bare-pack --linked --defer fs --defer path src/bare.js -o assets/bare-universal.bundle",
-    "bundle:ui": "esbuild src/ui/App.jsx --bundle --format=iife --global-name=PearCalApp --jsx-factory=React.createElement --jsx-fragment=React.Fragment --outfile=assets/app-ui.bundle",
+    "bundle:ui": "esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=assets/app-ui.bundle",
     "test": "node --test test/*.test.js",
-    "verify": "npm test && npm run bundle:bare && npm run bundle:ui",
+    "bundle:ui:check": "esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=node_modules/.cache/pearcal-ui-verify.bundle",
+    "verify": "npm test && npm run bundle:bare && npm run bundle:ui:check",
     "postinstall": "patch-package"
   },
   "author": "Holepunch",
