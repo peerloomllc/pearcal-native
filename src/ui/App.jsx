@@ -6786,6 +6786,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [sweepReport,       setSweepReport]       = useState(null) // dry-run audit result
   const [sweepBusy,         setSweepBusy]         = useState(false)
   const [sweepResult,       setSweepResult]       = useState(null) // post-purge summary
+  // Reset app data (TODO #118). `resetSheet` opens the chooser; `resetMode` is
+  // set once a level is picked and drives the confirmation step.
+  const [resetSheet,        setResetSheet]        = useState(false)
+  const [resetMode,         setResetMode]         = useState(null)  // 'keep' | 'full'
+  const [resetTyped,        setResetTyped]        = useState('')
+  const [resetBusy,         setResetBusy]         = useState(false)
+  const [resetError,        setResetError]        = useState(null)
+  const [resetPhrase,       setResetPhrase]       = useState(null)  // revealed recovery phrase
+  const closeResetSheetRef  = useRef(null)
 
   const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
                          : b > 1e6 ? (b/1e6).toFixed(1)+' MB'
@@ -8177,6 +8186,155 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         )}
         </div>
       </div>
+
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        RESET
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px' }}>
+          <button onClick={() => {
+            setResetMode(null); setResetTyped(''); setResetError(null); setResetPhrase(null)
+            setResetSheet(true)
+          }}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+              padding:'12px 14px', borderRadius:10, cursor:'pointer',
+              border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
+            <div style={{ flex:1, textAlign:'left' }}>
+              <div style={{ fontSize:14, color:'#d04' }}>Reset app data</div>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
+                Clear this device's calendar and groups, and optionally start over as a new user
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {resetSheet && (
+        <BottomSheet closeRef={closeResetSheetRef}
+          onClose={() => { if (!resetBusy) { setResetSheet(false); setResetMode(null) } }}>
+          <div style={{ padding:'0 20px 20px' }}>
+            <div style={{ fontSize:17, color:colors.text.primary, marginBottom:6 }}>
+              {resetMode === null ? 'Reset app data'
+                : resetMode === 'keep' ? 'Clear calendar and groups?'
+                : 'Start over as a new user?'}
+            </div>
+
+            {resetMode === null && (
+              <>
+                <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
+                  This only affects this device. Nobody else is told, nothing is removed
+                  from your groups, and other members keep everything as it is.
+                </div>
+                <button onClick={() => { setResetMode('keep'); setResetError(null) }}
+                  style={{ display:'block', width:'100%', textAlign:'left', marginBottom:10,
+                    padding:'14px 16px', borderRadius:12, cursor:'pointer',
+                    border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
+                  <div style={{ fontSize:14, color:colors.text.primary, marginBottom:3 }}>Clear calendar and groups</div>
+                  <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
+                    You stay the same person. Your events and groups are removed from this
+                    device, and you can rejoin a group with its invite link to get everything back.
+                  </div>
+                </button>
+                <button onClick={() => { setResetMode('full'); setResetError(null) }}
+                  style={{ display:'block', width:'100%', textAlign:'left',
+                    padding:'14px 16px', borderRadius:12, cursor:'pointer',
+                    border:'1px solid #d04', background:'transparent', fontFamily:FONT }}>
+                  <div style={{ fontSize:14, color:'#d04', marginBottom:3 }}>Start over as a new user</div>
+                  <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
+                    Everything above, and your recovery phrase is deleted too. This device
+                    becomes a brand new user. Save your phrase first if you ever want to come back.
+                  </div>
+                </button>
+              </>
+            )}
+
+            {resetMode === 'keep' && (
+              <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
+                Your events and groups will be removed from this device. You stay signed in
+                as yourself, so you can rejoin any group with its invite link and your
+                calendar comes back from the other members.
+              </div>
+            )}
+
+            {resetMode === 'full' && (
+              <>
+                <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:14 }}>
+                  Your recovery phrase will be deleted from this device. Without it you cannot
+                  get back in as yourself, and anything only this device was holding is gone
+                  for good.
+                </div>
+                {!resetPhrase ? (
+                  <button onClick={async () => {
+                    try { setResetPhrase(await sync.revealMnemonic() || '(no phrase stored)') }
+                    catch (e) { setResetError(e.message) }
+                  }}
+                    style={{ width:'100%', padding:'11px 16px', borderRadius:10, marginBottom:14,
+                      border:`1px solid ${colors.border}`, background:'transparent',
+                      color:colors.text.primary, fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
+                    Show my recovery phrase first
+                  </button>
+                ) : (
+                  <div style={{ padding:'12px 14px', borderRadius:10, marginBottom:14,
+                    border:`1px solid ${colors.border}`, background:colors.surface.card }}>
+                    <div style={{ fontSize:11, color:colors.text.muted, marginBottom:6 }}>
+                      Write this down somewhere safe
+                    </div>
+                    <div style={{ fontSize:13, color:colors.text.primary, lineHeight:1.6, wordBreak:'break-word' }}>
+                      {resetPhrase}
+                    </div>
+                  </div>
+                )}
+                <div style={{ fontSize:12, color:colors.text.muted, marginBottom:6 }}>
+                  Type RESET to confirm
+                </div>
+                <input value={resetTyped} onChange={e => setResetTyped(e.target.value)}
+                  autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                  style={{ width:'100%', boxSizing:'border-box', padding:'11px 14px', borderRadius:10,
+                    marginBottom:14, border:`1px solid ${colors.border}`, background:'transparent',
+                    color:colors.text.primary, fontFamily:FONT, fontSize:14 }} />
+              </>
+            )}
+
+            {resetError && (
+              <div style={{ fontSize:12, color:'#d04', lineHeight:1.5, marginBottom:12 }}>
+                {resetError}
+              </div>
+            )}
+
+            {resetMode !== null && (
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={() => { setResetMode(null); setResetTyped(''); setResetError(null) }}
+                  disabled={resetBusy}
+                  style={{ flex:1, padding:'12px 16px', borderRadius:10, border:`1px solid ${colors.border}`,
+                    background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:14,
+                    cursor: resetBusy ? 'wait' : 'pointer', opacity: resetBusy ? 0.5 : 1 }}>
+                  Back
+                </button>
+                <button data-haptic="medium"
+                  disabled={resetBusy || (resetMode === 'full' && resetTyped.trim().toUpperCase() !== 'RESET')}
+                  onClick={async () => {
+                    window.__pearSync?.haptic('medium')
+                    setResetBusy(true); setResetError(null)
+                    try {
+                      // The shell reloads (mobile) or relaunches (desktop) when
+                      // this lands, so there is no success state to render here.
+                      await sync.resetAppData({ keepIdentity: resetMode === 'keep' })
+                    } catch (e) {
+                      setResetError(e.message)
+                      setResetBusy(false)
+                    }
+                  }}
+                  style={{ flex:1, padding:'12px 16px', borderRadius:10, border:'none',
+                    background:'#d04', color:'#fff', fontFamily:FONT, fontSize:14,
+                    cursor: resetBusy ? 'wait' : 'pointer',
+                    opacity: (resetBusy || (resetMode === 'full' && resetTyped.trim().toUpperCase() !== 'RESET')) ? 0.5 : 1 }}>
+                  {resetBusy ? 'Resetting…' : resetMode === 'keep' ? 'Clear it' : 'Delete everything'}
+                </button>
+              </div>
+            )}
+          </div>
+        </BottomSheet>
+      )}
 
       {icsImport && (
         <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}

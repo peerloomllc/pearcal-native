@@ -188,6 +188,28 @@ async function handleNativeRequest (msg: any) {
         result = true
         break
       }
+      case 'deleteMnemonic': {
+        // Full reset (TODO #118). The PLATFORM copy has to go too, not just the
+        // local one: `hasMnemonic` above auto-restores from iCloud/Drive backup
+        // before reporting "no mnemonic", so deleting only the secure-store
+        // entry would hand the same identity straight back on the next boot and
+        // make a full reset no reset at all.
+        await SecureStore.deleteItemAsync(MNEMONIC_KEY).catch(() => {})
+        if (await platformIsAvailable()) {
+          await platformDeleteMnemonic()
+          // Confirm by READ-BACK rather than by the return value. The two
+          // backends disagree about what they return: iOS resolves true for
+          // "deleted" and for "was not there", while Android resolves false
+          // when Play Services is missing - so a boolean tells us nothing
+          // reliable. What matters is only whether the phrase is still
+          // recoverable, and reading it back answers exactly that.
+          if (await platformReadMnemonic()) {
+            throw new Error('the backed-up recovery phrase could not be removed')
+          }
+        }
+        result = true
+        break
+      }
       default:
         throw new Error('Unknown native request: ' + method)
     }
@@ -760,6 +782,28 @@ export default function Root () {
       })
 
       onEvent('bareReady', () => sendToWorklet({ method: 'init', dataDir, platform: Platform.OS }))
+      onEvent('appDataReset', (data: any) => {
+        // The worklet has already wiped the data and re-init'd itself (TODO
+        // #118). Two things it cannot do from in there, so they land here.
+        //
+        // 1. Cancel the scheduled OS alarms. Reminders live in AlarmManager /
+        //    UNUserNotificationCenter, NOT in the database, so a wipe leaves
+        //    them armed and the user keeps getting reminders for events that
+        //    no longer exist. Same fixed ID range reconcileSchedule owns, so
+        //    this is the cancel half of that loop.
+        // 2. Reload the WebView. It still holds the previous user's React
+        //    state - profile, groups, the open settings sheet - and rendering
+        //    that over an empty database is how you get a UI insisting on
+        //    groups that are gone.
+        ;(async () => {
+          for (let i = 0; i < TOPK_SCHEDULER_SLOTS; i++) {
+            await PearCalNotifications?.cancel?.(TOPK_SCHEDULER_BASE + i).catch(() => {})
+          }
+          console.log('[reset] cleared scheduled reminders, reloading WebView (keepIdentity=' +
+            !!data?.keepIdentity + ')')
+          webViewRef.current?.reload()
+        })().catch(() => {})
+      })
       onEvent('widgetCache', (payload: any) => {
         const mod = (NativeModules as any).WidgetCache
         if (mod?.writeCache) mod.writeCache(JSON.stringify(payload)).catch?.(() => {})

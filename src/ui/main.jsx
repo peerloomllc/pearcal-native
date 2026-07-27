@@ -212,6 +212,7 @@ const sync = {
   storageBreakdown: () => window.__pearDB.call('storageBreakdown'),
   analyzeStorage: (opts) => window.__pearDB.call('analyzeStorage', opts),
   rebuildLocalDb: () => window.__pearDB.call('rebuildLocalDb'),
+  resetAppData: (opts) => window.__pearDB.call('resetAppData', opts),
   rekeyGroup:   (id) => window.__pearDB.call('rekeyGroup', id),
   commitRekey:  (id) => window.__pearDB.call('commitRekey', id),
   purgeMigratedGroup:     (id, opts) => window.__pearDB.call('purgeMigratedGroup', id, opts),

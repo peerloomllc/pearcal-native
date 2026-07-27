@@ -55,6 +55,17 @@ const handlers = {
     writeMnemonic(value)
     return true
   },
+  deleteMnemonic () {
+    // Full reset (TODO #118). There is no platform backup on desktop, so the
+    // single encrypted file IS the identity - unlink it and the next boot mints
+    // a new one. `force` so an already-absent file is a success, matching the
+    // mobile handler and keeping a repeat reset idempotent.
+    fs.rmSync(mnemonicPath(), { force: true })
+    if (fs.existsSync(mnemonicPath())) {
+      throw new Error('the recovery phrase file could not be removed')
+    }
+    return true
+  },
   // No platform backup story yet on desktop — surfaces in the UI as
   // "Backup not available" which matches reality (no Google Drive / iCloud
   // hookup). Phase E5 (or later) can revisit if a desktop backup target

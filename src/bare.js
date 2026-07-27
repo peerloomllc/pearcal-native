@@ -44,6 +44,7 @@ const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
+const { resetPlan } = require('./lib/resetPlan.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -122,7 +123,14 @@ let _useRelay = true
 let _relayOffers = 0
 let _dbReady = false
 let _dbReadyResolve = null
-const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+// `let`, not `const`: resetAppData tears the DB down and rebuilds it, and every
+// dispatch gates on this promise. Re-arming it makes calls that land mid-reset
+// WAIT for the fresh DB instead of hitting `db === null` and throwing.
+let _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+function armDbReadyGate () {
+  _dbReady = false
+  _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+}
 
 // ── Reliability helpers (proposal 2026-07-11-reliability-helpers) ─────────────
 // safeAppend bounds every append so a wedged/forked base can't freeze the serial
@@ -411,6 +419,7 @@ async function handle (method, args) {
     case 'cancelPairing':     return cancelPairing()
     case 'consumePairLink':   return consumePairLink(args[0])
     case 'getPairingStatus':  return getPairingStatus()
+    case 'resetAppData':   return resetAppData(args[0] ?? {})
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -7245,6 +7254,7 @@ function stopRealtimeSyncTick () {
 // re-init branch (which calls shutdown()). Two concurrent runs would double-close
 // swarm/store/db and can hang. Share one in-flight run instead.
 let _shuttingDown = null
+let _resetting = false
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
@@ -7264,6 +7274,142 @@ async function _doShutdown () {
   } catch(e) {
     console.error('Shutdown error:', e.message)
   }
+}
+
+// ── Reset app data (TODO #118; proposal 2026-07-18-in-app-reset-data) ────────
+// Wipe this device's PearCal data and come back up clean, without the user
+// having to find a data directory (undiscoverable on desktop) or
+// uninstall/reinstall (the only route on iOS today).
+//
+// Two levels:
+//   keepIdentity: true   drop the calendar DB + group store, keep the mnemonic.
+//                        Same user, same device identity; groups can be
+//                        re-joined and re-sync from peers or a blind seeder.
+//   keepIdentity: false  also delete the mnemonic, so the next boot mints a
+//                        fresh identity and this device is a new user.
+//
+// LOCAL ONLY. Nothing is broadcast: no group control message, no leave, no
+// writer revocation. To every peer this looks exactly like an uninstall, which
+// is deliberate - see the proposal's Out of scope. That is also why it needs no
+// ownerGuard-style authentication (project_self_destruct_guards): the
+// destructive ops that need authenticating are the ones that travel.
+//
+// ORDER IS LOAD-BEARING: quiesce -> close every handle -> delete -> re-open.
+// Deleting cores out from under a live Hypercore/RocksDB handle is the
+// not-fsynced loss class in project_hyperbee_force_stop_loss, and on Windows an
+// open handle makes the unlink fail outright rather than corrupt quietly.
+async function resetAppData (opts = {}) {
+  const { keepIdentity, deleteIdentity, subpaths } = resetPlan(opts)
+  if (!dataDir) throw new Error('resetAppData: not initialised')
+  if (_resetting) throw new Error('resetAppData: already running')
+  _resetting = true
+
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load, which fails under Node (Electron desktop). Same shim rebuildLocalDb
+  // uses; both APIs share the rm/mkdir surface needed here.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+
+  try {
+    console.log('[reset] starting, keepIdentity=' + keepIdentity)
+
+    // Make concurrent IPC calls wait for the rebuilt DB rather than race a null
+    // one. Armed BEFORE the teardown so nothing slips through the gap.
+    armDbReadyGate()
+
+    await shutdown()
+    resetInMemoryState()
+
+    // Delete the data roots individually rather than the whole dataDir: on
+    // mobile the shell created it and holds the path, and on desktop siblings
+    // like skipped-updates.json live beside them and are not ours to destroy.
+    let removed = 0
+    for (const sub of subpaths) {
+      try {
+        await fs.promises.rm(dataDir + '/' + sub, { recursive: true, force: true })
+        removed++
+      } catch (e) {
+        console.warn('[reset] could not remove ' + sub + ':', e.message)
+      }
+    }
+
+    if (deleteIdentity) {
+      // Must delete the PLATFORM backup too, not just the local copy. iOS
+      // Keychain/Google Drive backup is read back by `hasMnemonic` on the very
+      // next boot, so deleting only the local secure-store entry would silently
+      // restore the identity and make a "full reset" no reset at all.
+      await nativeRequest('deleteMnemonic').catch(e => {
+        // Fail loudly: a full reset that kept the identity is a promise broken
+        // to the user, not a degraded success.
+        throw new Error('resetAppData: could not delete the identity: ' + e.message)
+      })
+      _identity = null
+    }
+
+    // Re-open against the now-empty directory. Hypercore/Corestore recreate
+    // their trees, so the app comes back as a first-boot install: on a full
+    // reset ensureIdentity() mints a new mnemonic on demand.
+    await init(dataDir, { platform: _platform })
+
+    console.log('[reset] complete, ' + removed + ' path(s) removed')
+
+    // Tell the shell to finish the job in the way only it can: the WebView
+    // still holds the previous user's React state, and on desktop there is
+    // Electron session storage the worklet cannot touch. Emitted rather than
+    // returned so the shell acts even if the caller has gone away.
+    send({ type: 'event', event: 'appDataReset', data: { keepIdentity } })
+    return { ok: true, keepIdentity }
+  } finally {
+    _resetting = false
+  }
+}
+
+// Drop every module-level cache that outlived the DB, so nothing from the old
+// install can leak into the new one. shutdown() already clears `bases` and
+// `pendingMemberLeaves` and stops the sync tick; everything else is here.
+//
+// Missing one is not cosmetic. A stale entry in `notifiedMemberJoins` would
+// suppress real notifications for the new install, and a stale `_writerProofs`
+// entry would have the new identity trusting a proof it never made.
+function resetInMemoryState () {
+  for (const t of _syncEmitTimers.values()) { try { clearTimeout(t) } catch (e) {} }
+  _syncEmitTimers.clear()
+  _syncEmitPending.clear()
+  migratedGroups.clear()
+  _writerProofs.clear()
+  _nativePending.clear()
+  _pairScanMuxes.clear()
+  pendingWriterAnnouncements.clear()
+  activeChannels.clear()
+  activeChannelPubkeys.clear()
+  seedEnrollChannels.clear()
+  pendingGroupDeletes.clear()
+  notifiedMemberJoins.clear()
+  notifiedRsvps.clear()
+  _joinInFlight.clear()
+  _pairChannels.clear()
+
+  // Timer-bearing maps: clear the handle before dropping the entry, or the
+  // callback still fires against the new install.
+  for (const t of recentSeriesNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentSeriesNotifs.clear()
+  for (const t of recentDeleteNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentDeleteNotifs.clear()
+  for (const t of recentPutNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentPutNotifs.clear()
+  for (const v of rsvpCoalesce.values()) { try { clearTimeout(v?.timeout) } catch (e) {} }
+  rsvpCoalesce.clear()
+  for (const t of _joinWatchdogs.values()) { try { clearTimeout(t) } catch (e) {} }
+  _joinWatchdogs.clear()
+
+  if (_pairScan?.timer) { try { clearTimeout(_pairScan.timer) } catch (e) {} }
+  _pairScan = null
+  _pairSession = null
+  if (_widgetRefreshTimer) { try { clearTimeout(_widgetRefreshTimer) } catch (e) {} }
+  _widgetRefreshTimer = null
+  _lastConsolidationTs = 0
+  _relayOffers = 0
+  _lastConflictAt = 0
+  rebuildBusy = false
 }
 
 // ── Storage retention (TODO #112; backport of @peerloom/core engine.retain) ──

@@ -6,7 +6,7 @@
 
 const fs = require('fs')
 const path = require('path')
-const { shell, clipboard, dialog, app, Notification } = require('electron')
+const { shell, clipboard, dialog, app, session, Notification } = require('electron')
 
 // Notifications — mirrors the renderer-side scheduling we did under Pear.
 // Lives in main now so setTimeout survives a window-hide-to-tray.
@@ -200,8 +200,42 @@ function handleBareEvent (event, data, getMainWindow) {
     case 'scheduleMorningDigest': _scheduleMorningDigest(data, getMainWindow); return true
     case 'cancelMorningDigest': _cancelMorningDigest(); return true
     case 'syncNotify': _handleSyncNotify(data, getMainWindow); return true
+    case 'appDataReset': _handleAppDataReset(data); return true
   }
   return false
+}
+
+// Finish a reset (TODO #118). The worklet has already wiped its data and
+// re-init'd, but two things live outside it on desktop:
+//
+//   - Electron session storage (cookies, localStorage, IndexedDB) holds the
+//     renderer's own state. Left behind, the previous user's UI state renders
+//     over an empty database.
+//   - In-memory reminder timers (_reminders) are setTimeout handles that fire
+//     regardless of what the database now says. Relaunching drops them with
+//     the process, which is exactly what we want.
+//
+// A relaunch, rather than a reload, because it is the one action that
+// guarantees every one of those is gone - and unlike mobile there is no OS
+// alarm to survive it.
+function _handleAppDataReset (data) {
+  const keepIdentity = !!(data && data.keepIdentity)
+  console.log('[reset] wiping session storage and relaunching (keepIdentity=' + keepIdentity + ')')
+  const finish = () => {
+    app.relaunch()
+    app.exit(0)
+  }
+  try {
+    session.defaultSession.clearStorageData()
+      .then(finish)
+      // Relaunch even if the clear fails: coming back up on a wiped database
+      // with stale cookies beats staying up on a half-reset app with no way
+      // out but the process manager.
+      .catch(e => { console.warn('[reset] clearStorageData failed:', e && e.message); finish() })
+  } catch (e) {
+    console.warn('[reset] clearStorageData threw:', e && e.message)
+    finish()
+  }
 }
 
 // Returns true if `method` was handled here (and the optional result), false
