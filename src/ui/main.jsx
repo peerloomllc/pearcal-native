@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App, { emitter } from './App.jsx'
 import { installFixtures } from './screenshot-fixtures.js'
 import { injectGlobalStyles } from './theme.js'
+import { drainEarlyInvites } from '../lib/inviteDelivery.js'
 
 // Tokens + reset go in before the first render, so nothing paints unthemed.
 // (:root is the dark palette, so no data-theme attribute is needed to start —
@@ -297,6 +298,15 @@ window.__pearHandleInvite = function(url) {
 window.__pearDrainInvites = function() {
   return __pearInviteBuffer.splice(0)
 }
+
+// TODO #148 - and the race one step EARLIER than the buffer above. The shell
+// injects the invite as soon as the WebView's DOM is ready, which can be before
+// this bundle has run at all; the old injection was guarded by
+// `if (window.__pearHandleInvite)` and so silently threw the URL away, after
+// native had already forgotten it. The shell now parks such invites on
+// `window.__pearEarlyInvites` instead. Drain them here, immediately after the
+// handler exists, so they land in the buffer above and reach <App> on mount.
+drainEarlyInvites(window, window.__pearHandleInvite)
 
 // pearcal://pair URLs go straight to bare's consumePairLink, NOT through the
 // join-sheet flow — same split mobile does in app/index.tsx:434-439. The
