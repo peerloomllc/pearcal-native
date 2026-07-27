@@ -10,8 +10,44 @@
 // local group-record write through a single guard. This is that guard's pure
 // decision, split out so it is unit-testable (bare.js touches BareKit/Pear at
 // load and cannot be required from tests). Same split as ownerGuard.js.
+//
+// A FIFTH site was found on 2026-07-26 and it is the one that actually fired in
+// the wild - see isGroupRecordKey below for why the others' audit could not see
+// it.
 
 'use strict'
+
+// The local namespace group records live in. Must match bare.js's `NS.groups`;
+// the source-scan test in test/groupWriteChokePoint.test.js asserts it does.
+const GROUP_KEY_PREFIX = 'groups:'
+
+// Is this local-DB key a group record, i.e. one that MUST be written through
+// putGroupRecord rather than db.put?
+//
+// This exists because of how the fifth key-dropping site hid. The other four
+// dispatched on a typed op (`type === 'group'`) or built their key as
+// `NS.groups + id`, so the PR #231 audit found them by searching for
+// `db.put(NS.groups`. resyncGroup instead walks a raw Autobase view read-stream
+// and dispatches on the KEY PREFIX, so its write reads `db.put(key, merged)` -
+// textually invisible to that search, never tagged, and therefore never able to
+// log a BLOCKED line. It was reached on every join and on the TODO #124 keyless
+// repair, so it destroyed the key moments after the repair restored it.
+//
+// `groupMembers:` is a different namespace that shares the `group` stem and
+// diverges at the sixth character, so it does not match and needs no special
+// case. There is a test for exactly that, because it is the kind of thing a
+// later prefix change would break silently.
+function isGroupRecordKey (key) {
+  return typeof key === 'string' && key.startsWith(GROUP_KEY_PREFIX)
+}
+
+// The group id inside a group-record key. Returns null for anything that is not
+// one, so a caller cannot accidentally address the whole namespace.
+function groupIdFromRecordKey (key) {
+  if (!isGroupRecordKey(key)) return null
+  const id = key.slice(GROUP_KEY_PREFIX.length)
+  return id.length ? id : null
+}
 
 // Decide which encryptionKey a group-record write should actually persist.
 //
@@ -137,6 +173,9 @@ function isEncryptedButKeyless (record) {
 }
 
 module.exports = {
+  GROUP_KEY_PREFIX,
+  isGroupRecordKey,
+  groupIdFromRecordKey,
   resolveGroupEncryptionKey,
   resolveGroupEncryptedFlag,
   classifyKeylessGroup,
