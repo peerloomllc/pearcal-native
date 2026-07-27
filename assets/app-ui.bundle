@@ -27688,6 +27688,18 @@ ${link}`;
               resetMode === "keep" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Your events and groups will be removed from this device. You stay signed in as yourself and keep your name, so you can rejoin any group with its invite link and your calendar comes back from the other members. Nobody else is told, and you stay in their member lists." }),
               resetMode === "full" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "Your recovery phrase will be deleted from this device. Without it you cannot get back in as yourself, and anything only this device was holding is gone for good. You will also leave every group you are in, and any group you run is handed to another member or deleted if nobody else is in it." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
+                  fontSize: 12,
+                  color: colors.text.muted,
+                  lineHeight: 1.55,
+                  marginBottom: 14,
+                  padding: "11px 13px",
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`
+                }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.primary }, children: "One thing to know:" }),
+                  " leaving only reaches people who have the app open at that moment. Anyone offline may still see you in their group's member list, and once your data is gone there is no way to tell them. If that matters, leave your groups by hand first, while the other members are around."
+                ] }),
                 !resetPhrase ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "button",
                   {

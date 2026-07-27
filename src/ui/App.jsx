@@ -8267,6 +8267,19 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   good. You will also leave every group you are in, and any group you run is
                   handed to another member or deleted if nobody else is in it.
                 </div>
+                {/* The departure only reaches peers connected at that moment: the
+                    durable pending-leave record lives in the database the reset is
+                    about to delete, so there is no second attempt. Say so plainly
+                    here rather than let a member discover it by still seeing a
+                    person who left. */}
+                <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.55, marginBottom:14,
+                  padding:'11px 13px', borderRadius:10, border:`1px solid ${colors.border}` }}>
+                  <span style={{ color:colors.text.primary }}>One thing to know:</span> leaving
+                  only reaches people who have the app open at that moment. Anyone offline may
+                  still see you in their group's member list, and once your data is gone there is
+                  no way to tell them. If that matters, leave your groups by hand first, while
+                  the other members are around.
+                </div>
                 {!resetPhrase ? (
                   <button onClick={async () => {
                     // `db`, not `sync` - revealMnemonic lives on the DB surface,
