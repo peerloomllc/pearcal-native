@@ -25,7 +25,7 @@ const {
   isGroupRecordKey, groupIdFromRecordKey,
 } = require('./lib/groupRecord.js')
 const { summariseSeederCoverage, seederCoverageLabel } = require('./lib/blindPeerListing.js')
-const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
+const { raceAppend, withTimeout, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
 const { shouldIgnoreSelfMemberLeft, canClaimOwnership, shouldHonorGroupDeleted } = require('./lib/ownerGuard.js')
@@ -7255,6 +7255,10 @@ function stopRealtimeSyncTick () {
 // swarm/store/db and can hang. Share one in-flight run instead.
 let _shuttingDown = null
 let _resetting = false
+// How long the pre-wipe group departure gets before the reset stops waiting.
+// Generous enough for a handful of Autobase appends plus their broadcasts, far
+// short of leaving a user stuck on a screen they asked to destroy.
+const RESET_DEPART_TIMEOUT_MS = 20 * 1000
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
@@ -7334,6 +7338,30 @@ async function resetAppData (opts = {}) {
       }
     }
 
+    // Full reset only: say goodbye while the swarm and the bases are still up.
+    // Must run BEFORE the teardown - after it there is no base to append to and
+    // no connection to broadcast over.
+    //
+    // Time-bounded because the reset must complete either way. A user who asked
+    // to wipe their device cannot be left staring at a spinner because one group
+    // has a wedged Autobase or a peer that will not answer; the departure is a
+    // courtesy to the other members, not a precondition of the wipe.
+    let departed = null
+    if (deleteIdentity) {
+      // withTimeout never throws: it reports {value, timedOut, error} so a
+      // wedged departure is a logged fact rather than a failed reset.
+      const r = await withTimeout(departAllGroupsForReset(), RESET_DEPART_TIMEOUT_MS)
+      departed = r.timedOut ? { timedOut: true } : (r.error ? { error: String(r.error?.message ?? r.error) } : r.value)
+      if (r.timedOut) {
+        console.warn('[reset] departure timed out after ' + RESET_DEPART_TIMEOUT_MS +
+          'ms - wiping anyway; peers may still list this member')
+      } else if (r.error) {
+        console.warn('[reset] departure failed:', r.error?.message ?? r.error)
+      } else {
+        console.log('[reset] departed groups:', JSON.stringify(r.value))
+      }
+    }
+
     // Make concurrent IPC calls wait for the rebuilt DB rather than race a null
     // one. Armed BEFORE the teardown so nothing slips through the gap.
     armDbReadyGate()
@@ -7391,10 +7419,74 @@ async function resetAppData (opts = {}) {
     // Electron session storage the worklet cannot touch. Emitted rather than
     // returned so the shell acts even if the caller has gone away.
     send({ type: 'event', event: 'appDataReset', data: { keepIdentity } })
-    return { ok: true, keepIdentity }
+    // `departed` is reported back so the outcome is observable rather than
+    // buried in a log line: how many groups were left, handed on or deleted,
+    // and whether the attempt timed out. Null on a keep-identity reset, which
+    // deliberately departs nothing.
+    return { ok: true, keepIdentity, departed }
   } finally {
     _resetting = false
   }
+}
+
+// Best-effort departure from every group, run ONLY before a full reset.
+//
+// Decided on device 2026-07-27 after a keep-identity reset left a ghost member
+// in the owner's list. The two levels get different treatment on purpose:
+//
+//   keep identity  stays LOCAL. Its whole promise is that you rejoin with the
+//                  invite link and get everything back as yourself, and leaving
+//                  would orphan your RSVPs and your entries in invitee lists.
+//   full reset     departs. That identity is being destroyed and can never come
+//                  back, so a member record for it is dead weight in every other
+//                  member's list forever.
+//
+// BEST-EFFORT, and the limit is structural rather than lazy: syncMemberLeft
+// records a durable `pendingLeave:` row so an offline peer is told on its next
+// connect, but a full reset deletes the very database holding that row. So the
+// departure reaches peers connected RIGHT NOW and no others. It is still worth
+// doing - the common case is a live group - but it cannot be a guarantee, and
+// nothing here is allowed to fail or stall the reset on account of it.
+async function departAllGroupsForReset () {
+  const stats = { left: 0, transferred: 0, deleted: 0, failed: 0 }
+  const profile = await getProfile().catch(() => null)
+  const me = profile?.id
+  if (!me) return stats
+
+  const groups = await listGroups().catch(() => [])
+  for (const g of groups) {
+    try {
+      // Members carry no joinedAt, so array order is the proxy for join order:
+      // the owner is first and joiners are appended. Imperfect, but it beats
+      // picking at random, and the alternative (leaving the group ownerless)
+      // strands it behind the 30-day claimOwnership path.
+      const others = (g.members ?? []).filter(m => m && m.id !== me)
+
+      if (g.ownerId === me) {
+        if (others.length === 0) {
+          // Nobody to hand it to. An ownerless, memberless group is a husk, so
+          // delete it properly - that also tells any blind seeder to stop
+          // holding data for it.
+          await syncDeleteGroup(g.id)
+          stats.deleted++
+          continue
+        }
+        await transferOwnership(g.id, others[0].id)
+        stats.transferred++
+      }
+
+      // Now depart as a plain member, the same two steps the UI's Leave does:
+      // rewrite the local record without us, then broadcast the departure.
+      await putGroup({ ...g, members: others, updatedAt: Date.now() }).catch(() => {})
+      await syncMemberLeft(g.id, me)
+      stats.left++
+    } catch (e) {
+      // One wedged group must not strand the user in an app they asked to wipe.
+      stats.failed++
+      console.warn('[reset] could not depart ' + g?.id + ':', e?.message ?? e)
+    }
+  }
+  return stats
 }
 
 // Drop every module-level cache that outlived the DB, so nothing from the old

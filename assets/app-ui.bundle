@@ -27634,7 +27634,7 @@ ${link}`;
             children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 20px" }, children: [
               /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary, marginBottom: 6 }, children: resetMode === null ? "Reset app data" : resetMode === "keep" ? "Clear calendar and groups?" : "Start over as a new user?" }),
               resetMode === null && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "This only affects this device. Nobody else is told, nothing is removed from your groups, and other members keep everything as it is." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Both options clear this device. Only the second one tells anybody else." }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
                   "button",
                   {
@@ -27680,14 +27680,14 @@ ${link}`;
                     },
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "#d04", marginBottom: 3 }, children: "Start over as a new user" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "Everything above, and your recovery phrase is deleted too. This device becomes a brand new user. Save your phrase first if you ever want to come back." })
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "Everything above, and your recovery phrase is deleted too. This device becomes a brand new user. You also leave every group, so you stop showing in their member lists. Groups you run are handed to another member, or deleted if you are the only one in them. Save your phrase first if you ever want to come back." })
                     ]
                   }
                 )
               ] }),
-              resetMode === "keep" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Your events and groups will be removed from this device. You stay signed in as yourself, so you can rejoin any group with its invite link and your calendar comes back from the other members." }),
+              resetMode === "keep" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Your events and groups will be removed from this device. You stay signed in as yourself and keep your name, so you can rejoin any group with its invite link and your calendar comes back from the other members. Nobody else is told, and you stay in their member lists." }),
               resetMode === "full" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "Your recovery phrase will be deleted from this device. Without it you cannot get back in as yourself, and anything only this device was holding is gone for good." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "Your recovery phrase will be deleted from this device. Without it you cannot get back in as yourself, and anything only this device was holding is gone for good. You will also leave every group you are in, and any group you run is handed to another member or deleted if nobody else is in it." }),
                 !resetPhrase ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
                   "button",
                   {

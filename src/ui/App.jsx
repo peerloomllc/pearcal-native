@@ -8222,8 +8222,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             {resetMode === null && (
               <>
                 <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
-                  This only affects this device. Nobody else is told, nothing is removed
-                  from your groups, and other members keep everything as it is.
+                  Both options clear this device. Only the second one tells anybody else.
                 </div>
                 <button onClick={() => { setResetMode('keep'); setResetError(null) }}
                   style={{ display:'block', width:'100%', textAlign:'left', marginBottom:10,
@@ -8242,7 +8241,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   <div style={{ fontSize:14, color:'#d04', marginBottom:3 }}>Start over as a new user</div>
                   <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
                     Everything above, and your recovery phrase is deleted too. This device
-                    becomes a brand new user. Save your phrase first if you ever want to come back.
+                    becomes a brand new user. You also leave every group, so you stop showing in
+                    their member lists. Groups you run are handed to another member, or deleted
+                    if you are the only one in them. Save your phrase first if you ever want to
+                    come back.
                   </div>
                 </button>
               </>
@@ -8251,8 +8253,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             {resetMode === 'keep' && (
               <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
                 Your events and groups will be removed from this device. You stay signed in
-                as yourself, so you can rejoin any group with its invite link and your
-                calendar comes back from the other members.
+                as yourself and keep your name, so you can rejoin any group with its invite
+                link and your calendar comes back from the other members. Nobody else is told,
+                and you stay in their member lists.
               </div>
             )}
 
@@ -8260,8 +8263,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               <>
                 <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:14 }}>
                   Your recovery phrase will be deleted from this device. Without it you cannot
-                  get back in as yourself, and anything only this device was holding is gone
-                  for good.
+                  get back in as yourself, and anything only this device was holding is gone for
+                  good. You will also leave every group you are in, and any group you run is
+                  handed to another member or deleted if nobody else is in it.
                 </div>
                 {!resetPhrase ? (
                   <button onClick={async () => {
