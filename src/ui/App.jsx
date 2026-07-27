@@ -7729,9 +7729,20 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
                       {String(bp.pubkey).slice(0, 16)}…
                     </div>
-                    <div style={{ fontSize:11, color: colors.text.muted }}>
-                      Seeding {bp.groupCount ?? 0} group{(bp.groupCount ?? 0) === 1 ? '' : 's'}
-                    </div>
+                    {/* TODO #125 - `groupCount` was the number cached when this
+                        seeder was paired and never revisited, so it could claim
+                        "Seeding 2 groups" for a seeder serving one group this
+                        device is not even in. bare.js now counts live coverage on
+                        every read and hands the wording over with it. A null
+                        label means the question has no useful answer - this
+                        device has no groups - so nothing is shown rather than
+                        accusing the seeder of serving none of them. */}
+                    {bp.coverageLabel && (
+                      <div style={{ fontSize:11,
+                        color: bp.coverageLabel.tone === 'warn' ? '#e0a458' : colors.text.muted }}>
+                        {bp.coverageLabel.text}
+                      </div>
+                    )}
                   </div>
                   {confirming ? (
                     <div style={{ display:'flex', gap:6, flexShrink:0 }}>

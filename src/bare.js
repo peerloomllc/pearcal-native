@@ -24,6 +24,7 @@ const {
   needsEncryptedLatchBackfill, isEncryptedButKeyless,
   isGroupRecordKey, groupIdFromRecordKey,
 } = require('./lib/groupRecord.js')
+const { summariseSeederCoverage, seederCoverageLabel } = require('./lib/blindPeerListing.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
@@ -1124,6 +1125,18 @@ async function revokeGroupSeederRecord (pubkeyHex) {
 // group), de-duped by pubkey. Group-only entries are marked `shared`.
 async function listBlindPeers () {
   const byPubkey = new Map()
+  // TODO #125 - which of THIS DEVICE'S current groups each seeder serves, counted
+  // fresh on every read. The `groupCount` stored on a seederFollow row is written
+  // once at pair time and never revisited, so rendering it was reporting a fossil:
+  // the TCL showed "Seeding 2 groups" for a seeder serving one group it was not
+  // in. Derived state cannot go stale, so derive it.
+  const servedByPubkey = new Map()
+  for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
+    if (!value?.pubkey || value.revoked === true || !value.groupId) continue
+    if (!servedByPubkey.has(value.pubkey)) servedByPubkey.set(value.pubkey, new Set())
+    servedByPubkey.get(value.pubkey).add(value.groupId)
+  }
+  const liveGroupIds = new Set(bases.keys())
   for await (const { value } of db.createReadStream({ gt: 'seederFollow:', lt: 'seederFollow:\xff' })) {
     if (!value?.pubkey) continue
     // `nickname` = this device's local rename override; `seederName` = the seeder's
@@ -1132,11 +1145,20 @@ async function listBlindPeers () {
     // exposes both so the rename input can pre-fill the raw override + placeholder.
     const override = value.nickname ?? null
     const seederName = value.seederName ?? null
+    const coverage = summariseSeederCoverage({
+      servedGroupIds: servedByPubkey.get(value.pubkey) ?? [],
+      liveGroupIds,
+    })
     byPubkey.set(value.pubkey, {
       ...value,
       override,
       seederName,
       nickname: resolveSeederDisplayName({ override, seederName }),
+      // Live coverage, plus the label so the two UIs cannot word it differently.
+      // `groupCount` is left on the record for compatibility but must not be
+      // displayed - it is the pair-time fossil this replaces.
+      ...coverage,
+      coverageLabel: seederCoverageLabel(coverage),
     })
   }
   for await (const { value } of db.createReadStream({ gt: 'groupSeeder:', lt: 'groupSeeder:\xff' })) {
@@ -1152,6 +1174,12 @@ async function listBlindPeers () {
       local.nickname = resolveSeederDisplayName({ override: local.override, seederName: local.seederName, groupName })
       local.shared = true
     } else {
+      // Known only via a group-shared record. Its coverage comes from the same
+      // live rows (TODO #125), so this path reports a real count too.
+      const coverage = summariseSeederCoverage({
+        servedGroupIds: servedByPubkey.get(value.pubkey) ?? [],
+        liveGroupIds,
+      })
       byPubkey.set(value.pubkey, {
         pubkey: value.pubkey,
         override: null,
@@ -1161,6 +1189,8 @@ async function listBlindPeers () {
         autoFollow: false,
         shared: true,
         via: 'group-record',
+        ...coverage,
+        coverageLabel: seederCoverageLabel(coverage),
       })
     }
   }
