@@ -7312,6 +7312,28 @@ async function resetAppData (opts = {}) {
   try {
     console.log('[reset] starting, keepIdentity=' + keepIdentity)
 
+    // Carry the profile across a keep-identity reset. The identity survives in
+    // the mnemonic either way, but the profile record is what the app SHOWS:
+    // without it getProfile() returns null, the UI decides this is a first
+    // boot and marches the user through onboarding to pick a name they already
+    // had. That flatly contradicts "you stay the same person", which is the
+    // whole promise of this level (reported on-device 2026-07-27).
+    //
+    // Read BEFORE the teardown, while the DB is still open. Held in memory
+    // only - it is one small record - and written back after the re-open.
+    // Deliberately not carried on a full reset: that path is meant to produce
+    // a stranger, and name/avatar/settings are exactly what would give the old
+    // user away.
+    let carriedProfile = null
+    if (keepIdentity) {
+      try {
+        const node = await db.get(NS.profile)
+        carriedProfile = node?.value ?? null
+      } catch (e) {
+        console.warn('[reset] could not read the profile to carry over:', e.message)
+      }
+    }
+
     // Make concurrent IPC calls wait for the rebuilt DB rather than race a null
     // one. Armed BEFORE the teardown so nothing slips through the gap.
     armDbReadyGate()
@@ -7349,6 +7371,18 @@ async function resetAppData (opts = {}) {
     // their trees, so the app comes back as a first-boot install: on a full
     // reset ensureIdentity() mints a new mnemonic on demand.
     await init(dataDir, { platform: _platform })
+
+    // Restore the carried profile into the fresh DB. Best-effort: a reset that
+    // wiped the data but could not put the name back is still a successful
+    // reset, and the user lands in onboarding rather than in a broken app.
+    if (carriedProfile) {
+      try {
+        await db.put(NS.profile, carriedProfile)
+        console.log('[reset] carried the profile over (' + (carriedProfile.name || 'unnamed') + ')')
+      } catch (e) {
+        console.warn('[reset] could not restore the profile:', e.message)
+      }
+    }
 
     console.log('[reset] complete, ' + removed + ' path(s) removed')
 
