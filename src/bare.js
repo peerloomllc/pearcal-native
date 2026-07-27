@@ -2541,7 +2541,17 @@ async function _joinGroupImpl (group) {
   const topic = groupSwarmTopic(topicKey, group.encryptionKey)
   swarm.join(topic, { server: true, client: true })
 
-  console.log('Joined group swarm:', group.id, 'topic:', topicKey.slice(0,16))
+  // TODO #145 - this used to print `topicKey` under the label "topic:", which is
+  // the groupKey, not the topic. For a KEYLESS group the two are the same
+  // (groupSwarmTopic falls back to the raw groupKey), but for a keyed one the
+  // topic is hash('pearcal-enc-topic-v1:' + groupKey). So the line looked like
+  // proof a device had joined the unencrypted topic while proving nothing, and
+  // it nearly produced a bogus "the repair rejoins the wrong topic" report.
+  // Print both, each under its own name.
+  console.log('Joined group swarm:', group.id,
+    'groupKey:', String(topicKey).slice(0, 16),
+    'topic:', b4a.toString(topic, 'hex').slice(0, 16),
+    group.encryptionKey ? '(encrypted)' : '(unencrypted)')
 
   // Register with blind peer so cores stay available when app is closed
   if (blind) blind.addAutobaseBackground(base)

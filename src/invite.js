@@ -83,7 +83,11 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
         if (onJoined) onJoined(healed)
         return { ok: true, repaired: true, group: healed }
       }
-      return { ok: false, error: 'repair_failed', group: existing }
+      // Pass the reason through. repairKeylessGroupFromInvite has always
+      // returned one, and its comment says it exists "so the UI can say
+      // something honest either way" - it was simply dropped here, so a
+      // key-conflict and a reconcile-failure looked identical (TODO #145).
+      return { ok: false, error: 'repair_failed', reason: res?.reason ?? 'reconcile-failed', group: existing }
     }
     return { ok: false, error: 'already_member', group: existing }
   }
