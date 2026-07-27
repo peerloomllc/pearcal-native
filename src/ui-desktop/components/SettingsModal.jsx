@@ -43,6 +43,10 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
   // auto-started at login. Default off; the truth lives in the OS login-item,
   // read here on open via db.getLaunchAtLogin (electron main intercept).
   const [launchAtLogin, setLaunchAtLogin] = useState(false)
+  // TODO #134 - null until loaded; `configured: false` means this build has no
+  // relay wired at all, in which case the section stays hidden rather than
+  // offering a switch that controls nothing.
+  const [relayStatus, setRelayStatus] = useState(null)
 
   useEffect(() => {
     function onKey (e) { if (e.key === 'Escape') onClose() }
@@ -55,6 +59,25 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
     db?.getLaunchAtLogin?.().then(v => { if (alive) setLaunchAtLogin(!!v) }).catch(() => {})
     return () => { alive = false }
   }, [db])
+
+  useEffect(() => {
+    let alive = true
+    db?.getRelayStatus?.().then(s => { if (alive) setRelayStatus(s ?? null) }).catch(() => {})
+    return () => { alive = false }
+  }, [db])
+
+  // Optimistic like the toggle above, and re-read afterwards so the counters
+  // below reflect what the worklet actually did rather than what we asked for.
+  async function handleUseRelayChange (next) {
+    setRelayStatus(prev => prev ? { ...prev, useRelay: next } : prev)
+    try {
+      await db?.setUseRelay?.(next)
+      const fresh = await db?.getRelayStatus?.()
+      if (fresh) setRelayStatus(fresh)
+    } catch (e) {
+      setRelayStatus(prev => prev ? { ...prev, useRelay: !next } : prev)
+    }
+  }
 
   async function handleLaunchAtLoginChange (next) {
     setLaunchAtLogin(next)  // optimistic
@@ -294,6 +317,40 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
             Opens PearCal to the tray when you log in, so reminders still fire after a restart.
           </div>
         </div>
+
+        {/* Connection — the off-LAN relay backstop (TODO #130 engine, #134 control).
+            Wording deliberately mirrors mobile's: same feature, same promise. */}
+        {relayStatus?.configured && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={label}>Connection</div>
+            <div style={row}>
+              <div style={{ flex: 1, fontSize: 13 }}>Use a relay when direct fails</div>
+              <ToggleSwitch tokens={tokens} value={relayStatus.useRelay !== false}
+                onChange={handleUseRelayChange} />
+            </div>
+            <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 2 }}>
+              Some networks block devices from connecting straight to each other. When
+              that happens, PearCal routes through a relay run by PeerLoom. It only ever
+              carries scrambled data it can’t read, and it’s only used after a direct
+              connection has already failed.
+            </div>
+            {relayStatus.useRelay !== false
+              && (relayStatus.offers > 0 || (relayStatus.relaying?.successes ?? 0) > 0) && (
+              <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+                Used since the app started: {relayStatus.offers} outgoing
+                {(relayStatus.relaying?.successes ?? 0) > 0
+                  ? `, ${relayStatus.relaying.successes} incoming`
+                  : ''}
+              </div>
+            )}
+            {relayStatus.useRelay === false && (
+              <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+                Off — connections stay strictly device to device. On a network that
+                blocks them, syncing may not work at all.
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ marginBottom: 18 }}>
           <div style={label}>Holidays</div>
