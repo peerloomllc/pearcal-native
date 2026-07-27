@@ -20,6 +20,7 @@ const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
 const {
   resolveGroupEncryptionKey, resolveGroupEncryptedFlag, classifyKeylessGroup, resolvedPeerCount,
   needsEncryptedLatchBackfill, isEncryptedButKeyless,
+  isGroupRecordKey, groupIdFromRecordKey,
 } = require('./lib/groupRecord.js')
 const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
@@ -1944,6 +1945,21 @@ async function putGroupRecord (groupId, value, tag) {
   if (encrypted && !next.encrypted) next = { ...next, encrypted: true }
   await db.put(key, next)
   return next
+}
+
+// Write a local record whose key came out of a read-stream rather than being
+// built from a literal namespace (TODO #123).
+//
+// This is the structural half of the fix. putGroupRecord only guards writes that
+// remember to call it, and a stream-keyed write has no reason to: at that point
+// a group record is just another row, and `db.put(key, value)` is the obvious
+// thing to type. That is exactly how resyncGroup's view merge destroyed keys for
+// months while an audit of the namespace found nothing. Routing every
+// stream-keyed write through here makes the KEY decide the writer, so a group
+// record cannot be written raw even by a caller that never thought about groups.
+async function putStreamedRecord (key, value, tag) {
+  if (isGroupRecordKey(key)) return putGroupRecord(groupIdFromRecordKey(key), value, tag)
+  return db.put(key, value)
 }
 
 // A group is joined for this long with no peer-supplied membership before the
@@ -5399,7 +5415,7 @@ async function resyncGroup (groupId) {
         if (await isEventTombstoned(eventId, groupId)) continue
         const existing = await db.get(key).catch(() => null)
         if (existing?.value && sameExceptUpdatedAt(existing.value, value)) continue
-        await db.put(key, value)
+        await putStreamedRecord(key, value, 'resyncGroup:event')
         changedEvents.push(value)
       } else if (key.startsWith(NS.avatars)) {
         // Repair missing avatar bytes. apply() mirrors avatars via mirrorToLocal
@@ -5408,8 +5424,8 @@ async function resyncGroup (groupId) {
         // records with no local bytes — UI renders "?". Put-if-absent matches
         // mirrorToLocal's avatar branch.
         const existing = await db.get(key).catch(() => null)
-        if (!existing) await db.put(key, value)
-      } else if (key.startsWith('groups:')) {
+        if (!existing) await putStreamedRecord(key, value, 'resyncGroup:avatar')
+      } else if (isGroupRecordKey(key)) {
         const existing = await db.get(key).catch(() => null)
         const localJoinedAt  = existing?.value?.joinedAt  ?? 0
         const viewUpdatedAt  = value?.updatedAt ?? 0
@@ -5456,11 +5472,24 @@ async function resyncGroup (groupId) {
           emoji:   value.emoji   || ev?.emoji,
           icon:    value.icon    ?? ev?.icon,
           joinedAt: ev?.joinedAt || value.joinedAt,
+          // FIFTH view-to-local write that dropped the local-only key, and the
+          // only one ever observed firing in the wild (TODO #123). The view copy
+          // is keyless by construction - appendGroupWithAvatarSplit strips the
+          // key on every append - so merging it over the local record silently
+          // disables the group's encryption unless the local key is carried
+          // across, exactly as the foregroundSync re-mirror does. This site is
+          // reached on every join (App.jsx:744) and on the TODO #124 keyless
+          // repair (App.jsx:1346), so it destroyed the key moments after the
+          // repair had restored it, which is why the banner kept coming back.
+          encryptionKey: ev?.encryptionKey || value.encryptionKey,
           removedMembers: [...removedMap.values()],
           members: splitMembers,
         }
         if (ev && sameExceptUpdatedAt(ev, mergedGroup)) continue
-        await db.put(key, mergedGroup)
+        // Through the dispatcher, not db.put: writing the key back above is
+        // belt, this is braces, and it means a future regression here logs a
+        // BLOCKED line naming this site instead of failing silently.
+        await putStreamedRecord(key, mergedGroup, 'resyncGroup:view-merge')
         groupChanged = true
       }
     }
