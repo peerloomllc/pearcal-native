@@ -565,7 +565,19 @@ async function appendGroupWithAvatarSplit (base, groupValue) {
   // the (encrypted) view. Members receive it via the invite; the local group
   // record + personal-base fan-out carry it across restarts, and mirrorToLocal
   // preserves it when this view record replays back into the local mirror.
-  const { encryptionKey: _ek, ...rest } = groupValue
+  //
+  // TODO #147 - `encrypted` is stripped for the same reason and was not. The
+  // latch is documented in src/lib/groupRecord.js as "Non-secret, and
+  // deliberately LOCAL-only, never appended to a view", with a good argument:
+  // the view of an encrypted group is itself encrypted, so the one device that
+  // needs to read the flag is the one device that cannot. Only the code did not
+  // do it - `encrypted` rode along in `...rest` on every append. No live
+  // consequence was found (a keyless device cannot decrypt a keyed group's view
+  // to receive it, and a legitimately unencrypted group has no keyed peer to
+  // originate one), so classifyKeylessGroup's `certain` verdict was sound - but
+  // sound by accident rather than by the stated invariant, and that verdict is
+  // load-bearing: it is what tells a device it is the broken one.
+  const { encryptionKey: _ek, encrypted: _enc, ...rest } = groupValue
   const value = { ...rest, members, updatedAt: groupValue.updatedAt || Date.now() }
   await safeAppend(base, { op: 'put', type: 'group', key: NS.groups + groupValue.id, value })
 }
@@ -5486,6 +5498,11 @@ async function resyncGroup (groupId) {
           // repair (App.jsx:1346), so it destroyed the key moments after the
           // repair had restored it, which is why the banner kept coming back.
           encryptionKey: ev?.encryptionKey || value.encryptionKey,
+          // Carried for the same reason as the key, and specifically so the
+          // equality check below still works now that the view record no longer
+          // holds the latch (TODO #147). Without it every resync would rewrite
+          // the group and emit a change that changed nothing.
+          encrypted: ev?.encrypted ?? value.encrypted,
           removedMembers: [...removedMap.values()],
           members: splitMembers,
         }
@@ -6712,6 +6729,12 @@ async function mirrorToLocal (type, key, value, groupId) {
         // base won't reopen encrypted after a restart. Fallback to value for
         // safety (e.g. a future path that legitimately carries it).
         encryptionKey: existing?.value?.encryptionKey || value.encryptionKey,
+        // Same treatment for the same reason (TODO #147). putGroupRecord would
+        // preserve the latch anyway, but the comparison below runs BEFORE that:
+        // without carrying it here, a view record (which no longer has the flag)
+        // never equals the local one (which does), so every mirror would rewrite
+        // the record and fire a groupChanged event that changed nothing.
+        encrypted: existing?.value?.encrypted ?? value.encrypted,
         removedMembers: [...removedMap.values()],
         members: splitMembers,
         updatedAt: value.updatedAt || Date.now()

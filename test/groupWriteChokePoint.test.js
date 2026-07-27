@@ -156,3 +156,26 @@ test('the view append still strips the key it is stripping for', () => {
   assert.ok(fn, 'appendGroupWithAvatarSplit not found')
   assert.match(fn.body, /encryptionKey:\s*_ek/, 'the key must be destructured out before the append')
 })
+
+test('the view append also strips the encrypted latch (TODO #147)', () => {
+  // groupRecord.js documents the latch as "deliberately LOCAL-only, never
+  // appended to a view", and for a while only the comment said so. The verdict
+  // that rests on it - classifyKeylessGroup returning 'certain' - is what tells
+  // a device it is the broken one, so it should hold by design rather than by
+  // the accident that a keyless device cannot decrypt the view to receive it.
+  const fn = FUNCTIONS.find(f => f.name === 'appendGroupWithAvatarSplit')
+  assert.match(fn.body, /encrypted:\s*_enc/, 'the latch must be destructured out before the append')
+})
+
+test('every view-to-local merge carries the latch across, not just the key', () => {
+  // Stripping the latch from the view means a merged record no longer has it
+  // while the local one does. Both merge sites compare before writing, so
+  // without carrying it they would never compare equal: every mirror and every
+  // resync would rewrite the record and emit a change that changed nothing.
+  for (const name of ['mirrorToLocal', 'resyncGroup']) {
+    const fn = FUNCTIONS.find(f => f.name === name)
+    assert.ok(fn, name + ' not found')
+    assert.match(fn.body, /encrypted:\s*(existing\?\.value\?\.encrypted|ev\?\.encrypted)/,
+      name + ' must carry the local latch into its merged record')
+  }
+})
