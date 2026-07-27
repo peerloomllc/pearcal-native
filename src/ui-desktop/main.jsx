@@ -75,6 +75,15 @@ const db = {
   deleteGroup:   (id)        => window.__pearDB.call('deleteGroup', id),
   isBlockedFromGroup: (id)   => window.__pearDB.call('isBlockedFromGroup', id),
   clearBlockedFromGroup: (id) => window.__pearDB.call('clearBlockedFromGroup', id),
+  // TODO #146 - this was missing, and its absence was invisible. handleInviteLink
+  // is SHARED with mobile (src/invite.js) and gates the keyless-group repair on
+  // `db.repairKeylessGroup` being truthy, so on desktop the branch silently fell
+  // through to `already_member` - which is exactly the dead end TODO #124 exists
+  // to remove ("returning already_member here is exactly what made that cure a
+  // dead end"), reintroduced on desktop by omission. A keyless group on Pear
+  // Desktop could therefore not be healed by any user action at all. Nothing
+  // failed loudly, because a missing proxy entry just reads as undefined.
+  repairKeylessGroup: (id, k) => window.__pearDB.call('repairKeylessGroup', id, k),
   reinviteMember: (gid, mid) => window.__pearDB.call('reinviteMember', gid, mid),
   listMembers:   (gid)       => window.__pearDB.call('listMembers', gid),
   putMember:     (gid, m)    => window.__pearDB.call('putMember', gid, m),
