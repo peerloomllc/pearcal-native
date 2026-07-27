@@ -8265,7 +8265,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 </div>
                 {!resetPhrase ? (
                   <button onClick={async () => {
-                    try { setResetPhrase(await sync.revealMnemonic() || '(no phrase stored)') }
+                    // `db`, not `sync` - revealMnemonic lives on the DB surface,
+                    // same as the existing reveal in the Backup section above.
+                    try { setResetPhrase((await db.revealMnemonic()) || '(no phrase stored)') }
                     catch (e) { setResetError(e.message) }
                   }}
                     style={{ width:'100%', padding:'11px 16px', borderRadius:10, marginBottom:14,
