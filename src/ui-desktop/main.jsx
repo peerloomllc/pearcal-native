@@ -101,6 +101,13 @@ const db = {
   putRsvp:       (eid, mid, s, gids) => window.__pearDB.call('putRsvp', eid, mid, s, gids),
   getPrivateNote: (id)       => window.__pearDB.call('getPrivateNote', id),
   putPrivateNote: (id, text) => window.__pearDB.call('putPrivateNote', id, text),
+  // TODO #134 - the relay ENGINE was already here (prepack.js vendors src/, so
+  // desktop picks up the shared worklet automatically), but the renderer is a
+  // separate UI tree, so the relay was on with no way to turn it off. It is the
+  // one control a privacy-minded user might actually want, so it should not have
+  // stayed mobile-only.
+  getRelayStatus:     ()  => window.__pearDB.call('getRelayStatus'),
+  setUseRelay:        (on) => window.__pearDB.call('setUseRelay', on),
   getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
   setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
