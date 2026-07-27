@@ -15,6 +15,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
+import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
@@ -1325,9 +1326,17 @@ export default function App ({ db, notifs, sync }) {
 
   const joinWithNickname = useCallback(async (url, nickname) => {
     const nick = nickname && nickname !== profile?.name ? nickname : null
-    const result = await handleInviteLink(url, db, sync, g => {
-      setTab('groups')
-    }, nick)
+    let result
+    try {
+      result = await handleInviteLink(url, db, sync, g => {
+        setTab('groups')
+      }, nick)
+    } catch (e) {
+      // A throw in here used to leave the sheet spinning forever with nothing
+      // said: handleJoin only reacts to a returned result, so an exception was
+      // indistinguishable from a hang (TODO #145).
+      result = { ok: false, error: 'join_threw', reason: e?.message }
+    }
     if (result?.ok && result.group) {
       setGroups(prev => prev.find(x => x.id === result.group.id) ? prev : [...prev, result.group])
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(result.group.id); return s })
@@ -1348,7 +1357,15 @@ export default function App ({ db, notifs, sync }) {
         if (evts) setEvents(evts)
       })
     }
-    setPendingJoin(null)
+    // TODO #145 - dismiss ONLY when there is nothing left to say. This used to
+    // run unconditionally, which unmounted the sheet before handleJoin could
+    // render anything: the inline error path was structurally dead, so every
+    // failed join looked silent no matter what the UI tried to show. That, not
+    // the wording, is why a dead end was indistinguishable from a clean join.
+    // blocked_from_group is dismissed here because it raises its own toast above.
+    if (result?.ok || result?.error === 'blocked_from_group' || isBenignJoinOutcome(result ?? {})) {
+      setPendingJoin(null)
+    }
     return result
   }, [db, sync, profile])
 
@@ -1882,6 +1899,7 @@ export default function App ({ db, notifs, sync }) {
           <NicknameBeforeJoinSheet groupName={pendingJoin.groupName}
             defaultName={profile?.name ?? ''} closeRef={closePendingJoinRef}
             onConfirm={nickname => joinWithNickname(pendingJoin.url, nickname)}
+            onOutcome={o => { setJoinToast(o); setTimeout(() => setJoinToast(null), 8000) }}
             onClose={() => setPendingJoin(null)} />
         )}
         {newGroupOpen && (
@@ -4993,7 +5011,7 @@ function JoinGroupModal ({ onClose, closeRef, db, sync, onJoined, onPendingJoin 
   )
 }
 
-function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, closeRef }) {
+function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, closeRef, onOutcome }) {
   const bsCloseRef = useRef(null)
   const [nickname, setNickname] = useState(defaultName)
   const [joining,  setJoining]  = useState(false)
@@ -5011,9 +5029,16 @@ function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, 
     const result = await onConfirm(nickname.trim())
     if (result && !result.ok) {
       setJoining(false)
-      if (result.error === 'already_member') { bsCloseRef.current?.(); return }
+      // TODO #145: every outcome but blocked_from_group used to end here as
+      // either a silent close or "Check the invite link and try again" - which
+      // is the wrong advice whenever the link is fine and the repair is what
+      // failed. Say which of the dozen things actually happened.
+      // blocked_from_group keeps its dedicated toast, raised by joinWithNickname,
+      // so saying it twice here would be worse than saying it once.
       if (result.error === 'blocked_from_group') { bsCloseRef.current?.(); return }
-      setErr('Could not join group. Check the invite link and try again.')
+      const outcome = joinOutcomeMessage({ error: result.error, reason: result.reason, groupName })
+      if (isBenignJoinOutcome(result)) { onOutcome?.(outcome); bsCloseRef.current?.(); return }
+      setErr(outcome.message)
     }
   }
 
