@@ -17599,15 +17599,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const closeInviteSheetRef = (0, import_react7.useRef)(null);
     const closeNewGroupSheetRef = (0, import_react7.useRef)(null);
     const [groupCreatedToast, setGroupCreatedToast] = (0, import_react7.useState)(null);
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
-    const [backupNudgeDismissed, setBackupNudgeDismissed] = (0, import_react7.useState)(() => {
-      try {
-        return localStorage.getItem("pearcal:backupNudgeDismissed") === "1";
-      } catch {
-        return false;
-      }
-    });
-    const [focusBackup, setFocusBackup] = (0, import_react7.useState)(0);
     const [confirmSheet, setConfirmSheet] = (0, import_react7.useState)(null);
     const closeConfirmSheetRef = (0, import_react7.useRef)(null);
     const [infoSheet, setInfoSheet] = (0, import_react7.useState)(null);
@@ -17677,20 +17668,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         cancelled = true;
       };
     }, [db2]);
-    (0, import_react7.useEffect)(() => {
-      if (!db2?.getBackupStatus) return;
-      let cancelled = false;
-      (async () => {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch {
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [db2, tab]);
     (0, import_react7.useEffect)(() => {
       if (!db2) return;
       function scheduleDefaultReminders(newEvents) {
@@ -18758,7 +18735,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             saveEvent,
             blindPeerKey,
             setBlindPeerKey,
-            focusBackup,
             qrScanModeRef,
             onToggleDark: () => {
               const nd = !dark;
@@ -20949,7 +20925,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const fileRef = (0, import_react7.useRef)(null);
     const total = 5;
     const [slideDir, setSlideDir] = (0, import_react7.useState)(1);
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
     const [restoreMode, setRestoreMode] = (0, import_react7.useState)(null);
     const [restoreError, setRestoreError] = (0, import_react7.useState)("");
     const [pairInput, setPairInput] = (0, import_react7.useState)("");
@@ -21024,24 +20999,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         setRestoreError(e66?.message || "Invalid pairing link");
       }
     }
-    (0, import_react7.useEffect)(() => {
-      let cancelled = false;
-      async function refresh() {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch {
-        }
-      }
-      refresh();
-      const t7 = setTimeout(refresh, 1200);
-      return () => {
-        cancelled = true;
-        clearTimeout(t7);
-      };
-    }, [db2, step]);
-    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
-    const backupToastText = !backupStatus ? null : backupStatus.platformSynced && backupPlatformLabel ? `Recovery phrase saved to ${backupPlatformLabel}.` : backupStatus.enabled && backupPlatformLabel ? `Recovery phrase will sync to ${backupPlatformLabel}.` : "Recovery phrase saved on this device only \u2014 back up in Settings.";
     async function handlePhotoChange(e66) {
       const file = e66.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
@@ -21393,14 +21350,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             ] })
           ] })
         ] }),
-        backupToastText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-          fontSize: 12,
-          color: colors.text.muted,
-          textAlign: "center",
-          maxWidth: 300,
-          lineHeight: "1.5",
-          marginTop: 4
-        }, children: backupToastText }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -25670,7 +25619,7 @@ ${link}`;
       ] })
     ] });
   }
-  function ProfileTab({ profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup, qrScanModeRef }) {
+  function ProfileTab({ profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
     const [name, setName] = (0, import_react7.useState)(profile?.name ?? "");
     const [editing, setEditing] = (0, import_react7.useState)(false);
     const [saving, setSaving] = (0, import_react7.useState)(false);
@@ -25679,15 +25628,6 @@ ${link}`;
     const [holidaysOpen, setHolidaysOpen] = (0, import_react7.useState)((profile?.holidayCountries ?? []).length > 0);
     const [personalOpen, setPersonalOpen] = (0, import_react7.useState)(false);
     const [advancedOpen, setAdvancedOpen] = (0, import_react7.useState)(false);
-    const backupRowRef = (0, import_react7.useRef)(null);
-    (0, import_react7.useEffect)(() => {
-      if (!focusBackup) return;
-      setAdvancedOpen(true);
-      const t7 = setTimeout(() => {
-        backupRowRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      }, 450);
-      return () => clearTimeout(t7);
-    }, [focusBackup]);
     const [appearanceOpen, setAppearanceOpen] = (0, import_react7.useState)(false);
     const [timeFormatOpen, setTimeFormatOpen] = (0, import_react7.useState)(false);
     const [weekStartOpen, setWeekStartOpen] = (0, import_react7.useState)(false);
@@ -25706,7 +25646,6 @@ ${link}`;
     const [resetTyped, setResetTyped] = (0, import_react7.useState)("");
     const [resetBusy, setResetBusy] = (0, import_react7.useState)(false);
     const [resetError, setResetError] = (0, import_react7.useState)(null);
-    const [resetPhrase, setResetPhrase] = (0, import_react7.useState)(null);
     const closeResetSheetRef = (0, import_react7.useRef)(null);
     const formatBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " KB" : b + " B";
     const [icsImport, setIcsImport] = (0, import_react7.useState)(null);
@@ -25765,71 +25704,15 @@ ${link}`;
       }
       setBpRenameSaving(false);
     }
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
-    const [mnemonicReveal, setMnemonicReveal] = (0, import_react7.useState)(null);
-    const [mnemonicBusy, setMnemonicBusy] = (0, import_react7.useState)(false);
     const [pairHost, setPairHost] = (0, import_react7.useState)(null);
     const [pairHostBusy, setPairHostBusy] = (0, import_react7.useState)(false);
     const [pairHostError, setPairHostError] = (0, import_react7.useState)(null);
-    const [mnemonicCopied, setMnemonicCopied] = (0, import_react7.useState)(false);
     const [linkedDevices, setLinkedDevices] = (0, import_react7.useState)([]);
     const [renamingKey, setRenamingKey] = (0, import_react7.useState)(null);
     const [renameDraft, setRenameDraft] = (0, import_react7.useState)("");
     const [renameSaving, setRenameSaving] = (0, import_react7.useState)(false);
     const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react7.useState)(null);
     const [removingKey, setRemovingKey] = (0, import_react7.useState)(null);
-    (0, import_react7.useEffect)(() => {
-      let cancelled = false;
-      async function refresh() {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch (e66) {
-          if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e66?.message });
-        }
-      }
-      refresh();
-      return () => {
-        cancelled = true;
-      };
-    }, [db2]);
-    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
-    async function revealMnemonic() {
-      setMnemonicBusy(true);
-      try {
-        const m3 = await db2.revealMnemonic();
-        setMnemonicReveal(m3 ?? "");
-      } catch (e66) {
-        setMnemonicReveal("Error: " + (e66?.message ?? "unknown"));
-      }
-      setMnemonicBusy(false);
-    }
-    async function copyMnemonic() {
-      if (!mnemonicReveal) return;
-      try {
-        await navigator.clipboard?.writeText?.(mnemonicReveal);
-      } catch {
-      }
-      setMnemonicCopied(true);
-      setTimeout(() => setMnemonicCopied(false), 2e3);
-    }
-    async function shareMnemonic() {
-      if (!mnemonicReveal) return;
-      try {
-        window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal);
-      } catch {
-      }
-    }
-    async function toggleBackup() {
-      if (!backupStatus) return;
-      const next = !backupStatus.enabled;
-      try {
-        await db2.setBackupEnabled(next);
-        const s12 = await db2.getBackupStatus();
-        setBackupStatus(s12);
-      } catch {
-      }
-    }
     async function saveName() {
       setSaving(true);
       await onUpdateProfile({ name });
@@ -27600,7 +27483,6 @@ ${link}`;
               setResetMode(null);
               setResetTyped("");
               setResetError(null);
-              setResetPhrase(null);
               setResetSheet(true);
             },
             style: {
@@ -27680,14 +27562,14 @@ ${link}`;
                     },
                     children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "#d04", marginBottom: 3 }, children: "Start over as a new user" }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "Everything above, and your recovery phrase is deleted too. This device becomes a brand new user. You also leave every group, so you stop showing in their member lists. Groups you run are handed to another member, or deleted if you are the only one in them. Save your phrase first if you ever want to come back." })
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "Everything above, and this device stops being you. It gets a brand new identity, with no way back to the account you are using now. You also leave every group, so you stop showing in their member lists. Groups you run are handed to another member, or deleted if you are the only one in them." })
                     ]
                   }
                 )
               ] }),
               resetMode === "keep" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Your events and groups will be removed from this device. You stay signed in as yourself and keep your name, so you can rejoin any group with its invite link and your calendar comes back from the other members. Nobody else is told, and you stay in their member lists." }),
               resetMode === "full" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
-                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "Your recovery phrase will be deleted from this device. Without it you cannot get back in as yourself, and anything only this device was holding is gone for good. You will also leave every group you are in, and any group you run is handed to another member or deleted if nobody else is in it." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "This device stops being you. It gets a brand new identity, so there is no way back to the account you are using now, and anything only this device was holding is gone for good. You will also leave every group you are in, and any group you run is handed to another member or deleted if nobody else is in it." }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
                   fontSize: 12,
                   color: colors.text.muted,
@@ -27699,40 +27581,6 @@ ${link}`;
                 }, children: [
                   /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.primary }, children: "One thing to know:" }),
                   " leaving only reaches people who have the app open at that moment. Anyone offline may still see you in their group's member list, and once your data is gone there is no way to tell them. If that matters, leave your groups by hand first, while the other members are around."
-                ] }),
-                !resetPhrase ? /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
-                  "button",
-                  {
-                    onClick: async () => {
-                      try {
-                        setResetPhrase(await db2.revealMnemonic() || "(no phrase stored)");
-                      } catch (e66) {
-                        setResetError(e66.message);
-                      }
-                    },
-                    style: {
-                      width: "100%",
-                      padding: "11px 16px",
-                      borderRadius: 10,
-                      marginBottom: 14,
-                      border: `1px solid ${colors.border}`,
-                      background: "transparent",
-                      color: colors.text.primary,
-                      fontFamily: FONT,
-                      fontSize: 13,
-                      cursor: "pointer"
-                    },
-                    children: "Show my recovery phrase first"
-                  }
-                ) : /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
-                  padding: "12px 14px",
-                  borderRadius: 10,
-                  marginBottom: 14,
-                  border: `1px solid ${colors.border}`,
-                  background: colors.surface.card
-                }, children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginBottom: 6 }, children: "Write this down somewhere safe" }),
-                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.primary, lineHeight: 1.6, wordBreak: "break-word" }, children: resetPhrase })
                 ] }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 6 }, children: "Type RESET to confirm" }),
                 /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(

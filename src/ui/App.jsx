@@ -504,11 +504,6 @@ export default function App ({ db, notifs, sync }) {
   const closeInviteSheetRef = useRef(null)
   const closeNewGroupSheetRef = useRef(null)
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
-  const [backupStatus, setBackupStatus] = useState(null)
-  const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(() => {
-    try { return localStorage.getItem('pearcal:backupNudgeDismissed') === '1' } catch { return false }
-  })
-  const [focusBackup, setFocusBackup] = useState(0)
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
   const [infoSheet, setInfoSheet] = useState(null) // null | { title, message, icon }
@@ -580,18 +575,6 @@ export default function App ({ db, notifs, sync }) {
     load()
     return () => { cancelled = true }
   }, [db])
-
-  useEffect(() => {
-    if (!db?.getBackupStatus) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch { /* non-fatal */ }
-    })()
-    return () => { cancelled = true }
-  }, [db, tab])
 
   // ── Re-sync state when a P2P peer pushes new data ──────────────────────────
   useEffect(() => {
@@ -1683,7 +1666,7 @@ export default function App ({ db, notifs, sync }) {
             <ProfileTab profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
-              focusBackup={focusBackup} qrScanModeRef={qrScanModeRef}
+              qrScanModeRef={qrScanModeRef}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -3336,7 +3319,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
-  const [backupStatus, setBackupStatus] = useState(null)
   const [restoreMode, setRestoreMode] = useState(null) // null | 'pair' | 'pair-waiting'
   const [restoreError, setRestoreError] = useState('')
   const [pairInput, setPairInput] = useState('')
@@ -3426,31 +3408,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
-    async function refresh () {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch { /* non-fatal */ }
-    }
-    refresh()
-    // Refresh once after name save has mirrored to platform (slide 2 → 3).
-    const t = setTimeout(refresh, 1200)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [db, step])
-
-  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
-    : backupStatus?.platform === 'blockstore' ? 'Google'
-    : null
-
-  const backupToastText = !backupStatus
-    ? null
-    : backupStatus.platformSynced && backupPlatformLabel
-      ? `Recovery phrase saved to ${backupPlatformLabel}.`
-      : backupStatus.enabled && backupPlatformLabel
-        ? `Recovery phrase will sync to ${backupPlatformLabel}.`
-        : 'Recovery phrase saved on this device only — back up in Settings.'
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -3664,12 +3621,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           </div>
         </div>
       </div>
-      {backupToastText && (
-        <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center',
-          maxWidth:300, lineHeight:'1.5', marginTop:4 }}>
-          {backupToastText}
-        </div>
-      )}
       <button onClick={() => { onComplete?.() }}
         style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:4 }}>
         Let's go!
@@ -6755,7 +6706,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup, qrScanModeRef }) {
+function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -6764,15 +6715,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [holidaysOpen,      setHolidaysOpen]      = useState((profile?.holidayCountries ?? []).length > 0)
   const [personalOpen,      setPersonalOpen]      = useState(false)
   const [advancedOpen,      setAdvancedOpen]      = useState(false)
-  const backupRowRef = useRef(null)
-  useEffect(() => {
-    if (!focusBackup) return
-    setAdvancedOpen(true)
-    const t = setTimeout(() => {
-      backupRowRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-    }, 450)
-    return () => clearTimeout(t)
-  }, [focusBackup])
   const [appearanceOpen,    setAppearanceOpen]    = useState(false)
   const [timeFormatOpen,    setTimeFormatOpen]    = useState(false)
   const [weekStartOpen,     setWeekStartOpen]     = useState(false)
@@ -6793,7 +6735,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [resetTyped,        setResetTyped]        = useState('')
   const [resetBusy,         setResetBusy]         = useState(false)
   const [resetError,        setResetError]        = useState(null)
-  const [resetPhrase,       setResetPhrase]       = useState(null)  // revealed recovery phrase
   const closeResetSheetRef  = useRef(null)
 
   const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
@@ -6869,72 +6810,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
     }
     setBpRenameSaving(false)
   }
-  const [backupStatus,     setBackupStatus]     = useState(null)
-  const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
-  const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
   const [pairHost,         setPairHost]         = useState(null) // null | { url, expiresAt } | { url, expiresAt, expired: true } | { status: 'completed' }
   const [pairHostBusy,     setPairHostBusy]     = useState(false)
   const [pairHostError,    setPairHostError]    = useState(null)
-  const [mnemonicCopied,   setMnemonicCopied]   = useState(false)
   const [linkedDevices,    setLinkedDevices]    = useState([])
   const [renamingKey,      setRenamingKey]      = useState(null)
   const [renameDraft,      setRenameDraft]      = useState('')
   const [renameSaving,     setRenameSaving]     = useState(false)
   const [removeConfirmKey, setRemoveConfirmKey] = useState(null)
   const [removingKey,      setRemovingKey]      = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function refresh () {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch (e) {
-        if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e?.message })
-      }
-    }
-    refresh()
-    return () => { cancelled = true }
-  }, [db])
-
-  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
-    : backupStatus?.platform === 'blockstore' ? 'Google'
-    : null
-
-  async function revealMnemonic () {
-    setMnemonicBusy(true)
-    try {
-      const m = await db.revealMnemonic()
-      setMnemonicReveal(m ?? '')
-    } catch (e) {
-      setMnemonicReveal('Error: ' + (e?.message ?? 'unknown'))
-    }
-    setMnemonicBusy(false)
-  }
-
-  async function copyMnemonic () {
-    if (!mnemonicReveal) return
-    try {
-      await navigator.clipboard?.writeText?.(mnemonicReveal)
-    } catch {}
-    setMnemonicCopied(true)
-    setTimeout(() => setMnemonicCopied(false), 2000)
-  }
-
-  async function shareMnemonic () {
-    if (!mnemonicReveal) return
-    try { window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal) } catch {}
-  }
-
-  async function toggleBackup () {
-    if (!backupStatus) return
-    const next = !backupStatus.enabled
-    try {
-      await db.setBackupEnabled(next)
-      const s = await db.getBackupStatus()
-      setBackupStatus(s)
-    } catch {}
-  }
 
   async function saveName () {
     setSaving(true)
@@ -8193,7 +8077,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       <div style={{ marginBottom:12 }}>
         <div style={{ padding:'14px 16px' }}>
           <button onClick={() => {
-            setResetMode(null); setResetTyped(''); setResetError(null); setResetPhrase(null)
+            setResetMode(null); setResetTyped(''); setResetError(null)
             setResetSheet(true)
           }}
             style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
@@ -8240,11 +8124,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                     border:'1px solid #d04', background:'transparent', fontFamily:FONT }}>
                   <div style={{ fontSize:14, color:'#d04', marginBottom:3 }}>Start over as a new user</div>
                   <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
-                    Everything above, and your recovery phrase is deleted too. This device
-                    becomes a brand new user. You also leave every group, so you stop showing in
-                    their member lists. Groups you run are handed to another member, or deleted
-                    if you are the only one in them. Save your phrase first if you ever want to
-                    come back.
+                    Everything above, and this device stops being you. It gets a brand new
+                    identity, with no way back to the account you are using now. You also leave
+                    every group, so you stop showing in their member lists. Groups you run are
+                    handed to another member, or deleted if you are the only one in them.
                   </div>
                 </button>
               </>
@@ -8262,10 +8145,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             {resetMode === 'full' && (
               <>
                 <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:14 }}>
-                  Your recovery phrase will be deleted from this device. Without it you cannot
-                  get back in as yourself, and anything only this device was holding is gone for
-                  good. You will also leave every group you are in, and any group you run is
-                  handed to another member or deleted if nobody else is in it.
+                  This device stops being you. It gets a brand new identity, so there is no way
+                  back to the account you are using now, and anything only this device was
+                  holding is gone for good. You will also leave every group you are in, and any
+                  group you run is handed to another member or deleted if nobody else is in it.
                 </div>
                 {/* The departure only reaches peers connected at that moment: the
                     durable pending-leave record lives in the database the reset is
@@ -8280,29 +8163,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   no way to tell them. If that matters, leave your groups by hand first, while
                   the other members are around.
                 </div>
-                {!resetPhrase ? (
-                  <button onClick={async () => {
-                    // `db`, not `sync` - revealMnemonic lives on the DB surface,
-                    // same as the existing reveal in the Backup section above.
-                    try { setResetPhrase((await db.revealMnemonic()) || '(no phrase stored)') }
-                    catch (e) { setResetError(e.message) }
-                  }}
-                    style={{ width:'100%', padding:'11px 16px', borderRadius:10, marginBottom:14,
-                      border:`1px solid ${colors.border}`, background:'transparent',
-                      color:colors.text.primary, fontFamily:FONT, fontSize:13, cursor:'pointer' }}>
-                    Show my recovery phrase first
-                  </button>
-                ) : (
-                  <div style={{ padding:'12px 14px', borderRadius:10, marginBottom:14,
-                    border:`1px solid ${colors.border}`, background:colors.surface.card }}>
-                    <div style={{ fontSize:11, color:colors.text.muted, marginBottom:6 }}>
-                      Write this down somewhere safe
-                    </div>
-                    <div style={{ fontSize:13, color:colors.text.primary, lineHeight:1.6, wordBreak:'break-word' }}>
-                      {resetPhrase}
-                    </div>
-                  </div>
-                )}
                 <div style={{ fontSize:12, color:colors.text.muted, marginBottom:6 }}>
                   Type RESET to confirm
                 </div>

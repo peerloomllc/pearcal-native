@@ -403,9 +403,10 @@ async function handle (method, args) {
     case 'listAvatarHashes': return listAvatarHashes()
     case 'analyzeStorage': return analyzeStorage(args[0])
     case 'rebuildLocalDb': return rebuildLocalDb()
-    case 'getBackupStatus':  return nativeRequest('getBackupStatus')
-    case 'setBackupEnabled': return nativeRequest('setBackupEnabled', [args[0]])
-    case 'revealMnemonic':   return nativeRequest('getMnemonic')
+    // The seed phrase is never revealed or backed up - it is an internal
+    // identity seed, not a user-facing recovery feature (removed 2026-07-27).
+    // restoreMnemonic stays: it is the only re-entry path for an identity and
+    // TODO #86's owner recovery is built on it.
     case 'restoreMnemonic':  return restoreMnemonic(args[0])
     case 'listPendingRejoins': return listPendingRejoins()
     case 'approveRejoin':    return approveRejoin(args[0], args[1])

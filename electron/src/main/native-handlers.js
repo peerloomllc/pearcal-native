@@ -1,8 +1,10 @@
 // Handlers for the bare-side `nativeRequest` IPC. On mobile these live in
-// app/index.tsx and are backed by expo-secure-store + Google Drive / iCloud
-// backup. On Electron we use safeStorage (OS keyring: libsecret on Linux,
-// Keychain on Mac, DPAPI on Win) for the mnemonic and stub backup as
-// "available: false" until we wire a desktop-equivalent backup story.
+// app/index.tsx, backed by expo-secure-store. On Electron we use safeStorage
+// (OS keyring: libsecret on Linux, Keychain on Mac, DPAPI on Win).
+//
+// Seed storage only. The seed is an internal identity seed - profile.id,
+// group.ownerId, writer proofs and device pairing all derive from it - and is
+// never shown, exported or backed up to any cloud (removed 2026-07-27).
 
 const fs = require('fs')
 const path = require('path')
@@ -64,22 +66,6 @@ const handlers = {
     if (fs.existsSync(mnemonicPath())) {
       throw new Error('the recovery phrase file could not be removed')
     }
-    return true
-  },
-  // No platform backup story yet on desktop — surfaces in the UI as
-  // "Backup not available" which matches reality (no Google Drive / iCloud
-  // hookup). Phase E5 (or later) can revisit if a desktop backup target
-  // emerges (cross-device pairing already provides a recovery path).
-  getBackupStatus () {
-    return {
-      local: fs.existsSync(mnemonicPath()),
-      platform: null,
-      platformSynced: false,
-      enabled: false,
-      error: null
-    }
-  },
-  setBackupEnabled () {
     return true
   }
 }

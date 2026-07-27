@@ -268,10 +268,6 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
       await _saveBlob(getMainWindow(), 'pearcal-events.ics', String(args?.[0] ?? ''))
       return { handled: true, result: null }
 
-    case 'exportRecoveryPhrase':
-      await _saveBlob(getMainWindow(), 'pearcal-recovery.txt', String(args?.[0] ?? ''))
-      return { handled: true, result: null }
-
     case 'takePhoto': {
       // Mobile uses the device camera (PearCalCamera.capture); on desktop
       // there's no camera we want to wire up, so open the OS file picker

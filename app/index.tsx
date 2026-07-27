@@ -67,18 +67,16 @@ function sendToWorklet (msg: object) {
 }
 
 const MNEMONIC_KEY = 'pearcal.identity.mnemonic'
-const BACKUP_ENABLED_KEY = 'pearcal.identity.backupEnabled'
+// Set once the legacy cloud copy has been scrubbed; see scrubLegacyCloudBackup.
+const CLOUD_SCRUBBED_KEY = 'pearcal.identity.cloudScrubbed'
 
+// The seed phrase is NOT a user-facing feature. It is the seed the device
+// identity derives from - profile.id, group.ownerId, writer proofs and
+// multi-device pairing all come off it - and it is never shown, exported or
+// uploaded. The reveal / copy / export / backup-toggle surfaces were removed
+// 2026-07-27; what remains here is local storage of the seed, plus a one-time
+// scrub of the cloud copies the old backup feature left behind.
 const platformBackup: any = Platform.OS === 'ios' ? PearCalICloudKeychain : PearCalBlockStore
-const platformLabel: 'icloud' | 'blockstore' | null =
-  Platform.OS === 'ios' ? 'icloud' : (Platform.OS === 'android' ? 'blockstore' : null)
-
-async function isBackupEnabled (): Promise<boolean> {
-  try {
-    const v = await SecureStore.getItemAsync(BACKUP_ENABLED_KEY)
-    return v !== '0' // default on
-  } catch { return true }
-}
 
 async function platformIsAvailable (): Promise<boolean> {
   if (!platformBackup?.isAvailable) return false
@@ -90,14 +88,51 @@ async function platformReadMnemonic (): Promise<string | null> {
   try { return (await platformBackup.readMnemonic()) ?? null } catch { return null }
 }
 
-async function platformSaveMnemonic (value: string): Promise<boolean> {
-  if (!platformBackup?.saveMnemonic) return false
-  try { return !!(await platformBackup.saveMnemonic(value)) } catch { return false }
-}
-
 async function platformDeleteMnemonic (): Promise<boolean> {
   if (!platformBackup?.deleteMnemonic) return false
   try { return !!(await platformBackup.deleteMnemonic()) } catch { return false }
+}
+
+// One-time cleanup for installs that ran the old backup feature.
+//
+// Backup defaulted to ON and had no reachable toggle, so every device that ever
+// generated a seed also uploaded it to iCloud Keychain or Google Block Store.
+// Removing the feature without this would leave those copies sitting there for
+// good, which is the one outcome the removal is meant to prevent - a Block Store
+// entry survives until it is explicitly deleted, and an iCloud Keychain item
+// persists indefinitely.
+//
+// Best-effort and idempotent: it records a flag so it runs once, and a failure
+// simply leaves the flag unset so the next launch tries again. Fire-and-forget,
+// because nothing about starting the app depends on it.
+//
+// These native modules exist ONLY for this scrub now. Once installs have rolled
+// past this release they can be deleted outright, along with
+// modules/PearCalBlockStore + ios/PearCal/ICloudKeychain.*.
+async function scrubLegacyCloudBackup (): Promise<void> {
+  try {
+    if (await SecureStore.getItemAsync(CLOUD_SCRUBBED_KEY)) return
+    if (!(await platformIsAvailable())) {
+      // No backend to scrub on this device (no Play Services, or desktop).
+      // Nothing was ever uploaded, so mark it done rather than retry forever.
+      await SecureStore.setItemAsync(CLOUD_SCRUBBED_KEY, '1')
+      return
+    }
+    const existing = await platformReadMnemonic()
+    if (existing) {
+      await platformDeleteMnemonic()
+      // Confirm by read-back: the two backends disagree about what a successful
+      // delete returns, so the only trustworthy signal is whether it is gone.
+      if (await platformReadMnemonic()) {
+        console.warn('[identity] legacy cloud seed copy could not be removed; will retry next launch')
+        return
+      }
+      console.log('[identity] removed the legacy cloud backup of the seed phrase')
+    }
+    await SecureStore.setItemAsync(CLOUD_SCRUBBED_KEY, '1')
+  } catch (e: any) {
+    console.warn('[identity] cloud scrub failed, will retry next launch:', e?.message ?? e)
+  }
 }
 
 async function localSetMnemonic (value: string): Promise<void> {
@@ -111,33 +146,17 @@ async function handleNativeRequest (msg: any) {
   try {
     let result: any = null
     switch (method) {
+      // The seed lives ONLY in this device's secure store. It used to be mirrored
+      // to iCloud Keychain / Google Block Store and read back from there, which
+      // meant a seed phrase sat in Apple's or Google's cloud for a feature the
+      // user could not see, enable or disable. Removed 2026-07-27; see
+      // scrubLegacyCloudBackup for the cleanup of copies already uploaded.
       case 'hasMnemonic': {
-        const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
-        if (local) { result = true; break }
-        // Auto-restore from platform backup before reporting "no mnemonic".
-        if (await platformIsAvailable()) {
-          const restored = await platformReadMnemonic()
-          if (restored) {
-            await localSetMnemonic(restored)
-            result = true
-            break
-          }
-        }
-        result = false
+        result = !!(await SecureStore.getItemAsync(MNEMONIC_KEY))
         break
       }
       case 'getMnemonic': {
-        const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
-        if (local) { result = local; break }
-        if (await platformIsAvailable()) {
-          const restored = await platformReadMnemonic()
-          if (restored) {
-            await localSetMnemonic(restored)
-            result = restored
-            break
-          }
-        }
-        result = null
+        result = await SecureStore.getItemAsync(MNEMONIC_KEY)
         break
       }
       case 'setMnemonic': {
@@ -147,64 +166,21 @@ async function handleNativeRequest (msg: any) {
         }
         await localSetMnemonic(value)
         result = true
-        if (await isBackupEnabled()) {
-          // Fire-and-forget — never fail profile creation because backup wrote slowly.
-          platformSaveMnemonic(value).catch(() => {})
-        }
-        break
-      }
-      case 'getBackupStatus': {
-        const local = !!(await SecureStore.getItemAsync(MNEMONIC_KEY))
-        const platformAvail = await platformIsAvailable()
-        const enabled = await isBackupEnabled()
-        let platformSynced = false
-        let error: string | null = null
-        if (platformAvail && enabled) {
-          try {
-            const v = await platformReadMnemonic()
-            platformSynced = !!v
-          } catch (e: any) { error = e?.message ?? String(e) }
-        }
-        result = {
-          local,
-          platform: platformAvail && enabled ? platformLabel : null,
-          platformSynced,
-          enabled,
-          error,
-        }
-        break
-      }
-      case 'setBackupEnabled': {
-        const enable = args[0] !== false && args[0] !== '0' && args[0] !== 0
-        await SecureStore.setItemAsync(BACKUP_ENABLED_KEY, enable ? '1' : '0')
-        if (!enable) {
-          // User explicitly opted out — scrub any existing platform copy.
-          platformDeleteMnemonic().catch(() => {})
-        } else if (await platformIsAvailable()) {
-          // Opted in — mirror current local value up.
-          const local = await SecureStore.getItemAsync(MNEMONIC_KEY)
-          if (local) platformSaveMnemonic(local).catch(() => {})
-        }
-        result = true
         break
       }
       case 'deleteMnemonic': {
-        // Full reset (TODO #118). The PLATFORM copy has to go too, not just the
-        // local one: `hasMnemonic` above auto-restores from iCloud/Drive backup
-        // before reporting "no mnemonic", so deleting only the secure-store
-        // entry would hand the same identity straight back on the next boot and
-        // make a full reset no reset at all.
+        // Full reset (TODO #118). Nothing mirrors the seed to the cloud any more,
+        // but an install that predates that removal may still have a copy up
+        // there, and leaving it would hand the same identity back on the next
+        // boot - making a full reset no reset at all. So the platform copy is
+        // cleared here too, and confirmed by READ-BACK: the two backends
+        // disagree about what a successful delete returns, so the only
+        // trustworthy signal is whether the seed is still recoverable.
         await SecureStore.deleteItemAsync(MNEMONIC_KEY).catch(() => {})
         if (await platformIsAvailable()) {
           await platformDeleteMnemonic()
-          // Confirm by READ-BACK rather than by the return value. The two
-          // backends disagree about what they return: iOS resolves true for
-          // "deleted" and for "was not there", while Android resolves false
-          // when Play Services is missing - so a boolean tells us nothing
-          // reliable. What matters is only whether the phrase is still
-          // recoverable, and reading it back answers exactly that.
           if (await platformReadMnemonic()) {
-            throw new Error('the backed-up recovery phrase could not be removed')
+            throw new Error('the cloud copy of the seed could not be removed')
           }
         }
         result = true
@@ -652,10 +628,6 @@ export default function Root () {
         PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
-      if (msg.method === 'exportRecoveryPhrase') {
-        PearCalShare?.shareRecoveryPhrase?.(msg.args?.[0] ?? '').catch?.(() => {})
-        return
-      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -704,6 +676,10 @@ export default function Root () {
       // Nudge iOS to show the Local Network prompt so same-WiFi peers connect
       // directly (see modules/local-network). Fire-and-forget; no-op off iOS.
       requestLocalNetworkPermission()
+
+      // Remove any seed phrase the old backup feature left in iCloud Keychain /
+      // Google Block Store. One-time, best-effort, and nothing here waits on it.
+      scrubLegacyCloudBackup().catch(() => {})
 
             // Request notification permission on first launch (Android 13+)
             if (Platform.OS === 'android') {
