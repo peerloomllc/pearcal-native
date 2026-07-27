@@ -40,6 +40,7 @@ let _backgroundedAt = 0
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
 
 const { makeStartLock } = require('../src/lib/backendBootstrap')
+const { buildInviteInjection } = require('../src/lib/inviteDelivery')
 const { createEventRegistry } = require('../src/lib/eventRegistry')
 const {
   createSyncNotifyState, decideSyncNotify, contentId, contentKey,
@@ -568,9 +569,14 @@ export default function Root () {
         sendToWorklet({ method: 'consumePairLink', args: [url], id: bareId })
         return
       }
-      webViewRef.current?.injectJavaScript(
-        `if(window.__pearHandleInvite) { window.__pearHandleInvite(${JSON.stringify(url)}); } true;`
-      )
+      // TODO #148 - this used to be `if(window.__pearHandleInvite){…}`, which is
+      // a SILENT no-op when the WebView's DOM has loaded but its bundle has not
+      // run yet. By this point the link is already gone from native
+      // (getPendingLink nulls it on read) and from React state (cleared just
+      // above), so the invite was simply lost and the join sheet never appeared.
+      // buildInviteInjection parks it on `window` instead, and the bundle drains
+      // it the moment it defines the handler.
+      webViewRef.current?.injectJavaScript(buildInviteInjection(url))
     }
   }, [pendingInvite, dbReady, webViewReady])
 
