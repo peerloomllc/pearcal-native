@@ -14,6 +14,7 @@ const { canonicalize, signMessage, verifySignature } = require('./lib/sign.js')
 const { rekeyGroup: _rekeyGroupLib } = require('./lib/rekey.js')
 const {
   groupDeletedKey, isGroupScopedDelete, shouldBlockMirror, remainingGroupsAfterUnshare,
+  shouldClearScopedTombstone, eventIdFromKey,
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
 const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
@@ -441,19 +442,6 @@ const NS = {
   privateNotes: 'privateNotes:',
   avatars: 'avatars:',
   deleted: 'deleted:',
-}
-
-// Extract the event id from an "events:{date}:{eventId}" key. Cannot use
-// split(':').pop() because shadow ids contain colons (e.g.
-// "shadow:src:fwd:gid"), which would return the last colon segment ("gid")
-// instead of the full shadow id. Skips the "events:" prefix and the
-// "YYYY-MM-DD:" date segment.
-function eventIdFromKey (key) {
-  const first = key.indexOf(':')
-  if (first < 0) return key
-  const second = key.indexOf(':', first + 1)
-  if (second < 0) return key.slice(first + 1)
-  return key.slice(second + 1)
 }
 
 // Strip occurrence + version suffixes to derive the series-root id from any
@@ -1485,6 +1473,23 @@ async function isEventTombstoned (eventId, groupId) {
     ? null
     : await db.get(groupDeletedKey(groupId, eventId)).catch(() => null)
   return shouldBlockMirror({ globalTombstone, scopedTombstone })
+}
+
+// Lift the group-scoped unshare block for `eventId` in `groupId`, if this put is
+// entitled to (TODO #141). Decision is pure (src/lib/eventTombstone.js); this
+// just supplies the stored tombstone and the put's authored time.
+//
+// The event id is derived the same way the del branch derives it when WRITING
+// the tombstone, so the key cleared here is exactly the key that exists on disk.
+// Do not switch this to `value.id` on the assumption they agree: they do for
+// every shape we ship, and there is a test pinning that, but the two are
+// computed differently and only the writer's form is guaranteed to match.
+async function clearScopedTombstoneOnReshare (groupId, eventId, putUpdatedAt) {
+  const key = groupDeletedKey(groupId, eventId)
+  const node = await db.get(key).catch(() => null)
+  if (!shouldClearScopedTombstone({ tombstone: node?.value, putUpdatedAt })) return
+  await db.del(key).catch(() => {})
+  console.log('[#141] re-share cleared the scoped unshare tombstone for', eventId, 'in', groupId)
 }
 
 // Remove `groupId` from a local event's groups[]. Deletes the row only once no
@@ -5039,7 +5044,11 @@ async function syncPutEvent (groupId, event) {
 async function syncDeleteEvent (groupId, eventId, date, updatedByName, updatedById, recurrenceId, eventTitle, scope) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
-  const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
+  // `ts` is the unshare's AUTHORED time. It rides every del so a later re-share
+  // can tell whether it postdates the unshare (TODO #141); the tombstone's own
+  // `ts` cannot answer that, being the applying device's clock. Additive: peers
+  // on older builds ignore it, and its absence is handled explicitly.
+  const payload = { op: 'del', type: 'event', key: 'events:' + date + ':' + eventId, ts: Date.now(), updatedByName: updatedByName || 'Someone', updatedById: updatedById || '' }
   if (recurrenceId) payload.recurrenceId = recurrenceId
   if (eventTitle) payload.eventTitle = eventTitle
   if (scope === 'group') payload.scope = 'group'
@@ -5769,6 +5778,14 @@ function makeApply (groupId) {
             }
           }
           await view.put(val.key, viewValue)
+          // TODO #141 - a put into this group IS a re-share into it, so lift the
+          // group-scoped unshare block before mirroring rather than after. Until
+          // this, nothing anywhere deleted that key, and because it is written
+          // only inside the `isRemote` guard below, the author of the unshare
+          // kept the event while every other member lost it for good.
+          if (val.type === 'event') {
+            await clearScopedTombstoneOnReshare(groupId, eventIdFromKey(val.key), viewValue?.updatedAt)
+          }
           // Always mirror so local DB has latest invitees list — listEvents filters at read time.
           await mirrorToLocal(val.type, val.key, viewValue, groupId)
           // Phase 5: identity-level kick mirror. For every removed member with
@@ -6181,7 +6198,14 @@ function makeApply (groupId) {
             // which is exactly the data loss TODO #122 fixes.
             await db.put(
               isGroupScopedDel ? groupDeletedKey(groupId, eventId) : NS.deleted + eventId,
-              { ts: Date.now(), ...(isGroupScopedDel ? { groupId } : {}) },
+              {
+                ts: Date.now(),
+                // Authored unshare time, so a later re-share can be ordered against
+                // it without comparing two devices' clocks (TODO #141). Absent when
+                // the del came from a build predating it.
+                ...(isGroupScopedDel && typeof val.ts === 'number' ? { delAt: val.ts } : {}),
+                ...(isGroupScopedDel ? { groupId } : {}),
+              },
             ).catch(() => {})
           }
         }
