@@ -504,11 +504,6 @@ export default function App ({ db, notifs, sync }) {
   const closeInviteSheetRef = useRef(null)
   const closeNewGroupSheetRef = useRef(null)
   const [groupCreatedToast, setGroupCreatedToast] = useState(null) // null | { group }
-  const [backupStatus, setBackupStatus] = useState(null)
-  const [backupNudgeDismissed, setBackupNudgeDismissed] = useState(() => {
-    try { return localStorage.getItem('pearcal:backupNudgeDismissed') === '1' } catch { return false }
-  })
-  const [focusBackup, setFocusBackup] = useState(0)
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
   const [infoSheet, setInfoSheet] = useState(null) // null | { title, message, icon }
@@ -580,18 +575,6 @@ export default function App ({ db, notifs, sync }) {
     load()
     return () => { cancelled = true }
   }, [db])
-
-  useEffect(() => {
-    if (!db?.getBackupStatus) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch { /* non-fatal */ }
-    })()
-    return () => { cancelled = true }
-  }, [db, tab])
 
   // ── Re-sync state when a P2P peer pushes new data ──────────────────────────
   useEffect(() => {
@@ -1683,7 +1666,7 @@ export default function App ({ db, notifs, sync }) {
             <ProfileTab profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
-              focusBackup={focusBackup} qrScanModeRef={qrScanModeRef}
+              qrScanModeRef={qrScanModeRef}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -3336,7 +3319,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
-  const [backupStatus, setBackupStatus] = useState(null)
   const [restoreMode, setRestoreMode] = useState(null) // null | 'pair' | 'pair-waiting'
   const [restoreError, setRestoreError] = useState('')
   const [pairInput, setPairInput] = useState('')
@@ -3426,31 +3408,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
     }
   }
 
-  useEffect(() => {
-    let cancelled = false
-    async function refresh () {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch { /* non-fatal */ }
-    }
-    refresh()
-    // Refresh once after name save has mirrored to platform (slide 2 → 3).
-    const t = setTimeout(refresh, 1200)
-    return () => { cancelled = true; clearTimeout(t) }
-  }, [db, step])
-
-  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
-    : backupStatus?.platform === 'blockstore' ? 'Google'
-    : null
-
-  const backupToastText = !backupStatus
-    ? null
-    : backupStatus.platformSynced && backupPlatformLabel
-      ? `Recovery phrase saved to ${backupPlatformLabel}.`
-      : backupStatus.enabled && backupPlatformLabel
-        ? `Recovery phrase will sync to ${backupPlatformLabel}.`
-        : 'Recovery phrase saved on this device only — back up in Settings.'
 
   async function handlePhotoChange (e) {
     const file = e.target.files?.[0]
@@ -3664,12 +3621,6 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           </div>
         </div>
       </div>
-      {backupToastText && (
-        <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center',
-          maxWidth:300, lineHeight:'1.5', marginTop:4 }}>
-          {backupToastText}
-        </div>
-      )}
       <button onClick={() => { onComplete?.() }}
         style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:4 }}>
         Let's go!
@@ -6755,7 +6706,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup, qrScanModeRef }) {
+function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -6764,15 +6715,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [holidaysOpen,      setHolidaysOpen]      = useState((profile?.holidayCountries ?? []).length > 0)
   const [personalOpen,      setPersonalOpen]      = useState(false)
   const [advancedOpen,      setAdvancedOpen]      = useState(false)
-  const backupRowRef = useRef(null)
-  useEffect(() => {
-    if (!focusBackup) return
-    setAdvancedOpen(true)
-    const t = setTimeout(() => {
-      backupRowRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' })
-    }, 450)
-    return () => clearTimeout(t)
-  }, [focusBackup])
   const [appearanceOpen,    setAppearanceOpen]    = useState(false)
   const [timeFormatOpen,    setTimeFormatOpen]    = useState(false)
   const [weekStartOpen,     setWeekStartOpen]     = useState(false)
@@ -6786,6 +6728,14 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [sweepReport,       setSweepReport]       = useState(null) // dry-run audit result
   const [sweepBusy,         setSweepBusy]         = useState(false)
   const [sweepResult,       setSweepResult]       = useState(null) // post-purge summary
+  // Reset app data (TODO #118). `resetSheet` opens the chooser; `resetMode` is
+  // set once a level is picked and drives the confirmation step.
+  const [resetSheet,        setResetSheet]        = useState(false)
+  const [resetMode,         setResetMode]         = useState(null)  // 'keep' | 'full'
+  const [resetTyped,        setResetTyped]        = useState('')
+  const [resetBusy,         setResetBusy]         = useState(false)
+  const [resetError,        setResetError]        = useState(null)
+  const closeResetSheetRef  = useRef(null)
 
   const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
                          : b > 1e6 ? (b/1e6).toFixed(1)+' MB'
@@ -6860,72 +6810,15 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
     }
     setBpRenameSaving(false)
   }
-  const [backupStatus,     setBackupStatus]     = useState(null)
-  const [mnemonicReveal,   setMnemonicReveal]   = useState(null)
-  const [mnemonicBusy,     setMnemonicBusy]     = useState(false)
   const [pairHost,         setPairHost]         = useState(null) // null | { url, expiresAt } | { url, expiresAt, expired: true } | { status: 'completed' }
   const [pairHostBusy,     setPairHostBusy]     = useState(false)
   const [pairHostError,    setPairHostError]    = useState(null)
-  const [mnemonicCopied,   setMnemonicCopied]   = useState(false)
   const [linkedDevices,    setLinkedDevices]    = useState([])
   const [renamingKey,      setRenamingKey]      = useState(null)
   const [renameDraft,      setRenameDraft]      = useState('')
   const [renameSaving,     setRenameSaving]     = useState(false)
   const [removeConfirmKey, setRemoveConfirmKey] = useState(null)
   const [removingKey,      setRemovingKey]      = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function refresh () {
-      try {
-        const s = await db.getBackupStatus()
-        if (!cancelled) setBackupStatus(s)
-      } catch (e) {
-        if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e?.message })
-      }
-    }
-    refresh()
-    return () => { cancelled = true }
-  }, [db])
-
-  const backupPlatformLabel = backupStatus?.platform === 'icloud' ? 'iCloud Keychain'
-    : backupStatus?.platform === 'blockstore' ? 'Google'
-    : null
-
-  async function revealMnemonic () {
-    setMnemonicBusy(true)
-    try {
-      const m = await db.revealMnemonic()
-      setMnemonicReveal(m ?? '')
-    } catch (e) {
-      setMnemonicReveal('Error: ' + (e?.message ?? 'unknown'))
-    }
-    setMnemonicBusy(false)
-  }
-
-  async function copyMnemonic () {
-    if (!mnemonicReveal) return
-    try {
-      await navigator.clipboard?.writeText?.(mnemonicReveal)
-    } catch {}
-    setMnemonicCopied(true)
-    setTimeout(() => setMnemonicCopied(false), 2000)
-  }
-
-  async function shareMnemonic () {
-    if (!mnemonicReveal) return
-    try { window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal) } catch {}
-  }
-
-  async function toggleBackup () {
-    if (!backupStatus) return
-    const next = !backupStatus.enabled
-    try {
-      await db.setBackupEnabled(next)
-      const s = await db.getBackupStatus()
-      setBackupStatus(s)
-    } catch {}
-  }
 
   async function saveName () {
     setSaving(true)
@@ -8177,6 +8070,150 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         )}
         </div>
       </div>
+
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        RESET
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <div style={{ padding:'14px 16px' }}>
+          <button onClick={() => {
+            setResetMode(null); setResetTyped(''); setResetError(null)
+            setResetSheet(true)
+          }}
+            style={{ display:'flex', alignItems:'center', gap:10, width:'100%',
+              padding:'12px 14px', borderRadius:10, cursor:'pointer',
+              border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
+            <div style={{ flex:1, textAlign:'left' }}>
+              <div style={{ fontSize:14, color:'#d04' }}>Reset app data</div>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
+                Clear this device's calendar and groups, and optionally start over as a new user
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {resetSheet && (
+        <BottomSheet closeRef={closeResetSheetRef}
+          onClose={() => { if (!resetBusy) { setResetSheet(false); setResetMode(null) } }}>
+          <div style={{ padding:'0 20px 20px' }}>
+            <div style={{ fontSize:17, color:colors.text.primary, marginBottom:6 }}>
+              {resetMode === null ? 'Reset app data'
+                : resetMode === 'keep' ? 'Clear calendar and groups?'
+                : 'Start over as a new user?'}
+            </div>
+
+            {resetMode === null && (
+              <>
+                <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
+                  Both options clear this device. Only the second one tells anybody else.
+                </div>
+                <button onClick={() => { setResetMode('keep'); setResetError(null) }}
+                  style={{ display:'block', width:'100%', textAlign:'left', marginBottom:10,
+                    padding:'14px 16px', borderRadius:12, cursor:'pointer',
+                    border:`1px solid ${colors.border}`, background:'transparent', fontFamily:FONT }}>
+                  <div style={{ fontSize:14, color:colors.text.primary, marginBottom:3 }}>Clear calendar and groups</div>
+                  <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
+                    You stay the same person. Your events and groups are removed from this
+                    device, and you can rejoin a group with its invite link to get everything back.
+                  </div>
+                </button>
+                <button onClick={() => { setResetMode('full'); setResetError(null) }}
+                  style={{ display:'block', width:'100%', textAlign:'left',
+                    padding:'14px 16px', borderRadius:12, cursor:'pointer',
+                    border:'1px solid #d04', background:'transparent', fontFamily:FONT }}>
+                  <div style={{ fontSize:14, color:'#d04', marginBottom:3 }}>Start over as a new user</div>
+                  <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
+                    Everything above, and this device stops being you. It gets a brand new
+                    identity, with no way back to the account you are using now. You also leave
+                    every group, so you stop showing in their member lists. Groups you run are
+                    handed to another member, or deleted if you are the only one in them.
+                  </div>
+                </button>
+              </>
+            )}
+
+            {resetMode === 'keep' && (
+              <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:16 }}>
+                Your events and groups will be removed from this device. You stay signed in
+                as yourself and keep your name, so you can rejoin any group with its invite
+                link and your calendar comes back from the other members. Nobody else is told,
+                and you stay in their member lists.
+              </div>
+            )}
+
+            {resetMode === 'full' && (
+              <>
+                <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.55, marginBottom:14 }}>
+                  This device stops being you. It gets a brand new identity, so there is no way
+                  back to the account you are using now, and anything only this device was
+                  holding is gone for good. You will also leave every group you are in, and any
+                  group you run is handed to another member or deleted if nobody else is in it.
+                </div>
+                {/* The departure only reaches peers connected at that moment: the
+                    durable pending-leave record lives in the database the reset is
+                    about to delete, so there is no second attempt. Say so plainly
+                    here rather than let a member discover it by still seeing a
+                    person who left. */}
+                <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.55, marginBottom:14,
+                  padding:'11px 13px', borderRadius:10, border:`1px solid ${colors.border}` }}>
+                  <span style={{ color:colors.text.primary }}>One thing to know:</span> leaving
+                  only reaches people who have the app open at that moment. Anyone offline may
+                  still see you in their group's member list, and once your data is gone there is
+                  no way to tell them. If that matters, leave your groups by hand first, while
+                  the other members are around.
+                </div>
+                <div style={{ fontSize:12, color:colors.text.muted, marginBottom:6 }}>
+                  Type RESET to confirm
+                </div>
+                <input value={resetTyped} onChange={e => setResetTyped(e.target.value)}
+                  autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+                  style={{ width:'100%', boxSizing:'border-box', padding:'11px 14px', borderRadius:10,
+                    marginBottom:14, border:`1px solid ${colors.border}`, background:'transparent',
+                    color:colors.text.primary, fontFamily:FONT, fontSize:14 }} />
+              </>
+            )}
+
+            {resetError && (
+              <div style={{ fontSize:12, color:'#d04', lineHeight:1.5, marginBottom:12 }}>
+                {resetError}
+              </div>
+            )}
+
+            {resetMode !== null && (
+              <div style={{ display:'flex', gap:10 }}>
+                <button onClick={() => { setResetMode(null); setResetTyped(''); setResetError(null) }}
+                  disabled={resetBusy}
+                  style={{ flex:1, padding:'12px 16px', borderRadius:10, border:`1px solid ${colors.border}`,
+                    background:'transparent', color:colors.text.primary, fontFamily:FONT, fontSize:14,
+                    cursor: resetBusy ? 'wait' : 'pointer', opacity: resetBusy ? 0.5 : 1 }}>
+                  Back
+                </button>
+                <button data-haptic="medium"
+                  disabled={resetBusy || (resetMode === 'full' && resetTyped.trim().toUpperCase() !== 'RESET')}
+                  onClick={async () => {
+                    window.__pearSync?.haptic('medium')
+                    setResetBusy(true); setResetError(null)
+                    try {
+                      // The shell reloads (mobile) or relaunches (desktop) when
+                      // this lands, so there is no success state to render here.
+                      await sync.resetAppData({ keepIdentity: resetMode === 'keep' })
+                    } catch (e) {
+                      setResetError(e.message)
+                      setResetBusy(false)
+                    }
+                  }}
+                  style={{ flex:1, padding:'12px 16px', borderRadius:10, border:'none',
+                    background:'#d04', color:'#fff', fontFamily:FONT, fontSize:14,
+                    cursor: resetBusy ? 'wait' : 'pointer',
+                    opacity: (resetBusy || (resetMode === 'full' && resetTyped.trim().toUpperCase() !== 'RESET')) ? 0.5 : 1 }}>
+                  {resetBusy ? 'Resetting…' : resetMode === 'keep' ? 'Clear it' : 'Delete everything'}
+                </button>
+              </div>
+            )}
+          </div>
+        </BottomSheet>
+      )}
 
       {icsImport && (
         <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}

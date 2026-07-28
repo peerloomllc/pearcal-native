@@ -1,7 +1,10 @@
-// Settings modal — display preferences (24h / week start), recovery
-// phrase reveal + restore, linked devices, About. Mobile's settings
-// tab also covers backup/blind-peer, holiday subscriptions, ICS
-// import/export, and storage reclaim — deferred until users ask.
+// Settings modal — display preferences (24h / week start), linked devices,
+// About. Mobile's settings tab also covers blind-peer, holiday
+// subscriptions, ICS import/export, and storage reclaim — deferred until
+// users ask.
+//
+// No recovery-phrase surface: the seed is an internal identity seed, never
+// shown, exported or backed up (removed 2026-07-27).
 //
 // updateProfile-routed prefs use the wrapper from App.jsx (db.updateProfile
 // + optimistic setProfile) since bare's profileChanged event only fires
@@ -23,13 +26,7 @@ const WEEK_STARTS = [
 
 
 export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onClose }) {
-  const [phrase,   setPhrase]   = useState(null)         // null = hidden, '' = loading, '...' = revealed
-  const [phraseErr, setPhraseErr] = useState('')
-  const [phraseCopied, setPhraseCopied] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
-  // Mnemonic restore lives in bare (db.restoreMnemonic), but the mobile
-  // app doesn't expose a settings-time restore yet — restore there only
-  // runs during onboarding. Hide the desktop UI until parity lands.
   // Match the same locale-aware default the App uses so the toggle
   // reads "On" only when the user has explicitly chosen 24h.
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -101,26 +98,6 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
       alert('Could not save: ' + (e?.message ?? 'unknown error'))
     }
     setSaving(false)
-  }
-
-  async function revealPhrase () {
-    if (phrase != null) { setPhrase(null); setPhraseErr(''); return }  // toggle hide
-    setPhrase('')
-    setPhraseErr('')
-    try {
-      const m = await db.revealMnemonic()
-      setPhrase(m ?? '')
-    } catch (e) {
-      setPhrase(null)
-      setPhraseErr(e?.message ?? 'Could not reveal recovery phrase')
-    }
-  }
-
-  async function copyPhrase () {
-    if (!phrase) return
-    try { await navigator.clipboard?.writeText?.(phrase) } catch {}
-    setPhraseCopied(true)
-    setTimeout(() => setPhraseCopied(false), 1500)
   }
 
   function handleUse24hChange (next) {

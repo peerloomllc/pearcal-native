@@ -12343,6 +12343,65 @@
     }
   });
 
+  // src/lib/joinOutcome.js
+  var require_joinOutcome = __commonJS({
+    "src/lib/joinOutcome.js"(exports, module) {
+      "use strict";
+      function joinOutcomeMessage2({ error, reason, groupName } = {}) {
+        const name = groupName ? `"${groupName}"` : "that group";
+        switch (error) {
+          case "blocked_from_group":
+            return { tone: "error", message: `You were removed from ${name}, so this invite will not work. Ask whoever runs the group to invite you again.` };
+          case "already_member":
+            return { tone: "info", message: `You are already in ${name}.` };
+          // handleInviteLink threw rather than returning. Before this was caught, the
+          // sheet spun forever with nothing said, because the caller only ever reacted
+          // to a returned result.
+          case "join_threw":
+            return { tone: "error", message: `Something went wrong joining ${name}. Try the link again, and if it keeps failing ask for a fresh one.` };
+          case "repair_failed":
+            switch (reason) {
+              case "key-conflict":
+                return { tone: "error", message: `This invite is for a different version of ${name} than the one on this device. Ask the sender to remove you from the group and invite you back.` };
+              case "not-a-member":
+                return { tone: "error", message: `${name} is no longer on this device, so there was nothing to repair. Ask for a fresh invite link to join again.` };
+              case "already-keyed":
+                return { tone: "info", message: `${name} is already working on this device. Nothing needed repairing.` };
+              case "missing-args":
+                return { tone: "error", message: `That invite link is missing the part needed to repair ${name}. Ask the sender for a new one.` };
+              case "reconcile-failed":
+              default:
+                return { tone: "error", message: `Could not repair ${name} on this device. Try the link again, and if it still fails ask the sender to re-share it.` };
+            }
+          // Every parse failure from parseInviteLink. Distinct from the above: here
+          // the link itself is the problem, so "check the link" is the right advice
+          // rather than the catch-all it used to be.
+          case "invalid_url":
+          case "malformed_url":
+          case "wrong_path":
+          case "missing_params":
+          case "invalid_group_id":
+          case "empty_name":
+          case "invalid_key":
+          case "invalid_inviter":
+          case "invalid_enc":
+            return { tone: "error", message: "That invite link does not look right. Ask for a new one and paste the whole thing." };
+          default:
+            return { tone: "error", message: `Could not join ${name}${error ? ` (${error})` : ""}. Try again, or ask for a fresh invite link.` };
+        }
+      }
+      function isBenignJoinOutcome2({ error, reason } = {}) {
+        if (error === "already_member") return true;
+        if (error === "repair_failed" && reason === "already-keyed") return true;
+        return false;
+      }
+      module.exports = {
+        joinOutcomeMessage: joinOutcomeMessage2,
+        isBenignJoinOutcome: isBenignJoinOutcome2
+      };
+    }
+  });
+
   // node_modules/qrcode/lib/can-promise.js
   var require_can_promise = __commonJS({
     "node_modules/qrcode/lib/can-promise.js"(exports, module) {
@@ -14463,6 +14522,31 @@
     }
   });
 
+  // src/lib/inviteDelivery.js
+  var require_inviteDelivery = __commonJS({
+    "src/lib/inviteDelivery.js"(exports, module) {
+      "use strict";
+      var EARLY_INVITE_KEY = "__pearEarlyInvites";
+      function buildInviteInjection(url) {
+        const u = JSON.stringify(String(url));
+        return `(function(){var u=${u};if(window.__pearHandleInvite){window.__pearHandleInvite(u);}else{(window.${EARLY_INVITE_KEY}=window.${EARLY_INVITE_KEY}||[]).push(u);}})(); true;`;
+      }
+      function drainEarlyInvites2(win, handler) {
+        if (!win || typeof handler !== "function") return [];
+        const parked = win[EARLY_INVITE_KEY];
+        if (!Array.isArray(parked) || parked.length === 0) return [];
+        const urls = parked.splice(0);
+        for (const u of urls) handler(u);
+        return urls;
+      }
+      module.exports = {
+        EARLY_INVITE_KEY,
+        buildInviteInjection,
+        drainEarlyInvites: drainEarlyInvites2
+      };
+    }
+  });
+
   // src/invite.js
   var import_seedInvite = __toESM(require_seedInvite());
   var SCHEME = "https://peerloomllc.com";
@@ -14491,7 +14575,7 @@
           if (onJoined) onJoined(healed);
           return { ok: true, repaired: true, group: healed };
         }
-        return { ok: false, error: "repair_failed", group: existing };
+        return { ok: false, error: "repair_failed", reason: res?.reason ?? "reconcile-failed", group: existing };
       }
       return { ok: false, error: "already_member", group: existing };
     }
@@ -14651,6 +14735,7 @@
   var import_react7 = __toESM(require_react());
   var import_react_dom = __toESM(require_react_dom());
   var import_seederPairTiming = __toESM(require_seederPairTiming());
+  var import_joinOutcome = __toESM(require_joinOutcome());
   var import_qrcode = __toESM(require_browser());
 
   // src/ui/fonts.js
@@ -17514,15 +17599,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const closeInviteSheetRef = (0, import_react7.useRef)(null);
     const closeNewGroupSheetRef = (0, import_react7.useRef)(null);
     const [groupCreatedToast, setGroupCreatedToast] = (0, import_react7.useState)(null);
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
-    const [backupNudgeDismissed, setBackupNudgeDismissed] = (0, import_react7.useState)(() => {
-      try {
-        return localStorage.getItem("pearcal:backupNudgeDismissed") === "1";
-      } catch {
-        return false;
-      }
-    });
-    const [focusBackup, setFocusBackup] = (0, import_react7.useState)(0);
     const [confirmSheet, setConfirmSheet] = (0, import_react7.useState)(null);
     const closeConfirmSheetRef = (0, import_react7.useRef)(null);
     const [infoSheet, setInfoSheet] = (0, import_react7.useState)(null);
@@ -17592,20 +17668,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         cancelled = true;
       };
     }, [db2]);
-    (0, import_react7.useEffect)(() => {
-      if (!db2?.getBackupStatus) return;
-      let cancelled = false;
-      (async () => {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch {
-        }
-      })();
-      return () => {
-        cancelled = true;
-      };
-    }, [db2, tab]);
     (0, import_react7.useEffect)(() => {
       if (!db2) return;
       function scheduleDefaultReminders(newEvents) {
@@ -18266,9 +18328,14 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     }
     const joinWithNickname = (0, import_react7.useCallback)(async (url, nickname) => {
       const nick = nickname && nickname !== profile?.name ? nickname : null;
-      const result = await handleInviteLink(url, db2, sync2, (g) => {
-        setTab("groups");
-      }, nick);
+      let result;
+      try {
+        result = await handleInviteLink(url, db2, sync2, (g) => {
+          setTab("groups");
+        }, nick);
+      } catch (e66) {
+        result = { ok: false, error: "join_threw", reason: e66?.message };
+      }
       if (result?.ok && result.group) {
         setGroups((prev) => prev.find((x) => x.id === result.group.id) ? prev : [...prev, result.group]);
         setReadyGroupKeys((prev) => {
@@ -18295,7 +18362,9 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           if (evts) setEvents(evts);
         });
       }
-      setPendingJoin(null);
+      if (result?.ok || result?.error === "blocked_from_group" || (0, import_joinOutcome.isBenignJoinOutcome)(result ?? {})) {
+        setPendingJoin(null);
+      }
       return result;
     }, [db2, sync2, profile]);
     const addGroup = (0, import_react7.useCallback)(async (g, opts) => {
@@ -18666,7 +18735,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             saveEvent,
             blindPeerKey,
             setBlindPeerKey,
-            focusBackup,
             qrScanModeRef,
             onToggleDark: () => {
               const nd = !dark;
@@ -18947,6 +19015,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
           defaultName: profile?.name ?? "",
           closeRef: closePendingJoinRef,
           onConfirm: (nickname) => joinWithNickname(pendingJoin.url, nickname),
+          onOutcome: (o39) => {
+            setJoinToast(o39);
+            setTimeout(() => setJoinToast(null), 8e3);
+          },
           onClose: () => setPendingJoin(null)
         }
       ),
@@ -20853,7 +20925,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const fileRef = (0, import_react7.useRef)(null);
     const total = 5;
     const [slideDir, setSlideDir] = (0, import_react7.useState)(1);
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
     const [restoreMode, setRestoreMode] = (0, import_react7.useState)(null);
     const [restoreError, setRestoreError] = (0, import_react7.useState)("");
     const [pairInput, setPairInput] = (0, import_react7.useState)("");
@@ -20928,24 +20999,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         setRestoreError(e66?.message || "Invalid pairing link");
       }
     }
-    (0, import_react7.useEffect)(() => {
-      let cancelled = false;
-      async function refresh() {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch {
-        }
-      }
-      refresh();
-      const t7 = setTimeout(refresh, 1200);
-      return () => {
-        cancelled = true;
-        clearTimeout(t7);
-      };
-    }, [db2, step]);
-    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
-    const backupToastText = !backupStatus ? null : backupStatus.platformSynced && backupPlatformLabel ? `Recovery phrase saved to ${backupPlatformLabel}.` : backupStatus.enabled && backupPlatformLabel ? `Recovery phrase will sync to ${backupPlatformLabel}.` : "Recovery phrase saved on this device only \u2014 back up in Settings.";
     async function handlePhotoChange(e66) {
       const file = e66.target.files?.[0];
       if (!file || !file.type.startsWith("image/")) return;
@@ -21297,14 +21350,6 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             ] })
           ] })
         ] }),
-        backupToastText && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
-          fontSize: 12,
-          color: colors.text.muted,
-          textAlign: "center",
-          maxWidth: 300,
-          lineHeight: "1.5",
-          marginTop: 4
-        }, children: backupToastText }),
         /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           "button",
           {
@@ -23202,7 +23247,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       ] })
     ] }) });
   }
-  function NicknameBeforeJoinSheet({ groupName, defaultName, onConfirm, onClose, closeRef }) {
+  function NicknameBeforeJoinSheet({ groupName, defaultName, onConfirm, onClose, closeRef, onOutcome }) {
     const bsCloseRef = (0, import_react7.useRef)(null);
     const [nickname, setNickname] = (0, import_react7.useState)(defaultName);
     const [joining, setJoining] = (0, import_react7.useState)(false);
@@ -23224,15 +23269,17 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       const result = await onConfirm(nickname.trim());
       if (result && !result.ok) {
         setJoining(false);
-        if (result.error === "already_member") {
-          bsCloseRef.current?.();
-          return;
-        }
         if (result.error === "blocked_from_group") {
           bsCloseRef.current?.();
           return;
         }
-        setErr("Could not join group. Check the invite link and try again.");
+        const outcome = (0, import_joinOutcome.joinOutcomeMessage)({ error: result.error, reason: result.reason, groupName });
+        if ((0, import_joinOutcome.isBenignJoinOutcome)(result)) {
+          onOutcome?.(outcome);
+          bsCloseRef.current?.();
+          return;
+        }
+        setErr(outcome.message);
       }
     }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(BottomSheet, { onClose, zIndex: 110, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 16px", display: "flex", flexDirection: "column", gap: 14 }, children: [
@@ -25572,7 +25619,7 @@ ${link}`;
       ] })
     ] });
   }
-  function ProfileTab({ profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, focusBackup, qrScanModeRef }) {
+  function ProfileTab({ profile, groups, onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
     const [name, setName] = (0, import_react7.useState)(profile?.name ?? "");
     const [editing, setEditing] = (0, import_react7.useState)(false);
     const [saving, setSaving] = (0, import_react7.useState)(false);
@@ -25581,15 +25628,6 @@ ${link}`;
     const [holidaysOpen, setHolidaysOpen] = (0, import_react7.useState)((profile?.holidayCountries ?? []).length > 0);
     const [personalOpen, setPersonalOpen] = (0, import_react7.useState)(false);
     const [advancedOpen, setAdvancedOpen] = (0, import_react7.useState)(false);
-    const backupRowRef = (0, import_react7.useRef)(null);
-    (0, import_react7.useEffect)(() => {
-      if (!focusBackup) return;
-      setAdvancedOpen(true);
-      const t7 = setTimeout(() => {
-        backupRowRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
-      }, 450);
-      return () => clearTimeout(t7);
-    }, [focusBackup]);
     const [appearanceOpen, setAppearanceOpen] = (0, import_react7.useState)(false);
     const [timeFormatOpen, setTimeFormatOpen] = (0, import_react7.useState)(false);
     const [weekStartOpen, setWeekStartOpen] = (0, import_react7.useState)(false);
@@ -25603,6 +25641,12 @@ ${link}`;
     const [sweepReport, setSweepReport] = (0, import_react7.useState)(null);
     const [sweepBusy, setSweepBusy] = (0, import_react7.useState)(false);
     const [sweepResult, setSweepResult] = (0, import_react7.useState)(null);
+    const [resetSheet, setResetSheet] = (0, import_react7.useState)(false);
+    const [resetMode, setResetMode] = (0, import_react7.useState)(null);
+    const [resetTyped, setResetTyped] = (0, import_react7.useState)("");
+    const [resetBusy, setResetBusy] = (0, import_react7.useState)(false);
+    const [resetError, setResetError] = (0, import_react7.useState)(null);
+    const closeResetSheetRef = (0, import_react7.useRef)(null);
     const formatBytes = (b) => b > 1e9 ? (b / 1e9).toFixed(2) + " GB" : b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : b > 1e3 ? (b / 1e3).toFixed(0) + " KB" : b + " B";
     const [icsImport, setIcsImport] = (0, import_react7.useState)(null);
     const icsFileRef = (0, import_react7.useRef)(null);
@@ -25660,71 +25704,15 @@ ${link}`;
       }
       setBpRenameSaving(false);
     }
-    const [backupStatus, setBackupStatus] = (0, import_react7.useState)(null);
-    const [mnemonicReveal, setMnemonicReveal] = (0, import_react7.useState)(null);
-    const [mnemonicBusy, setMnemonicBusy] = (0, import_react7.useState)(false);
     const [pairHost, setPairHost] = (0, import_react7.useState)(null);
     const [pairHostBusy, setPairHostBusy] = (0, import_react7.useState)(false);
     const [pairHostError, setPairHostError] = (0, import_react7.useState)(null);
-    const [mnemonicCopied, setMnemonicCopied] = (0, import_react7.useState)(false);
     const [linkedDevices, setLinkedDevices] = (0, import_react7.useState)([]);
     const [renamingKey, setRenamingKey] = (0, import_react7.useState)(null);
     const [renameDraft, setRenameDraft] = (0, import_react7.useState)("");
     const [renameSaving, setRenameSaving] = (0, import_react7.useState)(false);
     const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react7.useState)(null);
     const [removingKey, setRemovingKey] = (0, import_react7.useState)(null);
-    (0, import_react7.useEffect)(() => {
-      let cancelled = false;
-      async function refresh() {
-        try {
-          const s12 = await db2.getBackupStatus();
-          if (!cancelled) setBackupStatus(s12);
-        } catch (e66) {
-          if (!cancelled) setBackupStatus({ local: false, platform: null, platformSynced: false, enabled: false, error: e66?.message });
-        }
-      }
-      refresh();
-      return () => {
-        cancelled = true;
-      };
-    }, [db2]);
-    const backupPlatformLabel = backupStatus?.platform === "icloud" ? "iCloud Keychain" : backupStatus?.platform === "blockstore" ? "Google" : null;
-    async function revealMnemonic() {
-      setMnemonicBusy(true);
-      try {
-        const m3 = await db2.revealMnemonic();
-        setMnemonicReveal(m3 ?? "");
-      } catch (e66) {
-        setMnemonicReveal("Error: " + (e66?.message ?? "unknown"));
-      }
-      setMnemonicBusy(false);
-    }
-    async function copyMnemonic() {
-      if (!mnemonicReveal) return;
-      try {
-        await navigator.clipboard?.writeText?.(mnemonicReveal);
-      } catch {
-      }
-      setMnemonicCopied(true);
-      setTimeout(() => setMnemonicCopied(false), 2e3);
-    }
-    async function shareMnemonic() {
-      if (!mnemonicReveal) return;
-      try {
-        window.__pearSync?.exportRecoveryPhrase?.(mnemonicReveal);
-      } catch {
-      }
-    }
-    async function toggleBackup() {
-      if (!backupStatus) return;
-      const next = !backupStatus.enabled;
-      try {
-        await db2.setBackupEnabled(next);
-        const s12 = await db2.getBackupStatus();
-        setBackupStatus(s12);
-      } catch {
-      }
-    }
     async function saveName() {
       setSaving(true);
       await onUpdateProfile({ name });
@@ -26802,12 +26790,10 @@ ${link}`;
                         String(bp.pubkey).slice(0, 16),
                         "\u2026"
                       ] }),
-                      /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted }, children: [
-                        "Seeding ",
-                        bp.groupCount ?? 0,
-                        " group",
-                        (bp.groupCount ?? 0) === 1 ? "" : "s"
-                      ] })
+                      bp.coverageLabel && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: {
+                        fontSize: 11,
+                        color: bp.coverageLabel.tone === "warn" ? "#e0a458" : colors.text.muted
+                      }, children: bp.coverageLabel.text })
                     ] }),
                     confirming ? /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 6, flexShrink: 0 }, children: [
                       /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
@@ -27489,6 +27475,198 @@ ${link}`;
             ")"
           ] })
         ] }) }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, letterSpacing: "0.08em", textAlign: "center", marginTop: 16, marginBottom: 8 }, children: "RESET" }),
+        /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { marginBottom: 12 }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { padding: "14px 16px" }, children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          "button",
+          {
+            onClick: () => {
+              setResetMode(null);
+              setResetTyped("");
+              setResetError(null);
+              setResetSheet(true);
+            },
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              width: "100%",
+              padding: "12px 14px",
+              borderRadius: 10,
+              cursor: "pointer",
+              border: `1px solid ${colors.border}`,
+              background: "transparent",
+              fontFamily: FONT
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { flex: 1, textAlign: "left" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "#d04" }, children: "Reset app data" }),
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 11, color: colors.text.muted }, children: "Clear this device's calendar and groups, and optionally start over as a new user" })
+            ] })
+          }
+        ) }) }),
+        resetSheet && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+          BottomSheet,
+          {
+            closeRef: closeResetSheetRef,
+            onClose: () => {
+              if (!resetBusy) {
+                setResetSheet(false);
+                setResetMode(null);
+              }
+            },
+            children: /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { padding: "0 20px 20px" }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 17, color: colors.text.primary, marginBottom: 6 }, children: resetMode === null ? "Reset app data" : resetMode === "keep" ? "Clear calendar and groups?" : "Start over as a new user?" }),
+              resetMode === null && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Both options clear this device. Only the second one tells anybody else." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                  "button",
+                  {
+                    onClick: () => {
+                      setResetMode("keep");
+                      setResetError(null);
+                    },
+                    style: {
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      marginBottom: 10,
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      border: `1px solid ${colors.border}`,
+                      background: "transparent",
+                      fontFamily: FONT
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: colors.text.primary, marginBottom: 3 }, children: "Clear calendar and groups" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "You stay the same person. Your events and groups are removed from this device, and you can rejoin a group with its invite link to get everything back." })
+                    ]
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
+                  "button",
+                  {
+                    onClick: () => {
+                      setResetMode("full");
+                      setResetError(null);
+                    },
+                    style: {
+                      display: "block",
+                      width: "100%",
+                      textAlign: "left",
+                      padding: "14px 16px",
+                      borderRadius: 12,
+                      cursor: "pointer",
+                      border: "1px solid #d04",
+                      background: "transparent",
+                      fontFamily: FONT
+                    },
+                    children: [
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 14, color: "#d04", marginBottom: 3 }, children: "Start over as a new user" }),
+                      /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5 }, children: "Everything above, and this device stops being you. It gets a brand new identity, with no way back to the account you are using now. You also leave every group, so you stop showing in their member lists. Groups you run are handed to another member, or deleted if you are the only one in them." })
+                    ]
+                  }
+                )
+              ] }),
+              resetMode === "keep" && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 16 }, children: "Your events and groups will be removed from this device. You stay signed in as yourself and keep your name, so you can rejoin any group with its invite link and your calendar comes back from the other members. Nobody else is told, and you stay in their member lists." }),
+              resetMode === "full" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(import_jsx_runtime2.Fragment, { children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 13, color: colors.text.muted, lineHeight: 1.55, marginBottom: 14 }, children: "This device stops being you. It gets a brand new identity, so there is no way back to the account you are using now, and anything only this device was holding is gone for good. You will also leave every group you are in, and any group you run is handed to another member or deleted if nobody else is in it." }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: {
+                  fontSize: 12,
+                  color: colors.text.muted,
+                  lineHeight: 1.55,
+                  marginBottom: 14,
+                  padding: "11px 13px",
+                  borderRadius: 10,
+                  border: `1px solid ${colors.border}`
+                }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { style: { color: colors.text.primary }, children: "One thing to know:" }),
+                  " leaving only reaches people who have the app open at that moment. Anyone offline may still see you in their group's member list, and once your data is gone there is no way to tell them. If that matters, leave your groups by hand first, while the other members are around."
+                ] }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, marginBottom: 6 }, children: "Type RESET to confirm" }),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "input",
+                  {
+                    value: resetTyped,
+                    onChange: (e66) => setResetTyped(e66.target.value),
+                    autoCapitalize: "characters",
+                    autoCorrect: "off",
+                    spellCheck: false,
+                    style: {
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "11px 14px",
+                      borderRadius: 10,
+                      marginBottom: 14,
+                      border: `1px solid ${colors.border}`,
+                      background: "transparent",
+                      color: colors.text.primary,
+                      fontFamily: FONT,
+                      fontSize: 14
+                    }
+                  }
+                )
+              ] }),
+              resetError && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("div", { style: { fontSize: 12, color: "#d04", lineHeight: 1.5, marginBottom: 12 }, children: resetError }),
+              resetMode !== null && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)("div", { style: { display: "flex", gap: 10 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "button",
+                  {
+                    onClick: () => {
+                      setResetMode(null);
+                      setResetTyped("");
+                      setResetError(null);
+                    },
+                    disabled: resetBusy,
+                    style: {
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      border: `1px solid ${colors.border}`,
+                      background: "transparent",
+                      color: colors.text.primary,
+                      fontFamily: FONT,
+                      fontSize: 14,
+                      cursor: resetBusy ? "wait" : "pointer",
+                      opacity: resetBusy ? 0.5 : 1
+                    },
+                    children: "Back"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
+                  "button",
+                  {
+                    "data-haptic": "medium",
+                    disabled: resetBusy || resetMode === "full" && resetTyped.trim().toUpperCase() !== "RESET",
+                    onClick: async () => {
+                      window.__pearSync?.haptic("medium");
+                      setResetBusy(true);
+                      setResetError(null);
+                      try {
+                        await sync2.resetAppData({ keepIdentity: resetMode === "keep" });
+                      } catch (e66) {
+                        setResetError(e66.message);
+                        setResetBusy(false);
+                      }
+                    },
+                    style: {
+                      flex: 1,
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: "#d04",
+                      color: "#fff",
+                      fontFamily: FONT,
+                      fontSize: 14,
+                      cursor: resetBusy ? "wait" : "pointer",
+                      opacity: resetBusy || resetMode === "full" && resetTyped.trim().toUpperCase() !== "RESET" ? 0.5 : 1
+                    },
+                    children: resetBusy ? "Resetting\u2026" : resetMode === "keep" ? "Clear it" : "Delete everything"
+                  }
+                )
+              ] })
+            ] })
+          }
+        ),
         icsImport && /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(
           ImportIcsSheet,
           {
@@ -27784,6 +27962,7 @@ ${link}`;
   }
 
   // src/ui/main.jsx
+  var import_inviteDelivery = __toESM(require_inviteDelivery());
   var import_jsx_runtime3 = __toESM(require_jsx_runtime());
   injectGlobalStyles();
   if (!window.__pearDB) {
@@ -27883,9 +28062,6 @@ ${link}`;
     removeBlindPeer: (pk) => window.__pearDB.call("removeBlindPeer", pk),
     renameBlindPeer: (pk, n19) => window.__pearDB.call("renameBlindPeer", pk, n19),
     setSeederAutoFollow: (pk, on) => window.__pearDB.call("setSeederAutoFollow", pk, on),
-    getBackupStatus: () => window.__pearDB.call("getBackupStatus"),
-    setBackupEnabled: (b) => window.__pearDB.call("setBackupEnabled", b),
-    revealMnemonic: () => window.__pearDB.call("revealMnemonic"),
     restoreMnemonic: (m3) => window.__pearDB.call("restoreMnemonic", m3),
     listPendingRejoins: () => window.__pearDB.call("listPendingRejoins"),
     approveRejoin: (gid, ipk) => window.__pearDB.call("approveRejoin", gid, ipk),
@@ -27952,7 +28128,6 @@ ${link}`;
     debugGroup: (id) => window.__pearDB.call("debugGroup", id),
     nativeShare: (title, text) => window.__pearDB.call("nativeShare", title, text),
     exportIcs: (content) => window.__pearDB.call("exportIcs", content),
-    exportRecoveryPhrase: (content) => window.__pearDB.call("exportRecoveryPhrase", content),
     qrScan: () => window.__pearDB.call("qrScan"),
     takePhoto: () => window.__pearDB.call("takePhoto"),
     haptic: (style) => window.__pearDB.call("haptic", style),
@@ -27964,6 +28139,7 @@ ${link}`;
     storageBreakdown: () => window.__pearDB.call("storageBreakdown"),
     analyzeStorage: (opts) => window.__pearDB.call("analyzeStorage", opts),
     rebuildLocalDb: () => window.__pearDB.call("rebuildLocalDb"),
+    resetAppData: (opts) => window.__pearDB.call("resetAppData", opts),
     rekeyGroup: (id) => window.__pearDB.call("rekeyGroup", id),
     commitRekey: (id) => window.__pearDB.call("commitRekey", id),
     purgeMigratedGroup: (id, opts) => window.__pearDB.call("purgeMigratedGroup", id, opts),
@@ -28034,6 +28210,7 @@ ${link}`;
   window.__pearDrainInvites = function() {
     return __pearInviteBuffer.splice(0);
   };
+  (0, import_inviteDelivery.drainEarlyInvites)(window, window.__pearHandleInvite);
   window.__pearHandlePair = function(url) {
     if (!url || !window.__pearDB) return;
     window.__pearDB.call("consumePairLink", url).catch((e66) => {

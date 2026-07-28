@@ -25,7 +25,7 @@ const {
   isGroupRecordKey, groupIdFromRecordKey,
 } = require('./lib/groupRecord.js')
 const { summariseSeederCoverage, seederCoverageLabel } = require('./lib/blindPeerListing.js')
-const { raceAppend, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
+const { raceAppend, withTimeout, APPEND_TIMEOUT_MS } = require('./lib/appendTimeout.js')
 const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt.js')
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
 const { shouldIgnoreSelfMemberLeft, canClaimOwnership, shouldHonorGroupDeleted } = require('./lib/ownerGuard.js')
@@ -44,6 +44,7 @@ const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
+const { resetPlan } = require('./lib/resetPlan.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -122,7 +123,14 @@ let _useRelay = true
 let _relayOffers = 0
 let _dbReady = false
 let _dbReadyResolve = null
-const _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+// `let`, not `const`: resetAppData tears the DB down and rebuilds it, and every
+// dispatch gates on this promise. Re-arming it makes calls that land mid-reset
+// WAIT for the fresh DB instead of hitting `db === null` and throwing.
+let _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+function armDbReadyGate () {
+  _dbReady = false
+  _dbReadyPromise = new Promise(r => { _dbReadyResolve = r })
+}
 
 // ── Reliability helpers (proposal 2026-07-11-reliability-helpers) ─────────────
 // safeAppend bounds every append so a wedged/forked base can't freeze the serial
@@ -395,9 +403,10 @@ async function handle (method, args) {
     case 'listAvatarHashes': return listAvatarHashes()
     case 'analyzeStorage': return analyzeStorage(args[0])
     case 'rebuildLocalDb': return rebuildLocalDb()
-    case 'getBackupStatus':  return nativeRequest('getBackupStatus')
-    case 'setBackupEnabled': return nativeRequest('setBackupEnabled', [args[0]])
-    case 'revealMnemonic':   return nativeRequest('getMnemonic')
+    // The seed phrase is never revealed or backed up - it is an internal
+    // identity seed, not a user-facing recovery feature (removed 2026-07-27).
+    // restoreMnemonic stays: it is the only re-entry path for an identity and
+    // TODO #86's owner recovery is built on it.
     case 'restoreMnemonic':  return restoreMnemonic(args[0])
     case 'listPendingRejoins': return listPendingRejoins()
     case 'approveRejoin':    return approveRejoin(args[0], args[1])
@@ -411,6 +420,7 @@ async function handle (method, args) {
     case 'cancelPairing':     return cancelPairing()
     case 'consumePairLink':   return consumePairLink(args[0])
     case 'getPairingStatus':  return getPairingStatus()
+    case 'resetAppData':   return resetAppData(args[0] ?? {})
     case 'shutdown':       return shutdown()
     default: throw new Error('Unknown method: ' + method)
   }
@@ -7245,6 +7255,16 @@ function stopRealtimeSyncTick () {
 // re-init branch (which calls shutdown()). Two concurrent runs would double-close
 // swarm/store/db and can hang. Share one in-flight run instead.
 let _shuttingDown = null
+let _resetting = false
+// How long the pre-wipe group departure gets before the reset stops waiting.
+// Generous enough for a handful of Autobase appends plus their broadcasts, far
+// short of leaving a user stuck on a screen they asked to destroy.
+const RESET_DEPART_TIMEOUT_MS = 20 * 1000
+// Minimum settle before checking for buffered bytes, and the cap on waiting for
+// them to drain. Both are short enough to stay invisible in a flow that is about
+// to tear the app down anyway.
+const RESET_DRAIN_FLOOR_MS = 1500
+const RESET_DRAIN_MAX_MS = 8000
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
@@ -7264,6 +7284,315 @@ async function _doShutdown () {
   } catch(e) {
     console.error('Shutdown error:', e.message)
   }
+}
+
+// ── Reset app data (TODO #118; proposal 2026-07-18-in-app-reset-data) ────────
+// Wipe this device's PearCal data and come back up clean, without the user
+// having to find a data directory (undiscoverable on desktop) or
+// uninstall/reinstall (the only route on iOS today).
+//
+// Two levels:
+//   keepIdentity: true   drop the calendar DB + group store, keep the mnemonic.
+//                        Same user, same device identity; groups can be
+//                        re-joined and re-sync from peers or a blind seeder.
+//   keepIdentity: false  also delete the mnemonic, so the next boot mints a
+//                        fresh identity and this device is a new user.
+//
+// LOCAL ONLY. Nothing is broadcast: no group control message, no leave, no
+// writer revocation. To every peer this looks exactly like an uninstall, which
+// is deliberate - see the proposal's Out of scope. That is also why it needs no
+// ownerGuard-style authentication (project_self_destruct_guards): the
+// destructive ops that need authenticating are the ones that travel.
+//
+// ORDER IS LOAD-BEARING: quiesce -> close every handle -> delete -> re-open.
+// Deleting cores out from under a live Hypercore/RocksDB handle is the
+// not-fsynced loss class in project_hyperbee_force_stop_loss, and on Windows an
+// open handle makes the unlink fail outright rather than corrupt quietly.
+async function resetAppData (opts = {}) {
+  const { keepIdentity, deleteIdentity, subpaths } = resetPlan(opts)
+  if (!dataDir) throw new Error('resetAppData: not initialised')
+  if (_resetting) throw new Error('resetAppData: already running')
+  _resetting = true
+
+  // bare-fs/bare-path read `Bare.platform` and call `require.addon` at module
+  // load, which fails under Node (Electron desktop). Same shim rebuildLocalDb
+  // uses; both APIs share the rm/mkdir surface needed here.
+  const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+
+  try {
+    console.log('[reset] starting, keepIdentity=' + keepIdentity)
+
+    // Carry the profile across a keep-identity reset. The identity survives in
+    // the mnemonic either way, but the profile record is what the app SHOWS:
+    // without it getProfile() returns null, the UI decides this is a first
+    // boot and marches the user through onboarding to pick a name they already
+    // had. That flatly contradicts "you stay the same person", which is the
+    // whole promise of this level (reported on-device 2026-07-27).
+    //
+    // Read BEFORE the teardown, while the DB is still open. Held in memory
+    // only - it is one small record - and written back after the re-open.
+    // Deliberately not carried on a full reset: that path is meant to produce
+    // a stranger, and name/avatar/settings are exactly what would give the old
+    // user away.
+    let carriedProfile = null
+    if (keepIdentity) {
+      try {
+        const node = await db.get(NS.profile)
+        carriedProfile = node?.value ?? null
+      } catch (e) {
+        console.warn('[reset] could not read the profile to carry over:', e.message)
+      }
+    }
+
+    // Full reset only: say goodbye while the swarm and the bases are still up.
+    // Must run BEFORE the teardown - after it there is no base to append to and
+    // no connection to broadcast over.
+    //
+    // Time-bounded because the reset must complete either way. A user who asked
+    // to wipe their device cannot be left staring at a spinner because one group
+    // has a wedged Autobase or a peer that will not answer; the departure is a
+    // courtesy to the other members, not a precondition of the wipe.
+    let departed = null
+    if (deleteIdentity) {
+      // withTimeout never throws: it reports {value, timedOut, error} so a
+      // wedged departure is a logged fact rather than a failed reset.
+      const r = await withTimeout(departAllGroupsForReset(), RESET_DEPART_TIMEOUT_MS)
+      departed = r.timedOut ? { timedOut: true } : (r.error ? { error: String(r.error?.message ?? r.error) } : r.value)
+      if (r.timedOut) {
+        console.warn('[reset] departure timed out after ' + RESET_DEPART_TIMEOUT_MS +
+          'ms - wiping anyway; peers may still list this member')
+      } else if (r.error) {
+        console.warn('[reset] departure failed:', r.error?.message ?? r.error)
+      } else {
+        console.log('[reset] departed groups:', JSON.stringify(r.value))
+      }
+      await drainOutboundForReset()
+    }
+
+    // Make concurrent IPC calls wait for the rebuilt DB rather than race a null
+    // one. Armed BEFORE the teardown so nothing slips through the gap.
+    armDbReadyGate()
+
+    await shutdown()
+    resetInMemoryState()
+
+    // Delete the data roots individually rather than the whole dataDir: on
+    // mobile the shell created it and holds the path, and on desktop siblings
+    // like skipped-updates.json live beside them and are not ours to destroy.
+    let removed = 0
+    for (const sub of subpaths) {
+      try {
+        await fs.promises.rm(dataDir + '/' + sub, { recursive: true, force: true })
+        removed++
+      } catch (e) {
+        console.warn('[reset] could not remove ' + sub + ':', e.message)
+      }
+    }
+
+    if (deleteIdentity) {
+      // Must delete the PLATFORM backup too, not just the local copy. iOS
+      // Keychain/Google Drive backup is read back by `hasMnemonic` on the very
+      // next boot, so deleting only the local secure-store entry would silently
+      // restore the identity and make a "full reset" no reset at all.
+      await nativeRequest('deleteMnemonic').catch(e => {
+        // Fail loudly: a full reset that kept the identity is a promise broken
+        // to the user, not a degraded success.
+        throw new Error('resetAppData: could not delete the identity: ' + e.message)
+      })
+      _identity = null
+    }
+
+    // Re-open against the now-empty directory. Hypercore/Corestore recreate
+    // their trees, so the app comes back as a first-boot install: on a full
+    // reset ensureIdentity() mints a new mnemonic on demand.
+    await init(dataDir, { platform: _platform })
+
+    // Restore the carried profile into the fresh DB. Best-effort: a reset that
+    // wiped the data but could not put the name back is still a successful
+    // reset, and the user lands in onboarding rather than in a broken app.
+    if (carriedProfile) {
+      try {
+        await db.put(NS.profile, carriedProfile)
+        console.log('[reset] carried the profile over (' + (carriedProfile.name || 'unnamed') + ')')
+      } catch (e) {
+        console.warn('[reset] could not restore the profile:', e.message)
+      }
+    }
+
+    console.log('[reset] complete, ' + removed + ' path(s) removed')
+
+    // Tell the shell to finish the job in the way only it can: the WebView
+    // still holds the previous user's React state, and on desktop there is
+    // Electron session storage the worklet cannot touch. Emitted rather than
+    // returned so the shell acts even if the caller has gone away.
+    send({ type: 'event', event: 'appDataReset', data: { keepIdentity } })
+    // `departed` is reported back so the outcome is observable rather than
+    // buried in a log line: how many groups were left, handed on or deleted,
+    // and whether the attempt timed out. Null on a keep-identity reset, which
+    // deliberately departs nothing.
+    return { ok: true, keepIdentity, departed }
+  } finally {
+    _resetting = false
+  }
+}
+
+// Best-effort departure from every group, run ONLY before a full reset.
+//
+// Decided on device 2026-07-27 after a keep-identity reset left a ghost member
+// in the owner's list. The two levels get different treatment on purpose:
+//
+//   keep identity  stays LOCAL. Its whole promise is that you rejoin with the
+//                  invite link and get everything back as yourself, and leaving
+//                  would orphan your RSVPs and your entries in invitee lists.
+//   full reset     departs. That identity is being destroyed and can never come
+//                  back, so a member record for it is dead weight in every other
+//                  member's list forever.
+//
+// BEST-EFFORT, and the limit is structural rather than lazy: syncMemberLeft
+// records a durable `pendingLeave:` row so an offline peer is told on its next
+// connect, but a full reset deletes the very database holding that row. So the
+// departure reaches peers connected RIGHT NOW and no others. It is still worth
+// doing - the common case is a live group - but it cannot be a guarantee, and
+// nothing here is allowed to fail or stall the reset on account of it.
+async function departAllGroupsForReset () {
+  const stats = { left: 0, transferred: 0, deleted: 0, failed: 0, channels: 0, connections: 0 }
+  const profile = await getProfile().catch(() => null)
+  const me = profile?.id
+  if (!me) return stats
+
+  // Reported alongside the counts so a failed departure is diagnosable from one
+  // line. "left: 1, channels: 0" means nobody was listening and the goodbye went
+  // nowhere; "left: 1, channels: 2" means it was sent and the question is
+  // whether it reached the wire (see drainOutboundForReset).
+  try { stats.channels = activeChannels.size } catch (e) {}
+  try { stats.connections = swarm?.connections?.size ?? 0 } catch (e) {}
+  console.log('[reset] departing with ' + stats.channels + ' active channel(s), ' +
+    stats.connections + ' connection(s)')
+
+  const groups = await listGroups().catch(() => [])
+  for (const g of groups) {
+    try {
+      // Members carry no joinedAt, so array order is the proxy for join order:
+      // the owner is first and joiners are appended. Imperfect, but it beats
+      // picking at random, and the alternative (leaving the group ownerless)
+      // strands it behind the 30-day claimOwnership path.
+      const others = (g.members ?? []).filter(m => m && m.id !== me)
+
+      if (g.ownerId === me) {
+        if (others.length === 0) {
+          // Nobody to hand it to. An ownerless, memberless group is a husk, so
+          // delete it properly - that also tells any blind seeder to stop
+          // holding data for it.
+          await syncDeleteGroup(g.id)
+          stats.deleted++
+          continue
+        }
+        await transferOwnership(g.id, others[0].id)
+        stats.transferred++
+      }
+
+      // Now depart as a plain member, the same two steps the UI's Leave does:
+      // rewrite the local record without us, then broadcast the departure.
+      await putGroup({ ...g, members: others, updatedAt: Date.now() }).catch(() => {})
+      await syncMemberLeft(g.id, me)
+      stats.left++
+    } catch (e) {
+      // One wedged group must not strand the user in an app they asked to wipe.
+      stats.failed++
+      console.warn('[reset] could not depart ' + g?.id + ':', e?.message ?? e)
+    }
+  }
+  return stats
+}
+
+// Let the departure actually reach the wire before the swarm is destroyed.
+//
+// syncMemberLeft's `ch.send()` and transferOwnership's Autobase append both put
+// bytes into a connection's write buffer and return immediately. shutdown() then
+// calls swarm.destroy() a few milliseconds later, which closes those sockets -
+// so on a fast path the goodbye is composed, buffered and thrown away, and the
+// member is still listed by everyone. Reported on-device 2026-07-27: an iPhone
+// full-reset left it in the owner's list even though it was connected.
+//
+// Polls for buffered bytes rather than sleeping a flat interval, so it costs
+// nothing when there is nothing pending and still bounds the wait when a peer is
+// slow. This is a best-effort drain, not a delivery receipt: bytes leaving our
+// socket is the strongest signal available here, and a peer that never reads
+// them is indistinguishable from one that did.
+async function drainOutboundForReset () {
+  const started = Date.now()
+  const pending = () => {
+    let n = 0
+    try {
+      for (const conn of (swarm?.connections ?? [])) {
+        n += (conn?.writableLength ?? 0) + (conn?.rawStream?.writableLength ?? 0)
+      }
+    } catch (e) { /* a connection torn down mid-count is not an error */ }
+    return n
+  }
+
+  // A short floor even when nothing is buffered: the append -> replicate path
+  // hands off through Autobase and Hypercore before anything reaches a socket,
+  // so a zero reading immediately after the append usually means "not yet",
+  // not "done".
+  await new Promise(r => setTimeout(r, RESET_DRAIN_FLOOR_MS))
+
+  while (Date.now() - started < RESET_DRAIN_MAX_MS) {
+    if (pending() === 0) break
+    await new Promise(r => setTimeout(r, 100))
+  }
+  const left = pending()
+  console.log('[reset] outbound drain finished after ' + (Date.now() - started) + 'ms' +
+    (left > 0 ? ' with ' + left + ' byte(s) still buffered' : ''))
+}
+
+// Drop every module-level cache that outlived the DB, so nothing from the old
+// install can leak into the new one. shutdown() already clears `bases` and
+// `pendingMemberLeaves` and stops the sync tick; everything else is here.
+//
+// Missing one is not cosmetic. A stale entry in `notifiedMemberJoins` would
+// suppress real notifications for the new install, and a stale `_writerProofs`
+// entry would have the new identity trusting a proof it never made.
+function resetInMemoryState () {
+  for (const t of _syncEmitTimers.values()) { try { clearTimeout(t) } catch (e) {} }
+  _syncEmitTimers.clear()
+  _syncEmitPending.clear()
+  migratedGroups.clear()
+  _writerProofs.clear()
+  _nativePending.clear()
+  _pairScanMuxes.clear()
+  pendingWriterAnnouncements.clear()
+  activeChannels.clear()
+  activeChannelPubkeys.clear()
+  seedEnrollChannels.clear()
+  pendingGroupDeletes.clear()
+  notifiedMemberJoins.clear()
+  notifiedRsvps.clear()
+  _joinInFlight.clear()
+  _pairChannels.clear()
+
+  // Timer-bearing maps: clear the handle before dropping the entry, or the
+  // callback still fires against the new install.
+  for (const t of recentSeriesNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentSeriesNotifs.clear()
+  for (const t of recentDeleteNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentDeleteNotifs.clear()
+  for (const t of recentPutNotifs.values()) { try { clearTimeout(t) } catch (e) {} }
+  recentPutNotifs.clear()
+  for (const v of rsvpCoalesce.values()) { try { clearTimeout(v?.timeout) } catch (e) {} }
+  rsvpCoalesce.clear()
+  for (const t of _joinWatchdogs.values()) { try { clearTimeout(t) } catch (e) {} }
+  _joinWatchdogs.clear()
+
+  if (_pairScan?.timer) { try { clearTimeout(_pairScan.timer) } catch (e) {} }
+  _pairScan = null
+  _pairSession = null
+  if (_widgetRefreshTimer) { try { clearTimeout(_widgetRefreshTimer) } catch (e) {} }
+  _widgetRefreshTimer = null
+  _lastConsolidationTs = 0
+  _relayOffers = 0
+  _lastConflictAt = 0
+  rebuildBusy = false
 }
 
 // ── Storage retention (TODO #112; backport of @peerloom/core engine.retain) ──

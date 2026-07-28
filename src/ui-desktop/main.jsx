@@ -111,9 +111,6 @@ const db = {
   getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
   setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
-  getBackupStatus:    ()  => window.__pearDB.call('getBackupStatus'),
-  setBackupEnabled:   (b) => window.__pearDB.call('setBackupEnabled', b),
-  revealMnemonic:     ()  => window.__pearDB.call('revealMnemonic'),
   restoreMnemonic:    (m) => window.__pearDB.call('restoreMnemonic', m),
   listPendingRejoins: ()  => window.__pearDB.call('listPendingRejoins'),
   approveRejoin:      (gid, ipk) => window.__pearDB.call('approveRejoin', gid, ipk),
@@ -152,7 +149,6 @@ const sync = {
   purgeMember: (groupId, memberId) => window.__pearDB.call('purgeMember:sync', groupId, memberId),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   exportIcs: (content) => window.__pearDB.call('exportIcs', content),
-  exportRecoveryPhrase: (content) => window.__pearDB.call('exportRecoveryPhrase', content),
   takePhoto: () => window.__pearDB.call('takePhoto'),
   openURL: (url) => window.__pearDB.call('openURL', url),
 }
