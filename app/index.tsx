@@ -52,6 +52,7 @@ let _workletStarted = false
 let _ensureWorkletStarted: null | (() => Promise<any>) = null
 let _terminateTimer: any = null                 // pending delayed terminate from a prior Activity teardown
 let _notifyReady: null | (() => void) = null    // current mount's dbReady setter (routes 'ready' to the live component)
+let _remountWebView: null | (() => void) = null  // current mount's WebView remounter (routes 'appDataReset' to the live component)
 let _nextId = 1
 const _pending = new Map<number, (msg: any) => void>()
 // Module-level, so it outlives any single mount. See src/lib/eventRegistry.js
@@ -490,6 +491,9 @@ function buildHtml (appBundleJs: string): string {
 export default function Root () {
   const [dbReady,      setDbReady]      = useState(false)
   const [webViewReady, setWebViewReady] = useState(false)
+  // Bumped to force a fresh WebView after a reset wipes the data underneath
+  // it; used as the component key so React drops the old tree entirely.
+  const [webViewEpoch, setWebViewEpoch] = useState(0)
   const [error,        setError]        = useState<string | null>(null)
   const [html,         setHtml]         = useState<string | null>(null)
   const [pendingInvite, setPendingInvite] = useState<string | null>(null)
@@ -650,6 +654,14 @@ export default function Root () {
     // prior mount's setter.
     if (_terminateTimer) { clearTimeout(_terminateTimer); _terminateTimer = null }
     _notifyReady = () => { setDbReady(true); dbReadyRef.current = true }
+    // Remount rather than reload: the WebView's source is inline HTML with
+    // baseUrl 'https://localhost', and WKWebView's reload() re-requests that
+    // baseUrl for real - so on iOS it tried to fetch https://localhost and
+    // showed "Failed to start PearCal. Could not connect to the server"
+    // (reported on-device 2026-07-27). Android re-renders the HTML instead,
+    // which is why only iOS broke. Bumping the key drops the old React tree
+    // and loads the same inline HTML fresh, which is what we actually wanted.
+    _remountWebView = () => { setWebViewReady(false); setWebViewEpoch(n => n + 1) }
 
     async function start () {
       // Clear stale bundles — keep only the 2 most recent (bare + UI)
@@ -775,9 +787,9 @@ export default function Root () {
           for (let i = 0; i < TOPK_SCHEDULER_SLOTS; i++) {
             await PearCalNotifications?.cancel?.(TOPK_SCHEDULER_BASE + i).catch(() => {})
           }
-          console.log('[reset] cleared scheduled reminders, reloading WebView (keepIdentity=' +
+          console.log('[reset] cleared scheduled reminders, remounting WebView (keepIdentity=' +
             !!data?.keepIdentity + ')')
-          webViewRef.current?.reload()
+          if (_remountWebView) _remountWebView()
         })().catch(() => {})
       })
       onEvent('widgetCache', (payload: any) => {
@@ -1006,6 +1018,7 @@ webViewRef.current?.injectJavaScript(
       // setter. A reopen re-sends init and installs its own _notifyReady, so the
       // fresh mount gets the 'ready' that leaves the loading screen.
       _notifyReady = null
+      _remountWebView = null
       if (_worklet) {
         sendToWorklet({ method: 'shutdown', args: [], id: -1 })
         // Delay the terminate so a quick reopen can adopt the worklet and CANCEL
@@ -1081,6 +1094,7 @@ webViewRef.current?.injectJavaScript(
 
   return (
     <WebView
+      key={webViewEpoch}
       ref={webViewRef}
       source={{ html, baseUrl: 'https://localhost' }}
       style={styles.webview}

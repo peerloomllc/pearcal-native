@@ -7260,6 +7260,11 @@ let _resetting = false
 // Generous enough for a handful of Autobase appends plus their broadcasts, far
 // short of leaving a user stuck on a screen they asked to destroy.
 const RESET_DEPART_TIMEOUT_MS = 20 * 1000
+// Minimum settle before checking for buffered bytes, and the cap on waiting for
+// them to drain. Both are short enough to stay invisible in a flow that is about
+// to tear the app down anyway.
+const RESET_DRAIN_FLOOR_MS = 1500
+const RESET_DRAIN_MAX_MS = 8000
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
@@ -7361,6 +7366,7 @@ async function resetAppData (opts = {}) {
       } else {
         console.log('[reset] departed groups:', JSON.stringify(r.value))
       }
+      await drainOutboundForReset()
     }
 
     // Make concurrent IPC calls wait for the rebuilt DB rather than race a null
@@ -7449,10 +7455,19 @@ async function resetAppData (opts = {}) {
 // doing - the common case is a live group - but it cannot be a guarantee, and
 // nothing here is allowed to fail or stall the reset on account of it.
 async function departAllGroupsForReset () {
-  const stats = { left: 0, transferred: 0, deleted: 0, failed: 0 }
+  const stats = { left: 0, transferred: 0, deleted: 0, failed: 0, channels: 0, connections: 0 }
   const profile = await getProfile().catch(() => null)
   const me = profile?.id
   if (!me) return stats
+
+  // Reported alongside the counts so a failed departure is diagnosable from one
+  // line. "left: 1, channels: 0" means nobody was listening and the goodbye went
+  // nowhere; "left: 1, channels: 2" means it was sent and the question is
+  // whether it reached the wire (see drainOutboundForReset).
+  try { stats.channels = activeChannels.size } catch (e) {}
+  try { stats.connections = swarm?.connections?.size ?? 0 } catch (e) {}
+  console.log('[reset] departing with ' + stats.channels + ' active channel(s), ' +
+    stats.connections + ' connection(s)')
 
   const groups = await listGroups().catch(() => [])
   for (const g of groups) {
@@ -7488,6 +7503,47 @@ async function departAllGroupsForReset () {
     }
   }
   return stats
+}
+
+// Let the departure actually reach the wire before the swarm is destroyed.
+//
+// syncMemberLeft's `ch.send()` and transferOwnership's Autobase append both put
+// bytes into a connection's write buffer and return immediately. shutdown() then
+// calls swarm.destroy() a few milliseconds later, which closes those sockets -
+// so on a fast path the goodbye is composed, buffered and thrown away, and the
+// member is still listed by everyone. Reported on-device 2026-07-27: an iPhone
+// full-reset left it in the owner's list even though it was connected.
+//
+// Polls for buffered bytes rather than sleeping a flat interval, so it costs
+// nothing when there is nothing pending and still bounds the wait when a peer is
+// slow. This is a best-effort drain, not a delivery receipt: bytes leaving our
+// socket is the strongest signal available here, and a peer that never reads
+// them is indistinguishable from one that did.
+async function drainOutboundForReset () {
+  const started = Date.now()
+  const pending = () => {
+    let n = 0
+    try {
+      for (const conn of (swarm?.connections ?? [])) {
+        n += (conn?.writableLength ?? 0) + (conn?.rawStream?.writableLength ?? 0)
+      }
+    } catch (e) { /* a connection torn down mid-count is not an error */ }
+    return n
+  }
+
+  // A short floor even when nothing is buffered: the append -> replicate path
+  // hands off through Autobase and Hypercore before anything reaches a socket,
+  // so a zero reading immediately after the append usually means "not yet",
+  // not "done".
+  await new Promise(r => setTimeout(r, RESET_DRAIN_FLOOR_MS))
+
+  while (Date.now() - started < RESET_DRAIN_MAX_MS) {
+    if (pending() === 0) break
+    await new Promise(r => setTimeout(r, 100))
+  }
+  const left = pending()
+  console.log('[reset] outbound drain finished after ' + (Date.now() - started) + 'ms' +
+    (left > 0 ? ' with ' + left + ' byte(s) still buffered' : ''))
 }
 
 // Drop every module-level cache that outlived the DB, so nothing from the old
