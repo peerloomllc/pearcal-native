@@ -10,7 +10,7 @@ id: pearcal-seeder
 title: "PearCal Seeder"
 # emver: up to four dot-separated numbers; the fourth (if present) is the StartOS
 # packaging revision. Kept in lockstep with the seeder image tag.
-version: 1.0.35
+version: 1.0.37
 release-notes: |-
   The Properties page now shows this seeder's public key, nickname, how many
   groups it is seeding, connected peers and how much encrypted data it holds.
