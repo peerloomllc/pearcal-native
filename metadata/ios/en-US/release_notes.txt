@@ -1,40 +1,23 @@
-## New Features
+## What's Changed
 
-  **Reset app data.** You can now clear PearCal from inside the app, under Profile then Settings. There are two options: clear your calendar and groups but stay signed in as yourself, or start over completely as a brand new user. Previously the only way to do this was to delete the app and reinstall it, which on iPhone meant losing everything with no way back.
+### Bug Fixes
 
-  **Turn the relay off on desktop.** Mac, Windows and Linux now have the same privacy switch the phone app already had, so you can stop PearCal routing
-  through the shared relay if you would rather it did not.
+  - **Canadian and UK holidays landed on the wrong dates.** When a holiday fell on
+    a weekend, it was being moved to the *Friday before* instead of forward to the
+    next free weekday. The most visible symptom: Boxing Day showing on Christmas
+    Day. Canadian and UK holidays now follow their own rules rather than the US
+    one, so each weekend holiday moves forward to the next weekday nobody else has
+    taken.
 
-  **See more in the widget.** The home screen widget now shows more of your upcoming events instead of stopping at five, and fits as many as the widget size allows.
+  - **Two related date problems came out of the same fix.** New Year's Day could
+    render as an invalid date in some years, and two holidays could occasionally
+    claim the same day. Both are fixed, and the dates were checked against the
+    official published lists across 2021 to 2032.
 
-  **Know why a join failed.** If joining a group does not work, the app now tells you what went wrong instead of quietly doing nothing.
+  - **Calendars that already had the wrong dates now fix themselves.** Previously
+    you had to switch a holiday calendar off and back on to pick up the
+    corrections. PearCal now tidies these up on its own when you open the app.
+    Reminders you set on a holiday move with it, and any holiday you deleted on
+    purpose stays deleted.
 
-  ## Privacy
 
-  **Your recovery phrase is no longer stored in iCloud or Google.** Older versions quietly saved it to Apple's or Google's cloud, with no way to see or
-  switch that off. It now stays on your device only, and this update automatically deletes any copy that was already uploaded.
-
-  ## Improvements
-
-  **Clearer blind peer pairing.** Pairing now shows progress on both the app and the seeder dashboard, with a countdown, and gets out of your way once it
-  succeeds.
-
-  **Accurate blind peer details.** The blind peer list showed how many groups it was seeding at the moment you paired it, which could be badly out of date. It now shows the real number.
-
-  ## Bug Fixes
-  
-  **Moving an event to another date made it disappear.** The event vanished from your calendar until you restarted the app, and on a paired second device it could be lost for good. Fixed on phone and desktop.
-
-  **Multi-day events dropped out of the widget.** An event spanning several days showed on its first day and then disappeared, even while it was still
-  running.
-
-  **Groups could lose the key that keeps them private,** which left you stuck behind a "can't sync" message. Existing affected groups repair themselves, and the desktop app can now repair them too.
-
-  **Re-sharing an event did not bring it back** for anyone else in the group.
-
-  **Invite links were unreliable.** Sometimes tapping one did not open the join screen at all, and older links could leave the app stuck on a blank screen until you force-closed it.
-
-  ## PearCal Seeder
-
-  **Visible on StartOS 0.4.** Adding peerloomllc.com as a custom marketplace on a StartOS 0.4 server showed only PearCircle Seeder. PearCal Seeder now
-  appears there and installs correctly. Servers on 0.3.5 were never affected.
