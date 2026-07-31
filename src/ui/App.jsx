@@ -26,6 +26,7 @@ import {
   expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
   formatTime, formatRelativeTime, todayStr, dateStr,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
+  holidayEventId, holidayCalendarIds, strayHolidayEvents,
   useProfile, useRsvps, useGroups, useEvents,
   emitter, Tour,
 } from '../ui-shared/index.js'
@@ -7224,8 +7225,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       {/* Holidays */}
       {(() => {
         const thisYear = new Date().getFullYear()
-        const slug = t => t.replace(/\s+/g, '-').toLowerCase()
-        const makeId = h => 'holiday-' + h.date + '-' + slug(h.title)
+        const years = [thisYear, thisYear + 1]
+        const makeId = holidayEventId
         const allCountries = HOLIDAY_COUNTRIES
         // Toggle state tracked explicitly in profile to avoid shared-ID false positives
         const activeCountries = new Set(profile?.holidayCountries ?? [])
@@ -7237,12 +7238,30 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           const colors = meta?.colors ?? []
           const desc  = meta?.desc  ?? 'Public Holiday'
           const newActive = new Set(activeCountries)
+          // IDs the calendars that stay on after this toggle still need.
+          const otherIds = () => {
+            const keep = new Set()
+            for (const { code: otherCode, fn: otherFn } of allCountries) {
+              if (otherCode === code || !newActive.has(otherCode)) continue
+              for (const id of holidayCalendarIds(otherFn, years)) keep.add(id)
+            }
+            return keep
+          }
+          // Remove this calendar's stored events that `keepIds` does not claim.
+          // Matched by title slug rather than exact ID so events sitting at a
+          // date an older build computed wrongly are still found.
+          const keepAndSweep = async keepIds => {
+            for (const ev of strayHolidayEvents(events, fn, years, keepIds)) {
+              await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
+              setEvents(prev => prev.filter(e => e.id !== ev.id))
+            }
+          }
           if (on) {
             newActive.add(code)
             // Import holidays; skip any already in calendar by shared ID or same date+title
             const existingIds = new Set((events ?? []).map(e => e.id))
             const existingKeys = new Set((events ?? []).map(e => e.date + '|' + e.title))
-            for (const yr of [thisYear, thisYear + 1]) {
+            for (const yr of years) {
               for (const h of fn(yr)) {
                 const id = makeId(h)
                 const key = h.date + '|' + h.title
@@ -7262,27 +7281,13 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 existingKeys.add(key)
               }
             }
+            // Turning a calendar on also repairs it: drop anything it left
+            // behind at a date an older build computed wrongly, keeping the
+            // dates it and the other active calendars still want.
+            await keepAndSweep(new Set([...otherIds(), ...holidayCalendarIds(fn, years)]))
           } else {
             newActive.delete(code)
-            // Keep IDs still needed by other still-active countries
-            const keepIds = new Set()
-            for (const { code: otherCode, fn: otherFn } of allCountries) {
-              if (otherCode === code || !newActive.has(otherCode)) continue
-              for (const yr of [thisYear, thisYear + 1]) {
-                for (const h of otherFn(yr)) keepIds.add(makeId(h))
-              }
-            }
-            for (const yr of [thisYear, thisYear + 1]) {
-              for (const h of fn(yr)) {
-                const id = makeId(h)
-                if (keepIds.has(id)) continue
-                const ev = (events ?? []).find(e => e.id === id)
-                if (ev) {
-                  await db?.localDeleteEvent(ev.date, ev.id).catch(() => {})
-                  setEvents(prev => prev.filter(e => e.id !== id))
-                }
-              }
-            }
+            await keepAndSweep(otherIds())
           }
           await onUpdateProfile({ holidayCountries: [...newActive] }).catch(() => {})
           setHolidayWorking(false)
