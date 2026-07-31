@@ -934,17 +934,35 @@ _seeder_configured && PUBLISH_SEEDER=true
 # website clone. These publish the Umbrel/Start9 packages; the mobile app release
 # doesn't need them.
 PUBLISH_SEEDER_STORE=false
+GHCR_USER="${GHCR_USER:-peerloomllc}"
+
+# Echo one line per UNMET prerequisite, nothing when all are met. Reporting
+# which one failed matters: this step disqualifying itself over a single lapsed
+# credential, behind a message listing all six requirements, reads as "the step
+# was removed from the script" (it did, on 2026-07-31, mid-release).
+_seeder_store_missing() {
+  local missing=() c
+  for c in podman start-sdk skopeo deno yq; do
+    command -v "$c" >/dev/null 2>&1 || missing+=("$c (not on PATH)")
+  done
+  # The image push needs write:packages on ghcr. An existing podman login
+  # satisfies that — and so does GHCR_TOKEN, because build-umbrel-image.sh logs
+  # in with it. Requiring a login that already exists made GHCR_TOKEN useless
+  # here: the gate skipped the whole step before the build script that would
+  # have consumed the token ever ran.
+  if command -v podman >/dev/null 2>&1; then
+    if [ -z "${GHCR_TOKEN:-}" ] \
+       && ! podman login --get-login "${SEEDER_IMAGE%%/*}" >/dev/null 2>&1 \
+       && ! podman login --get-login ghcr.io >/dev/null 2>&1; then
+      missing+=("a ghcr login — run: podman login ${SEEDER_IMAGE%%/*} -u ${GHCR_USER}   (or set GHCR_TOKEN in scripts/.env)")
+    fi
+  fi
+  printf '%s\n' "${missing[@]}"
+}
+
 _seeder_store_configured() {
   $SKIP_SEEDER_STORE && return 1
-  command -v podman   >/dev/null 2>&1 || return 1
-  command -v start-sdk >/dev/null 2>&1 || return 1
-  command -v skopeo   >/dev/null 2>&1 || return 1
-  command -v deno     >/dev/null 2>&1 || return 1
-  command -v yq       >/dev/null 2>&1 || return 1
-  # Must already be logged in to ghcr (the image push needs write:packages).
-  podman login --get-login "${SEEDER_IMAGE%%/*}" >/dev/null 2>&1 || \
-    podman login --get-login ghcr.io >/dev/null 2>&1 || return 1
-  return 0
+  [ -z "$(_seeder_store_missing)" ]
 }
 _seeder_store_configured && PUBLISH_SEEDER_STORE=true
 
@@ -1068,16 +1086,22 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
     { [ -n "${WEBSITE_DIR:-}" ] && [ -d "${WEBSITE_DIR:-}/.git" ]; } \
       || _store_reg_note=" (Start9 registry publish skipped — set WEBSITE_DIR to a website clone)"
     while true; do
-      read -rp "    Publish seeder store artifacts (ghcr image + Start9 .s9pk + registry)?${_store_reg_note} [y/N] " _r
+      read -rp "    Publish seeder store packages for Umbrel + Start9 (ghcr image + .s9pk + registry)?${_store_reg_note} [y/N] " _r
       case "${_r:-n}" in
-        [Yy]) PUBLISH_SEEDER_STORE=true;  echo "    ✓ Seeder store artifacts"; break ;;
-        [Nn]) PUBLISH_SEEDER_STORE=false; echo "    ✗ Seeder store artifacts (skipped)"; break ;;
+        [Yy]) PUBLISH_SEEDER_STORE=true;  echo "    ✓ Seeder store packages (Umbrel + Start9)"; break ;;
+        [Nn]) PUBLISH_SEEDER_STORE=false; echo "    ✗ Seeder store packages (Umbrel + Start9) (skipped)"; break ;;
         *) echo "    Please enter y or n." ;;
       esac
     done
   else
     PUBLISH_SEEDER_STORE=false
-    echo "    - Seeder store artifacts (not configured — need podman+start-sdk+skopeo+deno+yq and a ghcr login)"
+    # Name the stores AND the specific unmet requirement. Anyone scanning this
+    # output for "Umbrel" or "Start9" must find it here, or they will conclude
+    # the step is gone rather than gated.
+    echo "    - Seeder store packages for Umbrel + Start9 (not configured):"
+    while IFS= read -r _m; do
+      [ -n "$_m" ] && echo "        missing: $_m"
+    done < <(_seeder_store_missing)
   fi
   # The .s9pk uploads to the GitHub Release (the registry redirects to it).
   if $PUBLISH_SEEDER_STORE && ! $PUBLISH_GITHUB; then

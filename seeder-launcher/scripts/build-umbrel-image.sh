@@ -53,8 +53,17 @@ ensure_registry_login () {
     echo "==> $host: using existing login ($(podman login --get-login "$host" 2>/dev/null))"; return 0
   fi
   if [ -n "${GHCR_TOKEN:-}" ]; then
-    printf '%s' "$GHCR_TOKEN" | "$ENGINE" login "$host" -u "$GHCR_USER" --password-stdin >/dev/null \
-      && echo "==> $host: logged in as $GHCR_USER (GHCR_TOKEN)"; return 0
+    # Report a rejected token here rather than letting it surface as an opaque
+    # 403 at push time, minutes into a multi-arch build. The release preflight
+    # now treats a SET GHCR_TOKEN as satisfying the login requirement, so a
+    # stale or under-scoped token reaches this point instead of being caught
+    # by the old "must already be logged in" gate.
+    if printf '%s' "$GHCR_TOKEN" | "$ENGINE" login "$host" -u "$GHCR_USER" --password-stdin >/dev/null 2>&1; then
+      echo "==> $host: logged in as $GHCR_USER (GHCR_TOKEN)"; return 0
+    fi
+    echo "build-umbrel-image: GHCR_TOKEN is set but logging in to $host as $GHCR_USER failed." >&2
+    echo "  The token must be a classic PAT with write:packages, and not expired." >&2
+    exit 1
   fi
   if [ "$ENGINE" = docker ]; then echo "==> $host: assuming an existing docker login (set GHCR_TOKEN to auto-login)"; return 0; fi
   echo "build-umbrel-image: not logged in to $host and GHCR_TOKEN is unset." >&2
