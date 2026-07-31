@@ -116,3 +116,87 @@ test('strayHolidayEvents leaves user events and other calendars alone', async ()
   const stray = strayHolidayEvents([mine, usKept, outOfWindow], getCanadaHolidays, years, keep)
   assert.deepEqual(stray, [])
 })
+
+// ── launch-time repair of dates an older build got wrong (#150) ───────────
+const YEARS_26 = [2026, 2027]
+// What a pre-fix build stored for Canada: Boxing Day pulled back onto the 25th.
+const WRONG_BOXING = { ...sysEvent('holiday-2026-12-25-boxing-day', '2026-12-25'), title: 'Boxing Day', reminder: 60 }
+const RIGHT_XMAS = { ...sysEvent('holiday-2026-12-25-christmas-day', '2026-12-25'), title: 'Christmas Day' }
+
+test('planHolidayRepair moves a holiday off the date an older build got wrong', async () => {
+  const { planHolidayRepair } = await load
+  const { deletes, puts } = planHolidayRepair([WRONG_BOXING, RIGHT_XMAS], ['ca'], YEARS_26, 123)
+  assert.deepEqual(deletes.map(e => e.id), ['holiday-2026-12-25-boxing-day'])
+  assert.equal(puts.length, 1)
+  assert.equal(puts[0].id, 'holiday-2026-12-28-boxing-day')
+  assert.equal(puts[0].date, '2026-12-28')
+  assert.equal(puts[0].title, 'Boxing Day')
+  assert.equal(puts[0].updatedAt, 123)
+})
+
+test('the moved event keeps the fields the user set on it', async () => {
+  const { planHolidayRepair } = await load
+  const { puts } = planHolidayRepair([WRONG_BOXING], ['ca'], YEARS_26, 0)
+  assert.equal(puts[0].reminder, 60)
+})
+
+test('re-running the repair is a no-op once the dates line up', async () => {
+  const { planHolidayRepair, getCanadaHolidays } = await load
+  const stored = [2026, 2027].flatMap(y => getCanadaHolidays(y).map(h => ({
+    id: 'holiday-' + h.date + '-' + h.title.replace(/\s+/g, '-').toLowerCase(),
+    date: h.date, title: h.title, creatorId: 'system',
+  })))
+  const plan = planHolidayRepair(stored, ['ca'], YEARS_26, 0)
+  assert.deepEqual(plan, { deletes: [], puts: [] })
+})
+
+test('the repair never resurrects a holiday the user deleted on purpose', async () => {
+  const { planHolidayRepair, getCanadaHolidays } = await load
+  // Everything correct except Canada Day, which the user removed by hand.
+  const stored = [2026, 2027].flatMap(y => getCanadaHolidays(y)
+    .filter(h => h.title !== 'Canada Day')
+    .map(h => ({
+      id: 'holiday-' + h.date + '-' + h.title.replace(/\s+/g, '-').toLowerCase(),
+      date: h.date, title: h.title, creatorId: 'system',
+    })))
+  const plan = planHolidayRepair(stored, ['ca'], YEARS_26, 0)
+  assert.deepEqual(plan, { deletes: [], puts: [] })
+})
+
+test('the repair drops the stray without duplicating an already-corrected date', async () => {
+  const { planHolidayRepair } = await load
+  const corrected = sysEvent('holiday-2026-12-28-boxing-day', '2026-12-28')
+  const { deletes, puts } = planHolidayRepair([WRONG_BOXING, corrected], ['ca'], YEARS_26, 0)
+  assert.deepEqual(deletes.map(e => e.id), ['holiday-2026-12-25-boxing-day'])
+  assert.deepEqual(puts, [])
+})
+
+test('a shared holiday is moved once when two calendars are both active', async () => {
+  const { planHolidayRepair } = await load
+  // Canada and the UK both call it Boxing Day and both now put it on the 28th.
+  const { deletes, puts } = planHolidayRepair([WRONG_BOXING], ['ca', 'uk'], YEARS_26, 0)
+  assert.equal(deletes.length, 1)
+  assert.equal(puts.length, 1)
+})
+
+test('the repair ignores calendars the user has not subscribed to', async () => {
+  const { planHolidayRepair } = await load
+  assert.deepEqual(planHolidayRepair([WRONG_BOXING], ['us'], YEARS_26, 0), { deletes: [], puts: [] })
+  assert.deepEqual(planHolidayRepair([WRONG_BOXING], [], YEARS_26, 0), { deletes: [], puts: [] })
+})
+
+test('the repair leaves user-created events alone', async () => {
+  const { planHolidayRepair } = await load
+  const mine = { id: 'evt-1', date: '2026-12-25', creatorId: 'me', title: 'Boxing Day' }
+  assert.deepEqual(planHolidayRepair([mine], ['ca'], YEARS_26, 0), { deletes: [], puts: [] })
+})
+
+test('the repair handles a US date corrected across the year boundary', async () => {
+  const { planHolidayRepair } = await load
+  // A pre-fix build wrote the impossible '2022-01-00'; the observed date is
+  // 31 Dec 2021, so the replacement is filed under the prior year.
+  const broken = { ...sysEvent("holiday-2022-01-00-new-year's-day", '2022-01-00'), title: "New Year's Day" }
+  const { deletes, puts } = planHolidayRepair([broken], ['us'], [2022, 2023], 0)
+  assert.deepEqual(deletes.map(e => e.id), ["holiday-2022-01-00-new-year's-day"])
+  assert.equal(puts[0].date, '2021-12-31')
+})
