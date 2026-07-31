@@ -27,7 +27,7 @@ import {
   formatTime, formatRelativeTime, todayStr, dateStr,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
-  useProfile, useRsvps, useGroups, useEvents,
+  useProfile, useRsvps, useGroups, useEvents, useHolidayRepair,
   emitter, Tour,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
@@ -465,6 +465,8 @@ export default function App ({ db, notifs, sync }) {
   const [groups,        setGroups]        = useGroups(db)
   const [events,        setEvents,       eventsReady] = useEvents(db)
   const [myRsvps,       setMyRsvps]       = useRsvps(db)
+  // Move any holiday event still sitting at a date an older build got wrong.
+  useHolidayRepair(db, profile, events, setEvents, eventsReady)
   const [selectedDate,  setSelectedDate]  = useState(todayStr())
   const [viewDate,      setViewDate]      = useState(() => {
     const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }

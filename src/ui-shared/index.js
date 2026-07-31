@@ -33,12 +33,14 @@ export {
   holidayEventId,
   holidayCalendarIds,
   strayHolidayEvents,
+  planHolidayRepair,
 } from './lib/holidays.js'
 
 export { useProfile } from './hooks/useProfile.js'
 export { useRsvps } from './hooks/useRsvps.js'
 export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
+export { useHolidayRepair } from './hooks/useHolidayRepair.js'
 
 export { emitter } from './emitter.js'
 

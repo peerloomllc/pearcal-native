@@ -215,3 +215,44 @@ export function strayHolidayEvents (events, fn, years, keepIds = new Set()) {
     return !!m && years.includes(Number(m[1])) && slugs.has(m[2])
   })
 }
+
+// Bring already-stored holiday events onto the dates the calendars now compute,
+// for the countries in `activeCodes`. Pure: returns { deletes, puts } for the
+// caller to apply.
+//
+// This only ever MOVES an event whose observed date was corrected. It does not
+// re-add a holiday that is simply absent, because the user may have deleted that
+// one deliberately and a launch-time pass would resurrect it every time. Once
+// the dates line up nothing is stray, so the plan comes back empty and repeat
+// runs cost nothing - which is what makes it safe on every device and shell.
+export function planHolidayRepair (events, activeCodes, years, now = 0, countries = HOLIDAY_COUNTRIES) {
+  const active = countries.filter(c => (activeCodes ?? []).includes(c.code))
+  if (!active.length) return { deletes: [], puts: [] }
+  const keepIds = new Set()
+  for (const c of active) for (const id of holidayCalendarIds(c.fn, years)) keepIds.add(id)
+  const existing = new Set((events ?? []).map(e => e.id))
+  const deletes = []
+  const puts = []
+  const handled = new Set()
+  for (const c of active) {
+    // Keyed on the year the calendar was generated FOR, which is not always the
+    // year in the resulting date: US New Year's Day 2022 is observed 31 Dec 2021.
+    const target = new Map()
+    for (const y of years) for (const h of c.fn(y)) target.set(y + '|' + holidaySlug(h.title), h)
+    for (const ev of strayHolidayEvents(events, c.fn, years, keepIds)) {
+      if (handled.has(ev.id)) continue
+      const m = HOLIDAY_ID_RE.exec(ev.id)
+      const h = target.get(m[1] + '|' + m[2])
+      if (!h) continue  // no date to move it to; leave it alone rather than guess
+      handled.add(ev.id)
+      deletes.push(ev)
+      const id = holidayEventId(h)
+      if (existing.has(id)) continue  // corrected date already present; just drop the stray
+      existing.add(id)
+      // Carry the stored event's own fields over, so a reminder or colour the
+      // user set on the holiday survives the move.
+      puts.push({ ...ev, id, date: h.date, title: h.title, updatedAt: now })
+    }
+  }
+  return { deletes, puts }
+}

@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  useProfile, useGroups, useEvents, useRsvps,
+  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair,
   emitter, Tour,
 } from '../ui-shared/index.js'
 import { Sidebar } from './components/Sidebar/index.jsx'
@@ -73,8 +73,10 @@ export default function App ({ db, notifs, sync }) {
     document.body.setAttribute('data-theme', isDark ? 'dark' : 'light')
   }, [isDark])
   const [groups, setGroups] = useGroups(db)
-  const [events, setEvents] = useEvents(db)
+  const [events, setEvents, eventsReady] = useEvents(db)
   const [myRsvps] = useRsvps(db)
+  // Move any holiday event still sitting at a date an older build got wrong.
+  useHolidayRepair(db, profile, events, setEvents, eventsReady)
   const view      = useViewState()
   const visibleGroups = useVisibleGroups(groups)
   const { saveEvent, deleteEvent } = useEventActions({
