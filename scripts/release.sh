@@ -10,6 +10,9 @@
 #   --skip-nostr       Skip Nostr announcement even if selected
 #   --skip-desktop     Skip desktop builds (Linux/Mac/Win) even if the Mac Mini is reachable
 #   --skip-seeder      Skip blind-seeder installer builds (Linux/Win/macOS) even if buildable
+#   --rebuild-seeder   Force a seeder installer REBUILD even when nothing under the
+#                      seeder changed (default in that case is to re-attach the previous
+#                      release's installers unchanged)
 #   --skip-seeder-store Skip seeder STORE artifacts (ghcr image + Start9 .s9pk + registry)
 #
 # Required env vars (or set in scripts/.env):
@@ -533,6 +536,7 @@ SKIP_PLAY=false
 SKIP_NOSTR=false
 SKIP_DESKTOP=false
 SKIP_SEEDER=false
+REBUILD_SEEDER=false
 SKIP_SEEDER_STORE=false
 SEEDER_IMAGE="${SEEDER_IMAGE:-ghcr.io/peerloomllc/pearcal-seeder}"
 
@@ -544,6 +548,7 @@ for arg in "$@"; do
     --skip-nostr) SKIP_NOSTR=true ;;
     --skip-desktop) SKIP_DESKTOP=true ;;
     --skip-seeder) SKIP_SEEDER=true ;;
+    --rebuild-seeder) REBUILD_SEEDER=true ;;
     --skip-seeder-store) SKIP_SEEDER_STORE=true ;;
     v[0-9]*.[0-9]*.[0-9]*)
       if [[ ! "$arg" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -926,6 +931,97 @@ _seeder_configured() {
 }
 _seeder_configured && PUBLISH_SEEDER=true
 
+# ---- seeder copy-forward ---------------------------------------------------
+# Most releases change the mobile/desktop app and nothing the seeder is built
+# from. Rebuilding the seeder anyway costs three cross-builds plus a Mac Mini
+# trip, and produces installers byte-for-byte equivalent to the ones already
+# published. But the seeder CANNOT simply be left off a release: its update
+# check reads the repo's LATEST release and requires a seeder installer to be
+# attached to it (see src/lib/seederUpdateCheck.js), so a release with no seeder
+# asset silently switches off updates for every self-managed seeder in the field
+# and hides the download from anyone browsing.
+#
+# So when nothing under the seeder changed, re-attach the PREVIOUS release's
+# installers to this one instead of rebuilding them. They keep their own version
+# in their filenames, and the update check compares against that rather than
+# against the release tag, so a 1.0.37 seeder correctly sees "nothing new" on a
+# v1.0.40 release carrying the 1.0.37 build.
+SEEDER_REUSE_TAG=""      # non-empty => attach this tag's installers instead of building
+SEEDER_REUSE_DIR=""      # where they were downloaded to
+SEEDER_CHANGED_FILES=()  # seeder-relevant paths changed since SEEDER_REUSE_TAG
+
+# Paths the seeder payload is actually built from. Derived from
+# seeder-launcher/scripts/stage-payload.sh: the worklet is bare-packed from
+# src/seed.js, whose require graph is entirely within src/lib/, and the host is
+# copied out of seeder-launcher/ with two assets pulled from elsewhere.
+_seeder_input_path() {
+  case "$1" in
+    seeder-launcher/dist/*)               return 1 ;;  # build output, not input
+    seeder-launcher/*)                    return 0 ;;
+    src/seed.js|src/lib/*)                return 0 ;;
+    src/ui/fonts.js)                      return 0 ;;  # staged as host/fonts.css
+    assets/images/icon.png)               return 0 ;;  # staged as host/brand.png
+    package.json|package-lock.json)       return 0 ;;  # dependency + prebuild versions
+    patches/*)                            return 0 ;;  # patch-package runs in the payload build
+    .dockerignore)                        return 0 ;;
+  esac
+  return 1
+}
+
+# Paths KNOWN not to reach the seeder. Anything in NEITHER list counts as a
+# change, so a path nobody has classified errs toward rebuilding rather than
+# toward shipping a stale seeder.
+_seeder_irrelevant_path() {
+  case "$1" in
+    android/*|ios/*|app/*|electron/*|modules/*|pearcal-sync-notif/*) return 0 ;;
+    seeder-launcher/dist/*)                                          return 0 ;;
+    src/ui/*|src/ui-desktop/*|src/ui-shared/*)                       return 0 ;;
+    src/bare.js|src/db.js|src/sync.js|src/index.js)                  return 0 ;;
+    src/invite.js|src/notifications.js|src/widget-cache.js)          return 0 ;;
+    assets/*)                                                        return 0 ;;
+    metadata/*|proposals/*|docs/*|data/*|test/*|tools/*)             return 0 ;;
+    scripts/*|.github/*)                                             return 0 ;;
+    *.md|.gitignore|.gitattributes|app.json|tsconfig.json)           return 0 ;;
+    babel.config.js|.editorconfig|.watchmanconfig)                   return 0 ;;
+  esac
+  return 1
+}
+
+# Populate SEEDER_CHANGED_FILES with the seeder-relevant paths changed between
+# $1 and HEAD. Returns 0 when something changed (rebuild), 1 when nothing did.
+# An unresolvable ref counts as changed.
+_seeder_changed_since() {
+  local ref="$1" f
+  SEEDER_CHANGED_FILES=()
+  git rev-parse --verify --quiet "${ref}^{commit}" >/dev/null 2>&1 || return 0
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if _seeder_input_path "$f"; then
+      SEEDER_CHANGED_FILES+=("$f")
+    elif ! _seeder_irrelevant_path "$f"; then
+      SEEDER_CHANGED_FILES+=("$f (unclassified)")
+    fi
+  done < <(git diff --name-only "$ref" HEAD 2>/dev/null)
+  [ "${#SEEDER_CHANGED_FILES[@]}" -gt 0 ]
+}
+
+# Most recent published release that carries a seeder INSTALLER (not the .s9pk,
+# which is a store artifact with its own lifecycle). Echoes the tag. One API call
+# rather than one per release — /releases returns assets inline, `gh release
+# view` does not.
+_last_seeder_release() {
+  local tag
+  while IFS= read -r tag; do
+    [ -z "$tag" ] && continue
+    [ "$tag" = "$RELEASE_TAG" ] && continue
+    echo "$tag"; return 0
+  done < <(gh api 'repos/{owner}/{repo}/releases?per_page=20' \
+             -q '.[] | select(.draft | not) | select([.assets[].name
+                   | select(test("^(PearCalSeeder-|pearcal-seeder_)"))
+                   | select(endswith(".sha256") | not)] | length > 0) | .tag_name' 2>/dev/null)
+  return 1
+}
+
 # Blind-seeder STORE artifacts (Docker image → ghcr + Start9 .s9pk + the combined
 # StartOS community registry on the website). Heavier + slower than the installers
 # (a multi-arch image build/push + a ~hundreds-of-MB s9pk pack), so it's a separate
@@ -1037,17 +1133,49 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
     PUBLISH_SEEDER=false
     echo "    - Seeder installers (skipped via --skip-seeder)"
   elif _seeder_configured; then
-    _seeder_mac_note=""
-    ssh -o ConnectTimeout=5 -o BatchMode=yes "${MAC_MINI_HOST:-Tims-Mac-mini.local}" exit 2>/dev/null \
-      || _seeder_mac_note=" (macOS .pkg skipped — ${MAC_MINI_HOST:-Tims-Mac-mini.local} unreachable)"
-    while true; do
-      read -rp "    Publish blind-seeder installers (Linux/Win/macOS) to GitHub Release?${_seeder_mac_note} [Y/n] " _r
-      case "${_r:-y}" in
-        [Yy]) PUBLISH_SEEDER=true;  echo "    ✓ Seeder installers"; break ;;
-        [Nn]) PUBLISH_SEEDER=false; echo "    ✗ Seeder installers (skipped)"; break ;;
-        *) echo "    Please enter y or n." ;;
-      esac
-    done
+    # Decide rebuild-vs-re-attach BEFORE prompting, so the prompt states what
+    # will actually happen. --rebuild-seeder forces the build path.
+    SEEDER_REUSE_TAG=""
+    if ! $REBUILD_SEEDER; then
+      _prev_seeder_tag="$(_last_seeder_release || true)"
+      if [ -n "$_prev_seeder_tag" ]; then
+        if _seeder_changed_since "$_prev_seeder_tag"; then
+          echo "    Seeder inputs changed since $_prev_seeder_tag (${#SEEDER_CHANGED_FILES[@]} path(s)) — rebuilding:"
+          printf '        %s\n' "${SEEDER_CHANGED_FILES[@]:0:6}"
+          [ "${#SEEDER_CHANGED_FILES[@]}" -gt 6 ] && echo "        … and $(( ${#SEEDER_CHANGED_FILES[@]} - 6 )) more"
+        else
+          SEEDER_REUSE_TAG="$_prev_seeder_tag"
+        fi
+      else
+        echo "    No previous release carries seeder installers — building."
+      fi
+    fi
+
+    if [ -n "$SEEDER_REUSE_TAG" ]; then
+      echo "    Nothing the seeder is built from has changed since $SEEDER_REUSE_TAG."
+      echo "    Its installers can be re-attached to this release unchanged — no rebuild, no Mac Mini trip."
+      while true; do
+        read -rp "    Re-attach the $SEEDER_REUSE_TAG seeder installers? [Y/n] (n = no seeder assets at all; --rebuild-seeder to force a build) " _r
+        case "${_r:-y}" in
+          [Yy]) PUBLISH_SEEDER=true;  echo "    ✓ Seeder installers (re-attached from $SEEDER_REUSE_TAG)"; break ;;
+          [Nn]) PUBLISH_SEEDER=false; SEEDER_REUSE_TAG=""
+                echo "    ✗ Seeder installers (skipped — self-managed seeders will see no update from this release)"; break ;;
+          *) echo "    Please enter y or n." ;;
+        esac
+      done
+    else
+      _seeder_mac_note=""
+      ssh -o ConnectTimeout=5 -o BatchMode=yes "${MAC_MINI_HOST:-Tims-Mac-mini.local}" exit 2>/dev/null \
+        || _seeder_mac_note=" (macOS .pkg skipped — ${MAC_MINI_HOST:-Tims-Mac-mini.local} unreachable)"
+      while true; do
+        read -rp "    Publish blind-seeder installers (Linux/Win/macOS) to GitHub Release?${_seeder_mac_note} [Y/n] " _r
+        case "${_r:-y}" in
+          [Yy]) PUBLISH_SEEDER=true;  echo "    ✓ Seeder installers"; break ;;
+          [Nn]) PUBLISH_SEEDER=false; echo "    ✗ Seeder installers (skipped)"; break ;;
+          *) echo "    Please enter y or n." ;;
+        esac
+      done
+    fi
   else
     PUBLISH_SEEDER=false
     echo "    - Seeder installers (not configured — need dpkg-deb and/or makensis locally)"
@@ -1692,17 +1820,64 @@ fi
 # Signing: build-macos-remote.sh inherits APP_SIGN_ID/PKG_SIGN_ID/NOTARY_PROFILE
 # from the environment (set them in scripts/.env to ship a signed+notarized .pkg;
 # unset = unsigned, install via right-click → Open).
-if $PUBLISH_SEEDER; then
+# Re-attach path: pull the previous release's installers and hand them to the
+# same upload loop the built ones go through. Nothing is rebuilt, so nothing can
+# come out different — these are the exact bytes already published and already
+# covered by their own .sha256 sidecars, which the seeder verifies before
+# applying. A download failure falls back to building rather than to shipping a
+# release with no seeder asset.
+if $PUBLISH_SEEDER && [ -n "$SEEDER_REUSE_TAG" ]; then
+  echo "==> Re-attaching blind-seeder installers from $SEEDER_REUSE_TAG (nothing under the seeder changed)..."
+  SEEDER_REUSE_DIR="$(mktemp -d /tmp/pearcal-seeder-reuse.XXXXXX)"
+  # Installer name families only. The .s9pk is deliberately NOT copied forward:
+  # it is a store artifact whose registry pins its own version.
+  if gh release download "$SEEDER_REUSE_TAG" -D "$SEEDER_REUSE_DIR" \
+       -p 'PearCalSeeder-*' -p 'pearcal-seeder_*' 2>/dev/null; then
+    # Re-attaching is only safe when every installer states its own version in
+    # its filename: that is what the update check compares against, and an
+    # unversioned one falls back to the release tag — which is precisely the
+    # "update to yourself, forever" loop this whole path has to avoid. AppImages
+    # built before 1.0.38 carry no version, so refuse and rebuild instead.
+    _unversioned=()
+    while IFS= read -r _f; do
+      case "$_f" in *.s9pk|*.s9pk.sha256) continue ;; esac
+      case "$(basename "$_f")" in
+        *[0-9].[0-9]*.[0-9]*) ;;
+        *) _unversioned+=("$(basename "$_f")") ;;
+      esac
+      SEEDER_ARTIFACTS+=("$_f")
+      echo "    ✓ $(basename "$_f")"
+    done < <(find "$SEEDER_REUSE_DIR" -maxdepth 1 -type f | sort)
+    if [ "${#_unversioned[@]}" -gt 0 ]; then
+      echo "    ✗ ${#_unversioned[@]} asset(s) carry no version in their name — cannot re-attach safely:"
+      printf '        %s\n' "${_unversioned[@]}"
+      echo "      (a versionless installer would re-offer itself on every check). Rebuilding instead."
+      SEEDER_ARTIFACTS=()
+      SEEDER_REUSE_TAG=""
+    fi
+  fi
+  if [ -n "$SEEDER_REUSE_TAG" ] && [ "${#SEEDER_ARTIFACTS[@]}" -eq 0 ]; then
+    echo "    ✗ Could not download $SEEDER_REUSE_TAG's seeder installers — falling back to a rebuild."
+    SEEDER_REUSE_TAG=""
+  elif [ -n "$SEEDER_REUSE_TAG" ]; then
+    _n_inst=0
+    for _f in "${SEEDER_ARTIFACTS[@]}"; do case "$_f" in *.sha256) ;; *) _n_inst=$((_n_inst+1)) ;; esac; done
+    echo "    $_n_inst installer(s) + sidecars re-attached, $(du -sh "$SEEDER_REUSE_DIR" | cut -f1) total"
+  fi
+fi
+
+if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
   echo "==> Building blind-seeder installers (Linux + Windows local; macOS via Mac Mini)..."
   SEEDER_DIR="$REPO_ROOT/seeder-launcher"
   rm -f /tmp/pearcal-seeder-{linux,windows,macos}.log
   # Clear this run's expected outputs first. Collection below is existence-based
   # (so a partial build still ships what it produced), which is only safe if a
-  # FAILED build can't leave a stale file to be mistaken for fresh — critical for
-  # the AppImage, whose name carries no version (a prior release's leftover would
-  # otherwise be re-shipped under this tag).
+  # FAILED build can't leave a stale file to be mistaken for fresh. Every seeder
+  # installer now carries its version in its name, so a prior release's leftover
+  # can no longer be re-shipped under this tag, but clearing is still the cheap
+  # guard against a re-run of the SAME version picking up a half-written file.
   rm -f \
-    "$SEEDER_DIR/dist/linux/PearCalSeeder-x86_64.AppImage"{,.sha256} \
+    "$SEEDER_DIR/dist/linux/PearCalSeeder-${APP_VERSION}-x86_64.AppImage"{,.sha256} \
     "$SEEDER_DIR/dist/linux/pearcal-seeder_${APP_VERSION}_amd64.deb"{,.sha256} \
     "$SEEDER_DIR/dist/windows/PearCalSeeder-Setup-${APP_VERSION}.exe"{,.sha256} \
     "$SEEDER_DIR/dist/macos/PearCalSeeder-${APP_VERSION}"-{arm64,x64}.pkg{,.sha256} 2>/dev/null || true
@@ -1771,7 +1946,7 @@ if $PUBLISH_SEEDER; then
     echo "    ✗ Linux seeder build reported exit $SSTATUS_LINUX — see /tmp/pearcal-seeder-linux.log"
     tail -15 /tmp/pearcal-seeder-linux.log | sed 's/^/        /'
   }
-  _collect_seeder "Linux AppImage" "$SEEDER_DIR/dist/linux/PearCalSeeder-x86_64.AppImage"
+  _collect_seeder "Linux AppImage" "$SEEDER_DIR/dist/linux/PearCalSeeder-${APP_VERSION}-x86_64.AppImage"
   _collect_seeder "Linux deb"      "$SEEDER_DIR/dist/linux/pearcal-seeder_${APP_VERSION}_amd64.deb"
 
   if [ -n "$PID_SWIN" ]; then

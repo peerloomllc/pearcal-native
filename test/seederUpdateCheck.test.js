@@ -5,7 +5,8 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
 const {
-  parseVersion, compareVersions, isNewer, selectAsset, selectSha256For, evaluateRelease,
+  parseVersion, compareVersions, isNewer, selectAsset, selectSha256For,
+  versionFromAssetName, evaluateRelease,
 } = require('../src/lib/seederUpdateCheck')
 
 test('parseVersion: v-prefixed, plain, partial, suffixed, junk', () => {
@@ -174,4 +175,89 @@ test('evaluateRelease: malformed release is safe', () => {
   assert.equal(r.updateAvailable, false)
   assert.equal(r.latestVersion, null)
   assert.equal(r.assetUrl, null)
+})
+
+// ---- copy-forward: a release may carry a seeder OLDER than its own tag -------
+// When nothing under the seeder changed, release.sh re-attaches the previous
+// release's installers rather than rebuilding them. The version that matters is
+// then the one in the asset's filename, not the release tag.
+
+test('versionFromAssetName: every installer family, and the non-versions', () => {
+  assert.equal(versionFromAssetName('pearcal-seeder_1.0.37_amd64.deb'), '1.0.37')
+  assert.equal(versionFromAssetName('PearCalSeeder-1.0.37-arm64.pkg'), '1.0.37')
+  assert.equal(versionFromAssetName('PearCalSeeder-1.0.37-x64.pkg'), '1.0.37')
+  assert.equal(versionFromAssetName('PearCalSeeder-Setup-1.0.37.exe'), '1.0.37')
+  assert.equal(versionFromAssetName('PearCalSeeder-1.0.37-x86_64.AppImage'), '1.0.37')
+  // Arch tokens carry digits but no dotted triple, so they can't be mistaken
+  // for a version - this is what makes filename parsing safe here.
+  assert.equal(versionFromAssetName('PearCalSeeder-x86_64.AppImage'), null)
+  assert.equal(versionFromAssetName('pearcal-seeder_amd64.deb'), null)
+  assert.equal(versionFromAssetName(null), null)
+})
+
+test('evaluateRelease: a re-attached older seeder does NOT flag an update', () => {
+  // The bug this guards: tag v1.0.40 carrying the unchanged 1.0.37 installers.
+  // Comparing against the TAG would tell a 1.0.37 seeder that 1.0.40 is out,
+  // hand it back the same 1.0.37 build, and repeat forever.
+  const release = {
+    tag_name: 'v1.0.40',
+    html_url: 'https://example/r/v1.0.40',
+    assets: [
+      { name: 'pearcal-seeder_1.0.37_amd64.deb', browser_download_url: 'u/deb' },
+      { name: 'pearcal-seeder_1.0.37_amd64.deb.sha256', browser_download_url: 'u/deb.sha' },
+    ],
+  }
+  const r = evaluateRelease(release, { currentVersion: '1.0.37', platform: 'linux', arch: 'x64', installKind: 'deb' })
+  assert.equal(r.latestVersion, '1.0.37', 'reports the installable version, not the tag')
+  assert.equal(r.releaseVersion, '1.0.40', 'the tag stays available separately')
+  assert.equal(r.updateAvailable, false)
+})
+
+test('evaluateRelease: a re-attached seeder still updates a genuinely older one', () => {
+  const release = {
+    tag_name: 'v1.0.40',
+    assets: [
+      { name: 'pearcal-seeder_1.0.37_amd64.deb', browser_download_url: 'u/deb' },
+      { name: 'pearcal-seeder_1.0.37_amd64.deb.sha256', browser_download_url: 'u/deb.sha' },
+    ],
+  }
+  const r = evaluateRelease(release, { currentVersion: '1.0.35', platform: 'linux', arch: 'x64', installKind: 'deb' })
+  assert.equal(r.latestVersion, '1.0.37')
+  assert.equal(r.updateAvailable, true)
+  assert.equal(r.sha256Url, 'u/deb.sha', 'sidecar still resolves for the reused asset')
+})
+
+test('evaluateRelease: a freshly built seeder matching its tag is unaffected', () => {
+  const release = {
+    tag_name: 'v1.0.40',
+    assets: [
+      { name: 'PearCalSeeder-1.0.40-x86_64.AppImage', browser_download_url: 'u/app' },
+      { name: 'PearCalSeeder-1.0.40-x86_64.AppImage.sha256', browser_download_url: 'u/app.sha' },
+    ],
+  }
+  const r = evaluateRelease(release, { currentVersion: '1.0.37', platform: 'linux', arch: 'x64' })
+  assert.equal(r.latestVersion, '1.0.40')
+  assert.equal(r.releaseVersion, '1.0.40')
+  assert.equal(r.updateAvailable, true)
+})
+
+test('evaluateRelease: an unversioned asset name still falls back to the tag', () => {
+  // Pre-1.0.38 AppImages carried no version. They must keep behaving as before
+  // rather than losing their version entirely.
+  const release = {
+    tag_name: 'v1.0.40',
+    assets: [{ name: 'PearCalSeeder-x86_64.AppImage', browser_download_url: 'u/app' }],
+  }
+  const r = evaluateRelease(release, { currentVersion: '1.0.37', platform: 'linux', arch: 'x64' })
+  assert.equal(r.latestVersion, '1.0.40')
+  assert.equal(r.updateAvailable, true)
+})
+
+test('selectAsset: the versioned AppImage name still matches arch', () => {
+  const assets = [
+    { name: 'PearCalSeeder-1.0.38-x86_64.AppImage', browser_download_url: 'u/x64' },
+    { name: 'PearCalSeeder-1.0.38-aarch64.AppImage', browser_download_url: 'u/arm' },
+  ]
+  assert.equal(selectAsset(assets, 'linux', 'x64').browser_download_url, 'u/x64')
+  assert.equal(selectAsset(assets, 'linux', 'arm64').browser_download_url, 'u/arm')
 })

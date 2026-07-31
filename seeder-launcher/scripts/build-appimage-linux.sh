@@ -77,7 +77,13 @@ fi
 
 # --- pack -------------------------------------------------------------------
 OUT_DIR="$LAUNCHER/dist/linux"
-APPIMAGE="$OUT_DIR/PearCalSeeder-$ARCH.AppImage"
+# The version belongs IN the name, like every other seeder installer. The update
+# check reads a candidate installer's version out of its filename (a release may
+# carry a seeder older than its own tag when nothing under the seeder changed),
+# and an unversioned AppImage would fall back to the tag and re-offer itself
+# forever. It also stops a failed build's leftover from being re-shipped under a
+# later tag, which release.sh previously had to guard against by hand.
+APPIMAGE="$OUT_DIR/PearCalSeeder-$VERSION-$ARCH.AppImage"
 mkdir -p "$OUT_DIR"
 rm -f "$APPIMAGE"
 echo "--> appimagetool"
