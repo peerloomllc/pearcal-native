@@ -103,6 +103,27 @@ function selectAsset (assets, platform, arch, installKind) {
   return null
 }
 
+// Pull the version out of a seeder installer's filename, or null when it carries
+// none. Every seeder installer stamps its version into its name
+// (`pearcal-seeder_1.0.37_amd64.deb`, `PearCalSeeder-1.0.37-arm64.pkg`,
+// `PearCalSeeder-Setup-1.0.37.exe`, `PearCalSeeder-1.0.37-x86_64.AppImage`).
+//
+// This exists because a release does NOT necessarily carry a seeder built at its
+// own tag. When nothing under the seeder's inputs changed, the release script
+// re-attaches the previous seeder build rather than rebuilding it, so tag v1.0.40
+// may legitimately ship a 1.0.37 seeder. Comparing against the TAG in that case
+// would tell every 1.0.37 seeder that 1.0.40 is available, hand it back the same
+// 1.0.37 build, and — because the installed version never moves — repeat that on
+// every check, forever.
+//
+// Arch tokens are not mistaken for versions: `x86_64` and `amd64` have no dotted
+// triple, so the pattern cannot match them.
+function versionFromAssetName (name) {
+  if (typeof name !== 'string') return null
+  const m = name.match(/(\d+\.\d+\.\d+)/)
+  return m ? m[1] : null
+}
+
 // Find the `<assetName>.sha256` sidecar for a chosen asset, or null.
 function selectSha256For (assets, assetName) {
   if (!Array.isArray(assets) || typeof assetName !== 'string') return null
@@ -111,17 +132,27 @@ function selectSha256For (assets, assetName) {
 
 // Evaluate a GitHub `/releases/latest` JSON against the running version for a
 // platform. Returns a stable shape the host route + UI consume. `updateAvailable`
-// is true only when the release is a strictly newer tag AND carries an installer
-// asset for this platform (see the header note on the PearCircle divergence).
+// is true only when the installer this platform would actually GET is strictly
+// newer than what is running, and the release carries such an installer at all
+// (see the header note on the PearCircle divergence).
+//
+// `latestVersion` is the version of that installer, not of the release tag — it
+// is what the seeder would be running after applying, which is what the banner
+// promises and what updateApply stamps. `releaseVersion` keeps the tag available
+// for anyone who wants to name the release itself. They differ whenever a release
+// re-attaches an unchanged seeder build; see versionFromAssetName.
 function evaluateRelease (release, { currentVersion, platform, arch, installKind } = {}) {
-  const latestVersion = typeof release?.tag_name === 'string'
+  const releaseVersion = typeof release?.tag_name === 'string'
     ? release.tag_name.replace(/^v/i, '')
     : null
   const asset = selectAsset(release?.assets, platform, arch, installKind)
   const sha = asset ? selectSha256For(release?.assets, asset.name) : null
+  // Fall back to the tag only for an asset whose name carries no version at all.
+  const latestVersion = (asset && versionFromAssetName(asset.name)) || releaseVersion
   return {
     currentVersion: currentVersion ?? null,
     latestVersion,
+    releaseVersion,
     updateAvailable: !!(latestVersion && asset && isNewer(latestVersion, currentVersion)),
     releaseUrl: typeof release?.html_url === 'string' ? release.html_url : null,
     assetName: asset?.name ?? null,
@@ -130,4 +161,7 @@ function evaluateRelease (release, { currentVersion, platform, arch, installKind
   }
 }
 
-module.exports = { parseVersion, compareVersions, isNewer, selectAsset, selectSha256For, evaluateRelease }
+module.exports = {
+  parseVersion, compareVersions, isNewer, selectAsset, selectSha256For,
+  versionFromAssetName, evaluateRelease,
+}

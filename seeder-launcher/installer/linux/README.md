@@ -12,21 +12,24 @@ Two artifacts, both built from `seeder-launcher/scripts/`:
 
 ## AppImage — portable, no install
 
-`scripts/build-appimage-linux.sh` → `dist/linux/PearCalSeeder-<arch>.AppImage`
+`scripts/build-appimage-linux.sh` → `dist/linux/PearCalSeeder-<version>-<arch>.AppImage`
+
+The version is in the filename, so substitute the one you downloaded (e.g.
+`PearCalSeeder-1.0.37-x86_64.AppImage`) for `$APPIMAGE` below.
 
 ```sh
-chmod +x PearCalSeeder-x86_64.AppImage
+chmod +x "$APPIMAGE"
 
 # Foreground (CLI / debugging) — prints a token-authed dashboard URL:
-./PearCalSeeder-x86_64.AppImage
+"./$APPIMAGE"
 
 # Register a background systemd USER service (survives logout/reboot via linger):
-./PearCalSeeder-x86_64.AppImage --install-service
+"./$APPIMAGE" --install-service
 #   …or just double-click it in a file manager, which sets the service up and
 #   opens the dashboard.
 
 # Remove the service (keeps the data dir; add --purge to wipe the identity too):
-./PearCalSeeder-x86_64.AppImage --uninstall-service [--purge]
+"./$APPIMAGE" --uninstall-service [--purge]
 ```
 
 The service's `ExecStart` points back at the `.AppImage` file, so leave it in
