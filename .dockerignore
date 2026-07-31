@@ -21,6 +21,20 @@ assets/*.bundle
 *.ipa
 *.keystore
 *.jks
+# Desktop installers. These were missing, and the repo root accumulates every
+# release's artifacts - 6.4 GB of them as of 2026-07-27 - so the whole lot was
+# being tarred up and handed to podman on every seeder image build, twice (once
+# per platform), for a Dockerfile that references none of it.
+*.AppImage
+*.dmg
+*.exe
+*.deb
+*.pkg
+# Start9 packaging output: the s9pk itself plus the exported image tars it is
+# built from. Another 1.8 GB of build context the umbrel image never reads.
+*.s9pk
+*.s9pk.sha256
+seeder-launcher/start9/docker-images
 metadata
 proposals
 .github
