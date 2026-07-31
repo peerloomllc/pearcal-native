@@ -31,6 +31,8 @@ export {
   getUKHolidays,
   HOLIDAY_COUNTRIES,
   holidayEventId,
+  holidayCalendarIds,
+  strayHolidayEvents,
 } from './lib/holidays.js'
 
 export { useProfile } from './hooks/useProfile.js'
