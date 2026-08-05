@@ -2701,7 +2701,21 @@ function makePersonalApply () {
       if (val.addWriter) {
         const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
         if (!blocked) {
-          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+          // Plain writer, NOT an indexer. Advancing the signed view needs a
+          // majority of indexers (autobase/lib/consensus.js:15), so granting
+          // every paired device indexer rights raises that bar for good: lose
+          // enough of them to a wipe and the signed view freezes, stranding
+          // everything applied after it in an un-indexed tail no fresh device
+          // can fast-forward to. Worse, the drain then retries dependencies the
+          // dead indexers can never satisfy and pins a core doing it - observed
+          // live on a real install with 7 indexers, length 1021 and
+          // indexedLength stuck at 849 (project_autobase_drain_spin).
+          //
+          // The bootstrap device stays the sole indexer, so majority is 1 and it
+          // consolidates every writer's data on its own, including data authored
+          // by devices since wiped. Losing a non-indexer changes nothing.
+          // Plan: docs/superpowers/plans/2026-06-03-indexer-model-fix.md
+          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: false })
         }
         continue
       }
@@ -5620,7 +5634,11 @@ function makeApply (groupId) {
           const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + wi.value.identityPublicKey).catch(() => null)
           if (idBlocked) continue
         }
-        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        // Members are plain writers, never indexers - same reasoning as the
+        // personal base above. The group OWNER is the bootstrap device and stays
+        // the sole indexer, so a member leaving or being wiped cannot freeze the
+        // group's signed view.
+        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: false })
         continue
       }
 
