@@ -43,6 +43,7 @@ const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
+const { createCadenceGuard } = require('./lib/cadenceGuard.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
 const { resetPlan } = require('./lib/resetPlan.js')
 const {
@@ -7240,14 +7241,40 @@ async function reannounceGroupsToSeeders () {
     }
   }
 }
+// A tick must not stack on the one before it.
+//
+// runRealtimeSyncTick's body is unbounded: it awaits core.update() for every
+// writer of every group and of the personal base, then four more passes over
+// the same sets. On a device with several groups, a linked device and a blind
+// seeder that can outrun a 15s interval, and setInterval does not care - it
+// fires regardless, putting a second full pass on top of the first. Each
+// overlap makes the next tick slower, which produces more overlap. The store
+// flusher coalesces for precisely this reason and says so
+// (src/lib/storeFlush.js); this tick, the heaviest of the three, never did.
+//
+// The skip is DEADLINE-BOUNDED, not absolute. A tick that wedges - a
+// core.update() that never settles against a stalled peer - must not silence
+// sync for the rest of the session, which would trade a CPU pileup for a quiet
+// stall, the worse bug of the two. Past REALTIME_TICK_STALE_MS we write the
+// in-flight run off and start a fresh one.
+const REALTIME_TICK_STALE_MS = 5 * 60 * 1000
+let _guardedRealtimeTick = null
 function startRealtimeSyncTick () {
   if (_realtimeSyncTimer) return
-  _realtimeSyncTimer = setInterval(() => {
-    runRealtimeSyncTick().catch(() => {})
-  }, REALTIME_SYNC_INTERVAL_MS)
+  // Rebuilt per start so a wedged run cannot carry its state across a re-init
+  // and suppress the new session's first ticks.
+  _guardedRealtimeTick = createCadenceGuard({
+    run: runRealtimeSyncTick,
+    staleMs: REALTIME_TICK_STALE_MS,
+    slowMs: REALTIME_SYNC_INTERVAL_MS,
+    label: 'RT-TICK',
+    warn: (...a) => console.warn(...a),
+  })
+  _realtimeSyncTimer = setInterval(() => { _guardedRealtimeTick() }, REALTIME_SYNC_INTERVAL_MS)
 }
 function stopRealtimeSyncTick () {
   if (_realtimeSyncTimer) { clearInterval(_realtimeSyncTimer); _realtimeSyncTimer = null }
+  _guardedRealtimeTick = null
 }
 
 // Guard against concurrent shutdowns: on a quick force-close→reopen, the RN
@@ -7638,9 +7665,19 @@ async function retentionSweep () {
 // it never keeps the worklet alive on its own. Idempotent.
 function startRetention () {
   if (_retentionTimer) return
-  const initial = setTimeout(() => { retentionSweep().catch(() => {}) }, Math.min(RETENTION_INTERVAL_MS, 15000))
+  // Same coalescing as the realtime tick, and shared between BOTH call sites so
+  // the 15s kickoff cannot still be walking the store when the first interval
+  // sweep lands on top of it. A retention pass over a large store is not fast.
+  const guarded = createCadenceGuard({
+    run: retentionSweep,
+    staleMs: 2 * RETENTION_INTERVAL_MS,
+    slowMs: RETENTION_INTERVAL_MS,
+    label: 'retention',
+    warn: (...a) => console.warn(...a),
+  })
+  const initial = setTimeout(() => { guarded() }, Math.min(RETENTION_INTERVAL_MS, 15000))
   if (initial && typeof initial.unref === 'function') initial.unref()
-  _retentionTimer = setInterval(() => { retentionSweep().catch(() => {}) }, RETENTION_INTERVAL_MS)
+  _retentionTimer = setInterval(() => { guarded() }, RETENTION_INTERVAL_MS)
   if (_retentionTimer && typeof _retentionTimer.unref === 'function') _retentionTimer.unref()
 }
 
