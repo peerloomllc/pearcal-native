@@ -146,10 +146,54 @@ async function main () {
   await b.primary.base.close().catch(() => {})
   await b.primary.store.close().catch(() => {})
 
+  // D: the question that actually matters for an install already in this state.
+  // Freeze a base under the OLD behaviour, then reopen the same storage with the
+  // NEW behaviour, exactly as shipping an update does. The indexer set lives in
+  // the base's own history, so the update cannot retroactively demote anyone.
+  console.log('\n=== D: does the fix repair an ALREADY-frozen base? ===')
+  const dName = 'legacy'
+  const dStore1 = new Corestore(path.join(root, dName))
+  await dStore1.ready()
+  const dOld = new Autobase(dStore1, null, { open, apply: makeApply(true), valueEncoding: 'json' })
+  await dOld.ready()
+
+  const sib = await makeBase('legacy-sib', dOld.key, true)
+  const s1 = dStore1.replicate(true)
+  const s2 = sib.store.replicate(false)
+  s1.pipe(s2).pipe(s1)
+  await dOld.append({ addWriter: sib.base.local.key.toString('hex') })
+  for (let i = 0; i < 30; i++) { await dOld.update().catch(() => {}); await new Promise(r => setTimeout(r, 60)) }
+  for (let i = 0; i < 5; i++) await sib.base.append({ key: 'legacy-sib-' + i })
+  for (let i = 0; i < 25; i++) { await dOld.update().catch(() => {}); await sib.base.update().catch(() => {}); await new Promise(r => setTimeout(r, 60)) }
+
+  s1.destroy(); s2.destroy()
+  await sib.base.close().catch(() => {}); await sib.store.close().catch(() => {})
+  for (let i = 0; i < 5; i++) await dOld.append({ key: 'legacy-after-' + i })
+  for (let i = 0; i < 25; i++) { await dOld.update().catch(() => {}); await new Promise(r => setTimeout(r, 60)) }
+  const frozenAt = dOld.indexedLength
+  console.log('under old behaviour: length', dOld.length, 'indexed', frozenAt)
+  await dOld.close().catch(() => {})
+  await dStore1.close().catch(() => {})
+
+  // Ship the update: same storage, new apply that grants non-indexers.
+  const dStore2 = new Corestore(path.join(root, dName))
+  await dStore2.ready()
+  const dNew = new Autobase(dStore2, null, { open, apply: makeApply(false), valueEncoding: 'json' })
+  await dNew.ready()
+  for (let i = 0; i < 5; i++) await dNew.append({ key: 'post-update-' + i })
+  for (let i = 0; i < 25; i++) { await dNew.update().catch(() => {}); await new Promise(r => setTimeout(r, 60)) }
+  const afterUpdate = dNew.indexedLength
+  console.log('after the update:    length', dNew.length, 'indexed', afterUpdate)
+  const repaired = afterUpdate > frozenAt
+  console.log('the update repaired the frozen base:', repaired ? 'YES' : 'NO  <-- still stuck')
+  await dNew.close().catch(() => {})
+  await dStore2.close().catch(() => {})
+
   console.log('\n---------------- RESULT ----------------')
   console.log('A (all indexers)      advanced after loss:', a.advanced ? 'YES' : 'NO')
   console.log('B (non-indexer writer) advanced after loss:', b.advanced ? 'YES' : 'NO')
   console.log('C (removeWriter recovery):', recovered === null ? 'n/a' : (recovered ? 'WORKS' : 'DOES NOT WORK'))
+  console.log('D (update repairs an already-frozen base):', repaired ? 'YES' : 'NO')
   console.log('')
   console.log(!a.advanced && b.advanced
     ? 'FIX VALIDATED: the freeze reproduces on current behaviour and does not occur with non-indexer writers.'
