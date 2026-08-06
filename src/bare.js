@@ -7265,25 +7265,57 @@ const RESET_DEPART_TIMEOUT_MS = 20 * 1000
 // to tear the app down anyway.
 const RESET_DRAIN_FLOOR_MS = 1500
 const RESET_DRAIN_MAX_MS = 8000
+// Ceiling on any single close. Long enough for an orderly Autobase or swarm
+// teardown, short enough that a stuck one cannot park the whole app: a hang
+// here used to mean shutdown() never settled, so the init() awaiting it never
+// returned and the UI sat on a blank screen with no error to show.
+const CLOSE_STEP_TIMEOUT_MS = 8000
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
   try { await _shuttingDown } finally { _shuttingDown = null }
 }
-async function _doShutdown () {
+// Run one teardown step without letting it strand the ones after it.
+//
+// LOAD-BEARING, and the reason this file no longer closes in a single try:
+// `store` and `db` hold an exclusive lock on their CORESTORE file, and that
+// lock is per OPEN FILE DESCRIPTION (F_OFD_SETLK on Linux/Android, flock on
+// Apple) rather than per process. So a handle we fail to close blocks the next
+// open from THIS SAME process, and init()'s retry loop can never win: nothing
+// will ever release it. One throw in an earlier step therefore used to lock
+// the app out of its own database until the process died, while shutdown()
+// still returned as though it had worked.
+async function closeStep (label, fn) {
+  let timer = null
   try {
-    stopRealtimeSyncTick()
-    await closePersonalBase()
-    if (blind) { blind.close?.(); blind = null }
-    if (swarm) { await swarm.destroy(); swarm = null }
-    if (store) { await store.close(); store = null }
-    if (db) { await db.close(); db = null }
-    bases.clear()
-    pendingMemberLeaves.clear()
-    console.log('Shutdown complete')
-  } catch(e) {
-    console.error('Shutdown error:', e.message)
+    await Promise.race([
+      Promise.resolve().then(fn),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timed out after ' + CLOSE_STEP_TIMEOUT_MS + 'ms')), CLOSE_STEP_TIMEOUT_MS)
+      })
+    ])
+  } catch (e) {
+    console.error('Shutdown step failed:', label + ':', e?.message ?? e)
+  } finally {
+    if (timer) clearTimeout(timer)
   }
+}
+async function _doShutdown () {
+  try { stopRealtimeSyncTick() } catch (e) { console.error('Shutdown step failed: syncTick:', e.message) }
+  // Ordered most- to least- dependent, but every step is independent now, and
+  // the two that release the lock run whatever happened above them.
+  await closeStep('personalBase', () => closePersonalBase())
+  await closeStep('blind', () => { if (blind) blind.close?.() })
+  blind = null
+  await closeStep('swarm', () => swarm && swarm.destroy())
+  swarm = null
+  await closeStep('store', () => store && store.close())
+  store = null
+  await closeStep('db', () => db && db.close())
+  db = null
+  bases.clear()
+  pendingMemberLeaves.clear()
+  console.log('Shutdown complete')
 }
 
 // ── Reset app data (TODO #118; proposal 2026-07-18-in-app-reset-data) ────────
@@ -7664,13 +7696,18 @@ async function init (dir, opts = {}, attempt = 0) {
   try { await _initPromise } finally { _initPromise = null }
 }
 async function _doInit (dir, attempt = 0) {
+  // Held outside the try so a failed attempt can hand the lock back. `db` and
+  // `store` are module-level already; this one was a local const, so a throw in
+  // core.ready() used to leak it with no reference left to close it — and every
+  // retry leaked another.
+  let core = null
   try {
     dataDir = dir
     installFaultHandlers()
     console.log('Init DB at', dataDir)
 
     // Main local DB
-    const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
+    core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
     await core.ready()
     db = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
     await db.ready()
@@ -8717,6 +8754,20 @@ async function _doInit (dir, attempt = 0) {
     startRetention()   // TODO #112: bound append-only growth on a 30-min cadence
   } catch(e) {
     console.error('Init failed:', e.message)
+    // Hand back whatever this attempt opened before retrying. Those handles
+    // hold the exclusive CORESTORE lock, and since it is per file description
+    // the retry would be waiting on THIS process to let go — a wait that never
+    // ends. Closing db closes the core it wraps, so only close `core` directly
+    // when we never got as far as wrapping it.
+    await closeStep('init/store', () => store && store.close())
+    store = null
+    if (db) {
+      await closeStep('init/db', () => db.close())
+      db = null
+    } else {
+      await closeStep('init/core', () => core && core.close())
+    }
+    core = null
     if (e.message && e.message.includes('lock') && attempt < 20) {
       await new Promise(r => setTimeout(r, 1000))
       return init(dir, attempt + 1)
