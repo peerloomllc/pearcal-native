@@ -1,23 +1,35 @@
 ## What's Changed
 
-### Bug Fixes
+New
 
-  - **Canadian and UK holidays landed on the wrong dates.** When a holiday fell on
-    a weekend, it was being moved to the *Friday before* instead of forward to the
-    next free weekday. The most visible symptom: Boxing Day showing on Christmas
-    Day. Canadian and UK holidays now follow their own rules rather than the US
-    one, so each weekend holiday moves forward to the next weekday nobody else has
-    taken.
+  - Your calendar now tells you when it has stopped syncing with the
+    other members, instead of just going quiet. It waits a couple of
+    days before saying anything, so it will not nag you when someone
+    is simply away for the weekend.
 
-  - **Two related date problems came out of the same fix.** New Year's Day could
-    render as an invalid date in some years, and two holidays could occasionally
-    claim the same day. Both are fixed, and the dates were checked against the
-    official published lists across 2021 to 2032.
+Fixed
 
-  - **Calendars that already had the wrong dates now fix themselves.** Previously
-    you had to switch a holiday calendar off and back on to pick up the
-    corrections. PearCal now tidies these up on its own when you open the app.
-    Reminders you set on a holiday move with it, and any holiday you deleted on
-    purpose stays deleted.
+  - Fixed the app failing to open, sometimes showing "Failed to start
+    PearCal" and sometimes just a blank screen. This could happen after
+    closing and reopening quickly.
+
+  - Fixed a device getting stuck when it had fallen behind, where it
+    would sit on the loading screen, never catch up, and drain the
+    battery. It now fetches what it is missing and stays usable while
+    it does.
+
+  - Warnings about a calendar having a problem could disappear moments
+    after showing, so you would never see them. They now stay put.
+
+  - Linux: the app would install but never open on Ubuntu 24.04 and
+    similar. Fixed.
+  
+Improved
+
+  - Catching up after being away is much faster and uses far less
+    battery.
+  
+  - Fewer pointless background writes when nothing has actually
+    changed.
 
 
