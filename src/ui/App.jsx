@@ -8000,7 +8000,21 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <div style={{ fontSize:11, color:colors.text.muted }}>Estimate reclaimable per group (keep last 100 blocks)</div>
           </div>
         </button>
-        {(() => {
+        {/* Reclaim Storage hidden 2026-08-05, same treatment as Sweep Orphaned
+            Data below. It rebuilds the local database, and a device that ends up
+            missing blocks the SHARED history still references cannot recover on
+            its own: the engine re-queues the unreadable dependency instead of
+            fetching it, saturating the loop so hard that no peer connection ever
+            completes, so it cannot even reach a blind seeder holding the data
+            (#154, diagnosed on a real install 2026-08-05 - zero peers connected
+            in 90s while a core burned). Repair currently needs an external tool.
+            NOT known to have caused that incident: Tim reports never having used
+            this feature, so the origin of those gaps is still unexplained. It is
+            hidden because the downside is unrecoverable and the upside has
+            largely gone - the main source of storage bloat was addressed
+            elsewhere. Analyze Reclaimable above is read-only and stays.
+            Re-enable once a device can heal a block gap by itself. */}
+        {false && (() => {
           const pct = reclaimResult?.analyze?.pct ?? -1
           const enabled = !reclaimBusy && pct >= 21
           return (
