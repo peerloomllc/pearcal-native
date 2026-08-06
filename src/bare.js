@@ -2702,14 +2702,16 @@ function makePersonalApply () {
         const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
         if (!blocked) {
           // Plain writer, NOT an indexer. Advancing the signed view needs a
-          // majority of indexers (autobase/lib/consensus.js:15), so granting
-          // every paired device indexer rights raises that bar for good: lose
-          // enough of them to a wipe and the signed view freezes, stranding
-          // everything applied after it in an un-indexed tail no fresh device
-          // can fast-forward to. Worse, the drain then retries dependencies the
-          // dead indexers can never satisfy and pins a core doing it - observed
-          // live on a real install with 7 indexers, length 1021 and
-          // indexedLength stuck at 849 (project_autobase_drain_spin).
+          // MAJORITY of indexers to ack (autobase/lib/consensus.js:15), so
+          // granting every device indexer rights raises that bar permanently.
+          // The devices do NOT have to be dead for this to bite: with 7
+          // indexers, 4 must be awake and connected at the same moment, and
+          // most of them are phones. A bar that high is routinely unreachable
+          // among healthy, actively-used devices, and while it is unreached the
+          // signed view is frozen and the drain keeps retrying dependencies it
+          // cannot resolve, pinning a core. Observed live on a real install
+          // with 7 indexers, length 1021 and indexedLength stuck at 849 for
+          // 16 minutes at ~106% CPU (project_autobase_drain_spin).
           //
           // The bootstrap device stays the sole indexer, so majority is 1 and it
           // consolidates every writer's data on its own, including data authored
