@@ -6650,6 +6650,13 @@ async function mirrorToLocal (type, key, value, groupId) {
       // LWW mirror — only overwrite local if incoming is newer
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        // The `>=` is deliberate, so equal timestamps still converge - but it
+        // also means an UNCHANGED record passes the gate. Autobase re-runs
+        // apply() over the tail on every fork/reorg, so without this guard the
+        // same put and the same rsvpsChanged event fire again for every node in
+        // that tail, every time, and the cost grows with the un-indexed tail.
+        // Same check the event and group branches already make.
+        if (existing?.value && sameExceptUpdatedAt(existing.value, value)) return
         await db.put(key, value)
         emitSync(groupId, { rsvpsChanged: true })
       }
@@ -6678,6 +6685,10 @@ async function mirrorToLocal (type, key, value, groupId) {
       // of these ops. For now just accept the newer record so rehydrate has it.
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        // Same no-op guard as the rsvp branch above and the event/group
+        // branches below: `>=` lets an unchanged record through, and a re-apply
+        // over the tail would otherwise rewrite and re-emit for every node in it.
+        if (existing?.value && sameExceptUpdatedAt(existing.value, value)) return
         await db.put(key, value)
         emitSync(groupId, { groupChanged: true })
       }
