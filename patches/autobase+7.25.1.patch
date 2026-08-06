@@ -1,3 +1,46 @@
+diff --git a/node_modules/autobase/index.js b/node_modules/autobase/index.js
+index d9e97db..7bafe71 100644
+--- a/node_modules/autobase/index.js
++++ b/node_modules/autobase/index.js
+@@ -1157,7 +1157,37 @@ module.exports = class Autobase extends ReadyResource {
+ 
+       const alreadyActive = !!w
+       const sys = system || this._applyState.system
+-      const writerInfo = await sys.get(key)
++
++      // PearCal patch: this read used to run on EVERY call, including the very
++      // common case where `w` was already in activeWriters and the caller passed
++      // a length. On a device catching up that dominated: 1.4M reads for 15,741
++      // positions advanced, ~89 per position, all for the same handful of
++      // writers, ~0.3ms each on phone hardware. That is ~420s of the observed
++      // 501s catch-up. The unit cost is ordinary; the COUNT was the problem.
++      //
++      // Cached WITHOUT a staleness window: the cache key is the system's own
++      // state, so it is discarded the moment anything the answer depends on
++      // changes - the flushed length, the pending `_changes` (every add/remove/
++      // update pushes there), or `_empty`. Same answer, far fewer reads. Only
++      // the default system is cached; an explicitly passed one always reads.
++      let writerInfo
++      if (!system) {
++        const gen = sys._empty + ':' + (sys.core ? sys.core.length : -1) + ':' + sys._changes.length
++        if (!this._pcSysCache || this._pcSysCache.gen !== gen || this._pcSysCache.sys !== sys) {
++          this._pcSysCache = { gen, sys, map: new Map() }
++        }
++        const hex = b4a.toString(key, 'hex')
++        if (this._pcSysCache.map.has(hex)) {
++          writerInfo = this._pcSysCache.map.get(hex)
++          this._pcSysHits = (this._pcSysHits || 0) + 1
++        } else {
++          writerInfo = await sys.get(key)
++          this._pcSysCache.map.set(hex, writerInfo)
++          this._pcSysMisses = (this._pcSysMisses || 0) + 1
++        }
++      } else {
++        writerInfo = await sys.get(key)
++      }
+ 
+       if (len === -1) {
+         if (!allowGC && writerInfo === null) {
 diff --git a/node_modules/autobase/lib/apply-state.js b/node_modules/autobase/lib/apply-state.js
 index 76dd6dc..7197474 100644
 --- a/node_modules/autobase/lib/apply-state.js
@@ -41,6 +84,62 @@ index 76dd6dc..7197474 100644
        view.core.download({ blocks })
      }
  
+diff --git a/node_modules/autobase/lib/system.js b/node_modules/autobase/lib/system.js
+index df460c3..92cd2ba 100644
+--- a/node_modules/autobase/lib/system.js
++++ b/node_modules/autobase/lib/system.js
+@@ -31,6 +31,17 @@ module.exports = class SystemView extends ReadyResource {
+       sessions: typeof core.session === 'function'
+     })
+ 
++    // PearCal patch: `sessions: true` makes Hyperbee open AND CLOSE a hypercore
++    // session for every single read. On the hot writer-lookup path that teardown
++    // dominates: measured at 481us per read against 63us without it, 7.6x. A
++    // device catching up made 1.4M of these lookups, which is ~673s of pure
++    // session churn and accounts for essentially all of a 12-minute catch-up
++    // (PearCal #154 / PR #293 follow-up). A single long-lived read handle over
++    // the same core at the same checkout answers those reads without the churn.
++    // Reads only; every write still goes through `this.db` untouched.
++    this._pcCheckout = checkout
++    this._pcReadDb = null
++
+     this.version = DEFAULT_AUTOBASE_VERSION
+     this.members = 0
+     this.pendingIndexers = []
+@@ -108,7 +119,24 @@ module.exports = class SystemView extends ReadyResource {
+     await this._reset(info)
+   }
+ 
++  // Lazily built, reused for the life of this view. See the constructor note.
++  _pcReader () {
++    if (this._pcReadDb === null) {
++      this._pcReadDb = new Hyperbee(this.core, {
++        keyEncoding: 'binary',
++        extension: false,
++        checkout: this._pcCheckout,
++        sessions: false
++      })
++    }
++    return this._pcReadDb
++  }
++
+   async _close() {
++    if (this._pcReadDb !== null) {
++      await this._pcReadDb.close().catch(() => {})
++      this._pcReadDb = null
++    }
+     await this.db.close()
+   }
+ 
+@@ -600,7 +628,7 @@ module.exports = class SystemView extends ReadyResource {
+     }
+ 
+     if (!found) {
+-      const node = await this.db.get(key, { timeout, valueEncoding: Member, keyEncoding: MEMBERS })
++      const node = await this._pcReader().get(key, { timeout, valueEncoding: Member, keyEncoding: MEMBERS })
+       if (node) {
+         value = node.value
+         found = true
 diff --git a/node_modules/autobase/lib/writer.js b/node_modules/autobase/lib/writer.js
 index 551406d..c66b2fb 100644
 --- a/node_modules/autobase/lib/writer.js
