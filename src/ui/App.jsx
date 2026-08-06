@@ -451,6 +451,19 @@ function Collapsible ({ title, icon: Icon, open, onToggle, maxHeight = 600, chil
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
+// Keep fields the UI needs that a raw record does not carry. Group objects reach
+// this component from two shapes: enriched (listGroups/getGroup, with syncHealth
+// and keyless) and raw (sync events). Replacing an enriched object with a raw one
+// silently drops the warnings, which is how the #155 banner vanished a moment
+// after appearing. Same class as feedback_react_state_sync_overwrite.
+function mergeGroupState (prev, incoming) {
+  if (!incoming) return prev
+  const merged = { ...incoming }
+  if (merged.syncHealth === undefined && prev?.syncHealth !== undefined) merged.syncHealth = prev.syncHealth
+  if (merged.keyless === undefined && prev?.keyless !== undefined) merged.keyless = prev.keyless
+  return merged
+}
+
 // Coarse on purpose (#155). The judgement is "has this been quiet for days",
 // so minutes and seconds would imply a precision the 48h threshold does not have.
 function fmtSyncAge (ms) {
@@ -624,7 +637,7 @@ export default function App ({ db, notifs, sync }) {
             const idx = prev.findIndex(x => x.id === groupId)
             if (idx === -1) return [...prev, g]
             const next = prev.slice()
-            next[idx] = g
+            next[idx] = mergeGroupState(prev[idx], g)
             return next
           })
         }
@@ -775,7 +788,9 @@ export default function App ({ db, notifs, sync }) {
     } catch {}
 
     function onGroupKeyUpdated(group) {
-      setGroups(prev => prev.map(g => g.id === group.id ? group : g))
+      // Events carry the raw record, with no syncHealth/keyless on it. Replacing
+      // wholesale wiped those and silently dropped the warnings (#155).
+      setGroups(prev => prev.map(g => g.id === group.id ? mergeGroupState(g, group) : g))
       setReadyGroupKeys(prev => { const s = new Set(prev); s.add(group.id); return s })
     }
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
@@ -1403,7 +1418,7 @@ export default function App ({ db, notifs, sync }) {
       // Broadcast updated group record to peers
       await sync?.putGroup(updated).catch(() => {})
     }
-    setGroups(prev => prev.map(g => g.id === updated.id ? updated : g))
+    setGroups(prev => prev.map(g => g.id === updated.id ? mergeGroupState(g, updated) : g))
     setSettingsGroup(prev => prev?.id === updated.id ? updated : prev)
   }, [db, sync, groups])
 

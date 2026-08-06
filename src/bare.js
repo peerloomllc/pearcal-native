@@ -1880,7 +1880,13 @@ async function rehydrateGroupMembers (groupValue) {
 
 async function getGroup (id) {
   const node = await db.get(NS.groups + id)
-  return rehydrateGroupMembers(node?.value ?? null)
+  const g = await rehydrateGroupMembers(node?.value ?? null)
+  // Carry sync health here too, not only on listGroups (#155). The UI refreshes
+  // a single group through this call on every sync event, and a record without
+  // the field silently wiped the warning from a group that had it. Caught by a
+  // probe on the TCL: the value arrived, then vanished on the next update.
+  if (g && g.id) g.syncHealth = await syncHealthFor(g.id, g).catch(() => null)
+  return g
 }
 
 async function debugGroup (id) {
