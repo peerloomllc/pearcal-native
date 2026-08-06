@@ -21,6 +21,10 @@
 //
 //   node test/harness/starved-drain-repro.js [nodes]
 //
+// RESOLVED 2026-08-06: the patch this was written to validate has since been
+// PROVEN on a real device (Tim's Pixel 9, see the PR). This file stays as the
+// record of three failed synthetic attempts, and of why they failed.
+//
 // STATUS 2026-08-05: STILL DOES NOT REPRODUCE. Third attempt, recorded so the
 // next person starts from what is known rather than repeating it.
 //
