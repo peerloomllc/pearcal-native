@@ -45,6 +45,7 @@ const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
 const { resetPlan } = require('./lib/resetPlan.js')
+const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -1879,7 +1880,13 @@ async function rehydrateGroupMembers (groupValue) {
 
 async function getGroup (id) {
   const node = await db.get(NS.groups + id)
-  return rehydrateGroupMembers(node?.value ?? null)
+  const g = await rehydrateGroupMembers(node?.value ?? null)
+  // Carry sync health here too, not only on listGroups (#155). The UI refreshes
+  // a single group through this call on every sync event, and a record without
+  // the field silently wiped the warning from a group that had it. Caught by a
+  // probe on the TCL: the value arrived, then vanished on the next update.
+  if (g && g.id) g.syncHealth = await syncHealthFor(g.id, g).catch(() => null)
+  return g
 }
 
 async function debugGroup (id) {
@@ -1942,6 +1949,10 @@ async function listGroups () {
     // tells the user, and the only cure is a fresh invite from a keyed member.
     const keyless = await keylessGroupStatus(value.id).catch(() => null)
     if (keyless?.damaged) hydrated.keyless = { certainty: keyless.certainty, reason: keyless.reason }
+    // #155: when did this calendar last exchange anything, and does that look
+    // wrong? 'unknown' for groups that predate the feature, so updating does not
+    // greet everyone with a wall of false alarms.
+    hydrated.syncHealth = await syncHealthFor(value.id, hydrated).catch(() => null)
     groups.push(hydrated)
   }
   return groups
@@ -1962,6 +1973,47 @@ async function putGroup (group) {
 // `tag` identifies the caller purely so the warning below names the culprit if
 // this ever fires in the wild — the reported symptom was never reproduced across
 // six scenarios, so a live log line may be the only way it is ever identified.
+// Record that this group exchanged something with another device (#155). A
+// shared calendar going quiet used to be completely invisible: a five-member
+// group stopped syncing in the field and the app said nothing, so the user
+// rebuilt the group by hand and re-invited everyone. Written from the apply
+// loop's remote branch, i.e. only when data genuinely arrived from someone
+// else, and throttled - the loop sees remote nodes in bursts and a write per
+// node is the amplification pattern that has bitten this codebase before.
+const _lastSyncStamp = new Map()
+function stampGroupSync (groupId) {
+  if (!groupId || !db) return
+  const now = Date.now()
+  if (!shouldStampSync(_lastSyncStamp.get(groupId), now)) return
+  _lastSyncStamp.set(groupId, now)
+  db.put('lastSync:' + groupId, { ts: now }).catch(() => {})
+}
+
+// Health of one group, for the UI. Kept out of the pure classifier so the
+// decision stays testable without a database.
+async function syncHealthFor (groupId, group) {
+  const last = await db.get('lastSync:' + groupId).catch(() => null)
+  const join = await db.get('joinedAt:' + groupId).catch(() => null)
+  const watch = await db.get('syncWatchSince').catch(() => null)
+  return classifySyncHealth({
+    lastSyncAt: last?.value?.ts ?? null,
+    joinedAt: join?.value?.ts ?? group?.joinedAt ?? null,
+    watchSince: watch?.value?.ts ?? null,
+    memberCount: Array.isArray(group?.members) ? group.members.length : null,
+    now: Date.now(),
+  })
+}
+
+// When this device started recording sync activity at all. Written once, ever.
+// Without it every pre-existing group looks silent the moment the feature ships
+// - old joinedAt, no lastSync yet - and gets accused of being broken on the
+// first launch after updating. Caught on the TCL doing exactly that.
+async function ensureSyncWatchSince () {
+  const existing = await db.get('syncWatchSince').catch(() => null)
+  if (existing?.value?.ts) return
+  await db.put('syncWatchSince', { ts: Date.now() }).catch(() => {})
+}
+
 async function putGroupRecord (groupId, value, tag) {
   const key = NS.groups + groupId
   const existing = await db.get(key).catch(() => null)
@@ -2119,6 +2171,8 @@ async function deleteGroup (id) {
   await db.del(NS.groups + id)
   await db.del(NS.groupMembers + id).catch(() => {})
   await db.del('joinedAt:' + id).catch(() => {})
+  await db.del('lastSync:' + id).catch(() => {})
+  _lastSyncStamp.delete(id)
   // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
     await db.del(key)
@@ -5664,6 +5718,9 @@ function makeApply (groupId) {
       // Detect remote writes via node.from.key
       const nodeWriterKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
       const isRemote = localKey && nodeWriterKey && nodeWriterKey !== localKey
+      // Something arrived from another device: this group is demonstrably still
+      // talking to someone (#155).
+      if (isRemote) stampGroupSync(groupId)
 
       // Ownership transfer — update group.ownerId. Two paths converge here:
       //   (a) current owner promotes any member (always accepted),
@@ -8763,6 +8820,7 @@ async function _doInit (dir, attempt = 0) {
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
     startRetention()   // TODO #112: bound append-only growth on a 30-min cadence
+    ensureSyncWatchSince().catch(() => {})   // #155 baseline; once, ever
   } catch(e) {
     console.error('Init failed:', e.message)
     // Hand back whatever this attempt opened before retrying. Those handles
