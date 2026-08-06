@@ -451,6 +451,17 @@ function Collapsible ({ title, icon: Icon, open, onToggle, maxHeight = 600, chil
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
+// Coarse on purpose (#155). The judgement is "has this been quiet for days",
+// so minutes and seconds would imply a precision the 48h threshold does not have.
+function fmtSyncAge (ms) {
+  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return 'a while'
+  const days = Math.floor(ms / 86400000)
+  if (days >= 14) return Math.floor(days / 7) + ' weeks'
+  if (days >= 2) return days + ' days'
+  const hours = Math.floor(ms / 3600000)
+  return hours >= 1 ? hours + ' hours' : 'a while'
+}
+
 export default function App ({ db, notifs, sync }) {
   const [dark,  setDark]  = useState(() => {
     setTheme(true) // default dark until profile loads
@@ -5114,6 +5125,35 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
                     {' '}Ask a member to send you a fresh invite link, then paste it into Join Group to repair it.
                   </div>
                   <div style={{ color:colors.text.muted, marginTop:4, fontSize:11 }}>Group ID: {g.id}</div>
+                </div>
+              </div>
+            )}
+
+            {/* #155: a shared calendar going quiet used to be completely
+                invisible. Reported from the field: a five-member group stopped
+                syncing, the app said nothing, and the user repaired it by
+                creating a NEW group and moving every event across, which meant
+                re-inviting everyone. Shown only when there IS somebody to sync
+                with and we have a baseline to judge against, so groups that
+                predate this stay quiet rather than crying wolf on first launch.
+                Suppressed when the keyless banner above is already saying it. */}
+            {!g.keyless && g.syncHealth?.state === 'stale' && (
+              <div style={{ background:'#F5A62333', border:'1px solid #F5A62366', borderRadius:10,
+                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
+                <Warning size={18} weight="thin" color="#F5A623" style={{ flexShrink:0, marginTop:1 }} />
+                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                  <div style={{ fontWeight:400, marginBottom:2 }}>
+                    {g.syncHealth.reason === 'never-synced'
+                      ? "This calendar hasn't synced yet"
+                      : 'This calendar hasn\'t synced in ' + fmtSyncAge(g.syncHealth.sinceMs)}
+                  </div>
+                  <div style={{ color:colors.text.muted }}>
+                    {g.syncHealth.reason === 'never-synced'
+                      ? 'Nothing has arrived from the other members since you joined.'
+                      : 'Nothing has arrived from the other members for a while.'}
+                    {' '}They may simply be offline. If they are using it and you still see this,
+                    ask one of them to send you a fresh invite link and paste it into Join Group.
+                  </div>
                 </div>
               </div>
             )}
