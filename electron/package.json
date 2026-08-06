@@ -98,6 +98,9 @@
       "identity": "22F9540D333EBFB4245EE11170F68A61E6E22689",
       "notarize": false
     },
+    "deb": {
+      "afterInstall": "build/deb-after-install.tpl"
+    },
     "linux": {
       "target": [
         "AppImage",
