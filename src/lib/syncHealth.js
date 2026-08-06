@@ -36,7 +36,13 @@ const GRACE_AFTER_JOIN_MS = 60 * 60 * 1000
 //   'alone'    no other members, so silence is expected, not a fault
 //   'stale'    has other members and has not exchanged anything in a long time
 //   'unknown'  not enough information to say (do NOT warn on this)
-function classifySyncHealth ({ lastSyncAt, joinedAt, memberCount, now, staleAfterMs = STALE_AFTER_MS, graceMs = GRACE_AFTER_JOIN_MS } = {}) {
+// `watchSince` is when THIS DEVICE started recording sync activity at all. It
+// matters because "has not synced in 48h" is only sayable once we have been
+// watching for 48h. Without it, every pre-existing group has no lastSyncAt the
+// moment the feature ships, an old joinedAt, and therefore gets accused of
+// being broken on the first launch after updating. Caught on the TCL doing
+// exactly that, on a group that was fine.
+function classifySyncHealth ({ lastSyncAt, joinedAt, watchSince, memberCount, now, staleAfterMs = STALE_AFTER_MS, graceMs = GRACE_AFTER_JOIN_MS } = {}) {
   if (typeof now !== 'number') return { state: 'unknown', sinceMs: null, reason: 'no-clock' }
 
   // Nobody to sync with. Saying "not syncing" to someone whose calendar is
@@ -51,15 +57,17 @@ function classifySyncHealth ({ lastSyncAt, joinedAt, memberCount, now, staleAfte
   }
 
   if (typeof lastSyncAt !== 'number') {
-    // Never recorded an exchange. Only meaningful once past the grace window,
-    // and only when we know when the group was joined - otherwise this fires on
-    // every group that predates the feature, which would be a wall of false
-    // alarms on the very first launch after updating.
-    if (typeof joinedAt !== 'number') return { state: 'unknown', sinceMs: null, reason: 'no-baseline' }
-    const since = now - joinedAt
+    // Never recorded an exchange. Silence only counts from the LATER of when the
+    // group was joined and when this device started watching - we cannot claim
+    // 48h of silence after 5 minutes of observation.
+    const baselines = []
+    if (typeof joinedAt === 'number') baselines.push(joinedAt)
+    if (typeof watchSince === 'number') baselines.push(watchSince)
+    if (!baselines.length) return { state: 'unknown', sinceMs: null, reason: 'no-baseline' }
+    const since = now - Math.max(...baselines)
     return since >= staleAfterMs
       ? { state: 'stale', sinceMs: since, reason: 'never-synced' }
-      : { state: 'ok', sinceMs: since, reason: 'no-record-yet' }
+      : { state: 'ok', sinceMs: since, reason: 'not-watching-long-enough' }
   }
 
   const since = now - lastSyncAt

@@ -1988,12 +1988,24 @@ function stampGroupSync (groupId) {
 async function syncHealthFor (groupId, group) {
   const last = await db.get('lastSync:' + groupId).catch(() => null)
   const join = await db.get('joinedAt:' + groupId).catch(() => null)
+  const watch = await db.get('syncWatchSince').catch(() => null)
   return classifySyncHealth({
     lastSyncAt: last?.value?.ts ?? null,
     joinedAt: join?.value?.ts ?? group?.joinedAt ?? null,
+    watchSince: watch?.value?.ts ?? null,
     memberCount: Array.isArray(group?.members) ? group.members.length : null,
     now: Date.now(),
   })
+}
+
+// When this device started recording sync activity at all. Written once, ever.
+// Without it every pre-existing group looks silent the moment the feature ships
+// - old joinedAt, no lastSync yet - and gets accused of being broken on the
+// first launch after updating. Caught on the TCL doing exactly that.
+async function ensureSyncWatchSince () {
+  const existing = await db.get('syncWatchSince').catch(() => null)
+  if (existing?.value?.ts) return
+  await db.put('syncWatchSince', { ts: Date.now() }).catch(() => {})
 }
 
 async function putGroupRecord (groupId, value, tag) {
@@ -8802,6 +8814,7 @@ async function _doInit (dir, attempt = 0) {
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
     startRetention()   // TODO #112: bound append-only growth on a 30-min cadence
+    ensureSyncWatchSince().catch(() => {})   // #155 baseline; once, ever
   } catch(e) {
     console.error('Init failed:', e.message)
     // Hand back whatever this attempt opened before retrying. Those handles

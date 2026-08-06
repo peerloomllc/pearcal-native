@@ -84,3 +84,35 @@ test('but it does write again once the interval passes', () => {
   assert.equal(shouldStampSync(NOW, NOW + 61_000), true)
   assert.equal(shouldStampSync(NOW, NOW + 59_000), false)
 })
+
+// --- the regression the TCL caught -------------------------------------------
+
+test('THE FALSE ALARM: an existing group must not be accused the moment the feature ships', () => {
+  // Joined months ago, syncing fine, but this device only started watching five
+  // minutes ago so there is no lastSyncAt yet. Caught on the TCL rendering a
+  // "hasn't synced yet" banner on a perfectly healthy group.
+  const r = classifySyncHealth({
+    lastSyncAt: null, joinedAt: NOW - hours(2000), watchSince: NOW - hours(0.08),
+    memberCount: 2, now: NOW,
+  })
+  assert.notEqual(r.state, 'stale')
+  assert.equal(r.state, 'ok')
+  assert.equal(r.reason, 'not-watching-long-enough')
+})
+
+test('but once we HAVE watched long enough, silence is reported', () => {
+  const r = classifySyncHealth({
+    lastSyncAt: null, joinedAt: NOW - hours(2000), watchSince: NOW - hours(72),
+    memberCount: 2, now: NOW,
+  })
+  assert.equal(r.state, 'stale')
+  assert.equal(r.reason, 'never-synced')
+})
+
+test('a group joined AFTER we started watching still uses the join time', () => {
+  const r = classifySyncHealth({
+    lastSyncAt: null, joinedAt: NOW - hours(3), watchSince: NOW - hours(500),
+    memberCount: 2, now: NOW,
+  })
+  assert.equal(r.state, 'ok', 'joined 3h ago, not silent for 48h')
+})
