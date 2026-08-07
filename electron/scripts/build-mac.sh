@@ -30,6 +30,17 @@ REMOTE_DIR="~/peerloomllc/pearcal-native"
 # vendor/ was last refreshed by `npm install`'s postinstall hook.
 node scripts/prepack.js
 
+# Re-apply the Autobase patches from the repo-root patches/ directory.
+# These carry the #154 drain-spin repairs. They used to reach the phone build
+# only: patch-package ran from the repo root against the ROOT node_modules,
+# while electron/ keeps its own independent install that nothing patched. Both
+# package.json files said "^7.25.1", so the two installs silently resolved to
+# different Autobase versions and the desktop shipped 7.27.3 with none of the
+# fixes. Both are pinned exact now, and this runs on every build so a stale
+# node_modules cannot ship unpatched again.
+npm run patch
+
+
 # Bundle UI locally first so the source rsync up to the Mac is the
 # deployable shape.
 bash scripts/bundle-ui.sh

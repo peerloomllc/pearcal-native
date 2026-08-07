@@ -12,7 +12,8 @@
   "scripts": {
     "bundle:ui": "bash scripts/bundle-ui.sh",
     "prepack:vendor": "node scripts/prepack.js",
-    "postinstall": "node scripts/prepack.js",
+    "postinstall": "node scripts/prepack.js && npm run patch",
+    "patch": "patch-package --patch-dir ../patches --error-on-fail",
     "start": "npm run prepack:vendor && npm run bundle:ui && electron .",
     "start:dev-linux": "ELECTRON_DISABLE_SANDBOX=1 npm run prepack:vendor && ELECTRON_DISABLE_SANDBOX=1 npm run bundle:ui && ELECTRON_DISABLE_SANDBOX=1 electron --disable-gpu --disable-software-rasterizer .",
     "build:linux": "bash scripts/build-linux.sh",
@@ -20,7 +21,7 @@
     "build:windows": "bash scripts/build-windows.sh"
   },
   "dependencies": {
-    "autobase": "^7.25.1",
+    "autobase": "7.25.1",
     "b4a": "^1.8.0",
     "bare-fs": "^4.5.4",
     "bare-path": "^3.0.0",
@@ -37,7 +38,8 @@
   },
   "devDependencies": {
     "electron": "^33.0.0",
-    "electron-builder": "^25.1.0"
+    "electron-builder": "^25.1.0",
+    "patch-package": "^8.0.1"
   },
   "build": {
     "appId": "com.pearcal.desktop",
