@@ -11,7 +11,7 @@
     "test": "node --test test/*.test.js",
     "bundle:ui:check": "esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --outfile=node_modules/.cache/pearcal-ui-verify.bundle",
     "verify": "npm test && npm run bundle:bare && npm run bundle:ui:check",
-    "postinstall": "patch-package --error-on-fail"
+    "postinstall": "patch-package --error-on-fail || node scripts/heal-patches.js"
   },
   "author": "Holepunch",
   "license": "MIT",
