@@ -26,6 +26,10 @@
 //             (majority 2), where 2 indexers tolerate none (majority 2 of 2).
 //             The counterintuitive consequence is that TWO indexers are
 //             strictly WORSE than one.
+// Scenario H: THE decision-relevant one for owner-only. If the sole indexer is
+//             gone for good, can a surviving member hand indexer rights to
+//             itself and get the calendar signing again? If not, owner-only is
+//             a permanent single point of failure and must not ship.
 
 const Autobase = require('autobase')
 const Corestore = require('corestore')
@@ -364,6 +368,97 @@ async function main () {
   console.log('  => three tolerate one loss:      ', say(g3))
   console.log('  => three tolerate two losses:    ', say(g3b))
 
+  // H: recovery from the owner-only failure mode.
+  //
+  // Scenario D showed an UPDATE cannot repair a frozen base, because the indexer
+  // set lives in the base's own history and code changes do not rewrite history.
+  // A handover op is different: it is NEW history. And apply() runs
+  // OPTIMISTICALLY - it does not wait for a signature - so in principle every
+  // peer would process the promotion and the indexer set would change even
+  // though nothing can currently be signed. Whether autobase actually permits
+  // that is the question owner-only stands or falls on.
+  console.log('\n=== H: can a survivor hand indexer rights to itself after the owner is gone? ===')
+
+  // Apply that honours an explicit `indexer` flag, so one base can grant both
+  // kinds. This is exactly the release-N reader the proposal specifies.
+  function makeHandoverApply () {
+    return async function apply (nodes, view, host) {
+      for (const node of nodes) {
+        const v = node.value
+        if (!v) continue
+        if (v.addWriter) {
+          await host.addWriter(Buffer.from(v.addWriter, 'hex'),
+            { indexer: v.indexer !== false })      // default true, as release N
+          continue
+        }
+        if (v.removeWriter) { await host.removeWriter(Buffer.from(v.removeWriter, 'hex')); continue }
+        if (v.key) await view.append({ k: v.key })
+      }
+    }
+  }
+
+  async function mk (name, key) {
+    const store = new Corestore(path.join(root, name + '-' + (++caseNo)))
+    await store.ready()
+    const base = new Autobase(store, key, { open, apply: makeHandoverApply(), valueEncoding: 'json', ackInterval: 1000 })
+    await base.ready()
+    return { store, base }
+  }
+
+  const hOwner = await mk('h-owner', null)
+  const hMember = await mk('h-member', hOwner.base.key)
+  const hUnlink = link(hOwner, hMember)
+  // Owner-only model: the member is granted as a PLAIN writer.
+  await hOwner.base.append({ addWriter: hMember.base.local.key.toString('hex'), indexer: false })
+  await settle([hOwner, hMember], 3000)
+  for (let i = 0; i < 5; i++) await hOwner.base.append({ key: 'h-early-' + i })
+  await settle([hOwner, hMember], 3000)
+  console.log('  indexers before loss:', hOwner.base.linearizer?.indexers?.length,
+    '| member writable:', hMember.base.writable)
+
+  // The owner's device is gone for good.
+  hUnlink()
+  const ownerKeyHex = hOwner.base.local.key.toString('hex')
+  await hOwner.base.close().catch(() => {}); await hOwner.store.close().catch(() => {})
+
+  const lenAtLoss = hMember.base.length
+  const idxAtLoss = hMember.base.indexedLength
+  for (let i = 0; i < 5; i++) await hMember.base.append({ key: 'h-orphan-' + i })
+  await settle([hMember], 6000)
+  console.log('  member alone, no handover: length', hMember.base.length,
+    'indexed', hMember.base.indexedLength, '(loss at', lenAtLoss + ')')
+
+  // The handover: promote self to indexer AND drop the departed one, in that
+  // order. Promoting alone would make it 2 indexers, majority 2, which is worse.
+  const rpt = tag => console.log('   ' + tag.padEnd(26) +
+    'linearizer.indexers=' + (hMember.base.linearizer?.indexers?.length) +
+    ' system.indexers=' + (hMember.base.system?.indexers?.length) +
+    ' indexed=' + hMember.base.indexedLength + '/' + hMember.base.length)
+  rpt('before handover:')
+  await hMember.base.append({ addWriter: hMember.base.local.key.toString('hex'), indexer: true }).catch(e => console.log('  promote append failed:', e.message))
+  await settle([hMember], 5000)
+  rpt('after promote-self:')
+  await hMember.base.append({ removeWriter: ownerKeyHex }).catch(e => console.log('  remove append failed:', e.message))
+  await settle([hMember], 8000)
+  rpt('after remove-owner:')
+  // Reverse order too, in case add-then-remove is simply the wrong sequence:
+  // with the departed indexer removed first the set is empty, and autobase may
+  // treat that differently than a set it cannot reach majority on.
+  await hMember.base.append({ removeWriter: ownerKeyHex }).catch(() => {})
+  await hMember.base.append({ addWriter: hMember.base.local.key.toString('hex'), indexer: true }).catch(() => {})
+  await settle([hMember], 8000)
+  rpt('after reverse order:')
+  console.log('  indexers after handover:', hMember.base.linearizer?.indexers?.length)
+
+  for (let i = 0; i < 5; i++) await hMember.base.append({ key: 'h-recovered-' + i })
+  await settle([hMember], 8000)
+  const hRecovered = hMember.base.indexedLength > lenAtLoss
+  console.log('  after handover: length', hMember.base.length,
+    'indexed', hMember.base.indexedLength, '| signed past the point of loss (' + lenAtLoss + '):',
+    hRecovered ? 'yes' : 'NO')
+  console.log('  handover recovered the calendar:', hRecovered ? 'YES' : 'NO  <-- owner-only is unrecoverable')
+  await hMember.base.close().catch(() => {}); await hMember.store.close().catch(() => {})
+
   console.log('\n---------------- RESULT ----------------')
   console.log('A (all indexers)      advanced after loss:', a.advanced ? 'YES' : 'NO')
   console.log('B (non-indexer writer) advanced after loss:', b.advanced ? 'YES' : 'NO')
@@ -372,6 +467,7 @@ async function main () {
   console.log('E (newcomer starved by a frozen view):', newcomerStarved ? 'YES' : 'NO')
   console.log('F (a lone remaining member can sign):', fSignsAlone ? 'YES' : 'NO - handoff needed')
   console.log('G (redundancy appears at 3, not 2):', (!g2 && g3 && !g3b) ? 'CONFIRMED' : 'see numbers above')
+  console.log('H (handover recovers an owner-only calendar):', hRecovered ? 'YES' : 'NO')
   console.log('')
   console.log(!a.advanced && b.advanced
     ? 'FIX VALIDATED: the freeze reproduces on current behaviour and does not occur with non-indexer writers.'

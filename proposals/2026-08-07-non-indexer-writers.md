@@ -91,6 +91,7 @@ are added by this proposal**.
 | **E** | Does a frozen view starve a *freshly paired* device? | **NO**. Owner and newcomer both see 25 entries with 50 stranded. The newcomer applies the un-indexed tail optimistically from a peer that holds it |
 | **F** | Under the fix, the sole indexer goes away - what then? | Member can still **author** writes, but `indexed 14` never moves again. **This is the blocker** |
 | **G** | Does redundancy appear at 2 indexers, or 3? | **3.** 2-lose-1 frozen; **3-lose-1 keeps signing**; 3-lose-2 frozen |
+| **H** | Can a survivor hand indexer rights to itself after the sole indexer is gone? | **NO.** `system.indexers` changes optimistically (1 -> 2 -> 1) but `linearizer.indexers` stays 1 and `indexed` stays pinned at 14. Both orderings tried |
 
 **E is a correction.** Before running it I expected a frozen view to be the
 explanation for the 2026-08-07 field report ("you can see the group, but thats
@@ -194,9 +195,84 @@ real privacy change and has to be an informed per-group opt-in, not a default.
 It also only helps groups that have such a device, so it is an upgrade on top of
 B, never a replacement for it.
 
-**Recommendation: B as the base, with a handoff, and D as an opt-in upgrade.**
-Not C on its own - for phone-only groups it is strictly worse than B on
-availability while still not surviving two losses.
+**Superseded by scenario H - see "The finding that reverses the recommendation"
+above.** This comparison optimised instantaneous availability; H showed quorum
+loss is permanent and unrecoverable, which makes tolerance to permanent loss the
+objective instead. The recommendation is now three indexers, not owner-only.
+
+## The finding that reverses the recommendation
+
+Scenario H was written to de-risk owner-only. It did the opposite.
+
+```
+   before handover:      linearizer.indexers=1 system.indexers=1 indexed=14/24
+   after promote-self:   linearizer.indexers=1 system.indexers=2 indexed=14/26
+   after remove-owner:   linearizer.indexers=1 system.indexers=1 indexed=14/29
+   after reverse order:  linearizer.indexers=1 system.indexers=1 indexed=14/33
+```
+
+The promotion op **is** applied - `system.indexers` moves, because `apply()`
+runs optimistically. But `linearizer.indexers`, which is what actually decides
+signing, never picks it up, because it derives from the **indexed** system
+state, and that is frozen. **To change who may sign, the change must itself be
+signed.** Nothing can be signed. Both orderings were tried.
+
+So there is no in-band handover. Combined with C (`removeWriter` does not
+recover) and D (an update does not recover), the general rule is:
+
+> **Once a group can no longer reach indexer quorum, it can never recover.
+> There is no repair from inside the protocol.**
+
+### What that changes
+
+The earlier recommendation optimised for the highest *instantaneous* quorum
+probability, which favoured owner-only. That was the wrong objective:
+
+- **Unavailability is temporary.** A quorum that is unreachable right now is
+  reached later when devices come online, and the signed view catches up. The
+  21.6% in the table is an instant, not an outage.
+- **Loss is permanent and unfixable.** A quorum that can never be reached again
+  is the end of the group's signed history, forever.
+
+Optimising a permanent, unrecoverable failure against a temporary one is
+backwards. The objective is **tolerance to permanent device loss**, and on that
+axis owner-only is the *worst* option: it tolerates zero.
+
+And the most likely loss is precisely the one it cannot survive - the owner
+replacing, losing or wiping their phone. Worth confirming separately whether a
+wipe-and-restore yields a new writer key, because if it does, owner-only breaks
+on an ordinary phone upgrade.
+
+### Revised recommendation: three indexers
+
+| indexers | permanent losses survived | quorum reachable (phones) | recoverable if exceeded |
+|---|---|---|---|
+| 1 (owner only) | **0** | 30% | **never** |
+| 2 | **0** | 9% | never |
+| **3** | **1** | 21.6% | never |
+| 7 (today) | 3 | 12.6%, and measured at 96% unsigned | never |
+
+**Three.** It is the smallest set that survives a permanent loss, and small
+enough that quorum is actually reached - unlike seven, which tolerates three
+losses on paper and in Tim's real group has signed 4% of history.
+
+This is option C, which the previous revision of this proposal argued against.
+That argument was wrong because it weighed the instantaneous number and ignored
+that there is no recovery.
+
+**Option D (an always-on key-holding device) is now an upgrade, not an
+alternative.** Two indexers is worse than one, so a single always-on device does
+not help; owner plus *two* always-on devices, or owner plus one always-on plus
+one other member, gives three with two of them effectively permanent. Tim runs
+two seeders, so that configuration is available to him - at the cost of those
+machines being able to read the calendar.
+
+### Still open, and now blocking
+
+Choosing "three" is not yet a design. Every peer must derive the same three from
+the view or the group forks, and the rule has to handle members joining and
+leaving. That selection rule is the remaining work, and it is a harder problem
+than the two-line change this branch started from.
 
 ## Scope
 
