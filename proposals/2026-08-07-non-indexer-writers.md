@@ -410,6 +410,19 @@ received the event (`[APPLY] event put incoming ... win: true`), so ordinary
 sync continued throughout. Under the old 2-indexer shape the same loss would
 have frozen it, which is scenario A.
 
+**The even-number penalty, also on hardware.** Tim's iPhone SE later joined the
+same group, taking it to four real machines:
+
+```
+3 members (TCL, emulator, Pixel)   INDEXERS: 3  -> majority needed to sign: 2
+4 members (+ iPhone SE)            INDEXERS: 4  -> majority needed to sign: 3
+```
+
+Adding a fourth device made the group **less** resilient, not more - three must
+now be online where two sufficed. That is the arithmetic in the table above
+happening to a real calendar, and it is the clearest demonstration of why "more
+indexers is safer" is exactly backwards below the 50% uptime threshold.
+
 **Two more field instances found incidentally**, both on the TCL:
 
 ```
