@@ -1,18 +1,12 @@
 ## What's Changed
 
-New
-
-  - Shared calendars now tell you when every single device in them has
-    to be online at the same time for your changes to be saved
-    permanently. The calendar still works normally either way, so this
-    is a heads-up rather than a fault, and a proper fix is coming.
-
 Fixed
 
   - Fixed the desktop app freezing shortly after you opened it. It
     would show your calendar and then stop responding, or open a shared
     calendar and never show any of its dates. The desktop version had
-    been missing several sync repairs the phone apps already had.
+    been missing several sync repairs the phone apps already had, so it
+    also catches up much better now after being closed for a while.
 
   - Fixed the app slowly using more and more memory the longer it ran,
     until syncing stopped altogether. This usually looked like a
@@ -21,12 +15,3 @@ Fixed
   - iPhone: tapping an older-style invite link while PearCal was closed
     opened the app and then did nothing. Normal invite links, and links
     tapped while the app was already open, were not affected.
-
-Improved
-
-  - Groundwork for a fix to a long-standing problem where every device
-    you add to a calendar makes it harder for that calendar to save
-    changes permanently. Nothing changes yet - devices simply start
-    telling each other which version they are on, so the real fix can
-    be turned on later without ever splitting a calendar in two. It
-    will only switch on once everyone in a calendar has updated.
