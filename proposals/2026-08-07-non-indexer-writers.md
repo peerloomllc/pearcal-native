@@ -267,12 +267,115 @@ one other member, gives three with two of them effectively permanent. Tim runs
 two seeders, so that configuration is available to him - at the cost of those
 machines being able to read the calendar.
 
-### Still open, and now blocking
+### Still open
 
-Choosing "three" is not yet a design. Every peer must derive the same three from
-the view or the group forks, and the rule has to handle members joining and
-leaving. That selection rule is the remaining work, and it is a harder problem
-than the two-line change this branch started from.
+Choosing "three" needs a policy, which is worked out below under "The selection
+rule". It turned out to be a smaller problem than this paragraph originally
+claimed - see the retraction there.
+
+## The selection rule
+
+### First, a retraction: there is nothing to derive
+
+The previous revision called this the blocking problem - "every peer must derive
+the same three from the view or the group forks". That was wrong, and it made
+the work look harder than it is.
+
+**The indexer set is already explicit state.** It is whatever `addWriter` and
+`removeWriter` ops are in the log. Peers do not *compute* it, they *replay* it,
+exactly as they do today. So there is no distributed computation to diverge and
+no fork risk from disagreement about who should be an indexer.
+
+What is needed is not a derivation rule but a **local policy for when one device
+appends a promotion**. That is a much smaller problem.
+
+### What the mechanics permit (`test/harness/indexer-rule.js`)
+
+```
+=== I (sequential 1->2->3) ===          === I (atomic 1->3) ===
+  after joins (plain writers): 1          after joins:        1
+  after promoting ONE:         2          after promotion(s): 3
+  after promotion(s):          3          => reached 3: YES | still signing: YES
+  => reached 3: YES | signing: YES
+
+=== J: lose one of three, then replace it ===
+  3 minus 1 (majority 2):  indexers=3  => 2 of 3 still signs: YES
+  after atomic swap:       indexers=3  => back to 3: YES | signing: YES
+```
+
+Three indexers can be established, survive a loss, and have the loss replaced
+without the declared set ever dipping to two.
+
+### The policy
+
+1. **The declared set is only ever 1 or 3. Never 2.** Two is strictly worse than
+   one - same majority requirement, one more thing that can fail. A calendar
+   stays at one until it can go straight to three. I shows a single batched
+   append does exactly that, and that the sequential path also works provided
+   both candidates are online while it happens.
+
+2. **Only one device proposes.** The owner while present; otherwise the
+   surviving indexer with the lowest writer key. This is the one genuine hazard
+   in the whole design: two indexers each promoting a different replacement
+   yields four declared, majority three, which is worse than the state they were
+   trying to fix.
+
+3. **Promote only a candidate that is connected and acking right now**, and that
+   has been a member for a stability window. Prefer always-on devices, then
+   desktops, then phones. Per the 50% threshold, an indexer that is rarely up
+   actively harms the group.
+
+4. **Replace, never shrink.** When an indexer has been unreachable beyond a long
+   window, append promote-replacement and remove-departed as ONE batch, so the
+   declared set never passes through two. J verifies this.
+
+5. **Never propose while quorum is currently unreachable.** H shows the op
+   cannot take effect, so it would be noise at best.
+
+6. **Surface the margin.** At three you can lose one, and the moment you are
+   down to two reachable the calendar is one device away from being permanently
+   unfinalisable with no recovery. The #155 sync-health banner already exists
+   and is the natural place to say so.
+
+Bootstrap follows from rule 1: a solo calendar has one indexer and is correct
+and stable; a two-device calendar stays at one; three or more eligible devices
+jump to three. The personal base (linked devices) takes the same policy.
+
+## Existing groups are NOT doomed
+
+The previous revision said installs already in this state need a rebuild, on the
+strength of C, D and H. That was too pessimistic, and scenario K shows why.
+
+```
+=== K: repair a 7-indexer group down to 3, in one coordinated moment ===
+   today: everyone an indexer     indexers=7 indexed=97/111
+   3 of 7 asleep (need 4):        indexers=7 indexed=123/135
+   => still signing with 4 of 7 awake: YES
+   repairing: removing 4 indexers in one batch
+   after the repair batch:        indexers=3 indexed=152/157
+   after repair + a further loss: indexers=3 indexed=171/175
+   => repaired set still signs: YES
+```
+
+H's rule was "a group that **cannot reach quorum** can never recover". That is
+still true. But an over-indexed group is not necessarily past that point - it is
+merely a group whose quorum is rarely assembled, not never. **If a majority of
+the current indexers can be brought online together ONCE, a single batched
+removal takes the set down to three and the group is permanently healthy after.**
+
+For Tim's calendar that means 4 of the 7 devices online at the same moment, once.
+Two of the seven are his own, so it needs two other households to open the app at
+an agreed time. That is a coordinated moment, not a rebuild, and it keeps the
+history, the members and the invites.
+
+This is a far better answer than #156's "create a fresh group and move every
+event across", and it should be folded into that item.
+
+**Caveat, and it decides who can be helped:** this only works while a majority
+is still assemblable. A group that has genuinely lost that many devices for good
+is past recovery, and there is no way back. The repair should therefore be
+offered early and prominently rather than held as a last resort - every device
+that leaves makes it less likely to be possible.
 
 ## Scope
 
@@ -284,9 +387,10 @@ an indexer by construction, so majority becomes 1.
 layout, IPC shapes, who may *write*. A plain writer has exactly the same write
 authority as today. Removal and blocking semantics are untouched.
 
-**Explicitly out of scope:** repairing already-affected groups. D says an update
-cannot, and C says `removeWriter` cannot. Those installs need a rebuild, which
-belongs with #156 and is blocked on #157.
+**Now in scope, on the strength of K:** repairing already-affected groups, by
+batch-removing surplus indexers during one coordinated moment while a majority
+can still be assembled. This supersedes the earlier claim that those installs
+need a rebuild. It belongs with #156 and is NOT blocked on #157.
 
 ## Compat
 
