@@ -46,6 +46,36 @@ public class AppDelegate: ExpoAppDelegate {
     BareBackgroundSync.scheduleNextRefresh()
     BareBackgroundSync.scheduleNextProcessing()
     UNUserNotificationCenter.current().delegate = self
+
+    // An invite link that COLD-LAUNCHES the app never reaches
+    // application(_:open:options:) below — iOS delivers it here in launchOptions
+    // instead, and calls that method only when the app was already running. With
+    // nothing reading launchOptions the URL was simply dropped, so tapping an
+    // invite opened PearCal to a normal calendar and nothing else happened.
+    //
+    // Scope, measured on an iPhone SE 2026-08-07 rather than assumed. This
+    // affects the LEGACY `pearcal://` shape only, and is a robustness fix rather
+    // than the urgent one an earlier version of this comment claimed:
+    //
+    //   https://peerloomllc.com/join?…   warm: works    cold: works
+    //   pearcal://join?…                 warm: works    cold: WAS DROPPED (this)
+    //
+    // The share sheet emits the https form, so the link real users receive was
+    // never affected. `pearcal://` survives only for older links already in
+    // circulation. Android is unaffected either way — its LinkModule is fed by
+    // an intent filter that fires in both states.
+    //
+    // There is no other net underneath: the project has no scene delegate (so
+    // scene(_:openURLContexts:) is never called) and the JS side never consults
+    // Linking.getInitialURL(), it only polls PearCalLink.getPendingLink().
+    //
+    // Universal links are NOT handled here on purpose. For those iOS still calls
+    // application(_:continue:) after a cold launch, so the existing handler
+    // already covers them.
+    if let url = launchOptions?[.url] as? URL, url.scheme == "pearcal" {
+      LinkModule.pendingLink = url.absoluteString
+    }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
