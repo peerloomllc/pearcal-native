@@ -461,6 +461,11 @@ function mergeGroupState (prev, incoming) {
   const merged = { ...incoming }
   if (merged.syncHealth === undefined && prev?.syncHealth !== undefined) merged.syncHealth = prev.syncHealth
   if (merged.keyless === undefined && prev?.keyless !== undefined) merged.keyless = prev.keyless
+  // #159 fields ride the same path and would vanish the same way. Adding a new
+  // enriched field WITHOUT a line here is the #155 bug reappearing, so this list
+  // has to grow whenever listGroups/getGroup attach something new.
+  if (merged.indexers === undefined && prev?.indexers !== undefined) merged.indexers = prev.indexers
+  if (merged.rollout === undefined && prev?.rollout !== undefined) merged.rollout = prev.rollout
   return merged
 }
 
@@ -5170,6 +5175,23 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
                     ask one of them to send you a fresh invite link and paste it into Join Group.
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* #159. How many devices can finalise this calendar, and how many
+                must be online together. Shown only when there is no spare
+                capacity (canLose === 0), because that is the state that matters:
+                the next device lost takes the calendar's history with it and
+                there is no way back. Deliberately NOT a warning colour - nothing
+                is broken today and the app still works, so this is information,
+                not an alarm. It also gives the fleet-wide picture the rollout
+                needs, which until now meant pulling databases off devices by
+                hand. */}
+            {g.indexers && g.indexers.canLose === 0 && g.indexers.count > 1 && (
+              <div style={{ fontSize:11, color:colors.text.muted, marginBottom:10, lineHeight:1.4 }}>
+                All {g.indexers.count} devices in this calendar have to be online together
+                for changes to be permanently saved. If one is lost for good, its history
+                stops being backed up. A fix for this is on the way.
               </div>
             )}
 

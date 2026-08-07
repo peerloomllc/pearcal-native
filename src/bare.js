@@ -46,6 +46,7 @@ const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
 const { resetPlan } = require('./lib/resetPlan.js')
 const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
+const { classifyRollout, REQUIRED_VERSION } = require('./lib/rolloutGate.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -781,13 +782,50 @@ async function isSelfAuthoredOp (groupId, nodeWriterKey) {
   return wi?.value?.identityPublicKey === myIdentityHex
 }
 
+// Rollout gate for the indexer-model change (TODO #159, proposal
+// 2026-08-07-non-indexer-writers). Bumped when a peer gains the ability to READ
+// an explicit `indexer` field on an addWriter op — which this release does.
+//
+// Why a version at all. apply() runs independently on every peer, so if one
+// peer reads that field and another ignores it they build different system
+// state from the same op. Measured in test/harness/indexer-rollout.js case C:
+// the old peer counts three indexers and needs any two, the new peer counts two
+// and needs both. Two quorums on one calendar, and no way back.
+//
+// The alternative was to ship the reader, wait "a while", and hope everyone had
+// updated. That is a guess about other people's phones. This makes it a check:
+// a peer records what version each member announces, and a later release will
+// refuse to WRITE the field for a group until every member has been seen at
+// this version or higher. A member who never updates leaves their calendar on
+// today's behaviour — degraded, but never split.
+//
+// Single source: what we ANNOUNCE and what the gate REQUIRES are the same
+// number by construction. Two constants that must agree is a drift waiting to
+// happen, and drifting them apart would either open the gate early or wedge it
+// shut forever.
+const PROTOCOL_VERSION = REQUIRED_VERSION
+
 // Build a writer-announce payload Buffer. If identity is available, attaches
 // identityPublicKey + proof so the receiver can bind this writerKey to the
 // identity (and recognise wipe+rejoin of an existing member in Phase 2).
 // Falls back to the legacy shape when identity hasn't derived yet — receivers
 // tolerate missing fields in Phase 1.
 async function buildWriterAnnounce (groupId, writerKey, memberId) {
-  const payload = { groupId, writerKey, memberId: memberId ?? null }
+  const payload = { groupId, writerKey, memberId: memberId ?? null, v: PROTOCOL_VERSION }
+  // Record OUR OWN version alongside the peers we hear from. A device only ever
+  // learns versions from announces it RECEIVES, and it never receives its own —
+  // so without this every device sat waiting on itself and the gate could never
+  // open. Caught by reading the live gate on the TCL and the emulator, where
+  // each was listed as waiting on its own member; the classifier was right and
+  // the caller was simply never told about the local device. Written here rather
+  // than at init because this is the one place that already knows the group, the
+  // writerKey and the memberId together, and it re-runs on every announce so it
+  // self-heals for groups joined before this shipped.
+  if (groupId && writerKey && memberId) {
+    await db.put('deviceVersion:' + groupId + ':' + writerKey, {
+      v: PROTOCOL_VERSION, memberId, ts: Date.now()
+    }).catch(() => {})
+  }
   try {
     const prof = await getProfile().catch(() => null)
     if (prof?.name) payload.name = prof.name
@@ -1886,6 +1924,13 @@ async function getGroup (id) {
   // the field silently wiped the warning from a group that had it. Caught by a
   // probe on the TCL: the value arrived, then vanished on the next update.
   if (g && g.id) g.syncHealth = await syncHealthFor(g.id, g).catch(() => null)
+  // Same wipe hazard as syncHealth above, same fix: getGroup is what the UI
+  // re-reads on every sync event, so anything listGroups attaches has to be
+  // attached here too or it vanishes on the next update (#155, #159).
+  if (g && g.id) {
+    g.indexers = indexerInfoFor(g.id)
+    g.rollout = await rolloutStatusFor(g.id, g).catch(() => null)
+  }
   return g
 }
 
@@ -1953,6 +1998,9 @@ async function listGroups () {
     // wrong? 'unknown' for groups that predate the feature, so updating does not
     // greet everyone with a wall of false alarms.
     hydrated.syncHealth = await syncHealthFor(value.id, hydrated).catch(() => null)
+    // #159: how many devices can sign, and are we clear to change that yet.
+    hydrated.indexers = indexerInfoFor(value.id)
+    hydrated.rollout = await rolloutStatusFor(value.id, hydrated).catch(() => null)
     groups.push(hydrated)
   }
   return groups
@@ -2002,6 +2050,46 @@ async function syncHealthFor (groupId, group) {
     memberCount: Array.isArray(group?.members) ? group.members.length : null,
     now: Date.now(),
   })
+}
+
+// How many devices can sign for this group, and how many of them must be online
+// at once for anything to be finalised (#159). Read straight from the live
+// Autobase rather than stored, so it is never stale.
+//
+// This exists to be REPORTED. Until now the only way to learn a group's indexer
+// count was to pull the database off a device and open it by hand, which is how
+// the 7-indexers-for-5-members figure was found. Surfacing it means the spread
+// across real installs is visible before the rollout commits to anything, and
+// visible again afterwards to show the repair working.
+function indexerInfoFor (groupId) {
+  const base = bases.get(groupId)
+  if (!base) return null
+  const count = base.linearizer?.indexers?.length ?? base.system?.indexers?.length ?? 0
+  if (!count) return null
+  return {
+    count,
+    majority: Math.floor(count / 2) + 1,
+    // Spare capacity: how many signers can be permanently lost and still reach
+    // a majority. Zero means the next device lost takes the group with it, and
+    // there is no way back from that (harness scenarios C, D and H).
+    canLose: count - (Math.floor(count / 2) + 1),
+  }
+}
+
+// Has every member of this group been seen on a build that reads the `indexer`
+// field? Nothing acts on this yet — it is the gate a later release will consult
+// before it starts WRITING the field, and it is reported now so the wait is
+// visible rather than guessed at.
+// Reads the device records; the decision itself lives in src/lib/rolloutGate.js
+// so it can be tested without a database. Same split as syncHealth.js.
+async function rolloutStatusFor (groupId, group) {
+  const devices = []
+  for await (const { value } of db.createReadStream({
+    gt: 'deviceVersion:' + groupId + ':', lt: 'deviceVersion:' + groupId + ':\xff'
+  })) {
+    if (value) devices.push({ memberId: value.memberId, v: value.v })
+  }
+  return classifyRollout(group?.members, devices, PROTOCOL_VERSION)
 }
 
 // When this device started recording sync activity at all. Written once, ever.
@@ -2755,25 +2843,27 @@ function makePersonalApply () {
       if (val.addWriter) {
         const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
         if (!blocked) {
-          // KNOWN DEFECT, deliberately still here. Advancing the signed view
-          // needs a MAJORITY of indexers to ack (autobase/lib/consensus.js:15),
-          // so granting every device indexer rights raises that bar
-          // permanently. Nothing has to be DEAD for this to bite: measured on
-          // Tim's live 5-member group 2026-08-07, 7 indexers means 4 must be
-          // awake and connected at the same moment, and 2,825 of 69,269 entries
-          // are signed - 96% of the history has never been indexed.
+          // RELEASE N of the indexer-model rollout (TODO #159, proposal
+          // 2026-08-07-non-indexer-writers). This release only READS the field;
+          // nothing writes it yet, so `val.indexer` is always undefined here and
+          // behaviour is byte-identical to before. That is the entire point: it
+          // has to be in the field, on everyone's devices, BEFORE any peer starts
+          // writing `indexer: false`.
           //
-          // `indexer: false` is the fix and it is validated
-          // (test/harness/indexer-model.js, scenarios A and B). It is NOT
-          // applied here yet, on purpose. Flipping this constant alone FORKS
-          // the group: an old peer applying the same addWriter op grants an
-          // indexer while a new peer grants a plain writer, so the two produce
-          // different system views. It also leaves the bootstrap device as the
-          // sole signer with no way to hand that off (scenario F).
+          // Default MUST be true. An op without the field is one authored by a
+          // peer on old code, and the old meaning is "grant an indexer". Reading
+          // a missing field as false would make this release disagree with old
+          // peers about every existing grant - the fork this staging exists to
+          // avoid (test/harness/indexer-rollout.js case B is the check that
+          // defaulting true keeps us in agreement).
           //
-          // Staged rollout and the handoff design:
-          //   proposals/2026-08-07-non-indexer-writers.md (TODO #159)
-          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+          // Why the change is coming at all: advancing the signed view needs a
+          // MAJORITY of indexers (autobase/lib/consensus.js:15), so granting
+          // every device indexer rights raises that bar permanently. Nothing has
+          // to be dead for it to bite - measured on Tim's 5-member group,
+          // 7 indexers means 4 must be awake at once, and 2,825 of 69,269
+          // entries are signed.
+          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: val.indexer !== false })
         }
         continue
       }
@@ -5692,12 +5782,12 @@ function makeApply (groupId) {
           const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + wi.value.identityPublicKey).catch(() => null)
           if (idBlocked) continue
         }
-        // Same known defect as the personal base above, and the same reason it
-        // is not fixed in place: every member becoming an indexer is what puts
-        // the signing bar out of reach, but flipping this constant on its own
-        // forks the group against peers still running the old code.
-        // proposals/2026-08-07-non-indexer-writers.md (TODO #159)
-        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
+        // Release N reader, same as the personal base above and for the same
+        // reasons: read an explicit `indexer` field, DEFAULT TRUE when absent so
+        // this release still agrees with peers on old code about every grant
+        // they author. Nothing writes the field yet, so this is behaviour-
+        // preserving. proposals/2026-08-07-non-indexer-writers.md (TODO #159)
+        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: val.indexer !== false })
         continue
       }
 
@@ -8302,6 +8392,23 @@ async function _doInit (dir, attempt = 0) {
             // as orphans and a sweep would purge live data.
             if (groupId && writerKey) {
               await db.put('knownWriter:' + groupId + ':' + writerKey, { ts: Date.now() }).catch(() => {})
+              // Remember what version this DEVICE is running (#159 rollout gate).
+              // Absent `v` means a peer from before this release, recorded as 1
+              // rather than left unknown, so "never met them" and "on old code"
+              // stay distinguishable.
+              //
+              // Keyed by writerKey, i.e. per DEVICE, not per member — and that
+              // distinction is load-bearing. An earlier version keyed this by
+              // memberId, so for a member with a phone and a desktop the LAST
+              // announce won. If their updated phone announced after their stale
+              // desktop, the member read as up to date while a device of theirs
+              // still applied ops the old way — which is precisely the fork this
+              // gate exists to prevent, and it would have opened the gate early.
+              // rolloutStatusFor takes the MINIMUM across a member's devices.
+              const _v = Number.isFinite(Number(parsed.v)) ? Number(parsed.v) : 1
+              await db.put('deviceVersion:' + groupId + ':' + writerKey, {
+                v: _v, memberId: parsed.memberId ?? null, ts: Date.now()
+              }).catch(() => {})
             }
 
             const base = bases.get(groupId)
