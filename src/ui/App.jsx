@@ -5178,22 +5178,29 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
               </div>
             )}
 
-            {/* #159. How many devices can finalise this calendar, and how many
-                must be online together. Shown only when there is no spare
-                capacity (canLose === 0), because that is the state that matters:
-                the next device lost takes the calendar's history with it and
-                there is no way back. Deliberately NOT a warning colour - nothing
-                is broken today and the app still works, so this is information,
-                not an alarm. It also gives the fleet-wide picture the rollout
-                needs, which until now meant pulling databases off devices by
-                hand. */}
-            {g.indexers && g.indexers.canLose === 0 && g.indexers.count > 1 && (
-              <div style={{ fontSize:11, color:colors.text.muted, marginBottom:10, lineHeight:1.4 }}>
-                All {g.indexers.count} devices in this calendar have to be online together
-                for changes to be permanently saved. If one is lost for good, its history
-                stops being backed up. A fix for this is on the way.
-              </div>
-            )}
+            {/* #159. There IS a notice for this, decided by classifyIndexerNotice
+                in src/lib/indexerHealth.js, and it is deliberately not rendered
+                yet. Two reasons, both decided 2026-08-07:
+
+                  - The wording was ours, not a user's. Nobody outside the
+                    codebase thinks of their calendar as having "history" that
+                    gets "permanently saved".
+                  - More importantly there is nothing to DO about it. A notice
+                    that worries someone and offers no action is worse than
+                    silence. Compare the #155 sync warning, which earns its place
+                    because it tells you to ask for a fresh invite.
+
+                The repair (proposal scenario K: everyone opens the app at the
+                same time, and the calendar is fixed for good) is the action this
+                notice is missing. Render it then, with that button, in words a
+                person would actually use.
+
+                The classifier and its tests stay because the decision is the
+                hard part and it is already correct - including the regression
+                where it stayed silent on the worst-affected calendar. The data
+                behind it is not idle either: `indexers` feeds the rollout gate
+                and gives the fleet-wide picture that otherwise means pulling
+                databases off phones by hand. */}
 
             {/* Member avatars */}
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>
