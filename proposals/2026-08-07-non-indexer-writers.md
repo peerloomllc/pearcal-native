@@ -377,6 +377,64 @@ is past recovery, and there is no way back. The repair should therefore be
 offered early and prominently rather than held as a last resort - every device
 that leaves makes it less likely to be possible.
 
+## Confirmed on real hardware, 2026-08-07
+
+Everything above rests on a deterministic harness. This section is the same
+questions asked of three real peers: the TCL (arm64 phone), an Android emulator
+(x86_64, this box) and Tim's Pixel 9 - three separate machines, joined to one
+throwaway group over a real network. Counts read from each device's own store.
+
+**Every paired device really does become an indexer.** Watched live as the group
+grew:
+
+```
+2 members (TCL + emulator)          INDEXERS: 2  -> majority needed to sign: 2
+3 members (+ Pixel)                 INDEXERS: 3  -> majority needed to sign: 2
+```
+
+Two members lands exactly on the degenerate case the proposal warns about -
+majority of 2 is 2, both must be online, zero redundancy.
+
+**Three indexers tolerate losing one - scenario G, now on hardware.** With all
+three joined, the emulator's app was force-stopped and an event was then created
+on the TCL:
+
+```
+at the moment of loss   length 73   indexed 57
+after the loss          length 81   indexed 77   <- signed PAST 73
+```
+
+The signed view advanced past the point of loss, so work authored *after* a
+device went away was still finalised by the remaining two. The Pixel also
+received the event (`[APPLY] event put incoming ... win: true`), so ordinary
+sync continued throughout. Under the old 2-indexer shape the same loss would
+have frozen it, which is scenario A.
+
+**Two more field instances found incidentally**, both on the TCL:
+
+```
+TCL owner    members: 2   INDEXERS: 3   indexed 24 / 253   <- 90% unsigned
+SyncProof    members: 2   INDEXERS: 2   indexed 176 / 182
+```
+
+`TCL owner` is a two-member group carrying three indexers, presumably from a
+linked device, and it has signed 9% of its history. This is not confined to
+Tim's large calendar.
+
+### Not tested on hardware, and why
+
+**The negative half of G - three indexers losing TWO - was not run.** Reaching
+one-of-three needs both the emulator and the Pixel offline, and the Pixel is
+Tim's daily driver, which suite CLAUDE.md rule 6 makes observe-only. That half
+remains harness-only.
+
+**The iPhone Simulator cannot be a peer at all.** It was joined to the group as
+a fourth device and never connected to the other three - zero worklet network
+output in 50s, no new writer seen on any Android device over ~6 minutes. That is
+the documented limitation in rules 7 and 15 (a Simulator is not a separate host
+for discovery or holepunching), not a defect. Any future multi-peer work needs
+real devices.
+
 ## Scope
 
 **Changes:** the two `addWriter` call sites pass `{ indexer: false }`. The
