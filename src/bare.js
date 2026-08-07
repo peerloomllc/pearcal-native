@@ -2755,6 +2755,24 @@ function makePersonalApply () {
       if (val.addWriter) {
         const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
         if (!blocked) {
+          // KNOWN DEFECT, deliberately still here. Advancing the signed view
+          // needs a MAJORITY of indexers to ack (autobase/lib/consensus.js:15),
+          // so granting every device indexer rights raises that bar
+          // permanently. Nothing has to be DEAD for this to bite: measured on
+          // Tim's live 5-member group 2026-08-07, 7 indexers means 4 must be
+          // awake and connected at the same moment, and 2,825 of 69,269 entries
+          // are signed - 96% of the history has never been indexed.
+          //
+          // `indexer: false` is the fix and it is validated
+          // (test/harness/indexer-model.js, scenarios A and B). It is NOT
+          // applied here yet, on purpose. Flipping this constant alone FORKS
+          // the group: an old peer applying the same addWriter op grants an
+          // indexer while a new peer grants a plain writer, so the two produce
+          // different system views. It also leaves the bootstrap device as the
+          // sole signer with no way to hand that off (scenario F).
+          //
+          // Staged rollout and the handoff design:
+          //   proposals/2026-08-07-non-indexer-writers.md (TODO #159)
           await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
         }
         continue
@@ -5674,6 +5692,11 @@ function makeApply (groupId) {
           const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + wi.value.identityPublicKey).catch(() => null)
           if (idBlocked) continue
         }
+        // Same known defect as the personal base above, and the same reason it
+        // is not fixed in place: every member becoming an indexer is what puts
+        // the signing bar out of reach, but flipping this constant on its own
+        // forks the group against peers still running the old code.
+        // proposals/2026-08-07-non-indexer-writers.md (TODO #159)
         await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
         continue
       }
