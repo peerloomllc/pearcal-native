@@ -1,3 +1,51 @@
+diff --git a/node_modules/autobase/index.js b/node_modules/autobase/index.js
+index d9e97db..0a1aa7a 100644
+--- a/node_modules/autobase/index.js
++++ b/node_modules/autobase/index.js
+@@ -1157,7 +1157,42 @@ module.exports = class Autobase extends ReadyResource {
+ 
+       const alreadyActive = !!w
+       const sys = system || this._applyState.system
+-      const writerInfo = await sys.get(key)
++
++      // PearCal patch: this read used to run on EVERY call, including the very
++      // common case where `w` was already in activeWriters and the caller passed
++      // a length. On a device catching up that dominated: 1.4M reads for 15,741
++      // positions advanced, ~89 per position, all for the same handful of
++      // writers, ~0.3ms each on phone hardware. That is ~420s of the observed
++      // 501s catch-up. The unit cost is ordinary; the COUNT was the problem.
++      //
++      // Cached WITHOUT a staleness window: the cache key is the system's own
++      // state, so it is discarded the moment anything the answer depends on
++      // changes - the flushed length, the pending `_changes` (every add/remove/
++      // update pushes there), or `_empty`. Same answer, far fewer reads. Only
++      // the default system is cached; an explicitly passed one always reads.
++      //
++      // `_pcEpoch` (lib/system.js) closes the one hole `_changes.length` cannot
++      // see: an undone apply restores a checkpoint whose changes array may have
++      // the same length and different contents at an unchanged core length, and
++      // that would otherwise alias onto a live cache entry.
++      let writerInfo
++      if (!system) {
++        const gen = sys._pcEpoch + ':' + sys._empty + ':' + (sys.core ? sys.core.length : -1) + ':' + sys._changes.length
++        if (!this._pcSysCache || this._pcSysCache.gen !== gen || this._pcSysCache.sys !== sys) {
++          this._pcSysCache = { gen, sys, map: new Map() }
++        }
++        const hex = b4a.toString(key, 'hex')
++        if (this._pcSysCache.map.has(hex)) {
++          writerInfo = this._pcSysCache.map.get(hex)
++          this._pcSysHits = (this._pcSysHits || 0) + 1
++        } else {
++          writerInfo = await sys.get(key)
++          this._pcSysCache.map.set(hex, writerInfo)
++          this._pcSysMisses = (this._pcSysMisses || 0) + 1
++        }
++      } else {
++        writerInfo = await sys.get(key)
++      }
+ 
+       if (len === -1) {
+         if (!allowGC && writerInfo === null) {
 diff --git a/node_modules/autobase/lib/apply-state.js b/node_modules/autobase/lib/apply-state.js
 index 76dd6dc..7197474 100644
 --- a/node_modules/autobase/lib/apply-state.js
@@ -40,4 +88,86 @@ index 76dd6dc..7197474 100644
 +      if (!view || !view.core) continue
        view.core.download({ blocks })
      }
+ 
+diff --git a/node_modules/autobase/lib/system.js b/node_modules/autobase/lib/system.js
+index df460c3..19885ca 100644
+--- a/node_modules/autobase/lib/system.js
++++ b/node_modules/autobase/lib/system.js
+@@ -42,6 +42,16 @@ module.exports = class SystemView extends ReadyResource {
+ 
+     this.indexerUpdate = false
+ 
++    // PearCal patch: monotonic counter bumped whenever `_changes` is replaced
++    // wholesale rather than appended to. index.js caches writer lookups keyed on
++    // this view's own state, and `_changes.length` alone cannot see a swap: an
++    // apply that is undone restores a checkpoint whose `changes` array can have
++    // the SAME length and different contents, at an unchanged core length. That
++    // aliases to an identical cache key and serves a stale writer record. Any
++    // append-only growth is still covered by `_changes.length`; this covers the
++    // swaps.
++    this._pcEpoch = 0
++
+     this._empty = empty
+     this._fork = 0
+     this._length = 0
+@@ -256,6 +266,7 @@ module.exports = class SystemView extends ReadyResource {
+     this._length = this.core.length
+     this._fork = this.core.fork
+     this._changes = []
++    this._pcEpoch++   // PearCal patch: see the constructor note
+ 
+     for (const idx of this.indexers) {
+       this._indexerMap.set(b4a.toString(idx.key, 'hex'), idx)
+@@ -336,6 +347,7 @@ module.exports = class SystemView extends ReadyResource {
+ 
+     this._length = this.core.length // should be ok
+     this._changes = []
++    this._pcEpoch++   // PearCal patch: see the constructor note
+ 
+     if (this.indexerUpdate) this.indexerUpdate = false
+   }
+@@ -378,6 +390,7 @@ module.exports = class SystemView extends ReadyResource {
+ 
+     this._changes = checkpoint.changes
+     this._clockUpdates = checkpoint.clockUpdates
++    this._pcEpoch++   // PearCal patch: see the constructor note
+ 
+     this._indexerMap = new Map()
+     for (const idx of this.indexers) {
+diff --git a/node_modules/autobase/lib/writer.js b/node_modules/autobase/lib/writer.js
+index 551406d..c66b2fb 100644
+--- a/node_modules/autobase/lib/writer.js
++++ b/node_modules/autobase/lib/writer.js
+@@ -281,6 +281,32 @@ module.exports = class Writer extends ReadyResource {
+ 
+       if (headWriter !== this && (headWriter === null || headWriter.length < rawHead.length)) {
+         if (!boot) this.base._ensureWakeup(headWriter)
++
++        // PearCal patch (#154). A device that HOLDS this writer's core but not
++        // its BLOCKS used to re-queue here forever. Two problems, both on this
++        // failure path only:
++        //   1. Nothing ever asked for the missing blocks. _ensureWakeup nudges
++        //      the writer but does not request a range never downloaded (or
++        //      since discarded), so the wait cannot resolve.
++        //   2. The retry starved the process. Measured on a real install
++        //      2026-08-05: ~45,000 declines in 90s, ZERO peer connections
++        //      completed, and a 90s setTimeout never fired - so the device
++        //      could not reach a blind seeder holding exactly those blocks.
++        // Request the range once per writer per target length, then yield so
++        // replication, the DHT and timers get a turn. Yielding is free here:
++        // this path is about to return false and be retried anyway.
++        const headCore = headWriter && headWriter.core
++        if (headCore && headCore.length >= rawHead.length && headCore.contiguousLength < rawHead.length) {
++          if (headWriter._pearcalWantedTo !== rawHead.length) {
++            headWriter._pearcalWantedTo = rawHead.length
++            try {
++              const req = headCore.download({ start: headCore.contiguousLength, end: rawHead.length })
++              if (req && req.done) req.done().catch(() => {})
++            } catch (e) { /* best effort */ }
++          }
++        }
++        await new Promise(resolve => setImmediate(resolve))
++
+         return false
+       }
  

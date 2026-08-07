@@ -45,6 +45,7 @@ const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
 const { resetPlan } = require('./lib/resetPlan.js')
+const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -1879,7 +1880,13 @@ async function rehydrateGroupMembers (groupValue) {
 
 async function getGroup (id) {
   const node = await db.get(NS.groups + id)
-  return rehydrateGroupMembers(node?.value ?? null)
+  const g = await rehydrateGroupMembers(node?.value ?? null)
+  // Carry sync health here too, not only on listGroups (#155). The UI refreshes
+  // a single group through this call on every sync event, and a record without
+  // the field silently wiped the warning from a group that had it. Caught by a
+  // probe on the TCL: the value arrived, then vanished on the next update.
+  if (g && g.id) g.syncHealth = await syncHealthFor(g.id, g).catch(() => null)
+  return g
 }
 
 async function debugGroup (id) {
@@ -1942,6 +1949,10 @@ async function listGroups () {
     // tells the user, and the only cure is a fresh invite from a keyed member.
     const keyless = await keylessGroupStatus(value.id).catch(() => null)
     if (keyless?.damaged) hydrated.keyless = { certainty: keyless.certainty, reason: keyless.reason }
+    // #155: when did this calendar last exchange anything, and does that look
+    // wrong? 'unknown' for groups that predate the feature, so updating does not
+    // greet everyone with a wall of false alarms.
+    hydrated.syncHealth = await syncHealthFor(value.id, hydrated).catch(() => null)
     groups.push(hydrated)
   }
   return groups
@@ -1962,6 +1973,47 @@ async function putGroup (group) {
 // `tag` identifies the caller purely so the warning below names the culprit if
 // this ever fires in the wild — the reported symptom was never reproduced across
 // six scenarios, so a live log line may be the only way it is ever identified.
+// Record that this group exchanged something with another device (#155). A
+// shared calendar going quiet used to be completely invisible: a five-member
+// group stopped syncing in the field and the app said nothing, so the user
+// rebuilt the group by hand and re-invited everyone. Written from the apply
+// loop's remote branch, i.e. only when data genuinely arrived from someone
+// else, and throttled - the loop sees remote nodes in bursts and a write per
+// node is the amplification pattern that has bitten this codebase before.
+const _lastSyncStamp = new Map()
+function stampGroupSync (groupId) {
+  if (!groupId || !db) return
+  const now = Date.now()
+  if (!shouldStampSync(_lastSyncStamp.get(groupId), now)) return
+  _lastSyncStamp.set(groupId, now)
+  db.put('lastSync:' + groupId, { ts: now }).catch(() => {})
+}
+
+// Health of one group, for the UI. Kept out of the pure classifier so the
+// decision stays testable without a database.
+async function syncHealthFor (groupId, group) {
+  const last = await db.get('lastSync:' + groupId).catch(() => null)
+  const join = await db.get('joinedAt:' + groupId).catch(() => null)
+  const watch = await db.get('syncWatchSince').catch(() => null)
+  return classifySyncHealth({
+    lastSyncAt: last?.value?.ts ?? null,
+    joinedAt: join?.value?.ts ?? group?.joinedAt ?? null,
+    watchSince: watch?.value?.ts ?? null,
+    memberCount: Array.isArray(group?.members) ? group.members.length : null,
+    now: Date.now(),
+  })
+}
+
+// When this device started recording sync activity at all. Written once, ever.
+// Without it every pre-existing group looks silent the moment the feature ships
+// - old joinedAt, no lastSync yet - and gets accused of being broken on the
+// first launch after updating. Caught on the TCL doing exactly that.
+async function ensureSyncWatchSince () {
+  const existing = await db.get('syncWatchSince').catch(() => null)
+  if (existing?.value?.ts) return
+  await db.put('syncWatchSince', { ts: Date.now() }).catch(() => {})
+}
+
 async function putGroupRecord (groupId, value, tag) {
   const key = NS.groups + groupId
   const existing = await db.get(key).catch(() => null)
@@ -2119,6 +2171,8 @@ async function deleteGroup (id) {
   await db.del(NS.groups + id)
   await db.del(NS.groupMembers + id).catch(() => {})
   await db.del('joinedAt:' + id).catch(() => {})
+  await db.del('lastSync:' + id).catch(() => {})
+  _lastSyncStamp.delete(id)
   // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {
     await db.del(key)
@@ -5684,6 +5738,9 @@ function makeApply (groupId) {
       // Detect remote writes via node.from.key
       const nodeWriterKey = node.from?.key ? b4a.toString(node.from.key, 'hex') : null
       const isRemote = localKey && nodeWriterKey && nodeWriterKey !== localKey
+      // Something arrived from another device: this group is demonstrably still
+      // talking to someone (#155).
+      if (isRemote) stampGroupSync(groupId)
 
       // Ownership transfer — update group.ownerId. Two paths converge here:
       //   (a) current owner promotes any member (always accepted),
@@ -6670,6 +6727,13 @@ async function mirrorToLocal (type, key, value, groupId) {
       // LWW mirror — only overwrite local if incoming is newer
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        // The `>=` is deliberate, so equal timestamps still converge - but it
+        // also means an UNCHANGED record passes the gate. Autobase re-runs
+        // apply() over the tail on every fork/reorg, so without this guard the
+        // same put and the same rsvpsChanged event fire again for every node in
+        // that tail, every time, and the cost grows with the un-indexed tail.
+        // Same check the event and group branches already make.
+        if (existing?.value && sameExceptUpdatedAt(existing.value, value)) return
         await db.put(key, value)
         emitSync(groupId, { rsvpsChanged: true })
       }
@@ -6698,6 +6762,10 @@ async function mirrorToLocal (type, key, value, groupId) {
       // of these ops. For now just accept the newer record so rehydrate has it.
       const existing = await db.get(key).catch(() => null)
       if (!existing || !existing.value?.updatedAt || (value.updatedAt ?? 0) >= existing.value.updatedAt) {
+        // Same no-op guard as the rsvp branch above and the event/group
+        // branches below: `>=` lets an unchanged record through, and a re-apply
+        // over the tail would otherwise rewrite and re-emit for every node in it.
+        if (existing?.value && sameExceptUpdatedAt(existing.value, value)) return
         await db.put(key, value)
         emitSync(groupId, { groupChanged: true })
       }
@@ -7285,25 +7353,57 @@ const RESET_DEPART_TIMEOUT_MS = 20 * 1000
 // to tear the app down anyway.
 const RESET_DRAIN_FLOOR_MS = 1500
 const RESET_DRAIN_MAX_MS = 8000
+// Ceiling on any single close. Long enough for an orderly Autobase or swarm
+// teardown, short enough that a stuck one cannot park the whole app: a hang
+// here used to mean shutdown() never settled, so the init() awaiting it never
+// returned and the UI sat on a blank screen with no error to show.
+const CLOSE_STEP_TIMEOUT_MS = 8000
 async function shutdown () {
   if (_shuttingDown) return _shuttingDown
   _shuttingDown = _doShutdown()
   try { await _shuttingDown } finally { _shuttingDown = null }
 }
-async function _doShutdown () {
+// Run one teardown step without letting it strand the ones after it.
+//
+// LOAD-BEARING, and the reason this file no longer closes in a single try:
+// `store` and `db` hold an exclusive lock on their CORESTORE file, and that
+// lock is per OPEN FILE DESCRIPTION (F_OFD_SETLK on Linux/Android, flock on
+// Apple) rather than per process. So a handle we fail to close blocks the next
+// open from THIS SAME process, and init()'s retry loop can never win: nothing
+// will ever release it. One throw in an earlier step therefore used to lock
+// the app out of its own database until the process died, while shutdown()
+// still returned as though it had worked.
+async function closeStep (label, fn) {
+  let timer = null
   try {
-    stopRealtimeSyncTick()
-    await closePersonalBase()
-    if (blind) { blind.close?.(); blind = null }
-    if (swarm) { await swarm.destroy(); swarm = null }
-    if (store) { await store.close(); store = null }
-    if (db) { await db.close(); db = null }
-    bases.clear()
-    pendingMemberLeaves.clear()
-    console.log('Shutdown complete')
-  } catch(e) {
-    console.error('Shutdown error:', e.message)
+    await Promise.race([
+      Promise.resolve().then(fn),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timed out after ' + CLOSE_STEP_TIMEOUT_MS + 'ms')), CLOSE_STEP_TIMEOUT_MS)
+      })
+    ])
+  } catch (e) {
+    console.error('Shutdown step failed:', label + ':', e?.message ?? e)
+  } finally {
+    if (timer) clearTimeout(timer)
   }
+}
+async function _doShutdown () {
+  try { stopRealtimeSyncTick() } catch (e) { console.error('Shutdown step failed: syncTick:', e.message) }
+  // Ordered most- to least- dependent, but every step is independent now, and
+  // the two that release the lock run whatever happened above them.
+  await closeStep('personalBase', () => closePersonalBase())
+  await closeStep('blind', () => { if (blind) blind.close?.() })
+  blind = null
+  await closeStep('swarm', () => swarm && swarm.destroy())
+  swarm = null
+  await closeStep('store', () => store && store.close())
+  store = null
+  await closeStep('db', () => db && db.close())
+  db = null
+  bases.clear()
+  pendingMemberLeaves.clear()
+  console.log('Shutdown complete')
 }
 
 // ── Reset app data (TODO #118; proposal 2026-07-18-in-app-reset-data) ────────
@@ -7684,13 +7784,18 @@ async function init (dir, opts = {}, attempt = 0) {
   try { await _initPromise } finally { _initPromise = null }
 }
 async function _doInit (dir, attempt = 0) {
+  // Held outside the try so a failed attempt can hand the lock back. `db` and
+  // `store` are module-level already; this one was a local const, so a throw in
+  // core.ready() used to leak it with no reference left to close it — and every
+  // retry leaked another.
+  let core = null
   try {
     dataDir = dir
     installFaultHandlers()
     console.log('Init DB at', dataDir)
 
     // Main local DB
-    const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
+    core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
     await core.ready()
     db = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
     await db.ready()
@@ -8735,8 +8840,23 @@ async function _doInit (dir, attempt = 0) {
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
     startRetention()   // TODO #112: bound append-only growth on a 30-min cadence
+    ensureSyncWatchSince().catch(() => {})   // #155 baseline; once, ever
   } catch(e) {
     console.error('Init failed:', e.message)
+    // Hand back whatever this attempt opened before retrying. Those handles
+    // hold the exclusive CORESTORE lock, and since it is per file description
+    // the retry would be waiting on THIS process to let go — a wait that never
+    // ends. Closing db closes the core it wraps, so only close `core` directly
+    // when we never got as far as wrapping it.
+    await closeStep('init/store', () => store && store.close())
+    store = null
+    if (db) {
+      await closeStep('init/db', () => db.close())
+      db = null
+    } else {
+      await closeStep('init/core', () => core && core.close())
+    }
+    core = null
     if (e.message && e.message.includes('lock') && attempt < 20) {
       await new Promise(r => setTimeout(r, 1000))
       return init(dir, attempt + 1)
