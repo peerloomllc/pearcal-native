@@ -53,9 +53,17 @@ public class AppDelegate: ExpoAppDelegate {
     // nothing reading launchOptions the URL was simply dropped, so tapping an
     // invite opened PearCal to a normal calendar and nothing else happened.
     //
-    // That is the COMMON case, not an edge one: someone is sent an invite, taps
-    // it, and PearCal is not already running. Android is unaffected — its
-    // LinkModule is fed by an intent filter that fires either way.
+    // Scope, measured on an iPhone SE 2026-08-07 rather than assumed. This
+    // affects the LEGACY `pearcal://` shape only, and is a robustness fix rather
+    // than the urgent one an earlier version of this comment claimed:
+    //
+    //   https://peerloomllc.com/join?…   warm: works    cold: works
+    //   pearcal://join?…                 warm: works    cold: WAS DROPPED (this)
+    //
+    // The share sheet emits the https form, so the link real users receive was
+    // never affected. `pearcal://` survives only for older links already in
+    // circulation. Android is unaffected either way — its LinkModule is fed by
+    // an intent filter that fires in both states.
     //
     // There is no other net underneath: the project has no scene delegate (so
     // scene(_:openURLContexts:) is never called) and the JS side never consults
