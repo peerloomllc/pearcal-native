@@ -1,17 +1,16 @@
 ## What's Changed
 
-Fixed
+  Fixed
 
-  - Fixed the desktop app freezing shortly after you opened it. It
-    would show your calendar and then stop responding, or open a shared
-    calendar and never show any of its dates. The desktop version had
-    been missing several sync repairs the phone apps already had, so it
-    also catches up much better now after being closed for a while.
+    - Fixed the desktop app freezing shortly after you opened it. It
+      would show your calendar and then stop responding, or open a shared
+      calendar and never show any of its dates. The desktop version had
+      been missing several sync repairs the phone apps already had.
 
-  - Fixed the app slowly using more and more memory the longer it ran,
-    until syncing stopped altogether. This usually looked like a
-    calendar that had been working fine suddenly going quiet.
+    - Fixed the app slowly using more and more memory the longer it ran,
+      until syncing stopped altogether. This usually looked like a
+      calendar that had been working fine suddenly going quiet.
 
-  - iPhone: tapping an older-style invite link while PearCal was closed
-    opened the app and then did nothing. Normal invite links, and links
-    tapped while the app was already open, were not affected.
+    - iPhone: tapping an older-style invite link while PearCal was closed
+      opened the app and then did nothing. Normal invite links, and links
+      tapped while the app was already open, were not affected.
