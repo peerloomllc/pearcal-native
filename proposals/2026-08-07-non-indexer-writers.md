@@ -90,6 +90,7 @@ are added by this proposal**.
 | **D** | Does shipping the update repair an already-frozen base? | **NO**, `indexed 16 -> 16`. The indexer set lives in the base's own history; an update cannot retroactively demote anyone |
 | **E** | Does a frozen view starve a *freshly paired* device? | **NO**. Owner and newcomer both see 25 entries with 50 stranded. The newcomer applies the un-indexed tail optimistically from a peer that holds it |
 | **F** | Under the fix, the sole indexer goes away - what then? | Member can still **author** writes, but `indexed 14` never moves again. **This is the blocker** |
+| **G** | Does redundancy appear at 2 indexers, or 3? | **3.** 2-lose-1 frozen; **3-lose-1 keeps signing**; 3-lose-2 frozen |
 
 **E is a correction.** Before running it I expected a frozen view to be the
 explanation for the 2026-08-07 field report ("you can see the group, but thats
@@ -97,6 +98,105 @@ it. No dates."). It is not. That report is much better explained by the missing
 Autobase patches on the desktop build (#158), which wedged the apply loop
 before it linearized any events - the same wedge reproduced on Tim's own
 desktop, which recovered fully and showed all 128 events once patched.
+
+### Two harness defects found and fixed while adding G
+
+Both would have sent this proposal the wrong way, and one had already produced
+a "FIX VALIDATED" that had not been earned.
+
+1. **The harness used Autobase's default `ackInterval` of 10,000ms while
+   `src/bare.js` uses 1,000.** An indexer only signs a majority into place via
+   that background ack, so every scenario that settled for under 10s reported
+   `FROZEN` for a base that was merely still waiting to ack. Aligned to 1,000.
+2. **The pass criterion was "did `indexedLength` move?"** It moves anyway,
+   working through history a departed device had already acked before leaving.
+   Under the corrected ack interval that turned scenario A into a false PASS.
+   The opposite bar, "did it reach `length`?", is a false FAIL - the newest
+   nodes are always unsigned until the next ack round even on a healthy base.
+   The criterion is now: **was any work authored AFTER the loss signed?**
+
+With both corrected, A/B/C/D land where they did before, so the earlier
+conclusions survive - but they survive on evidence rather than on luck.
+
+## How many indexers, then?
+
+"Fewer" is the right direction but the wrong frame. The rule is that a
+**majority of the declared indexers must be reachable**, so what matters is
+whether a majority is attainable, not the count itself.
+
+`test/harness/indexer-quorum-math.js` computes the instantaneous probability
+that a majority is online, given per-device uptime `p`:
+
+```
+indexers | majority | can lose |   phone   |  phone   |  laptop  |always-on
+                                  p=0.30     p=0.50     p=0.70     p=0.99
+       1 |        1 |        0 |     30.0% |    50.0% |    70.0% |    99.0%
+       2 |        2 |        0 |      9.0% |    25.0% |    49.0% |    98.0%
+       3 |        2 |        1 |     21.6% |    50.0% |    78.4% |   100.0%
+       5 |        3 |        2 |     16.3% |    50.0% |    83.7% |   100.0%
+       7 |        4 |        3 |     12.6% |    50.0% |    87.4% |   100.0%
+```
+
+Three things fall out, and the third is the one that matters:
+
+1. **Even counts are strictly worse than the odd count below them.** Majority of
+   2 is 2, same as majority of 3, so a second indexer adds a thing that can fail
+   and buys nothing. Confirmed in G: 2-lose-1 is frozen.
+2. **Redundancy starts at 3**, not 2. Confirmed in G: 3-lose-1 keeps signing.
+3. **The 50% threshold decides the direction.** Above 50% per-device uptime more
+   indexers is better; below it fewer is. Phones are far below it. **So the real
+   defect is not the count, it is that the indexers are phones.** With always-on
+   indexers you would want 3; with phones you want as few as possible.
+
+Caveat on the table: it is an instantaneous snapshot, and the signed view only
+has to advance *eventually*. Over a whole day a 3-of-which-2-needed set overlaps
+far more often than 21.6% suggests, so this understates counts above 1. It is
+directionally right, not a service-level prediction.
+
+### The four options
+
+| | Availability with phones | Survives losing a device | Needs new design |
+|---|---|---|---|
+| **A. Everyone (today)** | worst, and degrades as the group grows | in principle yes | none |
+| **B. Owner only** | best | **no - permanent** | handoff |
+| **C. Fixed set of 3 members** | worse than B | one | handoff + a fork-safe selection rule |
+| **D. Owner + always-on keyed device** | best, and stays best | yes | seeder must hold the group key |
+
+**A - everyone is an indexer (today).** For: no migration, no fork risk, no
+privileged device, and authority is everywhere. Against: the bar rises with
+every device that ever pairs and can never be lowered again - C says
+`removeWriter` will not demote, D says an update will not either. Availability
+gets *worse* as a group grows, which is backwards. Tim's group is at 7 signers
+and 96% unsigned.
+
+**B - owner only.** For: highest availability of any phone-based option,
+simplest rule, every peer derives it identically from the bootstrap key, and the
+signed view tracks reality so history can finally be compacted. Against: a
+single point of failure with a permanent failure mode - F measured it, the
+remaining members keep writing and nothing is ever signed again. Also puts all
+the indexing work on one phone.
+
+**C - a fixed set of three member devices.** For: real redundancy, survives one
+loss, and stays bounded as the group grows. Against: for phones it is *worse*
+than B on availability, because two must be awake instead of one; it still dies
+on two losses; and it needs a selection rule every peer computes identically
+from the view or it forks. "Which three" is a policy decision with security
+weight, not a detail.
+
+**D - owner plus an always-on device that holds the key.** For: this is the only
+option that fixes the actual problem rather than trading around it. Three
+indexers where two are effectively always up puts quorum near 100%, and it
+dissolves most of the handoff problem because the always-on device outlives the
+phone. Tim already runs the hardware. Against: **that device must hold the
+group's encryption key, so it can read the calendar.** Today's seeder is a blind
+peer that deliberately cannot (`project_blind_peer_terminology`), so this is a
+real privacy change and has to be an informed per-group opt-in, not a default.
+It also only helps groups that have such a device, so it is an upgrade on top of
+B, never a replacement for it.
+
+**Recommendation: B as the base, with a handoff, and D as an opt-in upgrade.**
+Not C on its own - for phone-only groups it is strictly worse than B on
+availability while still not surviving two losses.
 
 ## Scope
 
@@ -183,10 +283,11 @@ all-indexers.
    ownership after 30d inactivity"), promoting the new owner to indexer as part
    of the same authenticated op. Needs the same owner-auth treatment as the
    other self-destructive control messages (`project_self_destruct_guards`).
-2. **Should there be more than one indexer on purpose?** Two or three, chosen
-   from the most active members, gives redundancy at a majority of 2. That is
-   still far below 4-of-7 and survives one loss. It needs a selection rule that
-   every peer computes identically from the view, or it forks.
+2. ~~Should there be more than one indexer on purpose?~~ **Answered above.**
+   Yes, but only if the extras are always-on - below 50% per-device uptime more
+   indexers is strictly worse. Hence option D. Remaining sub-question: is a
+   key-holding seeder an acceptable privacy trade to offer, and how is that
+   consent presented?
 3. **What do the four UNIDENTIFIED writers in Tim's group represent?** They have
    no `writerIdentity` record, and one identity is not on the member list at
    all. Worth resolving before designing promotion, since a promotion rule

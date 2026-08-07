@@ -21,6 +21,11 @@
 //             group, but thats it. No dates."
 // Scenario F: the sole indexer goes away under the fix -> how bad is that?
 //             This is the "indexer handoff" gap that closed PR #291.
+// Scenario G: does fault tolerance actually appear at 3 indexers, as the
+//             majority arithmetic says it should? 3 indexers tolerate 1 loss
+//             (majority 2), where 2 indexers tolerate none (majority 2 of 2).
+//             The counterintuitive consequence is that TWO indexers are
+//             strictly WORSE than one.
 
 const Autobase = require('autobase')
 const Corestore = require('corestore')
@@ -57,7 +62,13 @@ function makeApply (asIndexer) {
 async function makeBase (name, key, asIndexer) {
   const store = new Corestore(path.join(root, name + '-' + (++caseNo)))
   await store.ready()
-  const base = new Autobase(store, key, { open, apply: makeApply(asIndexer), valueEncoding: 'json' })
+  // ackInterval MUST match src/bare.js (1000). Autobase's default is 10_000,
+  // and an indexer only signs a majority into place via that background ack.
+  // With the default, any scenario that settles for less than 10s reports
+  // FROZEN for a base that was merely still waiting to ack - which is exactly
+  // how an early scenario G wrongly showed 3 indexers failing to tolerate a
+  // loss they in fact tolerate.
+  const base = new Autobase(store, key, { open, apply: makeApply(asIndexer), valueEncoding: 'json', ackInterval: 1000 })
   await base.ready()
   return { store, base }
 }
@@ -108,9 +119,17 @@ async function scenario (label, asIndexer) {
   await settle([primary], 2500)
 
   const after = { len: primary.base.length, idx: primary.base.indexedLength }
-  const advanced = after.idx > before.idx
-  console.log('after loss:    length', after.len, 'indexed', after.idx)
-  console.log('signed view advanced after losing the other device:', advanced ? 'YES' : 'NO  <-- frozen')
+  // The criterion is deliberately precise, because two looser ones are wrong:
+  //   "did indexedLength move?"  - it moves anyway, working through history the
+  //      departed device had ALREADY acked before leaving. Reports a false pass.
+  //   "did it reach length?"     - it never quite does. The newest nodes are
+  //      always unsigned until the next ack round, even on a perfectly healthy
+  //      base. Reports a false fail.
+  // What actually matters: was any work authored AFTER the loss signed?
+  const advanced = after.idx > before.len
+  console.log('after loss:    length', after.len, 'indexed', after.idx,
+    '| signed past the point of loss (' + before.len + '):', advanced ? 'yes' : 'NO')
+  console.log('signed view kept advancing after losing the other device:', advanced ? 'YES' : 'NO  <-- frozen')
 
   return { primary, before, after, advanced }
 }
@@ -273,6 +292,78 @@ async function main () {
   console.log('member can sign anything on its own:', fSignsAlone ? 'YES' : 'NO  <-- needs an indexer handoff')
   await fMember.base.close().catch(() => {}); await fMember.store.close().catch(() => {})
 
+  // G: the count is not monotonic. Majority of 1 is 1, of 2 is 2, of 3 is 2.
+  // So going from one indexer to two buys nothing and costs availability, while
+  // going to three buys the first real redundancy. Assert autobase agrees with
+  // that arithmetic rather than assuming it.
+  console.log('\n=== G: is 3 indexers genuinely fault-tolerant where 2 is not? ===')
+
+  async function nIndexerLossTest (label, peerCount, loseCount) {
+    const owner = await makeBase('g-owner', null, true)
+    const peers = []
+    for (let i = 1; i < peerCount; i++) peers.push(await makeBase('g-peer' + i, owner.base.key, true))
+    const all = [owner, ...peers]
+    const unlinks = []
+    for (let i = 0; i < all.length; i++) {
+      for (let j = i + 1; j < all.length; j++) unlinks.push(link(all[i], all[j]))
+    }
+    // Add them ONE AT A TIME and wait for each to land. Adding the 2nd indexer
+    // moves majority from 1 to 2, so the 3rd addWriter cannot linearize until
+    // the 2nd is acking. Appending them back to back and settling once left the
+    // set at 2 and quietly tested the wrong thing.
+    for (const p of peers) {
+      await owner.base.append({ addWriter: p.base.local.key.toString('hex') })
+      for (let t = 0; t < 120; t++) {
+        await settle(all, 250)
+        if ((owner.base.linearizer?.indexers?.length || 0) >= 2 + peers.indexOf(p)) break
+      }
+    }
+    await settle(all, 2500)
+    const got = owner.base.linearizer?.indexers?.length || 0
+    if (got !== peerCount) {
+      console.log('  ' + label.padEnd(34) + 'SETUP FAILED: wanted ' + peerCount + ' indexers, got ' + got)
+      for (const u of unlinks) u()
+      for (const x of all) { await x.base.close().catch(() => {}); await x.store.close().catch(() => {}) }
+      return null
+    }
+
+    for (let i = 0; i < 5; i++) await owner.base.append({ key: 'g-early-' + i })
+    await settle(all, 2500)
+    const idxCount = owner.base.linearizer?.indexers?.length
+    const before = owner.base.indexedLength
+
+    // Lose `loseCount` of them.
+    for (const u of unlinks) u()
+    const lost = peers.slice(0, loseCount)
+    for (const p of lost) { await p.base.close().catch(() => {}); await p.store.close().catch(() => {}) }
+    const survivors = [owner, ...peers.slice(loseCount)]
+    for (let i = 0; i < survivors.length; i++) {
+      for (let j = i + 1; j < survivors.length; j++) link(survivors[i], survivors[j])
+    }
+
+    const lenAtLoss = owner.base.length
+    for (let i = 0; i < 10; i++) await owner.base.append({ key: 'g-after-' + i })
+    await settle(survivors, 12000)
+    const after = owner.base.indexedLength
+    const advanced = after > lenAtLoss               // signed work authored AFTER the loss
+    console.log('  ' + label.padEnd(34) +
+      'indexers=' + idxCount + ' majority=' + (Math.floor(idxCount / 2) + 1) +
+      ' lost=' + loseCount + '  indexed ' + before + ' -> ' + after +
+      ' (loss at ' + lenAtLoss + ', now ' + owner.base.length + ')' +
+      '  ' + (advanced ? 'KEEPS SIGNING' : 'FROZEN at the point of loss'))
+    for (const p of survivors) { await p.base.close().catch(() => {}); await p.store.close().catch(() => {}) }
+    for (const p of survivors) { await p.store.close().catch(() => {}) }
+    return advanced
+  }
+
+  const g2 = await nIndexerLossTest('2 indexers, lose 1:', 2, 1)
+  const g3 = await nIndexerLossTest('3 indexers, lose 1:', 3, 1)
+  const g3b = await nIndexerLossTest('3 indexers, lose 2:', 3, 2)
+  const say = v => v === null ? 'SETUP FAILED' : (v ? 'YES' : 'NO')
+  console.log('  => two indexers tolerate a loss:', say(g2))
+  console.log('  => three tolerate one loss:      ', say(g3))
+  console.log('  => three tolerate two losses:    ', say(g3b))
+
   console.log('\n---------------- RESULT ----------------')
   console.log('A (all indexers)      advanced after loss:', a.advanced ? 'YES' : 'NO')
   console.log('B (non-indexer writer) advanced after loss:', b.advanced ? 'YES' : 'NO')
@@ -280,6 +371,7 @@ async function main () {
   console.log('D (update repairs an already-frozen base):', repaired ? 'YES' : 'NO')
   console.log('E (newcomer starved by a frozen view):', newcomerStarved ? 'YES' : 'NO')
   console.log('F (a lone remaining member can sign):', fSignsAlone ? 'YES' : 'NO - handoff needed')
+  console.log('G (redundancy appears at 3, not 2):', (!g2 && g3 && !g3b) ? 'CONFIRMED' : 'see numbers above')
   console.log('')
   console.log(!a.advanced && b.advanced
     ? 'FIX VALIDATED: the freeze reproduces on current behaviour and does not occur with non-indexer writers.'
