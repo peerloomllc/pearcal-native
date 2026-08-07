@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom'
 import { buildInviteLink, handleInviteLink } from '../invite.js'
 import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
 import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
+import { classifyIndexerNotice } from '../lib/indexerHealth.js'
 import QRCode from 'qrcode'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
@@ -5178,22 +5179,29 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
               </div>
             )}
 
-            {/* #159. How many devices can finalise this calendar, and how many
-                must be online together. Shown only when there is no spare
-                capacity (canLose === 0), because that is the state that matters:
-                the next device lost takes the calendar's history with it and
-                there is no way back. Deliberately NOT a warning colour - nothing
-                is broken today and the app still works, so this is information,
-                not an alarm. It also gives the fleet-wide picture the rollout
-                needs, which until now meant pulling databases off devices by
-                hand. */}
-            {g.indexers && g.indexers.canLose === 0 && g.indexers.count > 1 && (
-              <div style={{ fontSize:11, color:colors.text.muted, marginBottom:10, lineHeight:1.4 }}>
-                All {g.indexers.count} devices in this calendar have to be online together
-                for changes to be permanently saved. If one is lost for good, its history
-                stops being backed up. A fix for this is on the way.
-              </div>
-            )}
+            {/* #159. Two different problems, decided in src/lib/indexerHealth.js
+                rather than inline here — the first version WAS inline, keyed on
+                canLose === 0, and so appeared only on two-device calendars while
+                saying nothing about a 7-signer one sitting at 4% saved. The
+                worst-affected calendar was the silent one.
+                Deliberately not a warning colour: nothing is broken today and
+                the calendar works either way, so this is information. */}
+            {(() => {
+              const notice = classifyIndexerNotice(g.indexers)
+              if (notice.kind === 'none') return null
+              return (
+                <div style={{ fontSize:11, color:colors.text.muted, marginBottom:10, lineHeight:1.4 }}>
+                  {notice.kind === 'behind'
+                    ? <>Most of this calendar's history has not been permanently saved yet,
+                        because {notice.majority} of its {notice.count} devices have to be online
+                        at the same moment for that to happen. Everything still shows up as
+                        normal. A fix for this is on the way.</>
+                    : <>All {notice.count} devices in this calendar have to be online together
+                        for changes to be permanently saved. If one is lost for good, its
+                        history stops being backed up. A fix for this is on the way.</>}
+                </div>
+              )
+            })()}
 
             {/* Member avatars */}
             <div style={{ display:'flex', gap:6, marginBottom:12, flexWrap:'wrap' }}>

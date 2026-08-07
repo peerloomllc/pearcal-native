@@ -2066,6 +2066,19 @@ function indexerInfoFor (groupId) {
   if (!base) return null
   const count = base.linearizer?.indexers?.length ?? base.system?.indexers?.length ?? 0
   if (!count) return null
+  // How far the SIGNED history trails reality. This is the symptom people
+  // actually live with, and it is not the same axis as canLose below.
+  //
+  // The first version of this notice keyed only on canLose === 0, which meant it
+  // appeared on two-device calendars and stayed silent on everything larger -
+  // including Tim's 5-member calendar sitting at 2,825 of 69,269 signed. The
+  // worst-affected calendar said nothing, which defeats the point of surfacing
+  // it at all. canLose measures tolerance to PERMANENT loss; `behindPct`
+  // measures whether quorum is being reached day to day. A big group scores fine
+  // on the first and terribly on the second.
+  const total = base.length ?? 0
+  const signed = base.indexedLength ?? 0
+  const behind = Math.max(0, total - signed)
   return {
     count,
     majority: Math.floor(count / 2) + 1,
@@ -2073,6 +2086,10 @@ function indexerInfoFor (groupId) {
     // a majority. Zero means the next device lost takes the group with it, and
     // there is no way back from that (harness scenarios C, D and H).
     canLose: count - (Math.floor(count / 2) + 1),
+    total,
+    signed,
+    behind,
+    behindPct: total > 0 ? Math.round((behind / total) * 100) : 0,
   }
 }
 
