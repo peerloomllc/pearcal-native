@@ -469,6 +469,35 @@ the documented limitation in rules 7 and 15 (a Simulator is not a separate host
 for discovery or holepunching), not a defect. Any future multi-peer work needs
 real devices.
 
+## The rollout is now verified too
+
+This proposal originally listed a mixed-version check under Verify and had not
+run it. It is the riskiest step in the plan - a fork is as unrecoverable as the
+problem being fixed - so it was run before any implementation.
+`test/harness/indexer-rollout.js`, with a real third peer so a disagreement
+moves the consensus threshold rather than just a stored record:
+
+```
+A  old + old,  no field       A(old)=true idx3/maj2   B(old)=true idx3/maj2   AGREE
+B  old + N,    no field       A(old)=true idx3/maj2   B(N)=false*             AGREE
+C  old + N,    indexer:false  A(old)=true idx3/maj2   B(N)=false idx2/maj2    DIVERGE
+D  N   + N,    indexer:false  A(N)=false idx2/maj2    B(N)=false idx2/maj2    AGREE
+```
+
+*(B reads `true` in case B - the field is absent and N defaults to true.)*
+
+**Case C is the one that matters, and it diverges exactly as feared.** The two
+peers disagree not only about whether that writer is an indexer but about the
+SIZE of the indexer set: the old peer counts three and needs any two of
+`{a,b,c}`, the new peer counts two and needs both of `{a,b}`. Two different
+quorums on one calendar, from identical input. That is why release N must land
+and be given time before anything writes the field.
+
+**B and D both agree, so the staged plan is sound in both directions:** N is
+safe to ship beside old code, and N+1 is safe once every peer reads the field.
+
+Had B or D diverged, this proposal would have been wrong. They did not.
+
 ## Scope
 
 **Changes:** the two `addWriter` call sites pass `{ indexer: false }`. The
@@ -528,9 +557,9 @@ between *members*.
 
 - `test/harness/indexer-model.js` - all six scenarios, expected results as
   tabulated above.
-- A new scenario **G** before implementation: two peers, one on release N and
-  one on N+1, applying the same `addWriter` op. Assert their system views agree.
-  If G fails the staged rollout is wrong and this proposal is wrong.
+- ~~A new scenario before implementation~~ **DONE** - see "The rollout is now
+  verified too" above. `test/harness/indexer-rollout.js`, four cases, all as the
+  plan assumes.
 - `npm run verify` (392 tests).
 - Real-device pairing on the TCL against the emulator: pair, confirm the new
   device is `writable`, confirm `indexers.length` stays 1, confirm events sync
