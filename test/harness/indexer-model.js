@@ -15,6 +15,12 @@
 // Scenario B: non-indexer writers           -> does it keep advancing?
 // Scenario C: removeWriter on a frozen base -> does it un-stick? (Recovery
 //             option 1 in the plan, flagged there as an open question.)
+// Scenario D: reopen a frozen base under the new apply -> does an update repair it?
+// Scenario E: a FRESHLY paired device joins a frozen group -> what does it get?
+//             This is the field symptom reported 2026-08-07: "you can see the
+//             group, but thats it. No dates."
+// Scenario F: the sole indexer goes away under the fix -> how bad is that?
+//             This is the "indexer handoff" gap that closed PR #291.
 
 const Autobase = require('autobase')
 const Corestore = require('corestore')
@@ -189,11 +195,91 @@ async function main () {
   await dNew.close().catch(() => {})
   await dStore2.close().catch(() => {})
 
+  // E: the field symptom. A device that joins for the first time has no local
+  // history, so it has nothing to advance optimistically FROM - it can only
+  // fast-forward to what the signed view says. If the signed view froze before
+  // most of the data was written, the newcomer gets the frozen prefix and
+  // nothing after it. Reported 2026-08-07: paired a new desktop, the group
+  // appeared, no events ever did.
+  console.log('\n=== E: what does a FRESHLY paired device see on a frozen group? ===')
+  const eOwner = await makeBase('e-owner', null, true)
+  const eSib = await makeBase('e-sib', eOwner.base.key, true)
+  const eUnlink = link(eOwner, eSib)
+  await eOwner.base.append({ addWriter: eSib.base.local.key.toString('hex') })
+  await settle([eOwner, eSib], 2000)
+
+  // Early data, written while both are present, so it gets signed.
+  for (let i = 0; i < 5; i++) await eOwner.base.append({ key: 'early-' + i })
+  await settle([eOwner, eSib], 2000)
+  const signedPrefix = eOwner.base.indexedLength
+
+  // The sibling goes quiet - not dead, just a phone that is asleep.
+  eUnlink()
+  await eSib.base.close().catch(() => {})
+  await eSib.store.close().catch(() => {})
+
+  // The owner keeps adding events. Majority of 2 is 2, so none of this signs.
+  for (let i = 0; i < 20; i++) await eOwner.base.append({ key: 'later-' + i })
+  await settle([eOwner], 2500)
+  console.log('owner:      length', eOwner.base.length, 'indexed', eOwner.base.indexedLength,
+    '(' + (eOwner.base.length - eOwner.base.indexedLength) + ' entries stranded in the un-indexed tail)')
+
+  // Now a brand new device pairs in and replicates with the owner only.
+  const eNew = await makeBase('e-new', eOwner.base.key, true)
+  const eUnlink2 = link(eOwner, eNew)
+  await settle([eOwner, eNew], 4000)
+
+  let newcomerSees = 0
+  try {
+    const v = eNew.base.view
+    newcomerSees = v ? v.length : 0
+  } catch { newcomerSees = -1 }
+  console.log('newcomer:   length', eNew.base.length, 'indexed', eNew.base.indexedLength,
+    '| entries visible in its view:', newcomerSees)
+  const ownerSees = eOwner.base.view ? eOwner.base.view.length : 0
+  console.log('owner sees', ownerSees, 'entries; newcomer sees', newcomerSees)
+  const newcomerStarved = newcomerSees < ownerSees
+  console.log('newcomer is missing data the owner has:', newcomerStarved ? 'YES  <-- the field symptom' : 'NO')
+
+  eUnlink2()
+  await eNew.base.close().catch(() => {}); await eNew.store.close().catch(() => {})
+  await eOwner.base.close().catch(() => {}); await eOwner.store.close().catch(() => {})
+
+  // F: the cost of the fix. With non-indexer writers the bootstrap device is the
+  // ONLY indexer, so majority is 1 and nothing can freeze it - but if that
+  // device is lost, no remaining writer can sign anything. This is the handoff
+  // gap that closed PR #291, quantified rather than assumed.
+  console.log('\n=== F: the fix\'s own risk - the sole indexer goes away ===')
+  const fOwner = await makeBase('f-owner', null, false)
+  const fMember = await makeBase('f-member', fOwner.base.key, false)
+  const fUnlink = link(fOwner, fMember)
+  await fOwner.base.append({ addWriter: fMember.base.local.key.toString('hex') })
+  await settle([fOwner, fMember], 2000)
+  for (let i = 0; i < 5; i++) await fOwner.base.append({ key: 'f-early-' + i })
+  await settle([fOwner, fMember], 2000)
+  const fBefore = fMember.base.indexedLength
+  console.log('member before owner leaves: length', fMember.base.length, 'indexed', fBefore)
+
+  // The owner is gone for good.
+  fUnlink()
+  await fOwner.base.close().catch(() => {}); await fOwner.store.close().catch(() => {})
+
+  const fCanWrite = fMember.base.writable
+  for (let i = 0; i < 10; i++) await fMember.base.append({ key: 'f-orphan-' + i }).catch(() => {})
+  await settle([fMember], 2500)
+  console.log('member after  owner leaves: length', fMember.base.length, 'indexed', fMember.base.indexedLength)
+  console.log('member can still author writes:', fCanWrite ? 'YES' : 'NO')
+  const fSignsAlone = fMember.base.indexedLength > fBefore
+  console.log('member can sign anything on its own:', fSignsAlone ? 'YES' : 'NO  <-- needs an indexer handoff')
+  await fMember.base.close().catch(() => {}); await fMember.store.close().catch(() => {})
+
   console.log('\n---------------- RESULT ----------------')
   console.log('A (all indexers)      advanced after loss:', a.advanced ? 'YES' : 'NO')
   console.log('B (non-indexer writer) advanced after loss:', b.advanced ? 'YES' : 'NO')
   console.log('C (removeWriter recovery):', recovered === null ? 'n/a' : (recovered ? 'WORKS' : 'DOES NOT WORK'))
   console.log('D (update repairs an already-frozen base):', repaired ? 'YES' : 'NO')
+  console.log('E (newcomer starved by a frozen view):', newcomerStarved ? 'YES' : 'NO')
+  console.log('F (a lone remaining member can sign):', fSignsAlone ? 'YES' : 'NO - handoff needed')
   console.log('')
   console.log(!a.advanced && b.advanced
     ? 'FIX VALIDATED: the freeze reproduces on current behaviour and does not occur with non-indexer writers.'

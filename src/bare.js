@@ -2755,23 +2755,25 @@ function makePersonalApply () {
       if (val.addWriter) {
         const blocked = await db.get('blockedWriter:personal:' + val.addWriter).catch(() => null)
         if (!blocked) {
-          // Plain writer, NOT an indexer. Advancing the signed view needs a
-          // MAJORITY of indexers to ack (autobase/lib/consensus.js:15), so
-          // granting every device indexer rights raises that bar permanently.
-          // The devices do NOT have to be dead for this to bite: with 7
-          // indexers, 4 must be awake and connected at the same moment, and
-          // most of them are phones. A bar that high is routinely unreachable
-          // among healthy, actively-used devices, and while it is unreached the
-          // signed view is frozen and the drain keeps retrying dependencies it
-          // cannot resolve, pinning a core. Observed live on a real install
-          // with 7 indexers, length 1021 and indexedLength stuck at 849 for
-          // 16 minutes at ~106% CPU (project_autobase_drain_spin).
+          // KNOWN DEFECT, deliberately still here. Advancing the signed view
+          // needs a MAJORITY of indexers to ack (autobase/lib/consensus.js:15),
+          // so granting every device indexer rights raises that bar
+          // permanently. Nothing has to be DEAD for this to bite: measured on
+          // Tim's live 5-member group 2026-08-07, 7 indexers means 4 must be
+          // awake and connected at the same moment, and 2,825 of 69,269 entries
+          // are signed - 96% of the history has never been indexed.
           //
-          // The bootstrap device stays the sole indexer, so majority is 1 and it
-          // consolidates every writer's data on its own, including data authored
-          // by devices since wiped. Losing a non-indexer changes nothing.
-          // Plan: docs/superpowers/plans/2026-06-03-indexer-model-fix.md
-          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: false })
+          // `indexer: false` is the fix and it is validated
+          // (test/harness/indexer-model.js, scenarios A and B). It is NOT
+          // applied here yet, on purpose. Flipping this constant alone FORKS
+          // the group: an old peer applying the same addWriter op grants an
+          // indexer while a new peer grants a plain writer, so the two produce
+          // different system views. It also leaves the bootstrap device as the
+          // sole signer with no way to hand that off (scenario F).
+          //
+          // Staged rollout and the handoff design:
+          //   proposals/2026-08-07-non-indexer-writers.md (TODO #159)
+          await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
         }
         continue
       }
@@ -5690,11 +5692,12 @@ function makeApply (groupId) {
           const idBlocked = await db.get('blockedIdentity:' + groupId + ':' + wi.value.identityPublicKey).catch(() => null)
           if (idBlocked) continue
         }
-        // Members are plain writers, never indexers - same reasoning as the
-        // personal base above. The group OWNER is the bootstrap device and stays
-        // the sole indexer, so a member leaving or being wiped cannot freeze the
-        // group's signed view.
-        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: false })
+        // Same known defect as the personal base above, and the same reason it
+        // is not fixed in place: every member becoming an indexer is what puts
+        // the signing bar out of reach, but flipping this constant on its own
+        // forks the group against peers still running the old code.
+        // proposals/2026-08-07-non-indexer-writers.md (TODO #159)
+        await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: true })
         continue
       }
 
