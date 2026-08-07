@@ -421,12 +421,33 @@ SyncProof    members: 2   INDEXERS: 2   indexed 176 / 182
 linked device, and it has signed 9% of its history. This is not confined to
 Tim's large calendar.
 
-### Not tested on hardware, and why
+**The negative half too - losing TWO of three freezes it.** Tim took the Pixel
+offline himself so this could be run. With the emulator also stopped, one of
+three alive, an event was created on the TCL:
 
-**The negative half of G - three indexers losing TWO - was not run.** Reaching
-one-of-three needs both the emulator and the Pixel offline, and the Pixel is
-Tim's daily driver, which suite CLAUDE.md rule 6 makes observe-only. That half
-remains harness-only.
+```
+baseline, all three alive   length 109   indexed 105
+after losing two            length 127   indexed 109   <- stuck AT the loss point
+```
+
+Note the signed length *did* move, 105 -> 109. It advanced only as far as work
+already acknowledged before the loss and then stopped dead, 18 entries stranded.
+That is the exact signature the harness criterion was rebuilt to detect, and
+seeing it reproduce on hardware validates the criterion as well as the model.
+
+**And it recovers when quorum returns.** Restarting the emulator - back to two of
+three - resumed signing immediately:
+
+```
+after one peer returns      length 145   indexed 133   <- past the frozen 109
+```
+
+This is the load-bearing evidence for the argument that reversed this proposal's
+recommendation: **unavailability is temporary and catches up, permanent loss is
+not.** A group below quorum is paused, not destroyed, and resumes the moment
+enough devices are back. What cannot be undone is losing the devices for good.
+
+### Not tested on hardware, and why
 
 **The iPhone Simulator cannot be a peer at all.** It was joined to the group as
 a fourth device and never connected to the other three - zero worklet network
