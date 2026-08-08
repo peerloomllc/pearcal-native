@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
+import { canEditEvent, isHolidayEvent as isHoliday } from '../lib/eventPermissions.js'
 
 function makeEventId () {
   return 'e' + Date.now() + Math.floor(Math.random() * 1000)
@@ -124,6 +125,18 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   // RSVP (TODO #108). Creator toggles "request RSVP" and sees the roster;
   // invitees see a going/declined control. Loaded once on open (matches mobile).
   const isEventCreator = !initial?.creatorId || initial.creatorId === profile?.id
+
+  // Event-level edit lock — parity with mobile's `isReadOnly` / `formLocked`
+  // (src/ui/App.jsx:4220, :4264). Rule lives in lib/eventPermissions.js because
+  // the inspector popover, the right-click menu and drag-to-move need the same
+  // answer (#162).
+  const isHolidayEvent = mode === 'edit' && isHoliday(initial)
+  const isReadOnly = mode === 'edit' && !canEditEvent(initial, profile?.id)
+  // Applied to the field groups the lock covers. The RSVP response control and
+  // the private note stay live: neither touches the shared event record, and an
+  // invitee must still be able to answer a locked event.
+  const lockedFields = isReadOnly ? { opacity: 0.45, pointerEvents: 'none' } : undefined
+
   const [rsvpEnabled,  setRsvpEnabled]  = useState(!!initial?.rsvpEnabled)
   const [myRsvp,       setMyRsvp]       = useState(null)   // own response (non-creator)
   const [rsvpList,     setRsvpList]     = useState([])     // all responses (creator)
@@ -209,6 +222,10 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   }
 
   function handleSave () {
+    // No right to modify this one. Mobile returns without writing rather than
+    // saving a change the rest of the group will never accept; do the same.
+    // Reachable via Enter/keyboard even though the Save button is hidden.
+    if (isReadOnly) { onClose(); return }
     const t = title.trim()
     if (!t || !date) return
     const ev = {
@@ -255,6 +272,7 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
   }
 
   function handleDelete () {
+    if (isReadOnly) return
     if (mode !== 'edit' || !initial?.id) return
     if (!confirm('Delete "' + (initial.title ?? 'this event') + '"?')) return
     onDelete(initial.id)
@@ -306,7 +324,7 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
           {mode === 'edit' ? 'Edit event' : 'New event'}
         </div>
 
-        <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 12, ...lockedFields }}>
           <div style={label}>Title</div>
           <input ref={titleRef} value={title} onChange={e => setTitle(e.target.value)}
                  placeholder="Event title" style={inputBase} />
@@ -359,6 +377,11 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
             </div>
           </div>
         )}
+
+        {/* Everything from here to the Notes field is the shared event record,
+            so the lock covers it as one block (mobile does the same, wrapping
+            its whole form body). */}
+        <div style={lockedFields}>
 
         <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
           <div style={{ flex: 1 }}>
@@ -574,27 +597,58 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
                     style={{ ...inputBase, resize: 'vertical', minHeight: 60 }} />
         </div>
 
+        </div>{/* end locked block */}
+
+        {isReadOnly && (
+          <div style={{ fontSize: 12, color: tokens.muted, textAlign: 'center',
+                        padding: '8px 0', marginBottom: 12,
+                        border: `1px solid ${tokens.border}`, borderRadius: 6 }}>
+            {isHolidayEvent
+              ? 'Public holiday — turn these off in Settings to remove them'
+              : 'Read only — only the person who created this event can edit it'}
+          </div>
+        )}
+
+        {/* Private note stays editable on a locked event — it is per-device and
+            never enters the group record. It also has to persist on its own,
+            because a read-only viewer has no Save button; mobile writes it
+            through on change for the same reason (src/ui/App.jsx:4882). The
+            `loaded` guard stops a keystroke landing before the async read of
+            the existing note and blanking it. */}
         <div style={{ marginBottom: 16 }}>
           <div style={label}>Private note</div>
-          <textarea value={privateNote} onChange={e => setPrivateNote(e.target.value)}
+          <textarea value={privateNote}
+                    onChange={e => {
+                      const v = e.target.value
+                      setPrivateNote(v)
+                      if (loaded && mode === 'edit' && initial?.id) {
+                        Promise.resolve(db?.putPrivateNote?.(initial.id, v)).catch(() => {})
+                      }
+                    }}
                     rows={2} placeholder="Only visible to you, on this device"
                     style={{ ...inputBase, resize: 'vertical', minHeight: 44 }} />
         </div>
 
+        {/* Read-only viewers get Close only. Delete is withheld for the same
+            reason Save is: it would append a group-wide deletion of an event
+            this user does not own. Mobile reaches the same place by putting
+            both inside its pointer-events-none body. */}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          {mode === 'edit' && (
+          {mode === 'edit' && !isReadOnly && (
             <button onClick={handleDelete} style={{
               ...btnBase,
               color: '#C0504A', borderColor: '#C0504A', marginRight: 'auto',
             }}>Delete</button>
           )}
-          <button onClick={onClose} style={btnBase}>Cancel</button>
-          <button onClick={handleSave} disabled={!title.trim() || !date} style={{
-            ...btnBase,
-            background: tokens.accent, color: tokens.bg, borderColor: tokens.accent,
-            opacity: (!title.trim() || !date) ? 0.5 : 1,
-            cursor:  (!title.trim() || !date) ? 'default' : 'pointer',
-          }}>{mode === 'edit' ? 'Save' : 'Create'}</button>
+          <button onClick={onClose} style={btnBase}>{isReadOnly ? 'Close' : 'Cancel'}</button>
+          {!isReadOnly && (
+            <button onClick={handleSave} disabled={!title.trim() || !date} style={{
+              ...btnBase,
+              background: tokens.accent, color: tokens.bg, borderColor: tokens.accent,
+              opacity: (!title.trim() || !date) ? 0.5 : 1,
+              cursor:  (!title.trim() || !date) ? 'default' : 'pointer',
+            }}>{mode === 'edit' ? 'Save' : 'Create'}</button>
+          )}
         </div>
 
         {/* Series-edit scope chooser (parity with mobile's bottom sheet) */}

@@ -8,7 +8,11 @@ import { formatTime, derivedEventColors, leftStripeStyle } from '../../ui-shared
 
 const POPOVER_WIDTH = 260
 
-export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, onEdit, onDelete, onDuplicate, onClose }) {
+// `canEdit` is false for a locked event owned by someone else, or a holiday
+// (#162). Delete is withheld then — it would append a group-wide deletion of an
+// event this user does not own. Edit stays, reading as "View", because the
+// modal opens read-only and is how you see the full details.
+export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdit = true, onEdit, onDelete, onDuplicate, onClose }) {
   const ref = useRef(null)
 
   useEffect(() => {
@@ -84,9 +88,11 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, onEdit
         </div>
       )}
       <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
-        <button onClick={onEdit}      style={btn}>Edit</button>
+        <button onClick={onEdit}      style={btn}>{canEdit ? 'Edit' : 'View'}</button>
         <button onClick={onDuplicate} style={btn}>Duplicate</button>
-        <button onClick={onDelete}    style={{ ...btn, color: '#C0504A', borderColor: '#C0504A' }}>Delete</button>
+        {canEdit && (
+          <button onClick={onDelete}  style={{ ...btn, color: '#C0504A', borderColor: '#C0504A' }}>Delete</button>
+        )}
       </div>
     </div>
   )
