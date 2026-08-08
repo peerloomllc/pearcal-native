@@ -650,6 +650,7 @@ export default function App ({ db, notifs, sync }) {
           tokens={tokens}
           profile={profile}
           sync={sync}
+          db={db}
           addGroup={addGroup}
           onClose={() => setNewGroupOpen(false)}
         />

@@ -8,14 +8,13 @@
 // long-tail group settings.
 
 import { useEffect, useRef, useState } from 'react'
-import { buildInviteLink } from '../../invite.js'
 import { compressImage } from '../lib/imagePicker.js'
 import { QRCodeCanvas } from './QRCode.jsx'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 
-export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
+export function NewGroupModal ({ tokens, profile, sync, db, addGroup, onClose }) {
   const [name,    setName]    = useState('')
   const [emoji,   setEmoji]   = useState(GROUP_EMOJIS[0])
   const [color,   setColor]   = useState(GROUP_COLORS[0])
@@ -24,6 +23,12 @@ export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
   const [iconErr,  setIconErr]  = useState('')
   const [creating, setCreating] = useState(false)
   const [created,  setCreated]  = useState(null)   // group object once created
+  // #164 - the invite link is minted by the WORKLET from the authoritative
+  // group record, never rebuilt here. A UI copy can be missing the local-only
+  // encryptionKey, and a link without `enc=` produces a member who can never
+  // sync. Empty until it arrives, which also means an outright refusal (this
+  // device holds no key for an encrypted group) shows nothing to copy.
+  const [inviteLink, setInviteLink] = useState('')
   const [err,     setErr]     = useState('')
   const [copied,  setCopied]  = useState(false)
   const nameRef = useRef(null)
@@ -73,9 +78,19 @@ export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
     setCreating(false)
   }
 
+  // Ask the worklet for the link as soon as the group exists.
+  useEffect(() => {
+    if (!created?.id || !db?.buildInvite) return
+    let alive = true
+    db.buildInvite(created.id)
+      .then(l => { if (alive && typeof l === 'string') setInviteLink(l) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [created?.id, db])
+
   async function copyLink () {
-    const link = buildInviteLink(created, profile?.id ?? 'unknown')
-    try { await navigator.clipboard?.writeText?.(link) } catch {}
+    if (!inviteLink) return
+    try { await navigator.clipboard?.writeText?.(inviteLink) } catch {}
     setCopied(true)
     setTimeout(() => setCopied(false), 1500)
   }
@@ -97,7 +112,6 @@ export function NewGroupModal ({ tokens, profile, sync, addGroup, onClose }) {
     background: tokens.bg, color: tokens.text,
   }
 
-  const inviteLink = created ? buildInviteLink(created, profile?.id ?? 'unknown') : ''
 
   return (
     <div onClick={onClose} style={{
