@@ -8,7 +8,6 @@
 // non-owners cannot delete (must leave).
 
 import { useEffect, useRef, useState } from 'react'
-import { buildInviteLink } from '../../invite.js'
 import { compressImage } from '../lib/imagePicker.js'
 import { MemberAvatar } from './MemberAvatar.jsx'
 import { QRCodeCanvas } from './QRCode.jsx'
@@ -113,13 +112,25 @@ export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLe
   }
 
   async function copyInviteLink () {
-    const link = buildInviteLink(group, profile?.id ?? 'unknown')
-    try { await navigator.clipboard?.writeText?.(link) } catch {}
+    if (!inviteLink) return
+    try { await navigator.clipboard?.writeText?.(inviteLink) } catch {}
     setLinkCopied(true)
     setTimeout(() => setLinkCopied(false), 1500)
   }
 
-  const inviteLink = group ? buildInviteLink(group, profile?.id ?? 'unknown') : ''
+  // #164 - minted by the WORKLET from the authoritative group record, never
+  // rebuilt from this component's copy. That copy can be missing the local-only
+  // encryptionKey, and a link without `enc=` produces a member who can never
+  // sync. Stays empty if the worklet refuses, so a broken link is never shown.
+  const [inviteLink, setInviteLink] = useState('')
+  useEffect(() => {
+    if (!group?.id || !db?.buildInvite) return
+    let alive = true
+    db.buildInvite(group.id)
+      .then(l => { if (alive && typeof l === 'string') setInviteLink(l) })
+      .catch(() => { if (alive) setInviteLink('') })
+    return () => { alive = false }
+  }, [group?.id, db])
 
   const inputBase = {
     width: '100%', padding: '7px 10px', borderRadius: 5,

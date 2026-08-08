@@ -26,11 +26,9 @@
 // what the UI builds. Re-exported here for the WebView/App layer.
 export { buildSeedInvite, buildSeedBundle } from './lib/seedInvite.js'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+import { parseInviteLink } from './lib/inviteLink.js'
 
-const SCHEME   = 'https://peerloomllc.com'
-const MAX_NAME = 64    // chars
-const KEY_LEN  = 64    // hex chars (32-byte public key)
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 // Device-pair URLs (TODO #11 Phase 4). Custom scheme — MUST NOT be HTTPS,
 // since the handshake response transfers the user's mnemonic and the URL
@@ -169,123 +167,10 @@ export async function handleInviteLink (url, db, sync, onJoined, nickname = null
   return { ok: true, group }
 }
 
-/**
- * Generate an invite link for a group.
- *
- * @param {object} group
- * @param {string} myIdentityId  — inviter's `profile.id` (identity-derived,
- *                                 stable across devices). Pre-v1.0.23 links
- *                                 carried `profile.publicKey` (writer key);
- *                                 the joiner side accepts both shapes.
- * @returns {string}
- */
-export function buildReinviteLink (group, myIdentityId) {
-  const params = new URLSearchParams({
-    group:   btoa(group.id),
-    name:    group.name,
-    key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
-    inviter: myIdentityId,
-    reinvite: '1',
-  })
-  if (group.encryptionKey) params.set('enc', group.encryptionKey)
-  return `${SCHEME}/join?${params.toString()}`
-}
-
-export function buildInviteLink (group, myIdentityId) {
-  const params = new URLSearchParams({
-    group:   btoa(group.id),
-    name:    group.name,
-    key:     (group.groupKey ?? group.id).slice(0, KEY_LEN),
-    inviter: myIdentityId,
-  })
-  // Block-encryption key for encrypted groups (proposal 2026-07-15). MEMBER
-  // invites carry it so joiners can decrypt; the blind-seeder invite omits it.
-  if (group.encryptionKey) params.set('enc', group.encryptionKey)
-  return `${SCHEME}/join?${params.toString()}`
-}
-
-/**
- * Parse and validate an invite URL (https://peerloomllc.com/join or legacy pear:// format).
- * Returns { ok: true, ...fields } or { ok: false, error: string }.
- *
- * @param {string} url
- * @returns {object}
- */
-export function parseInviteLink (url) {
-  if (typeof url !== 'string') {
-    return { ok: false, error: 'invalid_url' }
-  }
-
-  // Accept three formats:
-  //   https://peerloomllc.com/join?...  (current)
-  //   pear://pearcal/join?...           (legacy)
-  //   pearcal://join?...                (legacy)
-  const normalised = url
-    .replace(/^pear:\/\/pearcal\//, 'https://peerloomllc.com/')
-    .replace(/^pearcal:\/\//, 'https://peerloomllc.com/')
-  let u
-  try { u = new URL(normalised) } catch {
-    return { ok: false, error: 'malformed_url' }
-  }
-
-  // Must end up at peerloomllc.com/join (after normalisation)
-  if (u.host !== 'peerloomllc.com' || !u.pathname.startsWith('/join')) {
-    return { ok: false, error: 'wrong_path' }
-  }
-
-  const raw = {
-    group:   u.searchParams.get('group'),
-    name:    u.searchParams.get('name'),
-    key:     u.searchParams.get('key'),
-    inviter: u.searchParams.get('inviter'),
-    enc:     u.searchParams.get('enc'),
-  }
-
-  // Validate required params
-  if (!raw.group || !raw.name || !raw.key || !raw.inviter) {
-    return { ok: false, error: 'missing_params' }
-  }
-
-  // Decode group ID
-  let groupId
-  try { groupId = atob(raw.group) } catch {
-    return { ok: false, error: 'invalid_group_id' }
-  }
-
-  // Sanitise group name
-  const groupName = decodeURIComponent(raw.name).trim().slice(0, MAX_NAME)
-  if (!groupName) return { ok: false, error: 'empty_name' }
-
-  // Validate key lengths (hex strings)
-  if (!/^[0-9a-f]+$/i.test(raw.key) || raw.key.length < 16) {
-    return { ok: false, error: 'invalid_key' }
-  }
-  if (!/^[0-9a-f]+$/i.test(raw.inviter) || raw.inviter.length < 16) {
-    return { ok: false, error: 'invalid_inviter' }
-  }
-
-  // Optional block-encryption key (encrypted groups, proposal 2026-07-15).
-  // Absent → legacy unencrypted group → encryptionKey null (Autobase opens
-  // without block encryption). When present it must be a full 32-byte hex key.
-  let encryptionKey = null
-  if (raw.enc != null && raw.enc !== '') {
-    if (!/^[0-9a-f]{64}$/i.test(raw.enc)) {
-      return { ok: false, error: 'invalid_enc' }
-    }
-    encryptionKey = raw.enc.toLowerCase()
-  }
-
-  const reinvite = u.searchParams.get('reinvite') === '1'
-  return {
-    ok: true,
-    groupId,
-    groupName,
-    reinvite,
-    groupKey:   raw.key,
-    inviterKey: raw.inviter,
-    encryptionKey,
-  }
-}
+// Link building and parsing now live in the shared CJS lib so the Bare worklet
+// can mint an invite from the AUTHORITATIVE group record (#164). Re-exported
+// unchanged so every existing import keeps working.
+export { buildInviteLink, buildReinviteLink, parseInviteLink } from './lib/inviteLink.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

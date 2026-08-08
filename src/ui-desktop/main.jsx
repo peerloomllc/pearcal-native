@@ -70,6 +70,11 @@ const db = {
   deleteEventSeries: (rid)   => window.__pearDB.call('deleteEventSeries', rid),
   localDeleteEvent: (d, id)  => window.__pearDB.call('localDeleteEvent', d, id),
   getGroup:      (id)        => window.__pearDB.call('getGroup', id),
+  // #164 - the link is built by the WORKLET, from the authoritative group
+  // record. A UI copy can be missing the local-only encryptionKey and would
+  // mint an invite that produces a keyless join.
+  buildInvite:   (id)        => window.__pearDB.call('buildInvite', id),
+  buildReinvite: (id)        => window.__pearDB.call('buildReinvite', id),
   listGroups:    ()          => window.__pearDB.call('listGroups'),
   putGroup:      (g)         => window.__pearDB.call('putGroup', g),
   deleteGroup:   (id)        => window.__pearDB.call('deleteGroup', id),

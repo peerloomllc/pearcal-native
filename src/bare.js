@@ -30,6 +30,7 @@ const { shouldSwallowFault, parseConflictLog } = require('./lib/conflictSeatbelt
 const { writerRewindStatus } = require('./lib/rewindGuard.js')
 const { shouldIgnoreSelfMemberLeft, canClaimOwnership, shouldHonorGroupDeleted } = require('./lib/ownerGuard.js')
 const { buildSeedInvite, buildSeedBundle } = require('./lib/seedInvite.js')
+const { buildInviteLink, buildReinviteLink } = require('./lib/inviteLink.js')
 const {
   SEED_ENROLL_PROTOCOL, SEED_ENROLL_ID,
   buildSeedEnrollBatch, parseSeedEnrollAck, autoFollowEligible,
@@ -335,6 +336,8 @@ async function handle (method, args) {
     case 'repairKeylessGroup':      return repairKeylessGroupFromInvite(args[0], args[1])
     case 'isBlockedFromGroup': return db.get('blockedFromGroup:' + args[0]).then(n => !!n).catch(() => false)
     case 'clearBlockedFromGroup': return db.del('blockedFromGroup:' + args[0]).catch(() => {})
+    case 'buildInvite':      return buildInviteFor(args[0], { reinvite: false })
+    case 'buildReinvite':    return buildInviteFor(args[0], { reinvite: true })
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
     case 'debugGroup':       return debugGroup(args[0])
     case 'listMembers':      return listMembers(args[0])
@@ -2244,6 +2247,38 @@ async function reconcileGroupEncryptionKey (groupId, encryptionKey) {
     console.error('[personal] encrypted reopen failed for', groupId, e?.message)
   }
   return true
+}
+
+// Mint a member invite from the AUTHORITATIVE local group record (#164).
+//
+// The builder used to be reachable only from the WebView, which holds a COPY of
+// the group and can be missing the local-only `encryptionKey` — the key is
+// stripped from every Autobase view record by design, so any UI object sourced
+// from one lacks it. A link minted from such a copy has no `enc=`, and whoever
+// accepts it joins keyless: wrong swarm topic, never syncs, and mints more
+// broken invites (#124). Reported from the field 2026-08-08, where every member
+// of an encrypted calendar was handing out exactly that.
+//
+// Reading the record here removes the whole class: this is the same row
+// joinGroup opens the Autobase from, so if the link lacks `enc=` then the group
+// genuinely is unencrypted.
+//
+// Refuses rather than mints a broken link when the record says the group is
+// encrypted but holds no key — that device is the damaged one (the #124 latch),
+// and a silent bad invite is how the damage spreads.
+async function buildInviteFor (groupId, { reinvite = false } = {}) {
+  if (!groupId) throw new Error('buildInvite: no groupId')
+  const node = await db.get(NS.groups + groupId).catch(() => null)
+  const group = node?.value
+  if (!group) throw new Error('buildInvite: unknown group ' + groupId)
+  if (group.encrypted && !group.encryptionKey) {
+    const e = new Error('keyless')
+    e.code = 'keyless'
+    throw e
+  }
+  const profile = await getProfile().catch(() => null)
+  const build = reinvite ? buildReinviteLink : buildInviteLink
+  return build(group, profile?.id ?? 'unknown')
 }
 
 async function reinviteMember (groupId, memberId) {

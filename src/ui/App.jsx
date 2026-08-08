@@ -13,7 +13,7 @@
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { buildInviteLink, handleInviteLink } from '../invite.js'
+import { handleInviteLink } from '../invite.js'
 import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
 import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
@@ -5060,23 +5060,30 @@ function NicknameBeforeJoinSheet ({ groupName, defaultName, onConfirm, onClose, 
 
 function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApprovalGroups, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
   const [copiedId,         setCopiedId]         = useState(null)
+  // Set when the worklet refuses to mint a link because this device holds no
+  // block key for an encrypted group (#164). Better a visible refusal than a
+  // link that quietly produces a member who can never sync.
+  const [copyFailed,       setCopyFailed]       = useState(null)
   const [inviteModalGroup, setInviteModalGroup] = useState(null)
 
   useEffect(() => {
     const s = typeof window !== 'undefined' ? window.__pearScreenshotScene : null
     if (s?.openInviteGroupId) {
       const g = groups.find(gr => gr.id === s.openInviteGroupId)
-      if (g) setInviteModalGroup(g)
+      // Same shape as the real button: the worklet mints the link (#164).
+      if (g) db?.buildInvite(g.id).then(link => setInviteModalGroup({ group: g, link })).catch(() => {})
     }
   }, [groups])
 
   async function copyInvite (g, e) {
     e.stopPropagation()
     if (!readyGroupKeys.has(g.id)) return
-    // Always fetch fresh from DB to get the real Autobase key, not the placeholder
-    const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
-    const src = fresh ?? g
-    const link = buildInviteLink(src, profile?.id ?? 'unknown')
+    // #164 - the worklet builds the link from the authoritative group record.
+    // This used to fetch the record and build here, which is one copy too many:
+    // any group object missing the local-only encryptionKey mints a link with
+    // no `enc=`, and whoever accepts it joins keyless and never syncs.
+    const link = await db?.buildInvite(g.id).catch(() => null)
+    if (!link) { setCopyFailed(g.id); setTimeout(() => setCopyFailed(null), 4000); return }
     navigator.clipboard?.writeText(link)
     setCopiedId(g.id)
     setTimeout(() => setCopiedId(null), 2000)
@@ -5213,11 +5220,31 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             </div>
 
 
+            {/* #164 - the worklet refused to mint a link, which it only does
+                when this device holds no block key for an encrypted group.
+                Silence here would be the original bug in a new costume: the
+                user would think they had shared something. */}
+            {copyFailed === g.id && (
+              <div style={{ background:'#E5484D1A', border:'1px solid #E5484D55', borderRadius:10,
+                padding:'10px 12px', marginBottom:8, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                <div style={{ marginBottom:2 }}>Can't create an invite on this device</div>
+                <div style={{ color:colors.text.muted }}>
+                  This calendar is encrypted and this device is missing the key, so any
+                  link it made would not work. Ask a member for a fresh invite and paste
+                  it into Join Group first.
+                </div>
+              </div>
+            )}
+
             <button onClick={async e => {
                 e.stopPropagation()
                 if (!readyGroupKeys.has(g.id)) return
-                const fresh = db ? await db.getGroup(g.id).catch(() => null) : null
-                setInviteModalGroup(fresh ?? g)
+                // #164 - mint the link in the worklet, from the authoritative
+                // record, and carry it into the modal. Building it at render
+                // time from a UI copy is what produced invites with no `enc=`.
+                const link = await db?.buildInvite(g.id).catch(() => null)
+                if (!link) { setCopyFailed(g.id); setTimeout(() => setCopyFailed(null), 4000); return }
+                setInviteModalGroup({ group: g, link })
               }}
               disabled={!readyGroupKeys.has(g.id)}
               style={{ width:'100%', padding:'10px', fontSize:13, fontFamily:FONT,
@@ -5260,9 +5287,8 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
       </div>
       {inviteModalGroup && (
         <InviteOptionsModal
-         
-          group={inviteModalGroup}
-          profile={profile}
+          group={inviteModalGroup.group}
+          link={inviteModalGroup.link}
           sync={sync}
           onQrGroup={onQrGroup}
           onClose={() => setInviteModalGroup(null)}
@@ -5274,9 +5300,12 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
 }
 
 // ─── Invite Options Modal ──────────────────────────────────────────────────────
-function InviteOptionsModal ({ group, profile, sync, onQrGroup, onClose, closeRef }) {
+// `link` is minted by the worklet from the authoritative group record and handed
+// in (#164). Deliberately NOT rebuilt here: this component only ever sees a UI
+// copy of the group, and a copy missing the local-only encryptionKey is exactly
+// what produced invites with no `enc=`.
+function InviteOptionsModal ({ group, link, sync, onQrGroup, onClose, closeRef }) {
   const bsCloseRef = useRef(null)
-  const link = buildInviteLink(group, profile?.id ?? 'unknown')
   const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:\n\n${link}`
 
   useEffect(() => {
@@ -6245,7 +6274,7 @@ function SkeletonList ({ count = 3, height = 64 }) {
 }
 
 // ─── Group Created Toast ───────────────────────────────────────────────────
-function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
+function GroupCreatedToast ({ group, db, sync, readyGroupKeys, onDismiss }) {
   const [leaving, setLeaving] = useState(false)
 
   useEffect(() => {
@@ -6257,10 +6286,13 @@ function GroupCreatedToast ({ group, me, sync, readyGroupKeys, onDismiss }) {
     if (leaving) setTimeout(() => onDismiss(), 150)
   }, [leaving])
 
-  function handleShare () {
+  async function handleShare () {
+    // #164 - worklet-minted, from the authoritative record. Nothing is shared
+    // if it refuses, rather than handing out a link that cannot work.
+    const link = await db?.buildInvite(group.id).catch(() => null)
     setLeaving(true)
     setTimeout(() => onDismiss(), 150)
-    sync?.nativeShare('Join ' + group.name + ' on PearCal', buildInviteLink(group, me?.id ?? 'unknown'))
+    if (link) sync?.nativeShare('Join ' + group.name + ' on PearCal', link)
   }
 
   const ready = readyGroupKeys.has(group.id)
