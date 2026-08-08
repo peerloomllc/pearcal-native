@@ -29,6 +29,7 @@ import {
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
   useProfile, useRsvps, useGroups, useEvents, useHolidayRepair,
   emitter, Tour,
+  KeylessNotice, SyncHealthNotice, PendingApprovalNotice,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
@@ -467,17 +468,6 @@ function mergeGroupState (prev, incoming) {
   if (merged.indexers === undefined && prev?.indexers !== undefined) merged.indexers = prev.indexers
   if (merged.rollout === undefined && prev?.rollout !== undefined) merged.rollout = prev.rollout
   return merged
-}
-
-// Coarse on purpose (#155). The judgement is "has this been quiet for days",
-// so minutes and seconds would imply a precision the 48h threshold does not have.
-function fmtSyncAge (ms) {
-  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return 'a while'
-  const days = Math.floor(ms / 86400000)
-  if (days >= 14) return Math.floor(days / 7) + ' weeks'
-  if (days >= 2) return days + ' days'
-  const hours = Math.floor(ms / 3600000)
-  return hours >= 1 ? hours + ' hours' : 'a while'
 }
 
 export default function App ({ db, notifs, sync }) {
@@ -5116,74 +5106,24 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
                 <GearSix size={18} weight="thin" color="var(--color-muted)" />
               </button>
             </div>
-            {pendingApprovalGroups?.has(g.id) && (
-              <div style={{ background:'#F5C47422', border:'1px solid #F5C47466', borderRadius:10,
-                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <Hourglass size={18} weight="thin" color="#F5C474" style={{ flexShrink:0, marginTop:1 }} />
-                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
-                  <div style={{ fontWeight:400, marginBottom:2 }}>Waiting for owner approval</div>
-                  <div style={{ color:colors.text.muted }}>
-                    The owner must approve your return before you'll see the group's members and events.
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* TODO #124: this device holds no block-encryption key for an
-                encrypted group, so it sits on the raw-groupKey swarm topic
-                while every keyed peer is on the domain-separated one. It will
-                never sync, and every invite it mints omits `enc=`, quietly
-                breaking whoever accepts it. A fresh invite from a current
-                member is the only cure and nothing used to say so. */}
-            {g.keyless && (
-              <div style={{ background:'#E5484D1A', border:'1px solid #E5484D55', borderRadius:10,
-                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <Lock size={18} weight="thin" color="#E5484D" style={{ flexShrink:0, marginTop:1 }} />
-                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
-                  <div style={{ fontWeight:400, marginBottom:2 }}>
-                    {g.keyless.certainty === 'certain'
-                      ? "This group can't sync on this device"
-                      : "This group hasn't synced since you joined"}
-                  </div>
-                  <div style={{ color:colors.text.muted }}>
-                    {g.keyless.certainty === 'certain'
-                      ? 'It is encrypted and this device is missing the key, so it cannot reach the other members.'
-                      : 'It may be encrypted with a key this device is missing, or the others may simply be offline.'}
-                    {' '}Ask a member to send you a fresh invite link, then paste it into Join Group to repair it.
-                  </div>
-                  <div style={{ color:colors.text.muted, marginTop:4, fontSize:11 }}>Group ID: {g.id}</div>
-                </div>
-              </div>
-            )}
-
-            {/* #155: a shared calendar going quiet used to be completely
-                invisible. Reported from the field: a five-member group stopped
-                syncing, the app said nothing, and the user repaired it by
-                creating a NEW group and moving every event across, which meant
-                re-inviting everyone. Shown only when there IS somebody to sync
-                with and we have a baseline to judge against, so groups that
-                predate this stay quiet rather than crying wolf on first launch.
-                Suppressed when the keyless banner above is already saying it. */}
-            {!g.keyless && g.syncHealth?.state === 'stale' && (
-              <div style={{ background:'#F5A62333', border:'1px solid #F5A62366', borderRadius:10,
-                padding:'10px 12px', marginBottom:12, display:'flex', gap:10, alignItems:'flex-start' }}>
-                <Warning size={18} weight="thin" color="#F5A623" style={{ flexShrink:0, marginTop:1 }} />
-                <div style={{ flex:1, fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
-                  <div style={{ fontWeight:400, marginBottom:2 }}>
-                    {g.syncHealth.reason === 'never-synced'
-                      ? "This calendar hasn't synced yet"
-                      : 'This calendar hasn\'t synced in ' + fmtSyncAge(g.syncHealth.sinceMs)}
-                  </div>
-                  <div style={{ color:colors.text.muted }}>
-                    {g.syncHealth.reason === 'never-synced'
-                      ? 'Nothing has arrived from the other members since you joined.'
-                      : 'Nothing has arrived from the other members for a while.'}
-                    {' '}They may simply be offline. If they are using it and you still see this,
-                    ask one of them to send you a fresh invite link and paste it into Join Group.
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* The three trouble notices are SHARED with desktop
+                (src/ui-shared/components/GroupNotices.jsx, #163). They used to
+                be written out here and existed on mobile only, so the shipped
+                desktop build said nothing at all when a calendar broke. Each
+                renders null when it has nothing to say, so they drop in
+                unconditionally, and SyncHealthNotice suppresses itself when the
+                keyless one is already saying it. */}
+            {(() => {
+              const theme = { text: colors.text.primary, muted: colors.text.muted }
+              return (<>
+                <PendingApprovalNotice pending={pendingApprovalGroups?.has(g.id)} theme={theme}
+                  icon={<Hourglass size={18} weight="thin" color="#F5C474" />} />
+                <KeylessNotice group={g} theme={theme}
+                  icon={<Lock size={18} weight="thin" color="#E5484D" />} />
+                <SyncHealthNotice group={g} theme={theme}
+                  icon={<Warning size={18} weight="thin" color="#F5A623" />} />
+              </>)
+            })()}
 
             {/* #159. There IS a notice for this, decided by classifyIndexerNotice
                 in src/lib/indexerHealth.js, and it is deliberately not rendered
