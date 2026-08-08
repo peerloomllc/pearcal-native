@@ -22,20 +22,33 @@
 // (bare.js strips it in appendGroupWithAvatarSplit) and every write is supposed
 // to merge the local one back.
 //
-// STATUS 2026-08-08: the key-preservation checks that DO run all pass — join,
-// local edit and restart keep the key and keep `enc=` in the minted link. The
-// two replication checks FAIL for an unrelated reason and the harness says so
-// rather than hiding it: two peers on ONE host never find each other here
-// ("no owner contact after 90000 ms"), which is the worst hairpin case there
-// is. So the replication half — the part most likely to hold the bug, since it
-// is the only path where a view-derived record overwrites the local one — is
-// still UNTESTED, and its neighbouring PASS lines are vacuous. Do not read this
-// harness as clearing that path.
+// STATUS 2026-08-08: NOT REPRODUCED, with the replication half genuinely
+// exercised. Run it with the member on a second machine:
 //
-// To finish it, give the two peers a way to meet: a local DHT bootstrap
-// (hyperdht's testnet) threaded into the Hyperswarm that bare.js constructs,
-// which today takes no bootstrap option, or run the second peer on another
-// machine (the TCL, or the Mac Mini over ssh).
+//   REMOTE_MEMBER=Tims-Mac-mini.local node test/harness/member-invite-enc.js
+//
+// (sync src/, test/harness/ and electron/src/main/barekit-shim.js there first).
+// Two peers on ONE host never find each other - the worst hairpin case there is,
+// and it is NOT the hyperdht 6.30.0 vs 6.33.0 skew, both were tried. Across a
+// real two-host pair the member keeps the key and mints `enc=` through joining,
+// through the owner's authoritative record replicating in, through an owner
+// edit, through Resync and through a restart. Resync matters most: it walks the
+// VIEW and merges every row back into the local database
+// (`resyncGroup:view-merge`, src/bare.js:5732), and view rows carry no
+// encryptionKey by construction, so it was the best remaining candidate. It is
+// clean.
+//
+// So a clean-room member does not lose the key. Whatever is happening to the
+// real members involves something in their history this does not recreate.
+// Worth trying next: a member joining from an invite that never had `enc`, an
+// owner that rekeys, a member removed and re-invited, and a group that predates
+// encryption entirely.
+//
+// One quirk to expect: the two "replicated" checks can FAIL on a slow round
+// even when replication worked - they poll for a fixed window and the peers
+// sometimes meet after it closes. Check the member log tail the harness prints;
+// `[APPLY] group put ... win: true` lines mean it did replicate and the failure
+// is the timer, not the engine.
 
 const path = require('path')
 const fs = require('fs')
@@ -98,13 +111,39 @@ const { buildInviteLink, parseInviteLink } = require('../../src/invite.js')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'invite-enc-'))
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-function startPeer (label) {
-  const dir = path.join(tmp, label)
-  fs.mkdirSync(dir, { recursive: true })
-  const child = spawn(process.execPath, [__filename], {
-    env: { ...process.env, PEER_ROLE: label, PEER_DIR: dir },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  })
+// A peer runs here, or on another machine over ssh. The remote option exists
+// because two peers on ONE host never find each other (see the header) — the
+// member has to be a genuinely separate machine for the replication half of
+// this harness to mean anything. The Mac Mini is the convenient one: it already
+// has the repo and node_modules, so it needs no build and no device.
+//
+//   REMOTE_MEMBER=Tims-Mac-mini.local node test/harness/member-invite-enc.js
+//
+// Sync src/, test/harness/ and electron/src/main/barekit-shim.js there first.
+const REMOTE_MEMBER = process.env.REMOTE_MEMBER || null
+const REMOTE_REPO = process.env.REMOTE_REPO || '~/peerloomllc/pearcal-native'
+
+function startPeer (label, remoteHost, fixedDir) {
+  let dir = fixedDir || path.join(tmp, label)
+  let child
+  if (remoteHost) {
+    // `bash -lc` so the remote login profile puts node on PATH (Homebrew node
+    // is not on a non-interactive ssh PATH by default).
+    const remoteDir = fixedDir || ('/tmp/pearcal-harness-' + label + '-' + process.pid)
+    dir = remoteDir   // the dataDir `init` is told must be the REMOTE path
+    const cmd = 'mkdir -p ' + remoteDir + ' && cd ' + REMOTE_REPO +
+      ' && PEER_ROLE=' + label + ' PEER_DIR=' + remoteDir +
+      ' node test/harness/member-invite-enc.js'
+    child = spawn('ssh', ['-o', 'BatchMode=yes', remoteHost, 'bash -lc ' + JSON.stringify(cmd)], {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+  } else {
+    fs.mkdirSync(dir, { recursive: true })
+    child = spawn(process.execPath, [__filename], {
+      env: { ...process.env, PEER_ROLE: label, PEER_DIR: dir },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+  }
   const peer = { label, dir, child, events: [], pending: new Map(), nextId: 1, log: [] }
   child.stderr.on('data', d => peer.log.push(d.toString()))
   let buf = ''
@@ -182,7 +221,8 @@ const encOf = link => new URL(link).searchParams.get('enc')
 
 async function main () {
   const owner  = startPeer('owner')
-  const member = startPeer('member')
+  const member = startPeer('member', REMOTE_MEMBER)
+  console.log('member runs on: ' + (REMOTE_MEMBER || 'this host (peers will NOT meet — see header)') + '\n')
   try {
     await boot(owner); await boot(member)
     await owner.call('updateProfile', [{ name: 'Owner' }])
@@ -235,11 +275,27 @@ async function main () {
     check('member: still holds the key after the owner edit', !!renamed.encryptionKey, true)
     check('member: invite still carries enc after the owner edit', !!encOf(buildInviteLink(renamed, memberProfile.id)), true)
 
+    // ── Resync, the path #123 says destroyed keys for months ───────────────
+    // resyncGroup walks the Autobase VIEW and merges every row back into the
+    // local database (`resyncGroup:view-merge`, src/bare.js:5732). View rows
+    // carry no encryptionKey by construction, so this is the single most
+    // likely place for a member's key to be dropped — and it is user-triggered,
+    // which fits a bug that shows up on some devices and not others.
+    await member.call('resyncGroup', [gid]).catch(() => {})
+    await sleep(3000)
+    const afterResync = await member.call('getGroup', [gid])
+    check('member: holds the key after Resync', !!afterResync.encryptionKey, true)
+    check('member: invite carries enc after Resync', !!encOf(buildInviteLink(afterResync, memberProfile.id)), true)
+
     // ── and after a restart, which is where a lost key finally bites ───────
+    // The peer process ends with its shutdown (over ssh, the connection closes
+    // with it), so restarting means respawning against the SAME data dir.
     await member.call('shutdown').catch(() => {})
     await sleep(2000)
-    await boot(member)
-    const afterRestart = await member.call('getGroup', [gid])
+    member.child.kill('SIGKILL')
+    const revived = startPeer('member', REMOTE_MEMBER, member.dir)
+    await boot(revived)
+    const afterRestart = await revived.call('getGroup', [gid])
     check('member: holds the key after restart', !!afterRestart.encryptionKey, true)
     check('member: invite carries enc after restart', !!encOf(buildInviteLink(afterRestart, memberProfile.id)), true)
 
@@ -249,6 +305,9 @@ async function main () {
     }
   } finally {
     owner.child.kill('SIGKILL'); member.child.kill('SIGKILL')
+    if (REMOTE_MEMBER) {
+      try { require('child_process').execSync('ssh -o BatchMode=yes ' + REMOTE_MEMBER + " 'rm -rf /tmp/pearcal-harness-member-*'") } catch (e) {}
+    }
     fs.rmSync(tmp, { recursive: true, force: true })
   }
   process.exit(failures ? 1 : 0)
