@@ -33,6 +33,7 @@ import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
+import { canEditEvent } from './lib/eventPermissions.js'
 
 const FONT = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif"
 
@@ -310,16 +311,27 @@ export default function App ({ db, notifs, sync }) {
     setGroups(prev => prev.filter(x => x.id !== id))
   }, [db, sync, setGroups])
 
+  // A copy is a NEW event and belongs to whoever made it. Carrying the original
+  // `creatorId` through produced a copy attributed to someone else which, if it
+  // was also "Only me", the duplicator could not then edit (#162).
+  function duplicateOf (ev) {
+    return { ...ev, id: undefined, recurrence: 'none', recurrenceId: '',
+             creatorId: profile?.id ?? '', rsvpEnabled: false }
+  }
+
   function buildEventContextItems (ev, anchorX, anchorY) {
     const anchor = (anchorX != null && anchorY != null) ? { x: anchorX, y: anchorY } : null
+    const mayEdit = canEditEvent(ev, profile?.id)
     return [
-      { label: 'Edit',      onClick: () => openEditModal(ev, anchor) },
-      { label: 'Duplicate', onClick: () => {
-        const copy = { ...ev, id: undefined, recurrence: 'none', recurrenceId: '' }
-        setModal({ mode: 'create', initial: copy, anchor })
-      }},
-      { divider: true },
-      { label: 'Delete', danger: true, onClick: () => deleteEvent(ev.id) },
+      // Edit stays on a locked event — the modal opens read-only, which is how
+      // you read the full details. Delete does not: it would append a
+      // group-wide deletion of an event this user does not own.
+      { label: mayEdit ? 'Edit' : 'View', onClick: () => openEditModal(ev, anchor) },
+      { label: 'Duplicate', onClick: () => setModal({ mode: 'create', initial: duplicateOf(ev), anchor }) },
+      ...(mayEdit ? [
+        { divider: true },
+        { label: 'Delete', danger: true, onClick: () => deleteEvent(ev.id) },
+      ] : []),
     ]
   }
 
@@ -335,6 +347,10 @@ export default function App ({ db, notifs, sync }) {
   // resize to a 30-min minimum and the day boundary), then ship it through
   // saveEvent — same path the modal uses, so per-group sync fires too.
   function commitEventDrag ({ ev, mode, deltaMin }) {
+    // Dragging is a silent edit with no form and no Save button, so it was the
+    // easiest way to rewrite an event you do not own (#162). The view snaps the
+    // block back on its own once no save arrives.
+    if (!canEditEvent(ev, profile?.id)) return
     const startMin = toMin(ev.start || '00:00')
     const endMin   = toMin(ev.end   || ev.start || '00:00')
     const duration = Math.max(30, endMin - startMin)
@@ -550,13 +566,13 @@ export default function App ({ db, notifs, sync }) {
           anchor={{ x: inspector.x, y: inspector.y }}
           groupsById={groupsById}
           use24h={use24h}
+          canEdit={canEditEvent(inspector.ev, profile?.id)}
           onEdit={() => openEditModal(inspector.ev, { x: inspector.x, y: inspector.y })}
           onDelete={() => { deleteEvent(inspector.ev.id); setInspector(null) }}
           onDuplicate={() => {
-            const copy = { ...inspector.ev, id: undefined, recurrence: 'none', recurrenceId: '' }
             const anchor = { x: inspector.x, y: inspector.y }
             setInspector(null)
-            setModal({ mode: 'create', initial: copy, anchor })
+            setModal({ mode: 'create', initial: duplicateOf(inspector.ev), anchor })
           }}
           onClose={() => setInspector(null)}
         />
