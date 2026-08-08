@@ -28,7 +28,30 @@ const read = (p) => fs.readFileSync(path.join(root, p), 'utf8')
 
 // Modules imported by BOTH src/ui and src/ui-desktop, so anything they call on
 // `db` has to be answerable in either host.
-const SHARED_MODULES = ['src/invite.js']
+//
+// `src/ui-shared/` joined the list in the #163 parity audit
+// (proposals/2026-08-08-desktop-ui-parity.md). Its hooks are imported by both
+// UIs and call getProfile, listGroups, listEvents, putEvent and
+// localDeleteEvent; all five are present in both proxies today, so this is a
+// guard rather than a fix, added while it is still cheap. It is the same shape
+// of gap as #146 and the same silent failure: a missing proxy entry just reads
+// as `undefined`.
+const SHARED_MODULES = [
+  'src/invite.js',
+  ...sharedUiFiles(),
+]
+
+// Every .js/.jsx under src/ui-shared, since the whole directory is shared by
+// construction and grows.
+function sharedUiFiles (dir = 'src/ui-shared') {
+  const out = []
+  for (const ent of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
+    const rel = dir + '/' + ent.name
+    if (ent.isDirectory()) out.push(...sharedUiFiles(rel))
+    else if (/\.jsx?$/.test(ent.name)) out.push(rel)
+  }
+  return out
+}
 
 const PROXIES = {
   mobile: 'src/ui/main.jsx',
