@@ -45,3 +45,8 @@ export { useHolidayRepair } from './hooks/useHolidayRepair.js'
 export { emitter } from './emitter.js'
 
 export { Tour } from './components/Tour.jsx'
+// The three "your calendar is in trouble" notices, shared so a host cannot ship
+// without them (#163). Mobile had all three; the shipped v1.0.43 desktop had none.
+export {
+  GroupNotices, KeylessNotice, SyncHealthNotice, PendingApprovalNotice, fmtSyncAge,
+} from './components/GroupNotices.jsx'

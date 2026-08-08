@@ -11,11 +11,12 @@ import { useEffect, useRef, useState } from 'react'
 import { compressImage } from '../lib/imagePicker.js'
 import { MemberAvatar } from './MemberAvatar.jsx'
 import { QRCodeCanvas } from './QRCode.jsx'
+import { GroupNotices } from '../../ui-shared/index.js'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
 
-export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLeave, onDelete, onClose }) {
+export function GroupSettingsModal ({ tokens, group, profile, db, pendingApproval, onUpdate, onLeave, onDelete, onClose }) {
   const [name,    setName]    = useState(group?.name  ?? '')
   const [emoji,   setEmoji]   = useState(group?.emoji ?? '')
   const [color,   setColor]   = useState(group?.color ?? GROUP_COLORS[0])
@@ -171,6 +172,17 @@ export function GroupSettingsModal ({ tokens, group, profile, db, onUpdate, onLe
             background: 'transparent', border: 'none',
           }}>✕</button>
         </div>
+
+        {/* #163 - the three trouble notices, shared with mobile
+            (src/ui-shared/components/GroupNotices.jsx). They existed on mobile
+            only, so the shipped desktop build said nothing at all when a
+            calendar broke. Each renders null when it has nothing to say. No
+            icons passed: desktop has no icon library and the wording stands on
+            its own. */}
+        <GroupNotices
+          group={group}
+          pendingApproval={pendingApproval}
+          theme={{ text: tokens.text, muted: tokens.muted }} />
 
         {!isOwner && (
           <div style={{

@@ -17,6 +17,7 @@ export function Sidebar ({
   selectedDate, setSelectedDate,
   miniCursor, setMiniCursor,
   visibleGroups,
+  pendingApprovalGroups,
   onOpenProfile, onOpenSettings, onOpenAbout, onGroupContextMenu,
   onNewGroup, onJoinGroup,
 }) {
@@ -35,6 +36,7 @@ export function Sidebar ({
       <div data-tour="sidebar-groups" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <GroupList tokens={tokens} groups={groups}
                    isVisible={visibleGroups.isVisible} toggle={visibleGroups.toggle}
+                   pendingApprovalGroups={pendingApprovalGroups}
                    onContextMenu={onGroupContextMenu}
                    onNewGroup={onNewGroup} onJoinGroup={onJoinGroup} />
       </div>

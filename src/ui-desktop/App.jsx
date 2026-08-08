@@ -74,6 +74,10 @@ export default function App ({ db, notifs, sync }) {
     document.body.setAttribute('data-theme', isDark ? 'dark' : 'light')
   }, [isDark])
   const [groups, setGroups] = useGroups(db)
+  // #163 - desktop already bridged `pendingApproval` in main.jsx and already had
+  // the `listPendingApprovals` proxy entry; nothing ever consumed either, so a
+  // joiner waiting on the owner saw no explanation at all.
+  const [pendingApprovalGroups, setPendingApprovalGroups] = useState(() => new Set())
   const [events, setEvents, eventsReady] = useEvents(db)
   const [myRsvps] = useRsvps(db)
   // Move any holiday event still sitting at a date an older build got wrong.
@@ -269,13 +273,26 @@ export default function App ({ db, notifs, sync }) {
     }
     const onDomGroupJoined = (e) => onGroupJoined(e.detail)
 
+    const onPendingApproval = (gid) =>
+      setPendingApprovalGroups(prev => { const n = new Set(prev); n.add(gid); return n })
+    const onPendingApprovalCleared = (gid) =>
+      setPendingApprovalGroups(prev => { const n = new Set(prev); n.delete(gid); return n })
+
+    db?.listPendingApprovals?.()
+      .then(ids => { if (Array.isArray(ids)) setPendingApprovalGroups(new Set(ids)) })
+      .catch(() => {})
+
     emitter.on('sync',            onSync)
+    emitter.on('pendingApproval', onPendingApproval)
+    emitter.on('pendingApprovalCleared', onPendingApprovalCleared)
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
     emitter.on('groupDeleted',    onGroupDeleted)
     emitter.on('group:joined',    onGroupJoined)
     window.addEventListener('pear:groupJoined', onDomGroupJoined)
     return () => {
       emitter.off('sync',            onSync)
+      emitter.off('pendingApproval', onPendingApproval)
+      emitter.off('pendingApprovalCleared', onPendingApprovalCleared)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
       emitter.off('groupDeleted',    onGroupDeleted)
       emitter.off('group:joined',    onGroupJoined)
@@ -506,6 +523,7 @@ export default function App ({ db, notifs, sync }) {
         miniCursor={view.miniCursor}
         setMiniCursor={view.setMiniCursor}
         visibleGroups={visibleGroups}
+        pendingApprovalGroups={pendingApprovalGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
         onOpenAbout={openAbout}
@@ -639,6 +657,7 @@ export default function App ({ db, notifs, sync }) {
           group={groups.find(g => g.id === groupSettings.id) ?? groupSettings}
           profile={profile}
           db={db}
+          pendingApproval={pendingApprovalGroups.has(groupSettings.id)}
           onUpdate={updateGroup}
           onLeave={leaveGroup}
           onDelete={deleteGroupAction}
