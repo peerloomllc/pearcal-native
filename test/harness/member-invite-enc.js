@@ -111,6 +111,14 @@ const { buildInviteLink, parseInviteLink } = require('../../src/invite.js')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'invite-enc-'))
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
+// How long to wait for the two peers to find each other. Generous by default:
+// on a real LAN with the relay off they have taken over two minutes, and the
+// join watchdog's own 90s log line is NOT the deadline. A window that is too
+// short reports a timer expiry as a sync failure, which is exactly how an
+// earlier A/B of hyperdht 6.30.0 vs 6.33.0 (#165) produced a clean-looking
+// result that did not reproduce.
+const MEET_S = Number(process.env.MEET_TIMEOUT_S || 300)
+
 // A peer runs here, or on another machine over ssh. The remote option exists
 // because two peers on ONE host never find each other (see the header) — the
 // member has to be a genuinely separate machine for the replication half of
@@ -188,6 +196,12 @@ async function boot (peer) {
   peer.events.length = 0
   peer.send({ method: 'init', dataDir: peer.dir, platform: 'desktop' })
   await peer.waitEvent('ready')
+  // NO_RELAY=1 turns the blind relay off on both peers. Without it a peer that
+  // cannot reach another over the LAN still connects THROUGH the relay, so the
+  // run passes and proves nothing about local connectivity - the control this
+  // harness needs when it is being used to test hyperdht's same-LAN behaviour
+  // (#165). See [[feedback_relay_token_patience_and_controls]].
+  if (process.env.NO_RELAY) await peer.call('setUseRelay', [false]).catch(() => {})
 }
 
 // What the UI actually does with a pasted link (src/invite.js handleInviteLink):
@@ -250,7 +264,7 @@ async function main () {
     // which by design carries no encryptionKey. This is the moment the local
     // key has to be merged back rather than overwritten.
     console.log('\n... waiting for the two peers to meet and replicate')
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < MEET_S; i++) {
       const g = await member.call('getGroup', [gid]).catch(() => null)
       if (g && !(g.members ?? []).some(m => m.name === 'Inviter')) break
       await sleep(1000)
@@ -265,7 +279,7 @@ async function main () {
     const ownerNow = await owner.call('getGroup', [gid])
     await owner.call('putGroup', [{ ...ownerNow, name: 'Fam Renamed', updatedAt: Date.now() }])
     await owner.call('putGroup:sync', [{ ...ownerNow, name: 'Fam Renamed', updatedAt: Date.now() }]).catch(() => {})
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < MEET_S; i++) {
       const g = await member.call('getGroup', [gid]).catch(() => null)
       if (g?.name === 'Fam Renamed') break
       await sleep(1000)
