@@ -56,6 +56,30 @@ const IS_IOS = window.__pearPlatform === 'ios'
 // the paste/copy-link alternatives that sit beside them.
 const IS_DESKTOP = window.__pearPlatform === 'desktop'
 
+// TODO #157 — "Rekey Group" cannot work and is hidden until it can.
+//
+// buildMarker (src/lib/migration.js:31) refuses unless
+// `profile.id === profile.publicKey`, and it must: that equality is what binds
+// the owner's identity to the key the migration marker is signed with, so
+// dropping the check would let anyone forge a rekey by naming the real owner
+// and signing with their own key. But profile ids are 32 hex chars
+// (blake2b-16 of the identity key, deriveProfileIdFromIdentity in bare.js) and
+// public keys are 64, so for every identity-derived profile the check can NEVER
+// pass. Pressing the button just raises "profile.id must equal
+// profile.publicKey" as a toast.
+//
+// It has shipped in this state for a while and nobody has reported it, which
+// fits — it is buried under STORAGE, framed as a space-saving nicety, and fails
+// quietly. Hiding it stops a user spending their one repair attempt on a button
+// that cannot work, which matters more now that #159's repair and #156 both
+// want to route through the same path.
+//
+// Flip back to true with the #157 fix. The plan is a v2 marker carrying an
+// IdentityKey proof (the same mechanism writer-announce already uses) so the
+// verifier can check the signing key belongs to the identity whose hash IS the
+// ownerId — same guarantee, no impossible equality.
+const REKEY_UI_ENABLED = false
+
 // ─── Donation (BTC / Lightning) ─────────────────────────────────────────────
 // Shared across the PeerLoom app family; keep constants identical.
 const LIGHTNING_ADDRESS   = 'peerloomllc@strike.me'
@@ -6035,7 +6059,10 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
 
           {/* Danger zone */}
           <div>
-            {isOwner && (
+            {/* Hidden behind REKEY_UI_ENABLED (#157) — the button cannot
+                work, and STORAGE holds nothing else, so the whole section goes
+                rather than leaving an empty box. */}
+            {REKEY_UI_ENABLED && isOwner && (
               <>
                 {section('STORAGE')}
                 <div style={{ border:`1px solid ${colors.border}`, borderRadius:12, overflow:'hidden', marginBottom:12 }}>
