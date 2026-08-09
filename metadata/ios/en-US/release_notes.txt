@@ -1,16 +1,21 @@
 ## What's Changed
 
-  Fixed
+New
+   - Desktop now warns you when a shared calendar is in trouble: when it
+    can't sync on this device, when nothing has arrived from the others
+    for a while, or when you're waiting to be approved. Calendars
+    needing attention are marked in the sidebar. Previously the desktop
+    said nothing.
 
-    - Fixed the desktop app freezing shortly after you opened it. It
-      would show your calendar and then stop responding, or open a shared
-      calendar and never show any of its dates. The desktop version had
-      been missing several sync repairs the phone apps already had.
+Fixed
 
-    - Fixed the app slowly using more and more memory the longer it ran,
-      until syncing stopped altogether. This usually looked like a
-      calendar that had been working fine suddenly going quiet.
+    - Desktop: you could change other people's events even when only their
+      creator was allowed to. Your change was saved and sent out, leaving a
+      version only your computer believed in. Now it opens read-only.
+    - Invite links could be created without everything needed to join an
+      encrypted calendar, so whoever accepted one could never sync. Links
+      are now built correctly, and a device that can't make a working one
+      says so instead.
+    - Removed a "Rekey Group" button from group settings that could never
+      finish.
 
-    - iPhone: tapping an older-style invite link while PearCal was closed
-      opened the app and then did nothing. Normal invite links, and links
-      tapped while the app was already open, were not affected.
