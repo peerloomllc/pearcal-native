@@ -33,6 +33,9 @@ const { PearCalICloudKeychain } = NativeModules
 // repaints even though JS, input and haptics all still work. Only a FRESH render
 // process recovers it — a view-remount just rebinds the same pooled stale one.
 const { WebViewRecovery } = NativeModules
+// Shared by two consumers: the Android renderer recovery below, and the worklet's
+// foreground swarm rebuild, which needs to know whether we were away long enough
+// for the peer connections to have died.
 let _backgroundedAt = 0
 // Returning after a short background is fine and reloading then would be a
 // gratuitous ~1-2s flash, so only recover after a background long enough for the
@@ -1050,19 +1053,26 @@ webViewRef.current?.injectJavaScript(
       // below: that one is gated on dbReadyRef, but a frozen WebView has nothing
       // to do with whether the DB is up, and gating it there would skip recovery
       // on exactly the slow-start cases most likely to have been backgrounded.
-      if (Platform.OS === 'android') {
-        if (state === 'background' || state === 'inactive') {
-          if (_backgroundedAt === 0) _backgroundedAt = Date.now()
-        } else if (state === 'active') {
-          const bgMs = _backgroundedAt ? Date.now() - _backgroundedAt : 0
-          _backgroundedAt = 0
-          if (bgMs >= WEBVIEW_RECOVERY_MIN_BG_MS && WebViewRecovery?.terminateRenderer) {
-            WebViewRecovery.terminateRenderer().catch(() => {})
-          }
+      //
+      // How long we were away is tracked on BOTH platforms now, not just Android:
+      // the worklet needs it to decide whether the swarm's connections are stale
+      // enough to rebuild from scratch. Compute it once here, before either
+      // consumer below, since the Android renderer-recovery branch used to clear
+      // `_backgroundedAt` and would otherwise leave foregroundSync reading zero.
+      let bgMs = 0
+      if (state === 'background' || state === 'inactive') {
+        if (_backgroundedAt === 0) _backgroundedAt = Date.now()
+      } else if (state === 'active') {
+        bgMs = _backgroundedAt ? Date.now() - _backgroundedAt : 0
+        _backgroundedAt = 0
+      }
+      if (Platform.OS === 'android' && state === 'active') {
+        if (bgMs >= WEBVIEW_RECOVERY_MIN_BG_MS && WebViewRecovery?.terminateRenderer) {
+          WebViewRecovery.terminateRenderer().catch(() => {})
         }
       }
       if (state === 'active' && dbReadyRef.current) {
-        sendToWorklet({ method: 'foregroundSync', id: -98, args: [] })
+        sendToWorklet({ method: 'foregroundSync', id: -98, args: [{ bgMs, platform: Platform.OS }] })
         sendToWorklet({ method: 'refreshWidgetCache', id: -97, args: [] })
       } else if (state === 'background' && Platform.OS === 'android') {
         // react-native-bare-kit registers a global AppState listener that
