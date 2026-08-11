@@ -45,6 +45,7 @@ const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
 const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
+const { shouldBounceSwarm } = require('./lib/swarmBounce.js')
 const { resetPlan } = require('./lib/resetPlan.js')
 const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const { classifyRollout, REQUIRED_VERSION } = require('./lib/rolloutGate.js')
@@ -363,7 +364,7 @@ async function handle (method, args) {
     case 'resyncGroup':        return resyncGroup(args[0])
     case 'resyncAll':          return resyncAll()
     case 'sync':               return bgSync()
-    case 'foregroundSync':     return foregroundSync()
+    case 'foregroundSync':     return foregroundSync(args[0])
     case 'getReminders':     return getReminders(args[0])
     case 'putReminders':     return putReminders(args[0], args[1])
     case 'computeUpcomingReminders': return computeUpcomingReminders(args[0], args[1])
@@ -5545,13 +5546,55 @@ async function listPendingApprovals () {
   return out
 }
 
+let _swarmBouncing = null
+
+// Force Hyperswarm to rebuild every connection from scratch.
+//
+// `swarm.flush()` alone does NOT do this and is why an iPhone took 2-4 minutes to
+// show events after a long background. flush() is passive: it awaits discovery
+// sessions that are already scheduled plus dials already in flight, then returns
+// `true` the moment the queue is empty (hyperswarm/index.js `async flush`). It
+// never re-announces, never re-looks-up and never re-dials. Meanwhile iOS has
+// frozen the process long enough for the NAT mappings behind every holepunched
+// UDP path to expire, so the sockets are zombies: dead on the wire, still `open`
+// as far as the swarm is concerned. Nothing moves until each stream's own
+// keep-alive finally gives up, and only THEN does hyperswarm requeue and redial.
+// That expiry wait is the multi-minute delay.
+//
+// suspend()/resume() is hyperswarm's own answer to exactly this and was never
+// called anywhere in the codebase. suspend() destroys every connection, aborts
+// discovery, closes the DHT socket and resets the retry backoff; resume() rebinds
+// the socket, re-announces the server, refreshes discovery on every topic and
+// redials immediately with a clean attempt counter. Running them back to back on
+// resume gets the whole recovery without needing anything to execute during the
+// background transition, which on iOS is racy - the JS thread is being frozen.
+async function bounceSwarm (reason) {
+  if (!swarm) return
+  if (_swarmBouncing) return _swarmBouncing
+  _swarmBouncing = (async () => {
+    const t0 = Date.now()
+    try {
+      await swarm.suspend()
+      await swarm.resume()
+      console.log('[swarm] bounced (' + reason + ') in ' + (Date.now() - t0) + 'ms')
+    } catch (e) {
+      console.warn('[swarm] bounce failed (' + reason + '):', e?.message)
+      // Never leave the swarm parked. A suspend that lands and a resume that
+      // throws would strand every group offline until the next app restart.
+      try { if (swarm.suspended) await swarm.resume() } catch (e2) {}
+    }
+  })()
+  try { await _swarmBouncing } finally { _swarmBouncing = null }
+}
+
 // Called by iOS BGAppRefreshTask to process any replicated blocks while backgrounded.
-// Flushes Hyperswarm to re-establish peer connections, waits for replication,
-// then runs base.update() on every active group.
+// Rebuilds the peer connections, waits for replication, then runs base.update()
+// on every active group.
 async function bgSync () {
-  // Kick Hyperswarm to reconnect — connections drop when iOS suspends the app
   if (swarm) {
-    await swarm.flush().catch(() => {})
+    // This only ever runs after iOS has had the app suspended, so the connections
+    // are dead by definition. Rebuild rather than flush.
+    await bounceSwarm('bgSync')
     // Give peers a few seconds to connect and replicate cores
     await new Promise(r => setTimeout(r, 5000))
   }
@@ -5565,10 +5608,21 @@ async function bgSync () {
   emitSync(null)
 }
 
-// Called when app returns to foreground — flush Hyperswarm to reconnect peers
-// and update all Autobases so the UI shows fresh data immediately.
-async function foregroundSync () {
-  if (swarm) await swarm.flush().catch(() => {})
+// Called when app returns to foreground — reconnect peers and update all
+// Autobases so the UI shows fresh data immediately.
+//
+// `opts` comes from the RN shell's AppState handler: `bgMs` is how long we were
+// away, `platform` is 'ios' | 'android'. Both are optional so older callers (and
+// the desktop shell, which doesn't send them) keep the old flush-only behaviour.
+async function foregroundSync (opts = {}) {
+  const bgMs = Number(opts?.bgMs) || 0
+  const bounce = swarm && shouldBounceSwarm({
+    bgMs,
+    platform: opts?.platform,
+    connections: swarm.connections?.size ?? 0
+  })
+  if (bounce) await bounceSwarm('foreground after ' + Math.round(bgMs / 1000) + 's')
+  else if (swarm) await swarm.flush().catch(() => {})
   for (const [groupId, base] of bases) {
     try {
       if (await isForgottenGroup(groupId)) continue
