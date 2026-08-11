@@ -22,10 +22,11 @@ if (process.platform === 'linux') {
 }
 
 const path = require('path')
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog } = require('electron')
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, powerMonitor } = require('electron')
 const { createBareKitShim } = require('./barekit-shim')
 const { installBridge } = require('./bare-bridge')
 const { reconcileSchedule } = require('./shell-handlers')
+const { wakeGapFrom, WAKE_POLL_INTERVAL_MS } = require('../../vendor/src/lib/wakeGap.js')
 const updateChecker = require('./update-checker')
 const autoUpdater = require('./auto-updater')
 
@@ -97,6 +98,9 @@ app.whenReady().then(() => {
   // to fire-and-forget here.
   rehydrateReminders().catch(e => console.warn('[main] reminder rehydration failed:', e?.message ?? e))
   scheduleNextRehydration()
+
+  // powerMonitor is only usable once the app is ready.
+  startWakeWatch()
 
   if (SUPPORTS_IN_PLACE_UPDATE) {
     autoUpdater.start({ getMainWindow: () => mainWindow })
@@ -336,7 +340,61 @@ app.on('second-instance', (_event, argv) => {
   if (mainWindow) { mainWindow.show(); mainWindow.focus() }
 })
 
-app.on('before-quit', () => { isQuitting = true })
+// ── Wake-from-sleep sync (TODO #167) ────────────────────────────────────────
+//
+// The phones run foregroundSync off AppState; the desktop ran it never, so a
+// machine that slept for hours came back with the same dead connections the
+// iPhone had and nothing at all to trigger a recovery. Hyperswarm cannot notice
+// on its own: the sockets read as open and only each stream's own keep-alive
+// eventually gives up, which is the multi-minute delay PR #312 was about.
+//
+// Two triggers, because neither is reliable alone. powerMonitor's resume is the
+// clean signal but does not arrive on every Linux desktop environment, and a
+// hibernating or paused machine can skip suspend entirely; the wall-clock check
+// catches those. Both funnel into one place so a wake that fires both only syncs
+// once.
+let _sleptAt = 0
+let _lastWakeSync = 0
+let _wakePollAt = 0
+let _wakePollTimer = null
+
+function syncAfterWake (awayMs, reason) {
+  if (awayMs <= 0) return
+  // powerMonitor resume and the clock check routinely both fire for one wake.
+  if (Date.now() - _lastWakeSync < 10_000) return
+  _lastWakeSync = Date.now()
+  console.log('[main] awake after ' + Math.round(awayMs / 1000) + 's (' + reason + '), resyncing')
+  // platform is deliberately the real platform: the swarm-bounce decision only
+  // carves out Android, whose worklet survives a background behind a foreground
+  // service. A desktop that slept has no such protection and must rebuild.
+  bridge.callBare('foregroundSync', [{ bgMs: awayMs, platform: process.platform }])
+    .catch(e => console.warn('[main] wake resync failed:', e?.message ?? e))
+  rehydrateReminders().catch(() => {})
+}
+
+function startWakeWatch () {
+  powerMonitor.on('suspend', () => { _sleptAt = Date.now() })
+  powerMonitor.on('resume', () => {
+    const awayMs = _sleptAt ? Date.now() - _sleptAt : 0
+    _sleptAt = 0
+    // A resume with no recorded suspend still means we slept; fall back to the
+    // poll interval so the bounce threshold is cleared rather than skipped.
+    syncAfterWake(awayMs || WAKE_POLL_INTERVAL_MS * 2, 'powerMonitor resume')
+  })
+  _wakePollAt = Date.now()
+  _wakePollTimer = setInterval(() => {
+    const elapsed = Date.now() - _wakePollAt
+    _wakePollAt = Date.now()
+    const gap = wakeGapFrom(elapsed)
+    if (gap) syncAfterWake(gap, 'clock gap')
+  }, WAKE_POLL_INTERVAL_MS)
+  if (_wakePollTimer.unref) _wakePollTimer.unref()
+}
+
+app.on('before-quit', () => {
+  isQuitting = true
+  if (_wakePollTimer) { clearInterval(_wakePollTimer); _wakePollTimer = null }
+})
 
 app.on('window-all-closed', () => {
   // With close-to-tray, this only fires when isQuitting is true (the
