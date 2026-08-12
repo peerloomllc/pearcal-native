@@ -60,8 +60,9 @@ function reloadIsBroken () {
 
 // ── drive a real worklet ─────────────────────────────────────────────────
 const { createBareKitShim } = require(path.join(REPO, 'electron/src/main/barekit-shim.js'))
+const { tmpDir } = require('../test/helpers/tmpdir')
 const shim = createBareKitShim()
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pearcal-encprobe-'))
+const dataDir = tmpDir('pearcal-encprobe-')
 const mnemonicFile = path.join(dataDir, 'mnemonic.txt')
 
 function native (method, args) {

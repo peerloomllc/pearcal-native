@@ -34,8 +34,9 @@ const Corestore = require('corestore')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'heal-'))
+const root = tmpDir('heal-')
 const open = store => store.get('view', { valueEncoding: 'json' })
 
 async function apply (nodes, view, host) {

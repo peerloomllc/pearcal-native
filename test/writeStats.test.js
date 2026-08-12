@@ -5,6 +5,7 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
 const { render } = require('../seeder-launcher/start9/write-stats.js')
+const { tmpDir } = require('./helpers/tmpdir')
 
 // Parse with python's yaml so the assertion is about real YAML, not a JS
 // re-implementation of the same escaping bug the renderer might have.
@@ -69,7 +70,7 @@ test('requiring the module does not start the poller', () => {
 
 test('tick returns true on a successful write, false when the API is down', async () => {
   const os = require('node:os'); const p = require('node:path'); const fs = require('node:fs')
-  const dir = fs.mkdtempSync(p.join(os.tmpdir(), 'ws-'))
+  const dir = tmpDir('ws-')
   const mod = require('../seeder-launcher/start9/write-stats.js')
   // No server on this port -> fetch fails -> false, and nothing written.
   process.env.START9_STATS_DIR = dir

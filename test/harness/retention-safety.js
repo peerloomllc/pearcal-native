@@ -52,11 +52,12 @@ const Corestore = require('corestore')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
 const KEEP_RECENT = 256          // src/bare.js RETENTION_KEEP_RECENT
 const BUSY_APPENDS = Number(process.argv[2] || 900)
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'retain-'))
+const root = tmpDir('retain-')
 const open = store => store.get('view', { valueEncoding: 'json' })
 
 // --- instrument: what did retention delete, and what does the engine ask for?
