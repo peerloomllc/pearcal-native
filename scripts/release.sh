@@ -2791,9 +2791,8 @@ else
 
   # ── Step 1: Sync repo to Mac Mini ──
   echo "    Syncing repo to $MAC_MINI (including freshly built bundles)..."
-  rsync -az --rsync-path=/opt/homebrew/bin/rsync \
-    --exclude='.git' --exclude='node_modules' --exclude='android' \
-    "$REPO_ROOT/" "${MAC_MINI}:${MAC_MINI_REPO_PATH}/"
+  MAC_MINI_HOST="$MAC_MINI" MAC_MINI_REPO_PATH="$MAC_MINI_REPO_PATH" \
+    "$REPO_ROOT/scripts/mac-sync.sh" --rsync-path /opt/homebrew/bin/rsync
   echo "    Sync complete."
   echo ""
 

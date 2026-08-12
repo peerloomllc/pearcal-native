@@ -61,61 +61,41 @@ ssh Tims-Mac-mini.local 'security unlock-keychain -p "" ~/Library/Keychains/buil
 
 **Signing note:** `DEVELOPMENT_TEAM=G79ALD29NA` uses the wildcard provisioning profile already cached on the Mac. `-allowProvisioningUpdates` does NOT work over SSH (no Apple account in the SSH session).
 
-**UI-only changes** (no Swift/native changes):
-```bash
-# 1. Bundle UI
-npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
-  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
-# 2. Sync, build, package, install
-rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
-  /home/tim/peerloomllc/pearcal-native/ \
-  Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
-ssh Tims-Mac-mini.local 'set -o pipefail && export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
-  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
-  cd ~/peerloomllc/pearcal-native && \
-  xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
-    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
-    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -20 && \
-  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'
-rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
-ideviceinstaller install /tmp/PearCal-release.ipa
+**All three flows are now one script.** It rebuilds the bundles, syncs, builds on
+the Mac, packages the `.ipa`, copies it back and installs over USB:
+
+```
+./scripts/ios-dev-install.sh --version 1.0.72
 ```
 
-`set -o pipefail` is required - without it, `tail` swallows xcodebuild's non-zero exit code and the chain falls through to repackage an old cached `PearCal.app` in DerivedData, silently shipping a stale IPA.
+Add `--pods` after ANY `package.json` change (see the addon-drift note below), and
+`--no-install` to stop at a built `.ipa` in `/tmp`. `--version` sets the marketing
+version; give a distinct one whenever asking Tim to retest, since a build
+reporting the same version as the unfixed one has wasted on-device rounds before.
 
-**bare.js changes** (rebuild both bundles, then build iOS):
-```bash
-node_modules/.bin/bare-pack --linked --defer fs --defer path src/bare.js -o assets/bare-universal.bundle
-node_modules/.bin/bare-pack --host ios-arm64 --linked --defer fs --defer path src/bare.js -o assets/bare-ios.bundle
-cp assets/bare-ios.bundle assets/bare-ios-sim.bundle
-npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
-  --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle
-# Then sync + build as above
-```
+**Syncing to the Mac is `./scripts/mac-sync.sh`, and nothing else.** Excludes live
+in `scripts/mac-sync-excludes.txt`, shared by that script, `screenshots.sh`,
+`release.sh` and `electron/scripts/build-mac.sh`. Do not hand-write an rsync to
+the Mac: four call sites each kept their own exclude list, the repo grew
+`electron/dist`, `seeder-launcher/dist` and 4.4 GB of loose installers that none
+of them knew about, and every sync then walked 18 GB to deliver 18 MB with
+`--checksum` hashing all of it on both ends. It did not error, it just stopped
+finishing (TODO #168). A pre-flight now refuses to start a sync over 250 MB and
+names the directory that grew; `test/macSyncExcludes.test.js` fails if any
+directory in the repo passes 100 MB unexcluded.
 
-**Swift/native module changes** (also runs `pod install` first):
-```bash
-rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
-  /home/tim/peerloomllc/pearcal-native/ \
-  Tims-Mac-mini.local:~/peerloomllc/pearcal-native/
-ssh Tims-Mac-mini.local 'set -o pipefail && export PATH="/opt/homebrew/bin:$PATH" && export LANG=en_US.UTF-8 && \
-  security unlock-keychain -p "" ~/Library/Keychains/buildkey.keychain && \
-  cd ~/peerloomllc/pearcal-native/ios && pod install && \
-  cd .. && xcodebuild -workspace ios/PearCal.xcworkspace -scheme PearCal -configuration Release \
-    -destination "generic/platform=iOS" DEVELOPMENT_TEAM=G79ALD29NA \
-    OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" 2>&1 | tail -20 && \
-  rm -rf /tmp/Payload && mkdir -p /tmp/Payload && \
-  cp -r "$(ls -d ~/Library/Developer/Xcode/DerivedData/PearCal-*/Build/Products/Release-iphoneos/PearCal.app | head -1)" /tmp/Payload/ && \
-  cd /tmp && ditto -c -k --sequesterRsrc --keepParent Payload PearCal-release.ipa && rm -rf Payload && echo "IPA ready"'
-rsync -az Tims-Mac-mini.local:/tmp/PearCal-release.ipa /tmp/
-ideviceinstaller install /tmp/PearCal-release.ipa
-```
+`--checksum` stays on. rsync's default size+mtime check once skipped a rebuilt
+bundle and shipped a stale IPA; it is only affordable because the exclude list
+keeps the candidate set at ~34 MB.
 
-**iOS bundle caching:** Expo's asset cache survives install-over-top. If iOS behaves differently than expected after a deploy, do a full uninstall first: `ideviceinstaller uninstall com.pearcal` (this wipes app data). Also always keep `bare-ios-sim.bundle` in sync with `bare-ios.bundle` and use `--checksum` with rsync.
+**`set -o pipefail` is load-bearing** inside the remote build and the script keeps
+it: without it the chained `tail` swallows xcodebuild's non-zero exit code, and
+the next step happily repackages a stale `PearCal.app` out of DerivedData,
+silently shipping an old build.
 
-**Bare native-addon version drift (iOS boot crash `ADDON_NOT_FOUND`):** the bare bundle is `bare-pack`ed on Linux (uses Linux `node_modules`), but iOS links its native addons (`bare-os`, `bare-fs`, …) as xcframeworks generated by `pod install` on the Mac (from the Mac's `node_modules`). `rsync` syncs source only, not `node_modules`, so the two machines drift. If they diverge, the bundle demands e.g. `bare-os.3.9.3.framework` while the app ships `3.6.2` → `ADDON_NOT_FOUND` → unhandled rejection → `Bare.exit` → immediate crash on every launch (even a fresh install; dies before `Init DB`). **After ANY dependency change (`package.json`), the next iOS build MUST run `npm install` + `pod install` on the Mac first** - the "bare.js changes" / "UI-only" flows above skip both. Order matters: rsync FIRST, then `pod install` (rsync clobbers the Mac's fresh `Podfile.lock` otherwise → `Check Pods Manifest.lock` fails, exit 65). Debug via the iOS Simulator on the Mac (`xcrun simctl … log stream --predicate 'process=="PearCal"'`) - Release console output is visible there, unlike on a physical device.
+**iOS bundle caching:** Expo's asset cache survives install-over-top. If iOS behaves differently than expected after a deploy, do a full uninstall first: `ideviceinstaller uninstall com.pearcal` (this wipes app data). Keeping `bare-ios-sim.bundle` in sync with `bare-ios.bundle` and using `--checksum` are both handled by `ios-dev-install.sh` and `mac-sync.sh`.
+
+**Bare native-addon version drift (iOS boot crash `ADDON_NOT_FOUND`):** the bare bundle is `bare-pack`ed on Linux (uses Linux `node_modules`), but iOS links its native addons (`bare-os`, `bare-fs`, …) as xcframeworks generated by `pod install` on the Mac (from the Mac's `node_modules`). `rsync` syncs source only, not `node_modules`, so the two machines drift. If they diverge, the bundle demands e.g. `bare-os.3.9.3.framework` while the app ships `3.6.2` → `ADDON_NOT_FOUND` → unhandled rejection → `Bare.exit` → immediate crash on every launch (even a fresh install; dies before `Init DB`). **After ANY dependency change (`package.json`), the next iOS build MUST run `npm install` + `pod install` on the Mac first** - which is what `./scripts/ios-dev-install.sh --pods` does; the plain invocation skips both. Order matters: rsync FIRST, then `pod install` (rsync clobbers the Mac's fresh `Podfile.lock` otherwise → `Check Pods Manifest.lock` fails, exit 65). Debug via the iOS Simulator on the Mac (`xcrun simctl … log stream --predicate 'process=="PearCal"'`) - Release console output is visible there, unlike on a physical device.
 
 **Note:** New Swift/`.m` files must be registered in `PearCal.xcodeproj/project.pbxproj` via the `xcodeproj` Ruby gem before building. See plan tasks for the helper script.
 

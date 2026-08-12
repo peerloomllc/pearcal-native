@@ -154,14 +154,16 @@ security set-key-partition-list \
 XCODE_PATH=$(printf '%s' "$PATH" | sed 's|/opt/homebrew/bin:||g; s|:/opt/homebrew/bin||g')
 
 # ── Sync CocoaPods sandbox with current dependencies ────────────────────────
-# release.sh rsyncs the repo (including the Linux-generated ios/Podfile.lock)
-# to the Mac just before this script runs, but excludes node_modules.  The
-# react-native-bare-kit pod embeds a content hash that differs between the
-# Linux bundle and the Mac's xcframeworks, so the rsynced Podfile.lock never
-# matches the Mac's Pods/Manifest.lock and Xcode's "Check Pods Manifest.lock"
-# phase fails the archive.  Reinstall node deps + pods here — AFTER the rsync,
-# BEFORE archiving — so both lockfiles agree on a Mac-reproducible hash.  Runs
-# with the full PATH (Homebrew node/npm/pod), not the stripped XCODE_PATH.
+# release.sh rsyncs the repo to the Mac just before this script runs, but
+# excludes node_modules.  The react-native-bare-kit pod embeds a content hash
+# that differs between the Linux bundle and the Mac's xcframeworks, so a
+# Linux-generated ios/Podfile.lock can never match the Mac's Pods/Manifest.lock
+# and Xcode's "Check Pods Manifest.lock" phase fails the archive.  As of
+# TODO #168 the lock is no longer pushed at all (scripts/mac-sync-excludes.txt),
+# which removes the cause; this reinstall stays because node_modules parity is a
+# separate requirement — the Mac still has to resolve its own dependency tree
+# before archiving.  AFTER the rsync, BEFORE archiving.  Runs with the full PATH
+# (Homebrew node/npm/pod), not the stripped XCODE_PATH.
 echo "Syncing CocoaPods sandbox (npm install + pod install)..."
 ( cd "$REPO_ROOT" && npm install --no-audit --no-fund )
 ( cd "$REPO_ROOT/ios" && pod install )

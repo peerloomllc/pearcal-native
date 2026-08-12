@@ -24,8 +24,7 @@ npx esbuild src/ui/main.jsx --bundle --format=iife --jsx=automatic \
   --define:process.env.NODE_ENV=\"production\" --outfile=assets/app-ui.bundle 2>&1 | tail -2
 
 echo "==> Syncing to $MAC_MINI"
-rsync -az --checksum --exclude='.git' --exclude='node_modules' --exclude='android' \
-  "$REPO_ROOT/" "$MAC_MINI:$MAC_REPO/"
+MAC_MINI_HOST="$MAC_MINI" MAC_MINI_REPO_PATH="$MAC_REPO" "$REPO_ROOT/scripts/mac-sync.sh"
 
 echo "==> Running driver on $MAC_MINI"
 ssh "$MAC_MINI" "cd $MAC_REPO && ${SKIP_BUILD:+SKIP_BUILD=1 }./scripts/ios-screenshots.sh"

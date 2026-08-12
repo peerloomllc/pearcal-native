@@ -46,19 +46,10 @@ npm run patch
 bash scripts/bundle-ui.sh
 
 echo ">> Syncing source to $MAC_HOST:$REMOTE_DIR"
-# --checksum guards against mtime-based skips of files we just rebuilt.
-# Excludes mirror what mobile uses; add electron/dist/ explicitly so we
-# don't push stale local builds up.
-rsync -az --checksum \
-  --exclude='.git' \
-  --exclude='node_modules' \
-  --exclude='android' \
-  --exclude='ios/build' \
-  --exclude='electron/dist' \
-  --exclude='electron/node_modules' \
-  --exclude='desktop/node_modules' \
-  ../ \
-  "$MAC_HOST:$REMOTE_DIR/"
+# Excludes and the --checksum policy live in ../scripts/mac-sync.sh, shared with
+# the mobile and release paths. This used to keep its own list, which is how the
+# four lists drifted apart (TODO #168).
+MAC_MINI_HOST="$MAC_HOST" MAC_MINI_REPO_PATH="$REMOTE_DIR" ../scripts/mac-sync.sh
 
 echo ">> Building signed .dmg on $MAC_HOST"
 # set -o pipefail so the chained tail doesn't swallow electron-builder's
