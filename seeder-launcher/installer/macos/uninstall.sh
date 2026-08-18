@@ -2,7 +2,8 @@
 # PearCal Seeder — macOS uninstaller (phase C1).
 #
 # Tears down everything the .pkg install lays down:
-#   user LaunchAgent   ~/Library/LaunchAgents/com.pearcal.seeder.plist
+#   seeder daemon      /Library/LaunchDaemons/com.pearcal.seeder.plist
+#                      (plus the legacy ~/Library/LaunchAgents agent, pre-2026-08-17)
 #   payload            /usr/local/lib/pearcal-seeder
 #   dashboard app      /Applications/PearCal Seeder.app
 #   uninstall app      /Applications/Uninstall PearCal Seeder.app
@@ -58,13 +59,21 @@ IDENTITY_DIR="$USER_HOME/.pearcal-seed"
 
 echo "Uninstalling PearCal Seeder (user: $USER_NAME)..."
 
-# 1. User LaunchAgent: stop in the user's GUI session, then remove the plist.
-AGENT="$USER_HOME/Library/LaunchAgents/com.pearcal.seeder.plist"
+# 1. The seeder itself: a system LaunchDaemon since 2026-08-17. Bootout of the
+# system domain, then remove. The old login-bound LaunchAgent is cleaned up too -
+# an install that predates the daemon still has one, and a machine that has been
+# through both has both.
+SEEDER_DAEMON="/Library/LaunchDaemons/com.pearcal.seeder.plist"
+launchctl bootout system/com.pearcal.seeder 2>/dev/null \
+  || launchctl unload "$SEEDER_DAEMON" 2>/dev/null || true
+rm -f "$SEEDER_DAEMON"
+
+LEGACY_AGENT="$USER_HOME/Library/LaunchAgents/com.pearcal.seeder.plist"
 if [ -n "$USER_UID" ]; then
   launchctl asuser "$USER_UID" launchctl bootout "gui/$USER_UID/com.pearcal.seeder" 2>/dev/null \
-    || launchctl asuser "$USER_UID" launchctl unload "$AGENT" 2>/dev/null || true
+    || launchctl asuser "$USER_UID" launchctl unload "$LEGACY_AGENT" 2>/dev/null || true
 fi
-rm -f "$AGENT"
+rm -f "$LEGACY_AGENT"
 
 # 2. Root updater LaunchDaemon (phase C2): bootout of the system domain, remove.
 DAEMON="/Library/LaunchDaemons/com.pearcal.seeder.updater.plist"

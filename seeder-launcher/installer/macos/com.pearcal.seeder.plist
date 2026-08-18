@@ -1,12 +1,39 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<!-- LaunchAgent template loaded into ~/Library/LaunchAgents/ by the .pkg
-     post-install script. Runs the seeder launcher in the user session (not as
-     root) so the data dir lands under the user's home and the daemon survives
-     logout via KeepAlive. __LOG_PATH__ + __VERSION__ are filled in (postinstall
-     per-user, build-time respectively). The wrapper reads PEARCAL_SEED_DATA
-     (default ~/.pearcal-seed) so it stays consistent with the launchd dev
-     deploy (deploy-macos-ssh.sh). -->
+<!-- launchd SYSTEM DAEMON template, installed to
+     /Library/LaunchDaemons/com.pearcal.seeder.plist by the .pkg post-install
+     script. __LOG_PATH__, __USER__, __GROUP__, __USER_HOME__ and __DATA_DIR__ are
+     filled in by postinstall; __VERSION__ at build time.
+
+     A SYSTEM DAEMON, NOT A LAUNCHAGENT, and that is the whole point of this file.
+
+     This used to be a LaunchAgent in ~/Library/LaunchAgents, and the comment here
+     claimed it "survives logout via KeepAlive". That was false. An agent there
+     loads into gui/501, a domain whose header reads `type = login`,
+     `creator = loginwindow` - loginwindow builds it at login and tears it down at
+     logout. KeepAlive restarts a job that EXITS; it does not exempt one from its
+     domain's teardown. Measured on the mac-mini 2026-07-31 with a heartbeat agent
+     across one real logout/login: last beat `21:58:04Z pid=12235`, then 48s of
+     nothing, then `21:58:52Z pid=13652`. Killed at logout; a DIFFERENT process
+     started at login. A crash-plus-KeepAlive would have resumed in seconds and
+     would not have waited for the login. A seeder that stops seeding at logout is
+     the one failure this program exists to avoid.
+
+     macOS also refuses to bootstrap an arbitrary job into user/501 (error 5), so
+     it is the GUI session or the system domain, with nothing in between.
+
+     RUN AS THE USER, NOT AS ROOT - while still being a system-domain daemon.
+     Those are independent: what survives logout is living in the system domain
+     rather than gui/501, and UserName only decides which credentials the job runs
+     with. That keeps the seed store at ~/.pearcal-seed exactly where it is, owned
+     by the same account. Running as root instead would leave root-owned files in
+     the user's own store; PearTune hit precisely that on 2026-08-08 and had to
+     back it out, because it left the unprivileged app unable to write files it
+     supposedly owned.
+
+     Same pattern, already proven on this hardware: PearTune's
+     com.peerloom.peartune daemon, which survived a real reboot with nobody
+     logged in. -->
 <plist version="1.0">
 <dict>
   <key>Label</key>
@@ -21,7 +48,24 @@
   <dict>
     <key>SEEDER_PORT</key><string>8731</string>
     <key>PEARCAL_SEEDER_VERSION</key><string>__VERSION__</string>
+
+    <!-- THE SEED STORE IS THE SEEDER'S IDENTITY, so it is set EXPLICITLY rather
+         than derived. The installed launcher is a wrapper that resolves its data
+         dir as ${PEARCAL_SEED_DATA:-$HOME/.pearcal-seed}, and launchd does not
+         give a system daemon the same HOME an agent inherits from the login
+         session. Left to chance the daemon would come up on a different, empty
+         store and this seeder would look brand new to every peer that knows it.
+         HOME is set too, for anything else that reads the home directory. -->
+    <key>PEARCAL_SEED_DATA</key><string>__DATA_DIR__</string>
+    <key>HOME</key><string>__USER_HOME__</string>
   </dict>
+
+  <!-- See the UserName note above: system domain for the lifetime, user
+       credentials so the seed store and its ownership are unchanged. -->
+  <key>UserName</key>
+  <string>__USER__</string>
+  <key>GroupName</key>
+  <string>__GROUP__</string>
 
   <key>RunAtLoad</key>
   <true/>

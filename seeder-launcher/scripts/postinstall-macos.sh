@@ -1,7 +1,9 @@
 #!/bin/bash
 # Runs as root under the macOS installer's postinstall context (phase C1).
-# Resolves the console user (whose login session runs the LaunchAgent), templates
-# the plist into their LaunchAgents dir, loads it in their session, installs the
+# Resolves the console user (whose account the seeder runs under and whose home
+# holds the seed store), templates the plist into /Library/LaunchDaemons and
+# bootstraps it into the SYSTEM domain so it outlives the login session, retires
+# the login-bound LaunchAgent this used to be, installs the
 # dashboard + uninstaller apps to /Applications, and on a fresh install opens the
 # dashboard in their browser. (Phase C2 adds the privileged updater daemon.)
 set -euo pipefail
@@ -15,25 +17,53 @@ if [ -z "$USER_HOME" ]; then USER_HOME="/Users/$USER_NAME"; fi
 DATA_DIR="$USER_HOME/.pearcal-seed"
 LOG_PATH="$USER_HOME/Library/Logs/pearcal-seeder.log"
 PLIST_SRC="/usr/local/lib/pearcal-seeder/installer/com.pearcal.seeder.plist"
-PLIST_DST="$USER_HOME/Library/LaunchAgents/com.pearcal.seeder.plist"
+PLIST_DST="/Library/LaunchDaemons/com.pearcal.seeder.plist"
+# Where this used to live. Every install before 2026-08-17 has one, and it must be
+# torn down or we end up running two seeders against one store.
+LEGACY_AGENT="$USER_HOME/Library/LaunchAgents/com.pearcal.seeder.plist"
 PORT=8731
 
-# Update vs fresh: if the LaunchAgent already exists this is a re-install / auto-
-# update, so skip the first-run browser open (an update must not pop windows).
+# Update vs fresh: if either the daemon or the legacy agent already exists this is
+# a re-install / auto-update, so skip the first-run browser open (an update must
+# not pop windows).
 IS_UPDATE=0
-[ -f "$PLIST_DST" ] && IS_UPDATE=1
+{ [ -f "$PLIST_DST" ] || [ -f "$LEGACY_AGENT" ]; } && IS_UPDATE=1
 
-mkdir -p "$DATA_DIR" "$USER_HOME/Library/LaunchAgents" "$USER_HOME/Library/Logs"
-chown "$USER_NAME" "$DATA_DIR" "$USER_HOME/Library/LaunchAgents" "$USER_HOME/Library/Logs"
+mkdir -p "$DATA_DIR" "$USER_HOME/Library/Logs"
+chown "$USER_NAME" "$DATA_DIR" "$USER_HOME/Library/Logs"
 
-# Template the per-user log path into the plist (__VERSION__ was filled at build).
-sed "s|__LOG_PATH__|$LOG_PATH|g" "$PLIST_SRC" > "$PLIST_DST"
-chown "$USER_NAME" "$PLIST_DST"
+# --- Retire the login-bound LaunchAgent --------------------------------------
+# This job used to be an agent in ~/Library/LaunchAgents, whose own comment
+# claimed it "survives logout via KeepAlive". It does not: agents there load into
+# gui/501, a `type = login` domain that loginwindow tears down at logout, and
+# KeepAlive does not exempt a job from its domain's teardown. Measured on the
+# mac-mini 2026-07-31 across one real logout/login - the job was killed and a
+# DIFFERENT pid appeared only at the next login. Boot it out before bootstrapping
+# the daemon, or both run at once against the same seed store.
+if [ -f "$LEGACY_AGENT" ]; then
+  launchctl asuser "$USER_UID" launchctl unload "$LEGACY_AGENT" 2>/dev/null || true
+  launchctl bootout "gui/$USER_UID/com.pearcal.seeder" 2>/dev/null || true
+  rm -f "$LEGACY_AGENT"
+fi
+
+# Template the log path, the credentials to run under and the seed store location
+# (see the template's own note on why the store is set explicitly). __VERSION__
+# was filled at build.
+sed -e "s|__LOG_PATH__|$LOG_PATH|g" \
+    -e "s|__USER__|$USER_NAME|g" \
+    -e "s|__GROUP__|staff|g" \
+    -e "s|__USER_HOME__|$USER_HOME|g" \
+    -e "s|__DATA_DIR__|$DATA_DIR|g" \
+    "$PLIST_SRC" > "$PLIST_DST"
+chown root:wheel "$PLIST_DST"
 chmod 0644 "$PLIST_DST"
 
-# (Re)load in the user's GUI session so the seeder runs there, not as root.
-launchctl asuser "$USER_UID" launchctl unload "$PLIST_DST" 2>/dev/null || true
-launchctl asuser "$USER_UID" launchctl load "$PLIST_DST"
+# (Re)load as a system daemon so the seeder outlives the login session. UserName
+# in the plist keeps it running as the user, so the store's ownership is
+# untouched.
+launchctl bootout "system/com.pearcal.seeder" 2>/dev/null || true
+launchctl bootstrap system "$PLIST_DST" 2>/dev/null \
+  || launchctl load "$PLIST_DST" 2>/dev/null || true
 
 # --- Privileged updater LaunchDaemon (phase C2) ------------------------------
 # The root auto-updater that applies one-click updates without a sudo prompt. The
@@ -113,7 +143,7 @@ fi
 
 # On a re-install / update the operator isn't watching — skip the browser open.
 if [ "$IS_UPDATE" = "1" ]; then
-  echo "PearCal Seeder updated; LaunchAgent reloaded (silent)."
+  echo "PearCal Seeder updated; LaunchDaemon reloaded (silent)."
   exit 0
 fi
 
