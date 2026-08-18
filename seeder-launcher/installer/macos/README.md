@@ -46,12 +46,21 @@ seeder, or remove for a full wipe.
 | Path | What |
 |------|------|
 | `/usr/local/lib/pearcal-seeder/` | payload (bundled `node` + `bare` + worklet + host + wrapper) |
-| `~/Library/LaunchAgents/com.pearcal.seeder.plist` | the LaunchAgent (per-user) |
+| `/Library/LaunchDaemons/com.pearcal.seeder.plist` | the LaunchDaemon (system domain, runs as you) |
 | `~/.pearcal-seed/` | identity, enrollments, auth token |
 | `~/Library/Logs/pearcal-seeder.log` | logs |
 | `/Applications/PearCal Seeder.app` | opens the dashboard |
 | `/Applications/Uninstall PearCal Seeder.app` | the uninstaller |
 
-Note: the `.pkg` install uses the same LaunchAgent label + data dir as the dev
-deploy (`deploy-macos-ssh.sh`), so installing supersedes a dev-deployed seeder in
-place (same identity). Auto-update (one-click apply) arrives in phase C2.
+The seeder runs as a **system LaunchDaemon**, not a per-user LaunchAgent, so that
+seeding **keeps running when you log out** - which is the whole point of a seeder.
+It still runs under your own account (`UserName` in the plist), so the identity
+and enrollments stay in `~/.pearcal-seed` exactly as before. Installs made before
+2026-08-17 used a LaunchAgent, which was killed at logout; upgrading removes that
+agent automatically.
+
+Note: the `.pkg` install uses the same label + data dir as the dev deploy
+(`deploy-macos-ssh.sh`), so installing supersedes a dev-deployed seeder in place
+(same identity). The reverse is refused: `deploy-macos-ssh.sh` stops rather than
+stacking a login-bound dev agent on top of the packaged daemon. Auto-update
+(one-click apply) arrives in phase C2.

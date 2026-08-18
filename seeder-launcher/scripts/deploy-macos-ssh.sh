@@ -7,8 +7,22 @@
 # Cross-stages a darwin payload locally (no Mac build needed — see stage-macos.sh),
 # rsyncs it to ~/pearcal-seeder on the Mac, installs a per-user LaunchAgent
 # (~/Library/LaunchAgents/com.pearcal.seeder.plist) with RunAtLoad + KeepAlive,
-# and (re)loads it. Idempotent — re-run to update. Reboot-persistence comes from
-# the LaunchAgent loading in the user's GUI session at login.
+# and (re)loads it. Idempotent — re-run to update.
+#
+# THIS IS A DEV DEPLOY AND IT IS LOGIN-BOUND. An agent in ~/Library/LaunchAgents
+# lives in gui/$UID, a `type = login` domain that loginwindow tears down at
+# logout, so this seeder STOPS at logout and only comes back at the next login —
+# KeepAlive does not change that (measured on the mac-mini 2026-07-31: killed at
+# logout, a DIFFERENT pid at the next login). It "survives a reboot" only in the
+# sense that it reloads once somebody logs in again. Fine for iterating over SSH;
+# NOT how a real always-on seeder should run. The shipped .pkg installs a SYSTEM
+# LaunchDaemon instead (/Library/LaunchDaemons/com.pearcal.seeder.plist, running
+# as the user), which is what actually survives logout — use that for anything
+# long-lived.
+#
+# The two share the label com.pearcal.seeder and the seed store, so running both
+# would put two seeders on one store. This script refuses to do that; see the
+# daemon check below.
 #
 # Env overrides:
 #   SEEDER_PORT  dashboard port (default 8731)
@@ -27,6 +41,19 @@ STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 echo "==> staging payload ($BARE_HOST) -> $STAGE"
 BARE_HOST="$BARE_HOST" OUT_DIR="$STAGE" bash "$LAUNCHER/scripts/stage-macos.sh"
+
+# Refuse to stack a dev agent on top of a .pkg-installed system daemon. Same label,
+# same seed store: two seeders writing one store is not something to discover later.
+# Removing the daemon needs root, which this script deliberately does not take, so
+# say what to run and stop.
+if ssh "$TARGET" 'test -f /Library/LaunchDaemons/com.pearcal.seeder.plist'; then
+  echo "error: $TARGET already runs the packaged seeder as a system LaunchDaemon" >&2
+  echo "       (/Library/LaunchDaemons/com.pearcal.seeder.plist), which shares this" >&2
+  echo "       script's label and seed store. Running both would put two seeders on" >&2
+  echo "       one store." >&2
+  echo "       Uninstall the package first:  sudo bash /usr/local/lib/pearcal-seeder/uninstall.sh --keep" >&2
+  exit 1
+fi
 
 # Unload any running instance first so rsync can replace the bare binary / run.sh
 # without hitting ETXTBSY on the live process.
