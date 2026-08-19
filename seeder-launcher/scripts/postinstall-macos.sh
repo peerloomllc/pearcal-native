@@ -46,6 +46,16 @@ if [ -f "$LEGACY_AGENT" ]; then
   rm -f "$LEGACY_AGENT"
 fi
 
+# Clear a stale disabled override on the label in the USER domain. Booting a job
+# out can leave `"com.pearcal.seeder" => disabled` in
+# /var/db/com.apple.xpc.launchd/disabled.$USER_UID.plist. That override keys on
+# the LABEL and survives an uninstall, so it silently tombstones any later
+# agent-based install of the same label: `launchctl load` exits 0 and does
+# nothing, `bootstrap` fails with "5: Input/output error", and the seeder simply
+# never starts. Diagnosed on PearCircle (pearcircle#197) on the mac-mini
+# 2026-08-18; PearCal shares the install shape, so it gets the same guard.
+launchctl asuser "$USER_UID" launchctl enable "gui/$USER_UID/com.pearcal.seeder" 2>/dev/null || true
+
 # Template the log path, the credentials to run under and the seed store location
 # (see the template's own note on why the store is set explicitly). __VERSION__
 # was filled at build.
@@ -62,6 +72,9 @@ chmod 0644 "$PLIST_DST"
 # in the plist keeps it running as the user, so the store's ownership is
 # untouched.
 launchctl bootout "system/com.pearcal.seeder" 2>/dev/null || true
+# Same disabled-override trap as the agent above, one domain up: clear it before
+# bootstrapping or the daemon refuses to start and says nothing.
+launchctl enable "system/com.pearcal.seeder" 2>/dev/null || true
 launchctl bootstrap system "$PLIST_DST" 2>/dev/null \
   || launchctl load "$PLIST_DST" 2>/dev/null || true
 
@@ -85,6 +98,7 @@ if [ -f "$DAEMON_SRC" ]; then
   # The helper runs as root, so it must be root-owned + not group/world-writable.
   chown root:wheel /usr/local/lib/pearcal-seeder/updater-helper.sh 2>/dev/null || true
   chmod 0755 /usr/local/lib/pearcal-seeder/updater-helper.sh 2>/dev/null || true
+  launchctl enable "system/com.pearcal.seeder.updater" 2>/dev/null || true
   launchctl bootstrap system "$DAEMON_DST" 2>/dev/null || launchctl load "$DAEMON_DST" 2>/dev/null || true
 fi
 
@@ -149,17 +163,29 @@ fi
 
 # First-run convenience (best-effort; must never fail the install).
 set +e
+# auth.token persists across restarts AND survives an uninstall (the seed store
+# is kept by default), so its mere presence proves nothing about THIS install -
+# a seeder that failed to start would still hand us a token and we would open a
+# dead URL. Wait for the dashboard to actually answer instead.
 TOKEN=""
+LIVE=0
 for i in $(seq 1 30); do
   TOKEN=$(cat "$DATA_DIR/auth.token" 2>/dev/null | tr -d '\n')
-  [ -n "$TOKEN" ] && break
+  if [ -n "$TOKEN" ] && curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/?t=$TOKEN" 2>/dev/null; then
+    LIVE=1
+    break
+  fi
   sleep 0.5
 done
-if [ -n "$TOKEN" ]; then
+if [ "$LIVE" = "1" ]; then
   URL="http://127.0.0.1:$PORT/?t=$TOKEN"
   echo "PearCal Seeder running. Open: $URL"
   launchctl asuser "$USER_UID" sudo -u "$USER_NAME" open "$URL" 2>/dev/null || true
 else
-  echo "warning: PearCal Seeder did not write an auth token within 15s; check $LOG_PATH"
+  # Say something. A silent "successful" install that leaves nothing running is
+  # how the equivalent PearCircle failure went unnoticed. First-run only (the
+  # update path exited above), so this cannot interrupt an auto-update.
+  echo "warning: PearCal Seeder did not answer on 127.0.0.1:$PORT within 15s; check $LOG_PATH"
+  launchctl asuser "$USER_UID" sudo -u "$USER_NAME" /usr/bin/osascript -e 'display dialog "PearCal Seeder is installed but did not start within 15 seconds.\n\nOpen \"PearCal Seeder\" from your Applications folder to try again, or check ~/Library/Logs/pearcal-seeder.log" with title "PearCal Seeder" buttons {"OK"} default button "OK" with icon caution' 2>/dev/null &
 fi
 exit 0
