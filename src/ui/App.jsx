@@ -19,7 +19,7 @@ import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
-  parseIcs, generateIcs,
+  parseIcs, generateIcs, icsFileGroups, routeIcsImport,
   MAX_COLOR_SEGMENTS,
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
@@ -6493,16 +6493,27 @@ function BottomSheet ({ onClose, children, zIndex = 200, closeRef }) {
   )
 }
 
-function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport, onClose }) {
+// Exported so test/harness can mount it standalone in a hidden Electron window.
+export function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport, onClose }) {
   const bsClose = useRef(null)
-  const memberIds = new Set((groups ?? []).map(g => g.id))
+  const myGroups = groups ?? []
+  const memberIds = useMemo(() => new Set(myGroups.map(g => g.id)), [groups])
+
+  // Groups the file itself asked for (X-PEARCAL-GROUPS), narrowed to groups we
+  // are actually in. Only a PearCal-exported .ics carries these, so a file from
+  // Google/Apple/Outlook leaves this empty and the "keep" option stays hidden.
+  const hasFileGroups = useMemo(
+    () => icsFileGroups(events, memberIds).size > 0, [events, memberIds])
+
+  // Where the imported events land. 'file' keeps whatever the .ics declared,
+  // 'personal' forces every event private, and a group id shares all of them
+  // with that group. Default to honouring the file when it says something,
+  // otherwise personal — importing is never a surprise share.
+  const [dest, setDest] = useState(hasFileGroups ? 'file' : 'personal')
+  const destGroup = myGroups.find(g => g.id === dest) ?? null
+
   // Compute routing per event
-  const routed = events.map(ev => {
-    const uid = ev.uid ? ev.uid.replace(/@pearcal$/, '') : null
-    const skipped = uid && existingEventIds?.has(uid)
-    const keptGroups = Array.isArray(ev.groups) ? ev.groups.filter(gid => memberIds.has(gid)) : []
-    return { ev, uid, skipped, keptGroups }
-  })
+  const routed = routeIcsImport(events, { dest, groupIds: memberIds, existingEventIds })
   const toImport = routed.filter(r => !r.skipped)
   const skippedCount = routed.length - toImport.length
   // Summary: per-group counts + personal
@@ -6528,6 +6539,55 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
           overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
           {filename}
         </div>
+        {/* Destination — asked every import, so a file never silently shares.
+            With no groups joined there is nothing to choose, so it stays hidden
+            and everything lands as personal. */}
+        {myGroups.length > 0 && (
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
+            textTransform:'uppercase', marginBottom:8 }}>Import Into</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {hasFileGroups && (
+              <button onClick={() => setDest('file')}
+                style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${colors.text.muted}`,
+                  fontFamily:FONT, background: dest === 'file' ? colors.text.muted : 'transparent',
+                  color: dest === 'file' ? '#fff' : colors.text.muted, fontSize:13, cursor:'pointer' }}>
+                Keep from file
+              </button>
+            )}
+            <button onClick={() => setDest('personal')}
+              style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${colors.text.muted}`,
+                fontFamily:FONT, background: dest === 'personal' ? colors.text.muted : 'transparent',
+                color: dest === 'personal' ? '#fff' : colors.text.muted, fontSize:13, cursor:'pointer' }}>
+              Personal
+            </button>
+            {myGroups.map(g => {
+              const sel = dest === g.id
+              return (
+                <button key={g.id} onClick={() => setDest(g.id)}
+                  style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${g.color}`, fontFamily:FONT,
+                    background: sel ? g.color : 'transparent', color: sel ? '#fff' : g.color,
+                    fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ width:18, height:18, borderRadius:4, overflow:'hidden',
+                    display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:14, flexShrink:0 }}>
+                    {g.icon
+                      ? <img src={g.icon} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} />
+                      : g.emoji}
+                  </span>
+                  {g.name}
+                </button>
+              )
+            })}
+          </div>
+          <div style={{ fontSize:11, color:colors.text.muted, marginTop:8, lineHeight:'1.5' }}>
+            {dest === 'personal'
+              ? 'Only you will see these events.'
+              : destGroup
+                ? `Everyone in ${destGroup.name} will see these events.`
+                : 'Each event keeps the groups it was exported with.'}
+          </div>
+        </div>
+        )}
         {summaryRows.length > 0 && (
           <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
             {summaryRows.map((row, i) => (
@@ -6543,7 +6603,7 @@ function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport,
         )}
         {skippedCount > 0 && (
           <div style={{ fontSize:12, color:colors.text.muted, marginBottom:12 }}>
-            {skippedCount} event{skippedCount !== 1 ? 's' : ''} already exist — will be skipped
+            {skippedCount} event{skippedCount !== 1 ? 's' : ''} already {skippedCount === 1 ? 'exists' : 'exist'} - will be skipped
           </div>
         )}
         <div style={{ maxHeight:220, overflowY:'auto', display:'flex', flexDirection:'column',
