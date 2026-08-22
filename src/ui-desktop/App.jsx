@@ -23,6 +23,7 @@ import { ContextMenu } from './components/ContextMenu.jsx'
 import { CommandPalette } from './components/CommandPalette.jsx'
 import { ProfileModal } from './components/ProfileModal.jsx'
 import { SettingsModal } from './components/SettingsModal.jsx'
+import { ImportIcsModal } from './components/ImportIcsModal.jsx'
 import { AboutModal } from './components/AboutModal.jsx'
 import { GroupSettingsModal } from './components/GroupSettingsModal.jsx'
 import { NewGroupModal } from './components/NewGroupModal.jsx'
@@ -96,6 +97,7 @@ export default function App ({ db, notifs, sync }) {
   const [paletteOpen,   setPaletteOpen]   = useState(false)
   const [profileOpen,   setProfileOpen]   = useState(false)
   const [settingsOpen,  setSettingsOpen]  = useState(false)
+  const [icsImport,     setIcsImport]     = useState(null)        // { events, filename } from a picked .ics
   const [aboutOpen,     setAboutOpen]     = useState(false)
   const [groupSettings, setGroupSettings] = useState(null)        // group object or null
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
@@ -629,8 +631,40 @@ export default function App ({ db, notifs, sync }) {
           events={events}
           setEvents={setEvents}
           onOpenLinkedDevices={openLinkedDevices}
+          onImportIcs={setIcsImport}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+      {icsImport && (
+        <ImportIcsModal
+          tokens={tokens}
+          events={icsImport.events}
+          filename={icsImport.filename}
+          groups={groups}
+          existingEventIds={new Set((events ?? []).map(e => e.id))}
+          onImport={(toImport) => {
+            for (const { ev, uid, keptGroups } of toImport) {
+              const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
+              const firstGroup = keptGroups.length ? groupsById.get(keptGroups[0]) : null
+              // Routed through saveEvent, not db.putEvent, so an event landing in
+              // a group actually reaches that group's Autobase.
+              saveEvent({
+                id, title: ev.title, date: ev.date,
+                allDay: ev.allDay ?? true, start: ev.start ?? '', end: ev.end ?? '',
+                endDate: ev.endDate ?? '', desc: ev.desc ?? '', location: ev.location ?? '',
+                meetingLink: ev.meetingLink ?? '',
+                groups: keptGroups, invitees: [],
+                color: firstGroup?.color ?? '', colors: [],
+                recurrence: 'none', recurrenceId: '', recurrenceEnd: '',
+                recurrenceNth: 0, recurrenceWeekday: 0, recurrenceInterval: 1,
+                repeatForever: false, rsvpEnabled: false,
+                editPermission: keptGroups.length ? 'everyone' : 'creator',
+                creatorId: profile?.id ?? 'unknown',
+              }, {})
+            }
+            setIcsImport(null)
+          }}
+          onClose={() => setIcsImport(null)} />
       )}
       {aboutOpen && (
         <AboutModal

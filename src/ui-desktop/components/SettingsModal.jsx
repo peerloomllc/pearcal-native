@@ -1,7 +1,6 @@
-// Settings modal — display preferences (24h / week start), linked devices,
-// About. Mobile's settings tab also covers blind-peer, holiday
-// subscriptions, ICS import/export, and storage reclaim — deferred until
-// users ask.
+// Settings modal — display preferences (24h / week start), holidays, .ics
+// import/export, linked devices, About. Mobile's settings tab also covers
+// blind-peer and storage reclaim — deferred until users ask.
 //
 // No recovery-phrase surface: the seed is an internal identity seed, never
 // shown, exported or backed up (removed 2026-07-27).
@@ -10,8 +9,8 @@
 // + optimistic setProfile) since bare's profileChanged event only fires
 // on sibling-device sync, never on local writes.
 
-import { useEffect, useState } from 'react'
-import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents } from '../../ui-shared/index.js'
+import { useEffect, useRef, useState } from 'react'
+import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
@@ -25,8 +24,11 @@ const WEEK_STARTS = [
 ]
 
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onImportIcs, onClose }) {
   const [holidayWorking, setHolidayWorking] = useState(false)
+  const icsFileRef = useRef(null)
+  // Set when a picked file parses to nothing usable, so the click isn't silent.
+  const [icsError, setIcsError] = useState('')
   // Match the same locale-aware default the App uses so the toggle
   // reads "On" only when the user has explicitly chosen 24h.
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
@@ -362,6 +364,40 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
               Added to your personal calendar. Toggle off to remove.
             </div>
           )}
+        </div>
+
+        {/* Import & Export (TODO #170) — the picked file is handed up to App.jsx,
+            which owns the destination prompt and the saveEvent path. */}
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Import &amp; export</div>
+          <input ref={icsFileRef} type="file" accept=".ics,.ical,text/calendar"
+            style={{ display: 'none' }} onChange={e => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              e.target.value = ''
+              setIcsError('')
+              const reader = new FileReader()
+              reader.onerror = () => setIcsError('Could not read that file.')
+              reader.onload = ev => {
+                const parsed = parseIcs(String(ev.target.result ?? ''))
+                if (!parsed.length) { setIcsError('No events found in that file.'); return }
+                onImportIcs?.({ events: parsed, filename: file.name })
+              }
+              reader.readAsText(file)
+            }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={() => icsFileRef.current?.click()}
+              style={{ ...btnBase, flex: 1 }}>Import from .ics</button>
+            <button onClick={() => {
+              const nonHoliday = (events ?? []).filter(e => !e.id?.startsWith('holiday-'))
+              if (!nonHoliday.length || !sync) { setIcsError('There are no events to export yet.'); return }
+              setIcsError('')
+              sync.exportIcs(generateIcs(nonHoliday))
+            }} style={{ ...btnBase, flex: 1 }}>Export to .ics</button>
+          </div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+            {icsError || 'Importing asks whether the events stay personal or go to one of your groups. Exporting saves every event except holidays.'}
+          </div>
         </div>
 
         {onOpenLinkedDevices && (
