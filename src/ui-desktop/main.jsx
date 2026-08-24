@@ -152,6 +152,15 @@ const sync = {
   putGroup:    (g)          => window.__pearDB.call('putGroup:sync', g),
   memberLeft:  (groupId, memberId) => window.__pearDB.call('memberLeft:sync', groupId, memberId),
   purgeMember: (groupId, memberId) => window.__pearDB.call('purgeMember:sync', groupId, memberId),
+  // Read-only storage reports (#163). The write side of mobile's storage
+  // section - reclaimStorage, rebuildLocalDb, auditStorage and the purges - is
+  // deliberately NOT here: mobile hides those behind `{false && ...}` because a
+  // device left missing blocks the shared history still references cannot heal
+  // itself (#154), and a rebuild is unrecoverable when it goes wrong. Porting
+  // them would give desktop a button mobile withholds. Re-add both together
+  // once a device can repair a block gap on its own.
+  storageBreakdown: () => window.__pearDB.call('storageBreakdown'),
+  analyzeStorage: (opts) => window.__pearDB.call('analyzeStorage', opts),
   nativeShare: (title, text) => window.__pearDB.call('nativeShare', title, text),
   exportIcs: (content) => window.__pearDB.call('exportIcs', content),
   takePhoto: () => window.__pearDB.call('takePhoto'),

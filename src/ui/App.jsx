@@ -24,7 +24,7 @@ import {
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
-  formatTime, formatRelativeTime, todayStr, dateStr,
+  formatTime, formatRelativeTime, todayStr, dateStr, formatBytes,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
   useProfile, useRsvps, useGroups, useEvents, useHolidayRepair,
@@ -6883,9 +6883,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [resetError,        setResetError]        = useState(null)
   const closeResetSheetRef  = useRef(null)
 
-  const formatBytes = b => b > 1e9 ? (b/1e9).toFixed(2)+' GB'
-                         : b > 1e6 ? (b/1e6).toFixed(1)+' MB'
-                         : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B'
   const [icsImport, setIcsImport] = useState(null)
   const icsFileRef = useRef(null)
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
