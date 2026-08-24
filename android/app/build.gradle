@@ -124,6 +124,24 @@ android {
         debug {
             signingConfig signingConfigs.debug
             applicationIdSuffix ".debug"
+            // Debug builds also carry the x86_64 slice so they run NATIVELY on an
+            // emulator, which suite rule 15 makes the default test target. AGP
+            // unions ndk.abiFilters across defaultConfig and the build type, so
+            // this adds to the `reactNativeArchitectures` list in
+            // gradle.properties rather than replacing it, and release APKs stay
+            // ARM-only.
+            //
+            // Without it an x86_64 emulator installs and launches the APK, falls
+            // back to the arm64 libs under translation, and dies at `Init DB`
+            // with "Init failed: function not implemented" (ENOSYS). That is NOT
+            // the ADDON_NOT_FOUND fingerprint the docs warn about, so it reads
+            // like an app bug (PearCal #160). The failed translated run also
+            // poisons the store, so the next launch fails differently with
+            // "Invalid device file, was modified" and the emulator needs
+            // `pm clear com.pearcal.debug`.
+            ndk {
+                abiFilters 'x86_64'
+            }
         }
         release {
             signingConfig signingConfigs.release.storeFile ? signingConfigs.release : signingConfigs.debug
