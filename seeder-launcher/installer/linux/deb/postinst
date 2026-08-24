@@ -7,12 +7,22 @@ set -e
 INSTALL_ROOT=/opt/pearcal-seeder
 UNIT_SRC="$INSTALL_ROOT/pearcal-seeder.service"
 
+# Every best-effort helper below is a `( set +e ... ) || true` subshell. BOTH
+# halves are load-bearing: set +e keeps a failing command from ending the
+# subshell early, and `|| true` discards the subshell's own exit status, which
+# is just the status of whatever ran last inside it. Without the `|| true` the
+# outer `set -e` above kills the whole postinst before the function's return 0
+# ever runs, and dpkg reports "post-installation script subprocess returned
+# error exit status 1". That is exactly what happened on headless Linux
+# (issue #320): refresh_desktop_caches ends with a `command -v appstreamcli`
+# test, which is false on a box with no desktop, so the subshell exited 1 and
+# a working install was reported as failed.
+#
 # Install the privileged auto-updater for a known install user: the root-owned
 # helper (run via pkexec) + a passwordless polkit rule scoped to that user and
-# this one script. Best-effort and on its own subshell with set +e — a missing
-# polkit, an odd filesystem, or a re-run during an unattended update must NEVER
-# fail the package install (mirroring the macOS "first-run/update steps never
-# fail an install" rule).
+# this one script. A missing polkit, an odd filesystem, or a re-run during an
+# unattended update must NEVER fail the package install (mirroring the macOS
+# "first-run/update steps never fail an install" rule).
 install_updater () {
   local user="$1"
   ( set +e
@@ -29,7 +39,7 @@ install_updater () {
       echo "pearcal-seeder: polkit rules.d not found; one-click .deb auto-update unavailable."
       echo "  Updates still work via the dashboard's verified-download fallback."
     fi
-  )
+  ) || true
   return 0
 }
 
@@ -66,7 +76,7 @@ open_dashboard_for_user () {
       DISPLAY="${display:-:0}" \
       WAYLAND_DISPLAY="${wl:-wayland-0}" \
       "$INSTALL_ROOT/open-dashboard.sh" >/dev/null 2>&1
-  )
+  ) || true
   return 0
 }
 
@@ -78,7 +88,7 @@ refresh_desktop_caches () {
     command -v gtk-update-icon-cache >/dev/null 2>&1 && gtk-update-icon-cache -qtf /usr/share/icons/hicolor 2>/dev/null
     # Refresh the AppStream pool so the new MetaInfo shows in GNOME Software / Discover.
     command -v appstreamcli >/dev/null 2>&1 && appstreamcli refresh --force 2>/dev/null
-  )
+  ) || true
   return 0
 }
 

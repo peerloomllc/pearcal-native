@@ -106,6 +106,10 @@ fi
 UNINSTALL_SRC="/usr/local/lib/pearcal-seeder/Uninstall PearCal Seeder.app"
 UNINSTALL_DST="/Applications/Uninstall PearCal Seeder.app"
 if [ -d "$UNINSTALL_SRC" ]; then
+  # `( set +e ... ) || true`: set +e keeps a failure from ending the subshell
+  # early, `|| true` discards the subshell's own status (the status of whatever
+  # ran last in it). Without the latter, `set -euo pipefail` above aborts the
+  # install - the same bug issue #320 hit on Linux.
   ( set +e
     rm -rf "$UNINSTALL_DST"
     /usr/bin/ditto "$UNINSTALL_SRC" "$UNINSTALL_DST" 2>/dev/null || cp -R "$UNINSTALL_SRC" "$UNINSTALL_DST"
@@ -113,7 +117,7 @@ if [ -d "$UNINSTALL_SRC" ]; then
     /usr/bin/touch "$UNINSTALL_DST"
     /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$UNINSTALL_DST" 2>/dev/null
     /usr/bin/mdimport "$UNINSTALL_DST" 2>/dev/null
-  )
+  ) || true
 fi
 
 # --- Dashboard shortcut app (fresh + update) ---------------------------------
