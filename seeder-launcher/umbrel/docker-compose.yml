@@ -13,7 +13,7 @@ services:
   app:
     # Published, public, multi-arch (amd64 + arm64), pinned by manifest-list
     # digest. build-umbrel-image.sh rewrites this to :<version>@sha256:<digest>.
-    image: ghcr.io/peerloomllc/pearcal-seeder:1.0.37@sha256:4ad5c19355837a29ba95c8c7b39fa8ebac9b6cec4248cc486cf6bb434c7f7336
+    image: ghcr.io/peerloomllc/pearcal-seeder:1.0.46@sha256:6a2bc32cb732598fe96e84a4e407e0fa844cdd88cc0f5ce4735ab2d46fbe2369
     restart: on-failure
     stop_grace_period: 1m
     security_opt:

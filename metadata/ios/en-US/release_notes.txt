@@ -1,13 +1,27 @@
 ## What's Changed
 
-### 🐛 Bug Fixes
+New Features
 
-  - Opening the app after a while away is fast again. If you'd left PearCal
-    closed for more than a few minutes, it could sit for two to four minutes
-    before showing events other people had added. It now catches up within
-    seconds. This was most noticeable on iPhone.
+- Import and export calendars on the computer app. You can bring a .ics file
+into PearCal Desktop, and save your own events back out as one.
+- Choose where imported events go. When you import a calendar file, PearCal now
+asks once whether those events should stay private to you or join one of your
+shared calendars, instead of deciding for you. It tells you who will be able
+to see them before you confirm.
+- See what is using your disk space. Settings on the computer app has a new
+Storage section showing what PearCal is keeping and how much of it is old
+history you no longer need.
 
-  - The desktop app updates itself when your computer wakes up. Previously it
-    could stay out of date after your machine had been asleep, until you quit
-    and reopened it.
+Improvements
+
+- The always-on helper on a Mac keeps running after you log out, so your
+calendar carries on syncing when nobody is signed in.
+
+Bug Fixes
+
+- Installing the always-on helper on a server with no desktop no longer ends
+with an error message. The install had actually worked; only the report was
+wrong.
+- Fixed a Mac problem where two copies of the helper could end up fighting each
+other, and another that could leave it switched off without saying so.
 
