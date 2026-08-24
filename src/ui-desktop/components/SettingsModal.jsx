@@ -1,6 +1,11 @@
-// Settings modal — display preferences (24h / week start), holidays, .ics
-// import/export, linked devices, About. Mobile's settings tab also covers
-// blind-peer and storage reclaim — deferred until users ask.
+// Settings modal - display preferences (24h / week start), holidays, .ics
+// import/export, storage reports, linked devices, About. Blind-peer management
+// is the remaining gap against mobile's settings tab (#163).
+//
+// The storage section is read-only on purpose. Mobile ships the same two
+// reports and hides its two write actions, Reclaim Storage and Sweep Orphaned
+// Data, behind `{false && ...}` (#154, PR #143), so desktop does not offer them
+// either.
 //
 // No recovery-phrase surface: the seed is an internal identity seed, never
 // shown, exported or backed up (removed 2026-07-27).
@@ -12,6 +17,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
+import { StorageReportModal } from './StorageReportModal.jsx'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -46,6 +52,9 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
   // relay wired at all, in which case the section stays hidden rather than
   // offering a switch that controls nothing.
   const [relayStatus, setRelayStatus] = useState(null)
+  // { kind: 'breakdown' | 'analyze', report, error } while a report is open.
+  const [storageReport, setStorageReport] = useState(null)
+  const [storageBusy, setStorageBusy] = useState('')
 
   useEffect(() => {
     function onKey (e) { if (e.key === 'Escape') onClose() }
@@ -183,6 +192,25 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
       await updateProfile({ holidayCountries: [...newActive] }).catch(() => {})
     } finally {
       setHolidayWorking(false)
+    }
+  }
+
+  // One handler for both reports. They are slow enough on a big store to need a
+  // busy label, and a failure has to land in the modal rather than disappearing:
+  // a silent catch here is how the desktop ended up with features nobody could
+  // tell were missing (#146).
+  async function runReport (kind) {
+    if (storageBusy) return
+    setStorageBusy(kind)
+    try {
+      const report = kind === 'breakdown'
+        ? await sync.storageBreakdown()
+        : await sync.analyzeStorage({ keepTail: 100 })
+      setStorageReport({ kind, report })
+    } catch (e) {
+      setStorageReport({ kind, error: e?.message || 'That report could not be produced.' })
+    } finally {
+      setStorageBusy('')
     }
   }
 
@@ -400,6 +428,26 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         </div>
 
+        {sync?.storageBreakdown && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={label}>Storage</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button disabled={!!storageBusy} onClick={() => runReport('breakdown')}
+                style={{ ...btnBase, flex: 1, cursor: storageBusy ? 'wait' : 'pointer', opacity: storageBusy ? 0.6 : 1 }}>
+                {storageBusy === 'breakdown' ? 'Measuring…' : 'Storage breakdown'}
+              </button>
+              <button disabled={!!storageBusy} onClick={() => runReport('analyze')}
+                style={{ ...btnBase, flex: 1, cursor: storageBusy ? 'wait' : 'pointer', opacity: storageBusy ? 0.6 : 1 }}>
+                {storageBusy === 'analyze' ? 'Analyzing…' : 'Analyze reclaimable'}
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+              See where this computer's disk space went, and how much of it is old history.
+              Both reports only look; neither changes or deletes anything.
+            </div>
+          </div>
+        )}
+
         {onOpenLinkedDevices && (
           <div style={{ marginBottom: 18 }}>
             <div style={label}>Linked devices</div>
@@ -420,6 +468,15 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         </div>
       </div>
+      {storageReport && (
+        <StorageReportModal
+          tokens={tokens}
+          kind={storageReport.kind}
+          report={storageReport.report}
+          error={storageReport.error}
+          onClose={() => setStorageReport(null)}
+        />
+      )}
     </div>
   )
 }
