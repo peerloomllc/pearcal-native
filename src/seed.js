@@ -548,8 +548,13 @@ async function openLocalStores () {
 // "different platform" still fail as before. PEARCAL_SEED_NO_DEVICE_HEAL=1
 // disables it.
 function deviceHealDisabled () {
-  const env = (typeof Bare !== 'undefined' && Bare.env) ? Bare.env
-    : (typeof process !== 'undefined' && process.env) ? process.env : {}
+  // Bare has no `Bare.env`; its environment is the bare-env module (what
+  // bare-process's process.env wraps). Node has process.env.
+  let env = {}
+  try {
+    env = typeof Bare !== 'undefined' ? require('bare-env')
+      : (typeof process !== 'undefined' && process.env) ? process.env : {}
+  } catch (e) { env = {} }
   return env.PEARCAL_SEED_NO_DEVICE_HEAL === '1'
 }
 
