@@ -33,6 +33,7 @@ const {
   parseSeedEnrollBatch, buildSeedEnrollAck,
   parseSeedLeave, buildSeedLeaveAck,
 } = require('./lib/seedEnroll.js')
+const { isDeviceFileModifiedError, healCorestoreDeviceFiles } = require('./lib/deviceFileHeal.js')
 
 // ── IPC transport ───────────────────────────────────────────────────────────
 // The seeder speaks the same JSON-newline envelope over whichever duplex the
@@ -514,16 +515,65 @@ async function leaveSeedGroup (groupId) {
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────────
+// Open the two local stores. On failure, close whatever did open before
+// rethrowing: device-file holds an fd lock on each CORESTORE, and that lock
+// conflicts in-process, so a retry against a half-open first attempt can never
+// succeed (see project_shutdown_fd_lock_leak).
+async function openLocalStores () {
+  const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
+  let bee = null
+  let cs = null
+  try {
+    await core.ready()
+    bee = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
+    await bee.ready()
+    cs = new Corestore(dataDir + '/store')
+    await cs.ready()
+    return { bee, cs }
+  } catch (e) {
+    if (cs) await cs.close().catch(() => {})
+    await core.close().catch(() => {})
+    throw e
+  }
+}
+
+// Self-heal for TODO #172. hypercore-storage's device-file guard refuses a store
+// whose CORESTORE marker no longer matches the file's inode or birth time, which
+// is what a host-side copy of our data folder produces (StartOS 0.4.0.1 clones
+// every package volume into a btrfs subvolume on first boot and deletes the
+// original). The seeder is blind: it never writes a member's cores, only its own
+// local Hyperbee, so a stale marker on a single surviving copy is a false alarm
+// worth healing rather than a reason to stay down. Only the exact "was
+// modified" case is healed; "was moved unsafely" (attribute missing) and
+// "different platform" still fail as before. PEARCAL_SEED_NO_DEVICE_HEAL=1
+// disables it.
+function deviceHealDisabled () {
+  const env = (typeof Bare !== 'undefined' && Bare.env) ? Bare.env
+    : (typeof process !== 'undefined' && process.env) ? process.env : {}
+  return env.PEARCAL_SEED_NO_DEVICE_HEAL === '1'
+}
+
+async function openLocalStoresWithHeal () {
+  try {
+    return await openLocalStores()
+  } catch (e) {
+    if (!isDeviceFileModifiedError(e) || deviceHealDisabled()) throw e
+    const fs = typeof Bare !== 'undefined' ? require('bare-fs') : require('fs')
+    const healed = healCorestoreDeviceFiles(fs, [dataDir + '/core', dataDir + '/store'])
+    console.error('[seed] device-file guard tripped (' + e.message + '). The host copied our data folder;',
+      'this is what StartOS 0.4.0.1 does on first boot. Re-stamped', healed.length,
+      'CORESTORE marker(s) in place and retrying once:', JSON.stringify(healed.map((h) => h.file)))
+    if (healed.length === 0) throw e
+    return openLocalStores()
+  }
+}
+
 async function init (dir) {
   if (_booted) return { ok: true, alreadyBooted: true }
   dataDir = dir
-  const core = new Hypercore(dataDir + '/core', { valueEncoding: 'json' })
-  await core.ready()
-  db = new Hyperbee(core, { keyEncoding: 'utf-8', valueEncoding: 'json' })
-  await db.ready()
-
-  store = new Corestore(dataDir + '/store')
-  await store.ready()
+  const opened = await openLocalStoresWithHeal()
+  db = opened.bee
+  store = opened.cs
 
   // Load the seeder identity BEFORE the swarm and key the swarm with it, so the
   // authenticated remote pubkey a member sees on a rendezvous connection equals
