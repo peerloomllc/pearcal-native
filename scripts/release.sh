@@ -2030,6 +2030,20 @@ if $PUBLISH_SEEDER_STORE; then
         SEEDER_ARTIFACTS+=("$SEEDER_S9PK")
         [ -f "$SEEDER_S9PK.sha256" ] && SEEDER_ARTIFACTS+=("$SEEDER_S9PK.sha256")
         echo "    ✓ s9pk: pearcal-seeder.s9pk ($(du -sh "$SEEDER_S9PK" | cut -f1)) — queued for upload"
+        # The v2 package for StartOS 0.4.0+, converted from the v1 above by the
+        # same build script. publish-start9-registry.sh points /package/v1 at
+        # releases/download/<tag>/pearcal-seeder-v2.s9pk, so if this is not
+        # uploaded every 0.4 box gets a 404 on install and update (v1.0.46 did).
+        # Absent when the build machine lacks the 0.4.x start-cli or a
+        # packaging workspace, which that script says loudly.
+        _s9pk_v2="${SEEDER_S9PK%.s9pk}-v2.s9pk"
+        if [ -f "$_s9pk_v2" ]; then
+          SEEDER_ARTIFACTS+=("$_s9pk_v2")
+          [ -f "$_s9pk_v2.sha256" ] && SEEDER_ARTIFACTS+=("$_s9pk_v2.sha256")
+          echo "    ✓ s9pk: pearcal-seeder-v2.s9pk ($(du -sh "$_s9pk_v2" | cut -f1)) — queued for upload"
+        else
+          echo "    ! no pearcal-seeder-v2.s9pk: StartOS 0.4 boxes will 404 on install/update"
+        fi
       else
         echo "    ✗ s9pk build reported success but the file is missing."
         SEEDER_S9PK=""
