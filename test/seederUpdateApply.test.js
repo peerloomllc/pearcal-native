@@ -7,12 +7,13 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const { tmpDir } = require('./helpers/tmpdir')
 const {
   NeedsHelperError, VerifyError, UpdateApplier, APPLE_TEAM_ID, parsePkgutilTeam,
   parseSha256Sidecar, sha256File, planApply, downloadAndVerify, applyUpdate,
 } = require('../seeder-launcher/host/updateApply')
 
-function tmp () { return fs.mkdtempSync(path.join(os.tmpdir(), 'pcal-apply-test-')) }
+function tmp () { return tmpDir('pcal-apply-test-') }
 function sha256 (buf) { return crypto.createHash('sha256').update(buf).digest('hex') }
 function stubFetch ({ assetUrl, bytes, shaUrl, shaText, assetStatus = 200, shaStatus = 200 }) {
   return async (url) => {
