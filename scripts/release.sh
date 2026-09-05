@@ -1391,6 +1391,128 @@ fi
 # ---------------------------------------------------------------------------
 echo "==> Native project: android/ is checked in, no prebuild needed."
 
+# Nothing collects these if the run stops first: a "no" at the step 4e gate, a
+# red Gradle build, a Ctrl-C. Without a trap the electron-builder and rsync
+# processes would keep going after the script is gone. Each collected PID is
+# cleared right after its wait, so on a normal run this fires against an empty
+# list. Kills the whole tree, since a background subshell here is not its own
+# process group and killing it alone would orphan its children.
+_kill_tree () {
+  local _p="$1" _c
+  for _c in $(pgrep -P "$_p" 2>/dev/null || true); do _kill_tree "$_c"; done
+  kill "$_p" 2>/dev/null || true
+}
+_reap_background_builds () {
+  local _p _any=false
+  for _p in "${PID_LINUX:-}" "${PID_MAC:-}" "${PID_WIN:-}" "${PID_SLINUX:-}" "${PID_SWIN:-}" "${PID_SMAC:-}"; do
+    [ -n "$_p" ] || continue
+    kill -0 "$_p" 2>/dev/null || continue
+    $_any || { echo ""; echo "==> Stopping the background builds still running..."; _any=true; }
+    _kill_tree "$_p"
+  done
+}
+trap _reap_background_builds EXIT
+trap '_reap_background_builds; exit 130' INT
+trap '_reap_background_builds; exit 143' TERM
+
+# ---------------------------------------------------------------------------
+# Start the slow local builds now, in the background
+#
+# The desktop artifacts and the two local seeder installers share nothing with
+# the Android build: different toolchains, different directories, and nothing
+# between here and Phase B' writes anything they package. Every bundle they
+# ship was built in step 1 above. So they start here and run while Gradle
+# works and while you edit the release notes, instead of the machine standing
+# idle through both. Steps 5b and 5c collect them and keep the same
+# best-effort behaviour: a platform that fails is reported and skipped, never
+# blocking the mobile release.
+#
+# The macOS seeder .pkg deliberately does NOT start here. It rsyncs the repo
+# to the Mac Mini and so does the desktop .dmg build, and two rsyncs into the
+# same tree would clobber each other. Step 5c starts it once 5b has collected
+# the .dmg, which is the order the two ran in before.
+#
+# Every background job reads stdin from /dev/null. Their output goes to log
+# files, so a build that unexpectedly prompted would otherwise steal keystrokes
+# from the vi session editing the release notes.
+# ---------------------------------------------------------------------------
+PID_LINUX=""; PID_MAC=""; PID_WIN=""; DESKTOP_STARTED_AT=$(date +%s)
+if $PUBLISH_DESKTOP; then
+  # Re-vendor, re-patch and re-bundle the UI ONCE, here, before the three
+  # builds fork. Each build script used to do it itself, so running them
+  # concurrently had three processes writing electron/node_modules,
+  # electron/vendor/ and src/renderer/app-ui-electron.js at the same time.
+  # SKIP_ELECTRON_PREP tells them it is already done; run on its own, each
+  # script still does its own prep.
+  echo "==> Preparing the desktop build tree (vendor, patches, UI bundle)..."
+  ( cd electron && node scripts/prepack.js && npm run patch && bash scripts/bundle-ui.sh ) \
+    > /tmp/pearcal-build-prep.log 2>&1 \
+    || { echo "    ✗ desktop prep FAILED - see /tmp/pearcal-build-prep.log"; tail -20 /tmp/pearcal-build-prep.log | sed 's/^/        /'; PUBLISH_DESKTOP=false; }
+fi
+if $PUBLISH_DESKTOP; then
+  echo "==> Starting the desktop builds in the background (Linux + Mac + Win)..."
+  echo "    Logs: /tmp/pearcal-build-{linux,mac,windows}.log"
+  rm -f /tmp/pearcal-build-{linux,mac,windows}.log
+  export SKIP_ELECTRON_PREP=1
+  (cd electron && bash scripts/build-linux.sh)    < /dev/null > /tmp/pearcal-build-linux.log   2>&1 &
+  PID_LINUX=$!
+  (cd electron && npm run build:mac --silent)     < /dev/null > /tmp/pearcal-build-mac.log     2>&1 &
+  PID_MAC=$!
+  (cd electron && npm run build:windows --silent) < /dev/null > /tmp/pearcal-build-windows.log 2>&1 &
+  PID_WIN=$!
+  unset SKIP_ELECTRON_PREP
+fi
+
+# Launch the two seeder installers that build locally. Idempotent, because
+# there is one path this cannot cover from here: a re-attach whose download
+# fails falls back to a rebuild, and that is only known at 5c. 5c calls it
+# again and a second call does nothing.
+PID_SLINUX=""; PID_SWIN=""; SEEDER_LOCAL_LAUNCHED=false
+_launch_local_seeder_builds () {
+  $SEEDER_LOCAL_LAUNCHED && return 0
+  SEEDER_LOCAL_LAUNCHED=true
+  SEEDER_DIR="$REPO_ROOT/seeder-launcher"
+  rm -f /tmp/pearcal-seeder-{linux,windows,macos}.log
+  # Clear this run's expected outputs first. Collection at 5c is existence-based
+  # (so a partial build still ships what it produced), which is only safe if a
+  # FAILED build can't leave a stale file to be mistaken for fresh. Every seeder
+  # installer now carries its version in its name, so a prior release's leftover
+  # can no longer be re-shipped under this tag, but clearing is still the cheap
+  # guard against a re-run of the SAME version picking up a half-written file.
+  rm -f \
+    "$SEEDER_DIR/dist/linux/PearCalSeeder-${APP_VERSION}-x86_64.AppImage"{,.sha256} \
+    "$SEEDER_DIR/dist/linux/pearcal-seeder_${APP_VERSION}_amd64.deb"{,.sha256} \
+    "$SEEDER_DIR/dist/windows/PearCalSeeder-Setup-${APP_VERSION}.exe"{,.sha256} \
+    "$SEEDER_DIR/dist/macos/PearCalSeeder-${APP_VERSION}"-{arm64,x64}.pkg{,.sha256} 2>/dev/null || true
+
+  # Linux: AppImage (x86_64) then .deb (amd64), sequentially in one subshell -
+  # they share the staging cache (bundled node download) and dist/linux dir, so
+  # serialising avoids a download/dir race. Skips the .deb if dpkg-deb is absent.
+  ( set -e
+    VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-appimage-linux.sh"
+    if command -v dpkg-deb >/dev/null 2>&1; then
+      VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-deb-linux.sh"
+    else
+      echo "build-deb: dpkg-deb not found - skipping .deb"
+    fi
+  ) < /dev/null > /tmp/pearcal-seeder-linux.log 2>&1 &
+  PID_SLINUX=$!
+
+  # Windows NSIS .exe - cross-built on Linux via makensis (no Windows host).
+  if command -v makensis >/dev/null 2>&1 || command -v mingw32-makensis >/dev/null 2>&1; then
+    ( VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-windows.sh" ) \
+      < /dev/null > /tmp/pearcal-seeder-windows.log 2>&1 &
+    PID_SWIN=$!
+  else
+    echo "    - Windows seeder .exe skipped (makensis not installed)"
+  fi
+}
+if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
+  echo "==> Starting the Linux + Windows blind-seeder builds in the background..."
+  echo "    Logs: /tmp/pearcal-seeder-{linux,windows}.log"
+  _launch_local_seeder_builds
+fi
+
 # ---------------------------------------------------------------------------
 # 3. Build signed release APK (and AAB if publishing to Google Play)
 # ---------------------------------------------------------------------------
@@ -1438,23 +1560,23 @@ else
   exit 1
 fi
 
-echo "==> Building signed release APK (this takes a few minutes)..."
+# Both artifacts come out of ONE Gradle invocation. As two invocations the
+# whole configuration phase, the JS bundle and the resource processing were
+# done twice; as two tasks in a single build Gradle shares all of that and only
+# the packaging differs.
+GRADLE_TASKS=(assembleRelease)
+if $PUBLISH_PLAY; then
+  GRADLE_TASKS+=(bundleRelease)
+  echo "==> Building signed release APK and AAB (this takes a few minutes)..."
+else
+  echo "==> Building signed release APK (this takes a few minutes)..."
+fi
 (
   export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
   export JAVA_HOME="$ANDROID_JAVA"
   export PATH="$ANDROID_JAVA/bin:$PATH"
-  cd android && ./gradlew assembleRelease -q -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+  cd android && ./gradlew "${GRADLE_TASKS[@]}" -q -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 )
-
-if $PUBLISH_PLAY; then
-  echo "==> Building signed release AAB for Google Play..."
-  (
-    export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
-    export JAVA_HOME="$ANDROID_JAVA"
-    export PATH="$ANDROID_JAVA/bin:$PATH"
-    cd android && ./gradlew bundleRelease -q -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
-  )
-fi
 
 # ---------------------------------------------------------------------------
 # 4. Copy artifacts with version names
@@ -1683,22 +1805,17 @@ if $NEEDS_BUILD; then
 # ---------------------------------------------------------------------------
 # 5b. Build desktop artifacts in parallel (Linux/Mac/Win)
 # ---------------------------------------------------------------------------
-# Three independent build paths run concurrently in subshells; output is
-# tee'd to per-platform log files in /tmp so a failure in one doesn't bury
-# another's stdout. Failures are isolated — a single platform that errors
-# is announced and skipped, the rest of the release continues. Ships the
-# Mac signed-not-notarized .dmg and the unsigned Win .exe as official
-# artifacts (per project decision; users right-click → Open on Mac, click-
-# through SmartScreen on Win). Linux is the one fully clean platform.
+# Three independent build paths run concurrently in subshells, started back
+# before the Gradle build so they overlap it and the release-notes edit; this
+# step only collects them. Output goes to per-platform log files in /tmp so a
+# failure in one doesn't bury another's stdout. Failures are isolated - a
+# single platform that errors is announced and skipped, the rest of the
+# release continues. Ships the Mac signed-not-notarized .dmg and the unsigned
+# Win .exe as official artifacts (per project decision; users right-click
+# → Open on Mac, click-through SmartScreen on Win). Linux is the one fully
+# clean platform.
 if $PUBLISH_DESKTOP; then
-  echo "==> Building desktop artifacts in parallel (Linux + Mac + Win)..."
-  rm -f /tmp/pearcal-build-{linux,mac,windows}.log
-  (cd electron && bash scripts/build-linux.sh)   > /tmp/pearcal-build-linux.log   2>&1 &
-  PID_LINUX=$!
-  (cd electron && npm run build:mac --silent)    > /tmp/pearcal-build-mac.log     2>&1 &
-  PID_MAC=$!
-  (cd electron && npm run build:windows --silent) > /tmp/pearcal-build-windows.log 2>&1 &
-  PID_WIN=$!
+  echo "==> Collecting the desktop builds (started before the Gradle build)..."
 
   # Wait for each independently and capture per-platform exit status so a
   # single failure doesn't take down the others. `wait $PID` re-raises the
@@ -1708,6 +1825,8 @@ if $PUBLISH_DESKTOP; then
   STATUS_LINUX=0; wait $PID_LINUX || STATUS_LINUX=$?
   STATUS_MAC=0;   wait $PID_MAC   || STATUS_MAC=$?
   STATUS_WIN=0;   wait $PID_WIN   || STATUS_WIN=$?
+  PID_LINUX=""; PID_MAC=""; PID_WIN=""
+  echo "    Desktop builds finished in $(( $(date +%s) - DESKTOP_STARTED_AT ))s (linux $STATUS_LINUX, mac $STATUS_MAC, win $STATUS_WIN)."
 
   rename_and_collect () {
     local label="$1" status="$2" src_glob="$3" dest_pattern="$4" log_file="$5"
@@ -1891,50 +2010,23 @@ if $PUBLISH_SEEDER && [ -n "$SEEDER_REUSE_TAG" ]; then
 fi
 
 if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
-  echo "==> Building blind-seeder installers (Linux + Windows local; macOS via Mac Mini)..."
   SEEDER_DIR="$REPO_ROOT/seeder-launcher"
-  rm -f /tmp/pearcal-seeder-{linux,windows,macos}.log
-  # Clear this run's expected outputs first. Collection below is existence-based
-  # (so a partial build still ships what it produced), which is only safe if a
-  # FAILED build can't leave a stale file to be mistaken for fresh. Every seeder
-  # installer now carries its version in its name, so a prior release's leftover
-  # can no longer be re-shipped under this tag, but clearing is still the cheap
-  # guard against a re-run of the SAME version picking up a half-written file.
-  rm -f \
-    "$SEEDER_DIR/dist/linux/PearCalSeeder-${APP_VERSION}-x86_64.AppImage"{,.sha256} \
-    "$SEEDER_DIR/dist/linux/pearcal-seeder_${APP_VERSION}_amd64.deb"{,.sha256} \
-    "$SEEDER_DIR/dist/windows/PearCalSeeder-Setup-${APP_VERSION}.exe"{,.sha256} \
-    "$SEEDER_DIR/dist/macos/PearCalSeeder-${APP_VERSION}"-{arm64,x64}.pkg{,.sha256} 2>/dev/null || true
+  # Normally a no-op: the Linux and Windows installers started back before the
+  # Gradle build and have been building ever since. This call only does
+  # anything on the one path that could not be known that early, a re-attach
+  # whose download failed and fell back to a rebuild.
+  _launch_local_seeder_builds
+  echo "==> Collecting the Linux + Windows blind-seeder installers, and building the macOS .pkg..."
 
-  # Linux: AppImage (x86_64) then .deb (amd64), sequentially in one subshell —
-  # they share the staging cache (bundled node download) and dist/linux dir, so
-  # serialising avoids a download/dir race. Skips the .deb if dpkg-deb is absent.
-  ( set -e
-    VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-appimage-linux.sh"
-    if command -v dpkg-deb >/dev/null 2>&1; then
-      VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-deb-linux.sh"
-    else
-      echo "build-deb: dpkg-deb not found — skipping .deb"
-    fi
-  ) > /tmp/pearcal-seeder-linux.log 2>&1 &
-  PID_SLINUX=$!
-
-  # Windows NSIS .exe — cross-built on Linux via makensis (no Windows host).
-  PID_SWIN=""
-  if command -v makensis >/dev/null 2>&1 || command -v mingw32-makensis >/dev/null 2>&1; then
-    ( VERSION="$APP_VERSION" bash "$SEEDER_DIR/scripts/build-windows.sh" ) \
-      > /tmp/pearcal-seeder-windows.log 2>&1 &
-    PID_SWIN=$!
-  else
-    echo "    - Windows seeder .exe skipped (makensis not installed)"
-  fi
-
-  # macOS .pkg (arm64 + x64) on the Mac Mini — best-effort.
+  # macOS .pkg (arm64 + x64) on the Mac Mini - best-effort, and started here
+  # rather than alongside the other two. It rsyncs the repo to the Mac, and so
+  # does the desktop .dmg build in 5b; both at once would clobber the same
+  # tree. 5b has been collected by now, so the Mac is free.
   PID_SMAC=""
   if ssh -o ConnectTimeout=5 -o BatchMode=yes "${MAC_MINI_HOST:-Tims-Mac-mini.local}" exit 2>/dev/null; then
     ( MAC_MINI_HOST="${MAC_MINI_HOST:-Tims-Mac-mini.local}" \
         bash "$SEEDER_DIR/scripts/build-macos-remote.sh" "$APP_VERSION" ) \
-      > /tmp/pearcal-seeder-macos.log 2>&1 &
+      < /dev/null > /tmp/pearcal-seeder-macos.log 2>&1 &
     PID_SMAC=$!
   else
     echo "    - macOS seeder .pkg skipped (${MAC_MINI_HOST:-Tims-Mac-mini.local} unreachable)"
@@ -1943,6 +2035,8 @@ if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
   SSTATUS_LINUX=0; wait $PID_SLINUX || SSTATUS_LINUX=$?
   SSTATUS_WIN=0;   [ -n "$PID_SWIN" ] && { wait $PID_SWIN || SSTATUS_WIN=$?; }
   SSTATUS_MAC=0;   [ -n "$PID_SMAC" ] && { wait $PID_SMAC || SSTATUS_MAC=$?; }
+  _SMAC_RAN="$PID_SMAC"; _SWIN_RAN="$PID_SWIN"
+  PID_SLINUX=""; PID_SWIN=""; PID_SMAC=""
 
   # Collect an installer + its (already-built) .sha256 sidecar. Both are attached
   # so the updater can verify the download; a missing sidecar is a hard warning
@@ -1973,7 +2067,7 @@ if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
   _collect_seeder "Linux AppImage" "$SEEDER_DIR/dist/linux/PearCalSeeder-${APP_VERSION}-x86_64.AppImage"
   _collect_seeder "Linux deb"      "$SEEDER_DIR/dist/linux/pearcal-seeder_${APP_VERSION}_amd64.deb"
 
-  if [ -n "$PID_SWIN" ]; then
+  if [ -n "$_SWIN_RAN" ]; then
     [ "$SSTATUS_WIN" -ne 0 ] && {
       echo "    ✗ Windows seeder build reported exit $SSTATUS_WIN — see /tmp/pearcal-seeder-windows.log"
       tail -15 /tmp/pearcal-seeder-windows.log | sed 's/^/        /'
@@ -1981,7 +2075,7 @@ if $PUBLISH_SEEDER && [ -z "$SEEDER_REUSE_TAG" ]; then
     _collect_seeder "Windows installer" "$SEEDER_DIR/dist/windows/PearCalSeeder-Setup-${APP_VERSION}.exe"
   fi
 
-  if [ -n "$PID_SMAC" ]; then
+  if [ -n "$_SMAC_RAN" ]; then
     [ "$SSTATUS_MAC" -ne 0 ] && {
       echo "    ✗ macOS seeder build reported exit $SSTATUS_MAC — see /tmp/pearcal-seeder-macos.log"
       tail -15 /tmp/pearcal-seeder-macos.log | sed 's/^/        /'
@@ -2344,31 +2438,101 @@ except Exception:
     done
   }
 
-  # --- Upload APK (mandatory) ---
-  if ! _upload_release_asset "$APK_NAME"; then
+  # --- Upload every asset, several at a time ---
+  #
+  # These went out strictly one after another: the APK, up to five desktop
+  # installers, the seeder installers, the .s9pk packages, every .sha256
+  # sidecar and the update manifests, one file at a time over a link nowhere
+  # near saturated. Uploads are network-bound and independent of each other,
+  # so they now overlap. Four at a time by default, because more streams to one
+  # host stop adding throughput and start competing; RELEASE_UPLOAD_JOBS
+  # overrides it.
+  #
+  # The per-file progress bars are gone, since interleaved bars are unreadable.
+  # Nothing else about an upload changed: every response is still captured and
+  # checked one by one below, a name that already exists on the release is
+  # still deleted and retried through _upload_release_asset, a failed desktop
+  # or seeder asset is still best-effort, and a failed APK still stops the run.
+  RELEASE_UPLOAD_JOBS="${RELEASE_UPLOAD_JOBS:-4}"
+
+  if [ ! -f "$APK_NAME" ]; then
+    echo ""
+    echo "ERROR: $APK_NAME is missing - nothing to attach to the release."
+    exit 1
+  fi
+
+  UPLOAD_QUEUE=()
+  for _f in "$APK_NAME" "${DESKTOP_ARTIFACTS[@]:-}" "${CHECKSUM_ARTIFACTS[@]:-}" "${SEEDER_ARTIFACTS[@]:-}"; do
+    [ -n "$_f" ] && [ -f "$_f" ] && UPLOAD_QUEUE+=("$_f")
+  done
+
+  echo "==> Uploading ${#UPLOAD_QUEUE[@]} asset(s), up to ${RELEASE_UPLOAD_JOBS} at a time..."
+  _upload_started_at=$(date +%s)
+  _upload_resps=()
+  for _f in "${UPLOAD_QUEUE[@]}"; do
+    _name=$(basename "$_f")
+    _ctype=$(_release_content_type "$_name")
+    _rf=$(mktemp); _upload_resps+=("$_rf")
+    echo "    uploading $_name ($_ctype, $(du -h "$_f" | cut -f1))"
+    curl -s \
+      -X POST \
+      -H "Authorization: Bearer $GH_TOKEN" \
+      -H "Accept: application/vnd.github+json" \
+      -H "Content-Type: $_ctype" \
+      "${UPLOAD_URL}?name=${_name}" \
+      --data-binary "@${_f}" \
+      -o "$_rf" 2>/dev/null &
+    # Hold the queue at RELEASE_UPLOAD_JOBS. `wait -n` reaps whichever finishes
+    # first; `|| true` because a failed upload must not trip `set -e` here, it
+    # is diagnosed from its own response below.
+    while [ "$(jobs -rp | wc -l)" -ge "$RELEASE_UPLOAD_JOBS" ]; do wait -n 2>/dev/null || true; done
+  done
+  wait
+  echo "    Uploads finished in $(( $(date +%s) - _upload_started_at ))s. Checking each response..."
+
+  APK_UPLOAD_OK=true
+  for _i in "${!UPLOAD_QUEUE[@]}"; do
+    _f="${UPLOAD_QUEUE[$_i]}"
+    _name=$(basename "$_f")
+    _resp=$(cat "${_upload_resps[$_i]}"); rm -f "${_upload_resps[$_i]}"
+    _err=$(printf '%s' "$_resp" \
+      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" \
+      2>/dev/null || echo "")
+    if [ -z "$_err" ]; then
+      echo "    ✓ Uploaded $_name."
+      continue
+    fi
+    _already=$(printf '%s' "$_resp" \
+      | python3 -c "import sys,json
+try:
+    d=json.load(sys.stdin)
+    for e in d.get('errors',[]) or []:
+        if e.get('code')=='already_exists':
+            print('1'); break
+except Exception:
+    pass" 2>/dev/null || echo "")
+    if [ "$_already" = "1" ]; then
+      echo "    (asset $_name already exists on the release - deleting and retrying)"
+      _delete_release_asset_by_name "$_name" || true
+      if _upload_release_asset "$_f"; then continue; fi
+    else
+      echo "    ✗ Upload failed for $_name:"
+      printf '%s\n' "$_resp" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$_resp"
+    fi
+    if [ "$_f" = "$APK_NAME" ]; then
+      APK_UPLOAD_OK=false
+    else
+      echo "    (continuing - a desktop or seeder artifact failure doesn't block the rest of the release)"
+    fi
+  done
+
+  if ! $APK_UPLOAD_OK; then
     echo ""
     echo "The GitHub release was created but the APK was not attached."
     echo "You can upload it manually at: https://github.com/${REPO_SLUG}/releases/tag/${RELEASE_TAG}"
     exit 1
   fi
 
-  # --- Upload desktop artifacts (best-effort) ---
-  for d in "${DESKTOP_ARTIFACTS[@]}"; do
-    _upload_release_asset "$d" || \
-      echo "    (continuing — desktop artifact failure doesn't block the rest of the release)"
-  done
-
-  # --- Upload .sha256 sidecars (best-effort) ---
-  for d in "${CHECKSUM_ARTIFACTS[@]}"; do
-    _upload_release_asset "$d" || \
-      echo "    (continuing — checksum sidecar failure doesn't block the rest of the release)"
-  done
-
-  # --- Upload seeder installers + sidecars (best-effort) ---
-  for d in "${SEEDER_ARTIFACTS[@]}"; do
-    _upload_release_asset "$d" || \
-      echo "    (continuing — seeder artifact failure doesn't block the rest of the release)"
-  done
 
 else
   # Fallback: gh CLI (requires working auth)

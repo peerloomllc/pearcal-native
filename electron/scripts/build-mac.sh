@@ -25,25 +25,33 @@ cd "$(dirname "$0")/.."
 MAC_HOST="${MAC_MINI_HOST:-Tims-Mac-mini.local}"
 REMOTE_DIR="~/peerloomllc/pearcal-native"
 
-# Re-vendor src/bare.js + helpers into electron/vendor/src/ so the rsync
-# below carries current source. Without this, the Mac packs whatever
-# vendor/ was last refreshed by `npm install`'s postinstall hook.
-node scripts/prepack.js
+# Shared local prep: re-vendor, re-patch, re-bundle the UI. All three desktop
+# build scripts need it and all three used to do it themselves, which meant
+# three concurrent writes to electron/node_modules, electron/vendor/ and
+# src/renderer/app-ui-electron.js when release.sh ran them at the same time.
+# release.sh now does it once up front and sets SKIP_ELECTRON_PREP=1; running
+# this script on its own still does it here.
+if [ "${SKIP_ELECTRON_PREP:-0}" != "1" ]; then
+  # Re-vendor src/bare.js + helpers into electron/vendor/src/ so the rsync
+  # below carries current source. Without this, the Mac packs whatever
+  # vendor/ was last refreshed by `npm install`'s postinstall hook.
+  node scripts/prepack.js
 
-# Re-apply the Autobase patches from the repo-root patches/ directory.
-# These carry the #154 drain-spin repairs. They used to reach the phone build
-# only: patch-package ran from the repo root against the ROOT node_modules,
-# while electron/ keeps its own independent install that nothing patched. Both
-# package.json files said "^7.25.1", so the two installs silently resolved to
-# different Autobase versions and the desktop shipped 7.27.3 with none of the
-# fixes. Both are pinned exact now, and this runs on every build so a stale
-# node_modules cannot ship unpatched again.
-npm run patch
+  # Re-apply the Autobase patches from the repo-root patches/ directory.
+  # These carry the #154 drain-spin repairs. They used to reach the phone build
+  # only: patch-package ran from the repo root against the ROOT node_modules,
+  # while electron/ keeps its own independent install that nothing patched. Both
+  # package.json files said "^7.25.1", so the two installs silently resolved to
+  # different Autobase versions and the desktop shipped 7.27.3 with none of the
+  # fixes. Both are pinned exact now, and this runs on every build so a stale
+  # node_modules cannot ship unpatched again.
+  npm run patch
 
 
-# Bundle UI locally first so the source rsync up to the Mac is the
-# deployable shape.
-bash scripts/bundle-ui.sh
+  # Bundle UI locally first so the source rsync up to the Mac is the
+  # deployable shape.
+  bash scripts/bundle-ui.sh
+fi
 
 echo ">> Syncing source to $MAC_HOST:$REMOTE_DIR"
 # Excludes and the --checksum policy live in ../scripts/mac-sync.sh, shared with
