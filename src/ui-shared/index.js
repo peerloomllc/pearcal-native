@@ -30,6 +30,7 @@ export {
   getCanadaHolidays,
   getBitcoinHolidays,
   getUKHolidays,
+  getMexicoHolidays,
   HOLIDAY_COUNTRIES,
   holidayEventId,
   holidayCalendarIds,
