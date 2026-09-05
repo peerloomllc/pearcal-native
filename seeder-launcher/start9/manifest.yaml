@@ -10,7 +10,7 @@ id: pearcal-seeder
 title: "PearCal Seeder"
 # emver: up to four dot-separated numbers; the fourth (if present) is the StartOS
 # packaging revision. Kept in lockstep with the seeder image tag.
-version: 1.0.46
+version: 1.0.47
 release-notes: |-
   No seeder changes in this release. The version was raised to stay aligned
   with the PearCal app.
