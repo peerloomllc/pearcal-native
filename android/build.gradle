@@ -12,6 +12,29 @@ buildscript {
   }
 }
 
+// Which ABIs to COMPILE. One global property drives every native subproject, so
+// it cannot be varied per build type the way a packaged artifact can - which is
+// the trap behind PearCal #160. `ndk.abiFilters` on the debug build type looks
+// like it adds x86_64 and does not: it only widens what :app packages, while
+// expo-modules-core and react-native-screens are compiled by their own
+// subprojects off THIS property, so `lib/x86_64/` came out missing
+// libexpo-modules-core.so and librnscreens.so, the package manager picked
+// x86_64 anyway and the app red-boxed at launch with "dlopen failed: ... is for
+// EM_AARCH64 (183) instead of EM_X86_64 (62)". Filtering it back out for release
+// does not work either: the React Native Gradle Plugin puts the whole list into
+// defaultConfig and AGP unions abiFilters, so a release-side filter can only add.
+//
+// So choose it from the tasks actually asked for. Debug carries x86_64 and runs
+// natively on an emulator, which suite rule 15 makes the default test target;
+// release stays ARM-only and the APK stays at its 78.4 MB rather than 82.1 MB.
+// An explicit -PreactNativeArchitectures wins over both, and scripts/release.sh
+// passes one so the shipping build never depends on this reading.
+if (!hasProperty('reactNativeArchitectures')) {
+  def requested = gradle.startParameter.taskNames.join(' ').toLowerCase()
+  def abis = requested.contains('release') ? 'arm64-v8a,armeabi-v7a' : 'arm64-v8a,armeabi-v7a,x86_64'
+  allprojects { ext.reactNativeArchitectures = abis }
+}
+
 allprojects {
   repositories {
     google()

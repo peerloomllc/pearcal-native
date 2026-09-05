@@ -1443,7 +1443,7 @@ echo "==> Building signed release APK (this takes a few minutes)..."
   export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
   export JAVA_HOME="$ANDROID_JAVA"
   export PATH="$ANDROID_JAVA/bin:$PATH"
-  cd android && ./gradlew assembleRelease -q
+  cd android && ./gradlew assembleRelease -q -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 )
 
 if $PUBLISH_PLAY; then
@@ -1452,7 +1452,7 @@ if $PUBLISH_PLAY; then
     export KEYSTORE_FILE KEY_ALIAS KEYSTORE_PASSWORD KEY_PASSWORD APP_VERSION APP_VERSION_CODE
     export JAVA_HOME="$ANDROID_JAVA"
     export PATH="$ANDROID_JAVA/bin:$PATH"
-    cd android && ./gradlew bundleRelease -q
+    cd android && ./gradlew bundleRelease -q -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
   )
 fi
 
