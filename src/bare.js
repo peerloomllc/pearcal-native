@@ -1641,8 +1641,28 @@ function scheduleWidgetCacheRefresh () {
   }, 500)
 }
 
+// The cache is a window of days starting with today, so it goes stale the
+// moment the date turns. The widgets pick the right day out of it themselves,
+// which covers a device whose app is not running, but a long-lived process
+// (Android keeps the worklet alive behind a foreground service) would otherwise
+// hold a window that begins in the past and shortens every day. Rebuild it as
+// the day turns.
+let _widgetMidnightTimer = null
+function scheduleWidgetMidnightRefresh () {
+  if (_widgetMidnightTimer) clearTimeout(_widgetMidnightTimer)
+  const now = new Date()
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 30)
+  // Always under a day, so nowhere near setTimeout's 2^31-1 ms ceiling.
+  _widgetMidnightTimer = setTimeout(() => {
+    _widgetMidnightTimer = null
+    refreshWidgetCache().catch(e => console.error('widget midnight refresh:', e.message))
+  }, Math.max(1000, next.getTime() - now.getTime()))
+  if (_widgetMidnightTimer.unref) _widgetMidnightTimer.unref()
+}
+
 async function refreshWidgetCache () {
   if (!db) return null
+  scheduleWidgetMidnightRefresh()
   const profile = await getProfile().catch(() => null)
   const ownedGroupIds = await listOwnedGroupIds(profile?.id).catch(() => new Set())
   const payload = await computeTodayCache(db, {
@@ -7908,6 +7928,8 @@ function resetInMemoryState () {
   _pairSession = null
   if (_widgetRefreshTimer) { try { clearTimeout(_widgetRefreshTimer) } catch (e) {} }
   _widgetRefreshTimer = null
+  if (_widgetMidnightTimer) { try { clearTimeout(_widgetMidnightTimer) } catch (e) {} }
+  _widgetMidnightTimer = null
   _lastConsolidationTs = 0
   _relayOffers = 0
   _lastConflictAt = 0
@@ -9053,6 +9075,12 @@ async function _doInit (dir, attempt = 0) {
       .then(() => resumePendingPair())
       .catch(e => console.warn('[personal] ensure/resume error:', e.message))
     send({ type: 'event', event: 'ready' })
+    // Rebuild the widget cache as soon as the DB is up. Nothing did this on a
+    // cold start: the refresh ran on a mutation, on a sync that applied one, or
+    // when the app came BACK to the foreground, and a launch from cold is none
+    // of those. That is why opening the app once left the widget stale and
+    // opening it a second time fixed it. (#174)
+    scheduleWidgetCacheRefresh()
     scheduleMorningDigest().catch(e => console.warn('morning digest init:', e.message))
     startRealtimeSyncTick()
     startRetention()   // TODO #112: bound append-only growth on a 30-min cadence

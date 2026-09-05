@@ -24,6 +24,16 @@ class BootReceiver : BroadcastReceiver() {
                 } catch (e: Exception) {
                     android.util.Log.e("BootReceiver", "reminder restore failed", e)
                 }
+                // The widget's periodic redraw is scheduled when a widget is first
+                // placed, so an app update that ADDS the schedule finds nothing to
+                // re-arm it. Do it here too, and redraw once: the cached week may
+                // well have rolled onto a new day while the device was off. (#174)
+                try {
+                    com.pearcal.widget.DailyWidgetWorker.schedule(context.applicationContext)
+                    com.pearcal.widget.DailyWidgetReceiver.updateAll(context.applicationContext)
+                } catch (e: Exception) {
+                    android.util.Log.e("BootReceiver", "widget refresh failed", e)
+                }
             }
         }
     }

@@ -229,3 +229,81 @@ test('more than three upcoming events reach the cache', async () => {
     mock.timers.reset()
   }
 })
+
+// --- the cached day window: the widget picks its own day (#174) ---------------
+//
+// Only the app can build this payload, and the app can go days without running.
+// The widget used to be handed one day and drew it whatever the date was, so
+// after midnight it showed yesterday's events under today's header until
+// something opened the app. It now gets a week and selects the matching day.
+
+test('the cache carries eight consecutive days, starting with today', async () => {
+  const cache = await cacheAt(10, 0, [])
+  assert.equal(cache.days.length, 8)
+  assert.deepEqual(cache.days.map(d => d.date), [
+    '2026-07-14', '2026-07-15', '2026-07-16', '2026-07-17',
+    '2026-07-18', '2026-07-19', '2026-07-20', '2026-07-21',
+  ])
+})
+
+test('day one repeats the top-level events, so an older widget still draws', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'a', title: 'Standup', start: '11:00', end: '11:30' },
+    { id: 'b', title: 'Lunch', start: '12:00', end: '13:00' },
+  ])
+  assert.deepEqual(cache.days[0].events, cache.events)
+  assert.deepEqual(cache.days[0].slots, cache.slots)
+  assert.equal(cache.days[0].date, cache.date)
+})
+
+test('each day carries its own events and no other day\'s', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'today', title: 'Today', start: '11:00', end: '12:00' },
+    { id: 'tue', title: 'Tuesday', start: '09:00', end: '10:00', date: '2026-07-16' },
+  ])
+  assert.deepEqual(cache.days[0].events.map(e => e.id), ['today'])
+  assert.deepEqual(cache.days[1].events.map(e => e.id), [])
+  assert.deepEqual(cache.days[2].events.map(e => e.id), ['tue'])
+})
+
+test('a future day is cached whole, not pruned by the time of day', async () => {
+  // 09:00 tomorrow has not happened at 23:00 tonight. Pruning on the clock is
+  // only right for today, and applying it across the window would have emptied
+  // tomorrow before it arrived.
+  const cache = await cacheAt(23, 0, [
+    { id: 'early', title: 'Early', start: '09:00', end: '10:00', date: '2026-07-15' },
+    { id: 'gone', title: 'Gone', start: '09:00', end: '10:00' },
+  ])
+  assert.deepEqual(cache.days[0].events.map(e => e.id), [], 'today still prunes what has ended')
+  assert.deepEqual(cache.days[1].events.map(e => e.id), ['early'])
+})
+
+test('a multi-day span appears on every day it covers', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'trip', title: 'Trip', allDay: true, date: '2026-07-15', endDate: '2026-07-17' },
+  ])
+  const has = i => cache.days[i].events.some(e => e.id === 'trip')
+  assert.equal(has(0), false, 'has not started')
+  assert.equal(has(1), true, 'its own start day, from the day read')
+  assert.equal(has(2), true, 'an intermediate day, from the span read')
+  assert.equal(has(3), true, 'the last day, endDate is inclusive')
+  assert.equal(has(4), false, 'over')
+})
+
+test('an overnight event carries onto the next cached day', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'shift', title: 'Night shift', start: '22:00', end: '07:00', date: '2026-07-16' },
+  ])
+  assert.deepEqual(cache.days[2].events.map(e => e.id), ['shift'], 'the day it starts')
+  const next = cache.days[3].events
+  assert.deepEqual(next.map(e => e.id), ['shift'], 'still running the morning after')
+  assert.equal(next[0].carried, true, 'labelled by when it ends, not when it started')
+})
+
+test('the tomorrow preview comes from the cached day, not a separate read', async () => {
+  const cache = await cacheAt(10, 0, [
+    { id: 'tmw', title: 'Dentist', start: '09:00', end: '10:00', date: '2026-07-15' },
+  ])
+  assert.equal(cache.events.length, 0)
+  assert.equal(cache.tomorrowFirst.id, 'tmw')
+})

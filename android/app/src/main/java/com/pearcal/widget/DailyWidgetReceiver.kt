@@ -23,7 +23,26 @@ import java.util.Locale
 class DailyWidgetReceiver : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, mgr: AppWidgetManager, ids: IntArray) {
+        // Re-arm the periodic redraw here as well as in onEnabled. onEnabled fires
+        // once, when the FIRST widget is ever placed, so a widget that has been on
+        // the home screen since before this worker existed had nothing scheduled
+        // and only ever redrew when the app itself wrote the cache. The work is
+        // enqueued under KEEP, so re-arming an already-scheduled job is free.
+        DailyWidgetWorker.schedule(context)
         for (id in ids) render(context, mgr, id)
+    }
+
+    // Midnight, and any manual clock or timezone change, moves the widget onto a
+    // different day of the cached week. The system broadcasts all three, so the
+    // redraw happens the moment the date turns rather than waiting up to 15
+    // minutes for the periodic worker to notice.
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_DATE_CHANGED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED -> updateAll(context)
+            else -> super.onReceive(context, intent)
+        }
     }
 
     // A resize changes how many rows fit, and the budget is computed per render,
@@ -254,6 +273,18 @@ class DailyWidgetReceiver : AppWidgetProvider() {
             val upcoming: List<EventRow> = emptyList(),
         )
 
+        // The date key the cache is written against, `n` days from now.
+        private fun dayKey(n: Int): String {
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.DAY_OF_YEAR, n)
+            return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+        }
+
+        // The app writes a week of days at a time (#174) and can go days without
+        // running, so WHICH day to draw is decided here, at render, not at write
+        // time. Before that the widget drew whatever single day it had been given
+        // and only the header date followed the clock, so after midnight it showed
+        // yesterday's events until something opened the app.
         private fun readCache(context: Context): WidgetCache {
             val file = File(File(context.filesDir, "widget"), "today.json")
             if (!file.exists()) return WidgetCache(emptyList(), emptyList(), null)
@@ -264,19 +295,48 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                     json.has("use24h") -> json.optBoolean("use24h", DateFormat.is24HourFormat(context))
                     else -> DateFormat.is24HourFormat(context)
                 }
-                val arr = json.optJSONArray("events")
+                val today = dayKey(0)
+                val tomorrow = dayKey(1)
+                val daysArr = json.optJSONArray("days")
+                var dayObj: JSONObject? = null
+                var tomorrowObj: JSONObject? = null
+                if (daysArr != null) {
+                    for (i in 0 until daysArr.length()) {
+                        val o = daysArr.optJSONObject(i) ?: continue
+                        when (o.optString("date")) {
+                            today -> dayObj = o
+                            tomorrow -> tomorrowObj = o
+                        }
+                    }
+                }
+                // A cache file written by a build older than the day window has no
+                // `days`. Its flat payload is still good, but only for the day it
+                // was written on.
+                val flat = daysArr == null && json.optString("date") == today
+                // Neither: the window ran out, which takes over a week with the app
+                // never once running. Drawing nothing is right, and a tap opens the
+                // app and refills it.
+                val source: JSONObject? = dayObj ?: if (flat) json else null
+
+                val arr = source?.optJSONArray("events")
                 val list = ArrayList<EventRow>(arr?.length() ?: 0)
                 if (arr != null) {
                     for (i in 0 until arr.length()) list.add(parseEventRow(arr.getJSONObject(i), use24h, upcoming = false))
                 }
                 // "Show upcoming events" rows (TODO #107) — only present when the
-                // setting is on and today is empty; weekday label replaces time.
+                // setting is on; weekday label replaces time. Written against the
+                // day the app last ran, so anything the clock has since passed is
+                // dropped rather than shown as still upcoming.
                 val upArr = json.optJSONArray("upcoming")
                 val upList = ArrayList<EventRow>(upArr?.length() ?: 0)
                 if (upArr != null) {
-                    for (i in 0 until upArr.length()) upList.add(parseEventRow(upArr.getJSONObject(i), use24h, upcoming = true))
+                    for (i in 0 until upArr.length()) {
+                        val o = upArr.getJSONObject(i)
+                        if (o.optString("date") <= today) continue
+                        upList.add(parseEventRow(o, use24h, upcoming = true))
+                    }
                 }
-                val slotsArr = json.optJSONArray("slots")
+                val slotsArr = source?.optJSONArray("slots")
                 val slotList = ArrayList<List<Int>>()
                 if (slotsArr != null) {
                     for (i in 0 until slotsArr.length()) {
@@ -288,8 +348,16 @@ class DailyWidgetReceiver : AppWidgetProvider() {
                 } else {
                     for (i in list.indices) slotList.add(listOf(i))
                 }
-                val tomorrow = json.optJSONObject("tomorrowFirst")
-                val preview = if (tomorrow != null) formatTomorrowPreview(tomorrow, use24h) else null
+                // The tomorrow line comes from the cached day after this one, so it
+                // moves with the date too. The flat payload's own `tomorrowFirst` is
+                // the fallback, and is only ever read on the day it was written.
+                val tomorrowEvents = tomorrowObj?.optJSONArray("events")
+                val tomorrowJson = when {
+                    tomorrowEvents != null && tomorrowEvents.length() > 0 -> tomorrowEvents.optJSONObject(0)
+                    flat -> json.optJSONObject("tomorrowFirst")
+                    else -> null
+                }
+                val preview = if (tomorrowJson != null) formatTomorrowPreview(tomorrowJson, use24h) else null
                 WidgetCache(list, slotList, preview, upList)
             } catch (e: Exception) {
                 WidgetCache(emptyList(), emptyList(), null)
