@@ -29,6 +29,19 @@ const SPAN_LOOKBACK_DAYS = 370
 // them (an iOS .systemLarge or a resized Android widget), not the small ones.
 const UPCOMING_LIMIT = 10
 
+// How many days the cache covers, starting with today. Only the app can compute
+// this payload (the events live in the worklet's Hyperbee), and the app may not
+// run for days, so it hands the widgets a week at a time and they pick out the
+// current day themselves at render. With one day only, the widget kept drawing
+// yesterday's events under today's header until something opened the app.
+const CACHE_DAYS = 8
+
+function daysAheadDateString (n) {
+  const d = new Date()
+  d.setDate(d.getDate() + n)
+  return dateStringFor(d)
+}
+
 function daysAgoDateString (n) {
   const d = new Date()
   d.setDate(d.getDate() - n)
@@ -96,31 +109,35 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
   return [...byId.values()].map(normalize).sort(byDayOrder)
 }
 
-// Multi-day events that started on an earlier day and are still running today.
-// Only the start day gets a key (`events:{startDate}:{id}`); the span lives in the
-// record's `endDate`, which today's key range never sees, so without this the
-// widget showed such an event on day one and then dropped it for the rest of its
-// run, while the app's own day view (`e.date <= d && (e.endDate || e.date) >= d`)
-// kept showing it. Recurring events were unaffected because each occurrence is
-// materialised as its own dated record. (TODO #136)
+// Multi-day events that started on an earlier day and are still running on one
+// of the cached days. Only the start day gets a key (`events:{startDate}:{id}`);
+// the span lives in the record's `endDate`, which a later day's key range never
+// sees, so without this the widget showed such an event on day one and then
+// dropped it for the rest of its run, while the app's own day view
+// (`e.date <= d && (e.endDate || e.date) >= d`) kept showing it. (TODO #136)
 //
-// One range scan over [today - SPAN_LOOKBACK_DAYS, today), so today's own records
-// stay the job of readDayEvents and can't be picked up twice.
-async function readSpanningEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds }) {
+// One range scan for the whole cache window, bucketed per day by `spansOn`, so
+// a week's worth of days costs the same single scan one day used to.
+async function readSpans (db, toDate, { profileId, isInvitedToEvent, ownedGroupIds }) {
   const gt = 'events:' + daysAgoDateString(SPAN_LOOKBACK_DAYS) + ':'
-  const lt = 'events:' + date + ':'
+  const lt = 'events:' + toDate + ':\xff'
   const byId = new Map()
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (value.isShadow) continue
-    // A real span that has not finished yet. `endDate` is inclusive, so an event
-    // ending today is still live today.
+    // A real span, i.e. one that ends after the day it starts on.
     if (!value.endDate || value.endDate <= value.date) continue
-    if (value.endDate < date) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
     const prev = byId.get(value.id)
     if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
-  return [...byId.values()].map(normalize)
+  return [...byId.values()]
+}
+
+// The spans covering `date`, excluding any that start on it: those already come
+// from readDayEvents and would otherwise be listed twice. `endDate` is
+// inclusive, so a span ending on `date` still runs that day.
+function spansOn (spans, date) {
+  return spans.filter(v => v.date < date && v.endDate >= date).map(normalize)
 }
 
 // Yesterday's events that run past midnight and are *still* running right now.
@@ -197,31 +214,62 @@ function buildSlots (events) {
   return slots
 }
 
+// One day of the cache: that day's own events, any multi-day span running
+// through it and anything carried over from the night before, in the order the
+// widgets draw them.
+//
+// `nowHHMM` is passed only for today. It prunes events that have already ended,
+// which is meaningless for a day that has not started yet: a future day is
+// cached whole.
+async function computeDay (db, date, prevDate, spans, opts) {
+  const own = await readDayEvents(db, date, opts)
+  const carried = await readCarriedEvents(db, prevDate, {
+    ...opts,
+    // Nothing has ended yet on a day that has not begun, so keep every wrapping
+    // event from the night before. readCarriedEvents drops them all when this is
+    // empty, so a future day needs a real floor rather than no time at all.
+    nowHHMM: opts.nowHHMM || '00:00',
+  })
+  const events = mergeCarried([...own, ...spansOn(spans, date)].sort(byDayOrder), carried)
+  return { date, events, slots: buildSlots(events) }
+}
+
 async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds, use24h, widgetShowUpcoming } = {}) {
   const date = todayDateString()
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
-  const today = await readDayEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
-  const spanning = await readSpanningEvents(db, date, { profileId, isInvitedToEvent, ownedGroupIds })
-  const carried = await readCarriedEvents(db, yesterdayDateString(), { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM })
-  // A span in progress is an all-day row for today, so it merges into the day list
-  // and re-sorts to the top alongside today's own all-day events.
-  const events = mergeCarried([...today, ...spanning].sort(byDayOrder), carried)
-  const slots = buildSlots(events)
+  const who = { profileId, isInvitedToEvent, ownedGroupIds }
+  const spans = await readSpans(db, daysAheadDateString(CACHE_DAYS - 1), who)
+  // Today first, then the rest of the window. The widgets render whichever entry
+  // matches the date they wake up on, so the day rolls over without the app.
+  const days = []
+  for (let i = 0; i < CACHE_DAYS; i++) {
+    days.push(await computeDay(
+      db,
+      daysAheadDateString(i),
+      daysAheadDateString(i - 1),
+      spans,
+      { ...who, nowHHMM: i === 0 ? nowHHMM : null },
+    ))
+  }
+  const { events, slots } = days[0]
   let tomorrowFirst = null
   let upcoming = null
   if (widgetShowUpcoming) {
     // Surface the next few events across future days *alongside* today's — a
     // holiday (or any event) today no longer hides what's coming up. The widget
     // shows today's events first, then fills remaining space with these.
-    const next = await readUpcomingEvents(db, tomorrowDateString(), UPCOMING_LIMIT, { profileId, isInvitedToEvent, ownedGroupIds })
+    const next = await readUpcomingEvents(db, tomorrowDateString(), UPCOMING_LIMIT, who)
     if (next.length > 0) upcoming = next
   } else if (events.length === 0) {
     // Setting off + empty today: keep the lightweight tomorrow-only preview.
-    const tomorrow = await readDayEvents(db, tomorrowDateString(), { profileId, isInvitedToEvent, ownedGroupIds })
+    const tomorrow = days[1]?.events ?? []
     if (tomorrow.length > 0) tomorrowFirst = tomorrow[0]
   }
-  return { date, generatedAt: Date.now(), events, slots, tomorrowFirst, upcoming, use24h: use24h ?? null }
+  // `events`/`slots`/`tomorrowFirst` repeat day one. They are what a widget
+  // binary older than the cache file reads, and dropping them would blank the
+  // widget between installing an update and the app's next write.
+  return { date, generatedAt: Date.now(), events, slots, tomorrowFirst, upcoming, days, use24h: use24h ?? null }
 }
 
 module.exports = { computeTodayCache, todayDateString }

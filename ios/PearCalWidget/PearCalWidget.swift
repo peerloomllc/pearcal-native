@@ -16,6 +16,13 @@ struct CachedEvent: Codable, Identifiable {
   let carried: Bool?      // began yesterday, still running now — TODO #114
 }
 
+// One day of the cached window. The app writes a week of these at a time.
+struct CachedDay: Codable {
+  let date: String
+  let events: [CachedEvent]
+  let slots: [[Int]]?
+}
+
 struct CachedPayload: Codable {
   let date: String
   let generatedAt: Double
@@ -23,7 +30,47 @@ struct CachedPayload: Codable {
   let slots: [[Int]]?
   let tomorrowFirst: CachedEvent?
   let upcoming: [CachedEvent]?   // next few events on empty days, when enabled — TODO #107
+  let days: [CachedDay]?         // today and the week after it — TODO #174
   let use24h: Bool?
+}
+
+private let dayKeyFormatter: DateFormatter = {
+  let f = DateFormatter()
+  f.dateFormat = "yyyy-MM-dd"
+  f.locale = Locale(identifier: "en_US_POSIX")
+  return f
+}()
+
+extension CachedPayload {
+  // Which day to draw is decided at render, not at write time. Only the app can
+  // build this payload and it may not run for days, so it hands over a week and
+  // the widget picks the day it wakes up on. Before that the widget drew the one
+  // day it was given whatever the date was, so after midnight it showed
+  // yesterday's events under today's header until something opened the app.
+  func resolved(for when: Date) -> CachedPayload {
+    let key = dayKeyFormatter.string(from: when)
+    let nextKey = dayKeyFormatter.string(
+      from: Calendar.current.date(byAdding: .day, value: 1, to: when) ?? when)
+    // Anything the clock has passed since the app last ran is no longer upcoming.
+    let stillAhead = upcoming?.filter { ($0.date ?? "") > key }
+    let today = days?.first { $0.date == key }
+    // No `days` at all means a cache file written by a build older than the day
+    // window. Its flat payload is still good, but only on the day it was written.
+    let flat = days == nil && date == key
+    if today == nil && !flat {
+      return CachedPayload(date: key, generatedAt: generatedAt, events: [], slots: nil,
+                           tomorrowFirst: nil, upcoming: stillAhead, days: days, use24h: use24h)
+    }
+    guard let today = today else {
+      return CachedPayload(date: key, generatedAt: generatedAt, events: events, slots: slots,
+                           tomorrowFirst: tomorrowFirst, upcoming: stillAhead, days: days, use24h: use24h)
+    }
+    // The tomorrow line moves with the date too, so it comes from the next
+    // cached day rather than from what was tomorrow when the app last ran.
+    let next = days?.first { $0.date == nextKey }?.events.first
+    return CachedPayload(date: key, generatedAt: generatedAt, events: today.events, slots: today.slots,
+                         tomorrowFirst: next, upcoming: stillAhead, days: days, use24h: use24h)
+  }
 }
 
 // MARK: - Theme
@@ -63,14 +110,28 @@ struct PearCalProvider: TimelineProvider {
   }
 
   func getSnapshot(in context: Context, completion: @escaping (PearCalEntry) -> Void) {
-    completion(PearCalEntry(date: Date(), payload: CacheLoader.load()))
+    let now = Date()
+    completion(PearCalEntry(date: now, payload: CacheLoader.load()?.resolved(for: now)))
   }
 
+  // One entry for now plus one per midnight in the cached window, each resolved
+  // to its own day. WidgetKit renders the entry whose date has arrived, so the
+  // widget turns the page at midnight on its own — no app launch, and no waiting
+  // on a reload the system may not grant. The 15-minute reload still runs, to
+  // pick up whatever the app has written since. (TODO #174)
   func getTimeline(in context: Context, completion: @escaping (Timeline<PearCalEntry>) -> Void) {
     let now = Date()
-    let entry = PearCalEntry(date: now, payload: CacheLoader.load())
-    let refresh = Calendar.current.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
-    completion(Timeline(entries: [entry], policy: .after(refresh)))
+    let payload = CacheLoader.load()
+    var entries = [PearCalEntry(date: now, payload: payload?.resolved(for: now))]
+    let cal = Calendar.current
+    var day = cal.startOfDay(for: now)
+    for _ in 0..<7 {
+      guard let next = cal.date(byAdding: .day, value: 1, to: day) else { break }
+      day = next
+      entries.append(PearCalEntry(date: day, payload: payload?.resolved(for: day)))
+    }
+    let refresh = cal.date(byAdding: .minute, value: 15, to: now) ?? now.addingTimeInterval(900)
+    completion(Timeline(entries: entries, policy: .after(refresh)))
   }
 }
 
@@ -173,8 +234,11 @@ private func minutesFromHHMM(_ s: String?) -> Int? {
   return h * 60 + m
 }
 
-private func currentMinutes() -> Int {
-  let comps = Calendar.current.dateComponents([.hour, .minute], from: Date())
+// The entry's own moment, not `Date()`. WidgetKit renders a timeline entry well
+// before it is shown, so a view that reads the wall clock while drawing the
+// midnight entry would highlight and grey rows against the time it was rendered.
+private func currentMinutes(_ when: Date) -> Int {
+  let comps = Calendar.current.dateComponents([.hour, .minute], from: when)
   return (comps.hour ?? 0) * 60 + (comps.minute ?? 0)
 }
 
@@ -220,10 +284,10 @@ private func isPastEvent(_ e: CachedEvent, nowMin: Int) -> Bool {
   return endMin < nowMin
 }
 
-private func headerDateString() -> String {
+private func headerDateString(_ when: Date) -> String {
   let fmt = DateFormatter()
   fmt.dateFormat = "EEE, MMM d"
-  return fmt.string(from: Date()).uppercased()
+  return fmt.string(from: when).uppercased()
 }
 
 // MARK: - Small view
@@ -242,7 +306,7 @@ struct SmallView: View {
     let remaining = events.count - shownToday.count
 
     VStack(alignment: .leading, spacing: 6) {
-      Text(headerDateString()).font(.caption2).foregroundColor(Theme.subtle)
+      Text(headerDateString(entry.date)).font(.caption2).foregroundColor(Theme.subtle)
       ForEach(Array(shownToday.enumerated()), id: \.offset) { _, ev in
         eventRow(ev, showTime: true)
       }
@@ -297,7 +361,7 @@ struct MediumView: View {
     let allSlots: [[Int]] = entry.payload?.slots ?? allEvents.indices.map { [$0] }
     let upcoming = entry.payload?.upcoming ?? []
     let tomorrow = entry.payload?.tomorrowFirst
-    let nowMin = currentMinutes()
+    let nowMin = currentMinutes(entry.date)
     let nextUp = findNextUp(allEvents, nowMin: nowMin)
     // Today's events take rows first; upcoming (TODO #107) fills the rest of the
     // budget so a holiday today no longer hides what's coming up.
@@ -307,7 +371,7 @@ struct MediumView: View {
     let shownUpcoming = Array(upcoming.prefix(max(0, rowBudget - shownSlots.count)))
 
     VStack(alignment: .leading, spacing: 6) {
-      Text(headerDateString())
+      Text(headerDateString(entry.date))
         .font(.caption2)
         .foregroundColor(Theme.subtle)
         .frame(maxWidth: .infinity, alignment: .center)
