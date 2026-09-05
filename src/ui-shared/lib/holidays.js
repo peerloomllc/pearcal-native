@@ -143,6 +143,44 @@ export function getBitcoinHolidays (year) {
   ]
 }
 
+// Mexico's statutory rest days, from Article 74 of the Ley Federal del Trabajo.
+// The 2006 reform pinned three of them to a Monday, so they float rather than
+// sitting on the date they commemorate: Constitution Day marks 5 February but is
+// taken on the first Monday of the month. Mexico has no substitute-day rule, so
+// a holiday landing on a weekend stays there and `applySubstitutes` is
+// deliberately not applied here.
+export function getMexicoHolidays (year) {
+  function nthWeekday (y, m, weekday, n) {
+    const first = new Date(y, m - 1, 1).getDay()
+    const d = 1 + (weekday - first + 7) % 7 + (n - 1) * 7
+    return ymd(y, m, d)
+  }
+  const list = [
+    { title: "New Year's Day",           date: ymd(year, 1, 1)            },
+    { title: 'Constitution Day',         date: nthWeekday(year, 2, 1, 1)  },
+    { title: "Benito Juárez's Birthday", date: nthWeekday(year, 3, 1, 3)  },
+    { title: 'Labour Day',               date: ymd(year, 5, 1)            },
+    { title: 'Independence Day',         date: ymd(year, 9, 16)           },
+    { title: 'Revolution Day',           date: nthWeekday(year, 11, 1, 3) },
+    { title: 'Christmas Day',            date: ymd(year, 12, 25)          },
+  ]
+  // Federal election day, the first Sunday of June. The 2014 reform put every
+  // federal election on that day, three years apart from 2015, with one written
+  // in exception: it moved the 2018 election to the first Sunday of July.
+  if (year >= 2015 && (year - 2015) % 3 === 0) {
+    list.push({ title: 'Election Day', date: nthWeekday(year, year === 2018 ? 7 : 6, 0, 1) })
+  }
+  // Handover of federal executive power, once every six years. A 2024
+  // constitutional change moved it from 1 December to 1 October, taking effect
+  // with that year's handover.
+  if (year >= 2024 && (year - 2024) % 6 === 0) {
+    list.push({ title: 'Inauguration Day', date: ymd(year, 10, 1) })
+  } else if (year < 2024 && (year - 2018) % 6 === 0) {
+    list.push({ title: 'Inauguration Day', date: ymd(year, 12, 1) })
+  }
+  return list.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0)
+}
+
 export function getUKHolidays (year) {
   function nthWeekday (y, m, weekday, n) {
     const first = new Date(y, m - 1, 1).getDay()
@@ -180,6 +218,7 @@ export const HOLIDAY_COUNTRIES = [
   { code: 'us',  flag: '🇺🇸', label: 'United States', fn: getUSFederalHolidays, color: '#B22234', colors: ['#B22234', '#FFFFFF', '#3C3B6E'] },
   { code: 'ca',  flag: '🇨🇦', label: 'Canada',         fn: getCanadaHolidays   },
   { code: 'uk',  flag: '🇬🇧', label: 'United Kingdom', fn: getUKHolidays       },
+  { code: 'mx',  flag: '🇲🇽', label: 'Mexico',         fn: getMexicoHolidays, color: '#006847', colors: ['#006847', '#FFFFFF', '#CE1126'] },
   { code: 'btc', flag: '₿',  label: 'Bitcoin',        fn: getBitcoinHolidays, color: '#F7931A', desc: 'Bitcoin Holiday' },
 ]
 

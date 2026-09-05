@@ -39,9 +39,9 @@ test('Canada and UK holidays never land on a weekend', async () => {
 })
 
 test('no two holidays in one calendar share a date', async () => {
-  const { getCanadaHolidays, getUKHolidays, getUSFederalHolidays } = await load
+  const { getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getMexicoHolidays } = await load
   for (const year of YEARS) {
-    for (const fn of [getCanadaHolidays, getUKHolidays, getUSFederalHolidays]) {
+    for (const fn of [getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getMexicoHolidays]) {
       const dates = fn(year).map(h => h.date)
       assert.equal(new Set(dates).size, dates.length, `duplicate date in ${year}: ${dates}`)
     }
@@ -70,9 +70,9 @@ test('substitutes match the published Canadian federal dates', async () => {
 
 // ── date arithmetic ───────────────────────────────────────────────────────
 test('every holiday date is a real calendar date', async () => {
-  const { getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getBitcoinHolidays } = await load
+  const { getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getBitcoinHolidays, getMexicoHolidays } = await load
   for (const year of YEARS) {
-    for (const fn of [getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getBitcoinHolidays]) {
+    for (const fn of [getCanadaHolidays, getUKHolidays, getUSFederalHolidays, getBitcoinHolidays, getMexicoHolidays]) {
       for (const h of fn(year)) {
         assert.match(h.date, /^\d{4}-\d{2}-\d{2}$/, `${h.title} ${year}: ${h.date}`)
         // Round-tripping catches '2022-01-00', which matches the shape above.
@@ -91,6 +91,73 @@ test('US federal keeps its own backwards Sat->Fri rule, across the year boundary
   assert.equal(dateOf(getUSFederalHolidays(2028), "New Year's Day"), '2027-12-31')
   // Sun 25 Dec 2022 -> Mon 26 Dec.
   assert.equal(dateOf(getUSFederalHolidays(2022), 'Christmas Day'), '2022-12-26')
+})
+
+// ── Mexico (Art. 74 LFT) ───────────────────────────────────────
+test('the three floating Mexican holidays match the published dates', async () => {
+  const { getMexicoHolidays } = await load
+  const y2025 = getMexicoHolidays(2025)
+  assert.equal(dateOf(y2025, 'Constitution Day'), '2025-02-03')          // 1st Mon Feb
+  assert.equal(dateOf(y2025, "Benito Juárez's Birthday"), '2025-03-17')  // 3rd Mon Mar
+  assert.equal(dateOf(y2025, 'Revolution Day'), '2025-11-17')           // 3rd Mon Nov
+  const y2026 = getMexicoHolidays(2026)
+  assert.equal(dateOf(y2026, 'Constitution Day'), '2026-02-02')
+  assert.equal(dateOf(y2026, "Benito Juárez's Birthday"), '2026-03-16')
+  assert.equal(dateOf(y2026, 'Revolution Day'), '2026-11-16')
+})
+
+test('Mexican fixed-date holidays never move, weekend or not', async () => {
+  const { getMexicoHolidays } = await load
+  // 16 Sep 2029 is a Sunday and 1 May 2027 a Saturday. Mexico has no substitute
+  // day, so both stay where they fall.
+  assert.equal(dateOf(getMexicoHolidays(2029), 'Independence Day'), '2029-09-16')
+  assert.equal(dateOf(getMexicoHolidays(2027), 'Labour Day'), '2027-05-01')
+  for (const year of YEARS) {
+    assert.equal(dateOf(getMexicoHolidays(year), "New Year's Day"), `${year}-01-01`)
+    assert.equal(dateOf(getMexicoHolidays(year), 'Christmas Day'), `${year}-12-25`)
+  }
+})
+
+test('the sexennial handover appears only in a handover year', async () => {
+  const { getMexicoHolidays } = await load
+  assert.equal(dateOf(getMexicoHolidays(2024), 'Inauguration Day'), '2024-10-01')  // moved off 1 Dec
+  assert.equal(dateOf(getMexicoHolidays(2030), 'Inauguration Day'), '2030-10-01')
+  assert.equal(dateOf(getMexicoHolidays(2018), 'Inauguration Day'), '2018-12-01')  // the old date
+  for (const year of [2025, 2026, 2027, 2028, 2029]) {
+    assert.equal(dateOf(getMexicoHolidays(year), 'Inauguration Day'), undefined)
+  }
+})
+
+test('federal election day lands every three years, on the first Sunday of June', async () => {
+  const { getMexicoHolidays } = await load
+  assert.equal(dateOf(getMexicoHolidays(2024), 'Election Day'), '2024-06-02')
+  assert.equal(dateOf(getMexicoHolidays(2027), 'Election Day'), '2027-06-06')
+  assert.equal(dateOf(getMexicoHolidays(2018), 'Election Day'), '2018-07-01')  // written-in exception
+  for (const year of [2025, 2026, 2028, 2029]) {
+    assert.equal(dateOf(getMexicoHolidays(year), 'Election Day'), undefined)
+  }
+})
+
+test('Mexico is a subscribable calendar with its own colour', async () => {
+  const { HOLIDAY_COUNTRIES, getMexicoHolidays } = await load
+  const mx = HOLIDAY_COUNTRIES.find(c => c.code === 'mx')
+  assert.ok(mx, 'Mexico missing from HOLIDAY_COUNTRIES')
+  assert.equal(mx.label, 'Mexico')
+  assert.equal(mx.fn, getMexicoHolidays)
+  assert.equal(mx.colors.length, 3)
+})
+
+test('turning Mexico off leaves the days the US and Canada still want', async () => {
+  const { strayHolidayEvents, getMexicoHolidays, getUSFederalHolidays, holidayCalendarIds } = await load
+  const years = [2026, 2027]
+  // Christmas Day and New Year's Day 2026 are shared with the US federal
+  // calendar, so a Mexico sweep must not take them.
+  const stored = years.flatMap(y => getMexicoHolidays(y).map(h => sysEvent(
+    'holiday-' + h.date + '-' + h.title.replace(/\s+/g, '-').toLowerCase(), h.date)))
+  const keep = holidayCalendarIds(getUSFederalHolidays, years)
+  const swept = strayHolidayEvents(stored, getMexicoHolidays, years, keep).map(e => e.id)
+  assert.ok(!swept.includes('holiday-2026-12-25-christmas-day'), 'swept a US-shared date')
+  assert.ok(swept.includes('holiday-2026-09-16-independence-day'))
 })
 
 // ── cleaning up events stranded by a corrected date ───────────────────────
