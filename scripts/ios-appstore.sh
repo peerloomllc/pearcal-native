@@ -179,13 +179,14 @@ PATH="$XCODE_PATH" xcodebuild \
   -archivePath "$ARCHIVE_PATH" \
   DEVELOPMENT_TEAM="$TEAM_ID" \
   OTHER_CODE_SIGN_FLAGS="--keychain ~/Library/Keychains/buildkey.keychain" \
-  archive | grep -E "^(error:|warning:|note:|.*ARCHIVE)" || true
+  archive 2>&1 | tee /tmp/${APP_NAME}-archive.log | grep -E "^(error:|warning:|note:|.*ARCHIVE)|: error:" || true
 
 # xcodebuild's exit code is masked by the grep pipe above, so verify the
 # archive actually exists rather than falling through to a confusing
 # "archive not found" during export.
 if [ ! -d "$ARCHIVE_PATH" ]; then
   echo "Error: archive failed — $ARCHIVE_PATH was not created (see errors above)."
+  grep -E "error:" "/tmp/${APP_NAME}-archive.log" | head -10
   exit 1
 fi
 echo "Archive complete: $ARCHIVE_PATH"
