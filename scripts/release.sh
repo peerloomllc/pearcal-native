@@ -1745,6 +1745,56 @@ if [ "${#SEEDER_ARTIFACTS[@]}" -gt 0 ];  then _RELEASE_SUMMARY="$_RELEASE_SUMMAR
 _confirm "$_RELEASE_SUMMARY ready to publish?"
 
 # ---------------------------------------------------------------------------
+# 5f. Generate the iOS version metadata BEFORE the bump commit
+# ---------------------------------------------------------------------------
+# metadata/ios/version/$APP_VERSION is a generated dir: version/default/*.json
+# with `whatsNew` replaced by release_notes.md. It used to be written only in
+# the App Store step (11), which runs after §6, so §6 never saw it and the dir
+# was left uncommitted.
+#
+# Generating here means §6 commits it and the tag carries the notes the release
+# shipped with. The App Store step still calls this a second time, because it
+# is the only place that can seed version/default/ by pulling it from App Store
+# Connect. The function is idempotent: the same default/ plus the same
+# release_notes.md gives identical files, so the second call is normally a
+# no-op.
+_gen_ios_version_metadata() {
+  local _metadata_dir="$REPO_ROOT/metadata/ios"
+  local _default_dir="$_metadata_dir/version/default"
+  local _version_dir="$_metadata_dir/version/${APP_VERSION}"
+  local _f _whats_new=""
+
+  # Nothing to generate from yet. The App Store step can bootstrap default/.
+  compgen -G "$_default_dir/*.json" > /dev/null || return 1
+
+  if [ -f "$REPO_ROOT/release_notes.md" ]; then
+    _whats_new=$(cat "$REPO_ROOT/release_notes.md")
+  fi
+
+  mkdir -p "$_version_dir"
+  for _f in "$_default_dir"/*.json; do
+    python3 -c "
+import json, sys, re
+with open('$_f') as fh:
+    data = json.load(fh)
+# Strip emojis - App Store rejects non-ASCII symbols in whatsNew
+notes = sys.stdin.read().strip()
+data['whatsNew'] = re.sub(r'[^\x00-\x7FÀ-ɏ—’‘“”]+\s*', '', notes)
+with open('${_version_dir}/$(basename "$_f")', 'w') as out:
+    json.dump(data, out)
+" <<< "$_whats_new"
+    echo "    Created ${_version_dir}/$(basename "$_f")"
+  done
+}
+
+if $PUBLISH_APP_STORE; then
+  echo ""
+  echo "==> Generating iOS version metadata for $APP_VERSION..."
+  _gen_ios_version_metadata \
+    || echo "    Skipped - no metadata/ios/version/default/*.json yet (the App Store step will seed it)."
+fi
+
+# ---------------------------------------------------------------------------
 # Phase D — publishing starts here. Nothing below this line is undoable.
 # ---------------------------------------------------------------------------
 if $PUBLISH_GITHUB; then
@@ -1784,6 +1834,7 @@ _bump_paths=(
   seeder-launcher/umbrel/docker-compose.yml
   seeder-launcher/umbrel/umbrel-app.yml
   metadata/ios/en-US/release_notes.txt
+  metadata/ios/version/default
   "metadata/ios/version/${APP_VERSION}"
 )
 _bump_existing=()
@@ -2759,25 +2810,14 @@ if priors:
     # release leaves a version dir behind, and the old "create only if missing"
     # test meant the retry silently shipped the first run's notes even after
     # release_notes.md had been fixed.
+    #
+    # §5f already ran this once, before the version-bump commit, so on the
+    # normal path this rewrites the same bytes. It stays because the bootstrap
+    # above is the only thing that can seed version/default/ from App Store
+    # Connect, and when it does, §5f had nothing to generate from.
     if [ -n "$DEFAULT_DIR" ] && [ -d "$DEFAULT_DIR" ]; then
-      mkdir -p "$VERSION_DIR"
-      for f in "$DEFAULT_DIR"/*.json; do
-        WHATS_NEW=""
-        if [ -f "$REPO_ROOT/release_notes.md" ]; then
-          WHATS_NEW=$(cat "$REPO_ROOT/release_notes.md")
-        fi
-        python3 -c "
-import json, sys, re
-with open('$f') as fh:
-    data = json.load(fh)
-# Strip emojis — App Store rejects non-ASCII symbols in whatsNew
-notes = sys.stdin.read().strip()
-data['whatsNew'] = re.sub(r'[^\x00-\x7F\u00C0-\u024F\u2014\u2019\u2018\u201C\u201D]+\s*', '', notes)
-with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
-    json.dump(data, out)
-" <<< "$WHATS_NEW"
-        echo "    Created ${VERSION_DIR}/$(basename "$f")"
-      done
+      _gen_ios_version_metadata \
+        || echo "    WARNING: no ${DEFAULT_DIR}/*.json to generate whatsNew from."
     fi
 
     if [ -z "$ASC_VERSION_ID" ]; then
