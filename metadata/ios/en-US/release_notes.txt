@@ -1,15 +1,5 @@
 ## What's Changed
 
-### ✨ Improvements
+Fixed
 
-  - Mexican holidays: Turn on Mexico in Settings > Holidays and your calendar fills in the seven national rest days, plus election day and the presidential
-  handover in the years they fall. The three holidays that move to a Monday move on their own.
-
-### 🐛 Bug Fixes
-
-  - The home-screen widget shows today again: Overnight it kept yesterday's events under today's date, and opening the app once did not always fix it. It
-  now turns the page at midnight on its own, and keeps a week of days ready so it is never showing the wrong one.
-  - Blind peers on Start9 start up again: After the StartOS 0.4 update, a blind peer would fail to start and keep restarting because the update moved its
-  data folder. It now repairs itself and carries on.
-  - Installing a blind peer on Start9 0.4 works: Install and update were failing with a not-found error. The right package is now published for 0.4 boxes.
-
+  - The app no longer closes right after you open it on iOS 27.
