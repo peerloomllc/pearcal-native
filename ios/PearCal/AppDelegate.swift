@@ -23,13 +23,7 @@ public class AppDelegate: ExpoAppDelegate {
     reactNativeFactory = factory
     bindReactNativeFactory(factory)
 
-#if os(iOS) || os(tvOS)
-    window = UIWindow(frame: UIScreen.main.bounds)
-    factory.startReactNative(
-      withModuleName: "main",
-      in: window,
-      launchOptions: launchOptions)
-#endif
+    // The window is made by SceneDelegate, below.
 
     BGTaskScheduler.shared.register(
       forTaskWithIdentifier: BareBackgroundSync.refreshIdentifier,
@@ -65,9 +59,11 @@ public class AppDelegate: ExpoAppDelegate {
     // circulation. Android is unaffected either way — its LinkModule is fed by
     // an intent filter that fires in both states.
     //
-    // There is no other net underneath: the project has no scene delegate (so
-    // scene(_:openURLContexts:) is never called) and the JS side never consults
-    // Linking.getInitialURL(), it only polls PearCalLink.getPendingLink().
+    // Since the app adopted UIScene for iOS 27 (2026-09-28), a cold-launch URL no
+    // longer reaches launchOptions here. SceneDelegate, at the bottom of this file,
+    // passes it to application(_:open:options:) below instead, which sets the same
+    // pendingLink. The JS side never consults Linking.getInitialURL(), it only
+    // polls PearCalLink.getPendingLink().
     //
     // Universal links are NOT handled here on purpose. For those iOS still calls
     // application(_:continue:) after a cold launch, so the existing handler
@@ -149,5 +145,48 @@ class ReactNativeDelegate: ExpoReactNativeFactoryDelegate {
 #else
     return Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
+  }
+}
+
+// with-ios-scene-lifecycle
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard let windowScene = scene as? UIWindowScene,
+          let appDelegate = UIApplication.shared.delegate as? AppDelegate,
+          let factory = appDelegate.reactNativeFactory else { return }
+    let window = UIWindow(windowScene: windowScene)
+    self.window = window
+    appDelegate.window = window
+
+    var launchOptions: [UIApplication.LaunchOptionsKey: Any] = [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[.url] = url
+    }
+    factory.startReactNative(withModuleName: "main", in: window, launchOptions: launchOptions)
+
+    for context in connectionOptions.urlContexts {
+      _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:])
+    }
+    for activity in connectionOptions.userActivities {
+      _ = appDelegate.application(UIApplication.shared, continue: activity, restorationHandler: { _ in })
+    }
+  }
+
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    for context in URLContexts {
+      _ = appDelegate.application(UIApplication.shared, open: context.url, options: [:])
+    }
+  }
+
+  func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+    guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
+    _ = appDelegate.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
   }
 }

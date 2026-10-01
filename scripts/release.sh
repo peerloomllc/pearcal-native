@@ -2861,10 +2861,9 @@ if priors:
     elif ! _asc_auth_linux; then
       echo "    WARNING: asc auth failed on Linux. Submit via App Store Connect."
     else
-      # Attach the build. `asc builds list` needs a few minutes after upload
-      # before the record appears, so say which is which rather than failing
-      # with a bare 404.
-      _BUILD_INFO=$(_asc_build_id "${_ios_build_number:-}")
+      # Wait for Apple to process the upload, then attach it. Gives up after
+      # ASC_PROCESS_WAIT seconds (default 30 min); the branches below say which.
+      _BUILD_INFO=$(_asc_wait_for_build "$APP_VERSION" "${_ios_build_number:-}")
       _BUILD_ID="${_BUILD_INFO%% *}"
       _BUILD_STATE="${_BUILD_INFO##* }"
 
@@ -2876,10 +2875,9 @@ if priors:
       elif [ "$_BUILD_STATE" != "VALID" ]; then
         echo "    Build ${_ios_build_number} is still ${_BUILD_STATE}, not VALID."
         echo "    Wait for processing to finish, then re-run. Skipping submission."
+      elif ! _asc_attach_build "$ASC_VERSION_ID" "$_BUILD_ID"; then
+        PUBLISH_FAILED=true
       else
-        echo "    Attaching build ${_ios_build_number} (${_BUILD_ID})..."
-        asc versions attach-build --version-id "$ASC_VERSION_ID" --build "$_BUILD_ID" >/dev/null \
-          || echo "    WARNING: attach-build failed (it may already be attached)."
 
         # Export compliance. Apple blocks submission until every build answers
         # this, and it is set per BUILD, so a new build always starts unset.
@@ -2908,8 +2906,6 @@ if priors:
 
         echo "    Readiness check:"
         asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" || true
-        echo ""
-        echo "    Note: submission fails if the build is still processing."
         _confirm "Submit version ${APP_VERSION} for App Store review?"
 
         echo "    Submitting ${APP_VERSION} for review..."
