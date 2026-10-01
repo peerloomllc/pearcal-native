@@ -462,29 +462,65 @@ for x in d.get('data', d if isinstance(d, list) else []):
 }
 
 # ---------------------------------------------------------------------------
-# _asc_build_id <buildNumber>
+# _asc_wait_for_build <marketingVersion> [buildNumber]
 #
-# Prints "<uuid> <processingState>" for the build with that CFBundleVersion, or
-# nothing if App Store Connect has not registered it yet. `asc builds list`
-# reports CFBundleVersion in `version` (NOT the marketing version), and build
-# numbers are unique per app, so this is an exact match rather than a guess.
+# Waits for App Store Connect to finish processing the build this run uploaded,
+# then prints "<uuid> <processingState>". Prints the last state seen (or nothing)
+# if ASC_PROCESS_WAIT seconds pass first (default 1800).
+#
+# Matches the marketing version as well as the build number. Build numbers repeat
+# across versions: PearPetal 1.0.7 and 1.0.8 were both build 19, so a lookup by
+# number alone attached the old build and the 2026-09-30 submission failed.
+# A new upload takes 5-15 minutes to appear and process, and submitting before
+# then leaves an empty review submission behind.
 # ---------------------------------------------------------------------------
-_asc_build_id() {
-  asc builds list --app "$ASC_APP_ID" --limit 20 --output json 2>/dev/null \
-    | python3 -c "
+_asc_wait_for_build() {
+  local _ver="$1" _num="${2:-}" _info="" _state=""
+  local _deadline=$(( $(date +%s) + ${ASC_PROCESS_WAIT:-1800} ))
+  while :; do
+    _info=$(asc builds list --app "$ASC_APP_ID" --version "$_ver" --processing-state all \
+      --output json 2>/dev/null | python3 -c "
 import json, sys
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-items = d.get('data', d if isinstance(d, list) else [])
-want = str('$1').strip()
-for x in items:
-    a = x.get('attributes', x)
-    if str(a.get('version', '')).strip() == want:
+want = '$_num'.strip()
+for x in d.get('data', []):
+    a = x.get('attributes', {})
+    if not want or str(a.get('version', '')).strip() == want:
         print('%s %s' % (x.get('id', ''), a.get('processingState', 'UNKNOWN')))
         break
-" 2>/dev/null
+" 2>/dev/null)
+    _state="${_info##* }"
+    case "$_state" in VALID|FAILED|INVALID) break ;; esac
+    [ "$(date +%s)" -ge "$_deadline" ] && break
+    echo "    Build ${_num:-for $_ver} is ${_state:-not registered yet} on App Store Connect, checking again in 30s..." >&2
+    sleep 30
+  done
+  printf '%s\n' "$_info"
+}
+
+# ---------------------------------------------------------------------------
+# _asc_attach_build <versionId> <buildId>
+#
+# Attaches the build to the App Store version. Succeeds if it attached or was
+# already attached; otherwise prints why and fails, so the caller does not go on
+# to submit a version with no build (Apple then reports "The build associated
+# with appStoreVersions ... was not found", which points nowhere near the cause).
+# ---------------------------------------------------------------------------
+_asc_attach_build() {
+  local _vid="$1" _bid="$2" _err
+  echo "    Attaching build ${_bid}..."
+  _err=$(asc versions attach-build --version-id "$_vid" --build "$_bid" 2>&1 >/dev/null) && return 0
+  if asc versions view --version-id "$_vid" --include-build --output json 2>/dev/null | grep -q "$_bid"; then
+    echo "    Build is already attached."
+    return 0
+  fi
+  echo "    ERROR: could not attach build ${_bid}: ${_err}" >&2
+  echo "    NOT submitting. Attach it in App Store Connect (version page -> Build -> +)" >&2
+  echo "    and submit from there." >&2
+  return 1
 }
 
 # Uses $REPO_ROOT so this works regardless of invocation directory.
@@ -3261,10 +3297,9 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
     elif ! _asc_auth_linux; then
       echo "    WARNING: asc auth failed on Linux. Submit via App Store Connect."
     else
-      # Attach the build. `asc builds list` needs a few minutes after upload
-      # before the record appears, so say which is which rather than failing
-      # with a bare 404.
-      _BUILD_INFO=$(_asc_build_id "${_ios_build_number:-}")
+      # Wait for Apple to process the upload, then attach it. Gives up after
+      # ASC_PROCESS_WAIT seconds (default 30 min); the branches below say which.
+      _BUILD_INFO=$(_asc_wait_for_build "$APP_VERSION" "${_ios_build_number:-}")
       _BUILD_ID="${_BUILD_INFO%% *}"
       _BUILD_STATE="${_BUILD_INFO##* }"
 
@@ -3276,10 +3311,9 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
       elif [ "$_BUILD_STATE" != "VALID" ]; then
         echo "    Build ${_ios_build_number} is still ${_BUILD_STATE}, not VALID."
         echo "    Wait for processing to finish, then re-run. Skipping submission."
+      elif ! _asc_attach_build "$ASC_VERSION_ID" "$_BUILD_ID"; then
+        PUBLISH_FAILED=true
       else
-        echo "    Attaching build ${_ios_build_number} (${_BUILD_ID})..."
-        asc versions attach-build --version-id "$ASC_VERSION_ID" --build "$_BUILD_ID" >/dev/null \
-          || echo "    WARNING: attach-build failed (it may already be attached)."
 
         # Export compliance. Apple blocks submission until every build answers
         # this, and it is set per BUILD, so a new build always starts unset.
@@ -3308,8 +3342,6 @@ with open('${VERSION_DIR}/$(basename "$f")', 'w') as out:
 
         echo "    Readiness check:"
         asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" || true
-        echo ""
-        echo "    Note: submission fails if the build is still processing."
         _confirm "Submit version ${APP_VERSION} for App Store review?"
 
         echo "    Submitting ${APP_VERSION} for review..."
