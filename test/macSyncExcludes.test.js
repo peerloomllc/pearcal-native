@@ -50,6 +50,14 @@ test('an anchored pattern matches only at the root', () => {
   assert.equal(isExcluded('src/ui/android/helper.js', patterns), false)
 })
 
+test('an anchored glob matches release files only at the root', () => {
+  assert.equal(isExcluded('PearCal-1.0.44.ipa', patterns), true)
+  assert.equal(isExcluded('pearcal-v1.0.44.apk.sha256', patterns), true)
+  assert.equal(isExcluded('latest-mac.yml', patterns), true)
+  assert.equal(isExcluded('electron/latest.yml', patterns), false)
+  assert.equal(isExcluded('src/fixtures/file.sha256', patterns), false)
+})
+
 test('a glob matches the basename at any depth', () => {
   assert.equal(isExcluded('pearcal-v1.0.44-x86_64.AppImage', patterns), true)
   assert.equal(isExcluded('electron/dist/PearCal-1.0.44.dmg', patterns), true)

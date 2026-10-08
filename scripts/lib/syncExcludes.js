@@ -8,7 +8,7 @@
 // Supported pattern forms, a deliberate subset of rsync's:
 //
 //   name            any path segment equal to `name`, at any depth
-//   /path/to/thing  anchored at the repo root
+//   /path/to/thing  anchored at the repo root (each segment may be a glob)
 //   *.ext           glob against the basename, at any depth
 //
 // A trailing slash is accepted and ignored. Anything fancier that rsync
@@ -57,6 +57,11 @@ function isExcluded (relPath, patterns) {
       const anchored = pattern.slice(1)
       // An anchored pattern excludes the path itself and everything under it.
       if (clean === anchored || clean.startsWith(anchored + '/')) return true
+      // An anchored glob such as /*.ipa is matched segment by segment from the root.
+      if (/[*?]/.test(anchored)) {
+        const parts = anchored.split('/')
+        if (segments.length >= parts.length && parts.every((p, k) => globToRegExp(p).test(segments[k]))) return true
+      }
       continue
     }
     if (pattern.includes('/')) {
