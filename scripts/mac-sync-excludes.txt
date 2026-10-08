@@ -56,6 +56,11 @@ node_modules
 *.aab
 *.deb
 *.blockmap
+# The IPA, checksum sidecars and update manifests sit beside them. Anchored so
+# only the root copies are skipped.
+/*.ipa
+/*.sha256
+/latest*.yml
 
 # ── Local caches and secrets ────────────────────────────────────────────────
 .expo
