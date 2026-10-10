@@ -17,11 +17,12 @@ const Corestore = require('corestore')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
 const NODES = Number(process.argv[2] || 3000)
 const WRITERS = Number(process.argv[3] || 3)
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bench-'))
+const root = tmpDir('bench-')
 const open = store => store.get('view', { valueEncoding: 'json' })
 
 let applyCalls = 0

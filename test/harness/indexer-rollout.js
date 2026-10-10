@@ -37,8 +37,9 @@ const Autobase = require(M + 'autobase')
 const Corestore = require(M + 'corestore')
 const crypto = require(M + 'hypercore-crypto')
 const os = require('os'), path = require('path'), fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rollout-'))
+const root = tmpDir('rollout-')
 let n = 0
 const open = s => s.get('view', { valueEncoding: 'json' })
 

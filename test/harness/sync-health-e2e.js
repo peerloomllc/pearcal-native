@@ -19,10 +19,11 @@ const os = require('os')
 
 const BARE_ENTRY = require.resolve('../../electron/vendor/src/bare.js')
 const { createBareKitShim } = require('../../electron/src/main/barekit-shim.js')
+const { tmpDir } = require('../helpers/tmpdir')
 
 const DAY = 24 * 60 * 60 * 1000
 const shim = createBareKitShim()
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sh-e2e-'))
+const dataDir = tmpDir('sh-e2e-')
 const mnemonicFile = path.join(dataDir, 'mnemonic.txt')
 
 let buf = ''

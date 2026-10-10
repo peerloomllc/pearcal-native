@@ -107,8 +107,9 @@ if (process.env.PEER_ROLE) {
 
 // ── driver ────────────────────────────────────────────────────────────────
 const { buildInviteLink, parseInviteLink } = require('../../src/invite.js')
+const { tmpDir } = require('../helpers/tmpdir')
 
-const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'invite-enc-'))
+const tmp = tmpDir('invite-enc-')
 const sleep = ms => new Promise(r => setTimeout(r, ms))
 
 // How long to wait for the two peers to find each other. Generous by default:

@@ -21,8 +21,9 @@ const os = require('os')
 
 const BARE_ENTRY = require.resolve('../../electron/vendor/src/bare.js')
 const { createBareKitShim } = require('../../electron/src/main/barekit-shim.js')
+const { tmpDir } = require('../helpers/tmpdir')
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fg-bounce-'))
+const dataDir = tmpDir('fg-bounce-')
 const mnemonicFile = path.join(dataDir, 'mnemonic.txt')
 
 // bare.js logs the bounce to stdout, not over IPC, so watch stdout itself.

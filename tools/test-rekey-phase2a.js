@@ -20,6 +20,7 @@ const sodium    = require('sodium-native')
 const b4a       = require('b4a')
 
 const { rekeyGroup, NS } = require('../src/lib/rekey.js')
+const { tmpDir } = require('../test/helpers/tmpdir')
 const {
   MARKER_VERSION,
   markerKey,
@@ -84,7 +85,7 @@ function makeProfile () {
 
 async function run () {
   console.log('setup')
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pearcal-rekey-p2a-'))
+  const tmpDir = tmpDir('pearcal-rekey-p2a-')
   process.on('exit', () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {} })
 
   const store = new Corestore(tmpDir)

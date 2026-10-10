@@ -36,8 +36,9 @@ const Corestore = require('corestore')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'idx-model-'))
+const root = tmpDir('idx-model-')
 let caseNo = 0
 
 function open (store) {
