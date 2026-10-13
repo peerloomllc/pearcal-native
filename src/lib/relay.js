@@ -60,4 +60,33 @@ function relayThroughFor ({ force, randomized, useRelay, relayKey }) {
   return (force || randomized) ? relayKey : null
 }
 
-module.exports = { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, RELAY_PUBLIC_KEY_HEX, relayThroughFor }
+// The errors after which a direct connection will not work: Hyperswarm's own
+// list (hyperswarm/index.js shouldForceRelaying).
+const PUNCH_FAILED = new Set(['HOLEPUNCH_ABORTED', 'HOLEPUNCH_DOUBLE_RANDOMIZED_NATS', 'REMOTE_NOT_HOLEPUNCHABLE'])
+
+// PeerLoom Seeder dials (blind-peering backups, pulls, requests) use
+// dht.connect outside Hyperswarm, where a relay key means "relay from the
+// first attempt". This wraps the DHT so those dials are direct first too, per
+// remote key: after a failed holepunch to a key, later dials to it relay. A
+// seeder on a Start9 is reachable from a phone on the same network only
+// through the relay. From PearCircle (pearcircle #245) and PearOffice.
+//   useRelay - () => the live toggle; relayKey - as above.
+function relayingDht (dht, { useRelay, relayKey }) {
+  const failed = new Set()
+  function connect (remotePublicKey, opts = {}) {
+    const key = b4a.toString(remotePublicKey, 'hex')
+    const relayThrough = relayThroughFor({ force: failed.has(key), randomized: !!dht.randomized, useRelay: useRelay(), relayKey })
+    const socket = dht.connect(remotePublicKey, relayThrough ? { ...opts, relayThrough } : opts)
+    socket.on('error', (err) => { if (err && PUNCH_FAILED.has(err.code)) failed.add(key) })
+    return socket
+  }
+  return new Proxy(dht, {
+    get (target, prop) {
+      if (prop === 'connect') return connect
+      const v = Reflect.get(target, prop, target)
+      return typeof v === 'function' ? v.bind(target) : v
+    }
+  })
+}
+
+module.exports = { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, RELAY_PUBLIC_KEY_HEX, relayThroughFor, relayingDht, PUNCH_FAILED }
