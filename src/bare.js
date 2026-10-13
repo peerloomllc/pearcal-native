@@ -1460,9 +1460,11 @@ const _pairScanMuxes = new Map() // mux -> remotePubkeyHex
 const PLS_LOCAL = 'plSeeder:'
 const PLS_SWEEP_MS = 5000
 // blind-peering drops its connection to a seeder a few seconds after it last
-// uploaded something, so a member with nothing new to send never downloads
-// from it. A pull visits each seeder the groups use, replicates for a while
-// and leaves: at start, after registration changes and once a minute.
+// uploaded something. Opening the app downloads over the registration
+// connection, but a member that stays open hears nothing more from the seeder.
+// A pull visits each seeder the groups use, replicates for a while and leaves:
+// at start, after registration changes and once a minute. It matters when
+// members are open together but cannot reach each other directly.
 const PLS_PULL_MS = 60 * 1000
 const PLS_PULL_HOLD_MS = 15 * 1000
 let _plsPulling = null
