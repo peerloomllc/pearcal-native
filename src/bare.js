@@ -46,7 +46,7 @@ const plsRecord = require('./lib/peerloomSeeder.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
-const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor } = require('./lib/relay.js')
+const { RELAY_PUBLIC_KEY, RELAY_PUBLIC_KEY_Z, relayThroughFor, relayingDht } = require('./lib/relay.js')
 const { shouldBounceSwarm } = require('./lib/swarmBounce.js')
 const { resetPlan } = require('./lib/resetPlan.js')
 const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
@@ -1500,8 +1500,20 @@ async function plsSeedersOf (base) {
   return out.sort()
 }
 
+// The swarm's DHT, direct first and through the relay after a failed
+// holepunch to that seeder (a Start9 on the same network needs the relay).
+let _plsDht = null
+let _plsDhtBase = null
+function plsDht () {
+  if (!_plsDht || _plsDhtBase !== swarm.dht) {
+    _plsDhtBase = swarm.dht
+    _plsDht = relayingDht(swarm.dht, { useRelay: () => _useRelay, relayKey: RELAY_PUBLIC_KEY })
+  }
+  return _plsDht
+}
+
 async function plsMakePeering () {
-  _plsPeering = plsClient.createPeering({ dht: swarm.dht, store, keyPair: await plsKeyPair() })
+  _plsPeering = plsClient.createPeering({ dht: plsDht(), store, keyPair: await plsKeyPair() })
 }
 
 async function plsSweepAll () {
@@ -1546,7 +1558,7 @@ async function plsPullAll () {
   }
   const keyPair = await plsKeyPair()
   await Promise.all([...bySeeder].map(async ([seederKey, list]) => {
-    const conn = swarm.dht.connect(b4a.from(seederKey, 'hex'), { keyPair })
+    const conn = plsDht().connect(b4a.from(seederKey, 'hex'), { keyPair })
     conn.on('error', () => {})
     store.replicate(conn)
     const opened = await new Promise((resolve) => {
@@ -1632,7 +1644,10 @@ async function plsWriteRow (groupId, seederKey, on) {
 async function pairPeerloomSeeder (link) {
   const keyPair = await plsKeyPair()
   // A short-lived swarm with the fixed key, so the seeder trusts that key.
-  const temp = new Hyperswarm({ keyPair })
+  const temp = new Hyperswarm({
+    keyPair,
+    relayThrough: (force, s) => relayThroughFor({ force, randomized: s?.dht?.randomized, useRelay: _useRelay, relayKey: RELAY_PUBLIC_KEY })
+  })
   try {
     const { seederKey, style } = await plsClient.pair({ swarm: temp, link, app: 'PearCal' })
     await db.put(PLS_LOCAL + seederKey, { seederKey, style, pairedAt: Date.now() })
@@ -1690,7 +1705,7 @@ async function setPeerloomSeederGroup (seederKey, groupId, on) {
 // backs them up there) and forget the pairing.
 async function forgetPeerloomSeeder (seederKey) {
   const keyPair = await plsKeyPair()
-  const asker = plsClient.createAsker({ dht: () => swarm.dht, keyPair })
+  const asker = plsClient.createAsker({ dht: () => plsDht(), keyPair })
   for (const [groupId, base] of bases) {
     const row = await plsGroupRow(base, seederKey)
     if (!row || row.revoked) continue

@@ -52,3 +52,32 @@ test('THE DRIFT GUARD: the hex we decode is the z32 we show and deployed', () =>
   // constant without the other, dials would go to a box that is not the relay.
   assert.equal(Buffer.from(z32.decode(RELAY_PUBLIC_KEY_Z)).toString('hex'), RELAY_PUBLIC_KEY_HEX)
 })
+
+// PeerLoom Seeder dials: direct first, then through the relay after a failed
+// holepunch to that key; never with the switch off.
+test('relayingDht: direct first, relay after a failed punch, per key', () => {
+  const { relayingDht } = require('../src/lib/relay.js')
+  const EventEmitter = require('node:events')
+  const RELAY = Buffer.alloc(32, 9)
+  const KEY = Buffer.alloc(32, 7)
+  const make = (on) => {
+    const calls = []
+    const dht = { randomized: false, other () { return 'kept' }, connect (key, opts) { const s = new EventEmitter(); calls.push({ opts, s }); return s } }
+    return { calls, w: relayingDht(dht, { useRelay: () => on, relayKey: RELAY }) }
+  }
+  const punch = Object.assign(new Error('x'), { code: 'HOLEPUNCH_ABORTED' })
+  const a = make(true)
+  a.w.connect(KEY, { keyPair: 'kp' })
+  assert.deepEqual(a.calls[0].opts, { keyPair: 'kp' })
+  a.calls[0].s.emit('error', punch)
+  a.w.connect(KEY, { keyPair: 'kp' })
+  assert.deepEqual(a.calls[1].opts, { keyPair: 'kp', relayThrough: RELAY })
+  a.w.connect(Buffer.alloc(32, 1), {})
+  assert.deepEqual(a.calls[2].opts, {})
+  assert.equal(a.w.other(), 'kept')
+  const b = make(false)
+  b.w.connect(KEY, {})
+  b.calls[0].s.emit('error', punch)
+  b.w.connect(KEY, {})
+  assert.deepEqual(b.calls[1].opts, {})
+})
