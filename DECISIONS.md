@@ -2,6 +2,13 @@
 
 Per-app decision log for PearCal. Append-only, newest on top. See `/home/tim/peerloomllc/CONSTITUTION.md` §4 for the entry format.
 
+## 2026-10-13 - PeerLoom Seeder: signed `pseeder:` rows, a fixed dial key, and pulls
+Tier: T2 (proposals/2026-10-13-peerloom-seeder.md, approved).
+Context: groups can now back up to PeerLoom Seeder, the shared seeder for every PeerLoom app. Building it turned up three things the proposal did not spell out.
+Choice: (1) `pseeder:{seederKey}` rows are signed with the profile key, like the migration marker, because the rule "only the owner or whoever added it may change a row" needs to know who wrote it; apply checks it (`src/lib/peerloomSeeder.js`). Member ids are not always signing keys (identity-derived profiles), so the rule matches on `members[].publicKey`. (2) The seeder knows a device by the key it dials with, and the main swarm's key is new on every start, so seeder traffic uses its own key (`plsSeed` in the local db); pairing runs on a short-lived swarm with that key. (3) blind-peering drops its connection a few seconds after it last uploaded, so a member with nothing to send never downloaded from the seeder. The app now visits each seeder its groups use for 15 s at start, after registration changes and once a minute, replicating and updating writers.
+Alternatives considered: blind-peering 2.10 as planned - rejected, `npm install` also moved hypercore, rocksdb-native and sodium-native (the ABI trap); 2.0.1 passes the same seeder-only catch-up. A stable main-swarm key - rejected, changes PearCal's network identity for every group.
+Consequences: verified on the emulator + TCL with a local PeerLoom Seeder: pairing labelled "PearCal", the TCL caught up on an event from the seeder alone ~12 s after opening, removal by the adder reached the TCL and its switch stayed locked, no event text in the seeder's files. @peerloom/core's seeding likely has the same download gap (3); its test passes only because it calls base.update() in a tight loop.
+
 ## 2026-08-28 - the seeder heals a copied data folder instead of staying down
 Tier: T1 (TODO #172). Local storage logic only, no wire change, no Hyperbee key change.
 Context: hypercore-storage opens every store through `device-file`, whose CORESTORE marker records the file's own inode and a created stamp and refuses to open ("Invalid device file, was modified") when either changes. The guard exists so two live copies of a core never both write. StartOS 0.4.0.1's first boot clones each package volume into a btrfs subvolume and deletes the original, so every file gets a new inode and birth time while exactly one copy remains. Both seeders on the Start9 crash-looped from 16:08 on 2026-08-28 until the three markers were rewritten by hand.

@@ -6900,6 +6900,27 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const loadBlindPeers = useCallback(() => {
     db.listBlindPeers?.().then(list => setBlindPeers(list ?? [])).catch(() => {})
   }, [db])
+  // PeerLoom Seeder (proposals/2026-10-13-peerloom-seeder.md): the shared seeder
+  // for every PeerLoom app, paired by pasting the link its dashboard shows.
+  const [plSeeders, setPlSeeders] = useState([])
+  const [plLink,    setPlLink]    = useState('')
+  const [plBusy,    setPlBusy]    = useState(false)
+  const [plMsg,     setPlMsg]     = useState('')
+  const loadPlSeeders = useCallback(() => {
+    db.listPeerloomSeeders?.().then(list => setPlSeeders(list ?? [])).catch(() => {})
+  }, [db])
+  useEffect(() => { loadPlSeeders() }, [loadPlSeeders])
+  const pairPlSeeder = async () => {
+    if (!plLink.trim()) return
+    window.__pearSync?.haptic('light')
+    setPlBusy(true); setPlMsg('Pairing…')
+    try {
+      // Phone keyboards capitalise the first letter of a typed link.
+      await db.pairPeerloomSeeder(plLink.trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase()))
+      setPlLink(''); setPlMsg('Paired. Your groups are backing up to it.')
+    } catch (e) { setPlMsg(e?.message || 'Could not pair') }
+    setPlBusy(false); loadPlSeeders()
+  }
   // The off-LAN relay backstop (TODO #130). Default ON — it is what makes the app
   // connect at all on a carrier NAT that can never hole-punch, and PearCal is
   // phone-to-phone so both ends are often on one. OFF is the privacy-maximalist
@@ -7828,6 +7849,65 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               </div>
             )
           })}
+          {db.listPeerloomSeeders && (
+            <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'12px 14px', borderRadius:10,
+              border:`1px solid ${colors.border}`, fontFamily:FONT }}>
+              <div style={{ fontSize:14, color: colors.text.primary }}>PeerLoom Seeder</div>
+              <div style={{ fontSize:11, color: colors.text.muted, lineHeight:1.4 }}>
+                Keeps your groups in sync while your phones sleep. It serves all your PeerLoom apps, stores
+                your calendars scrambled and cannot read them. A new member still needs someone in the group online to join.
+              </div>
+              {plSeeders.map(sd => (
+                <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, paddingTop:6,
+                  borderTop:`1px solid ${colors.border}` }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                    <ShieldCheck size={16} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
+                    <div style={{ flex:1, minWidth:0, fontSize:12, color: colors.text.primary, fontFamily:'monospace',
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {sd.seederKey.slice(0, 16)}…
+                    </div>
+                    {sd.paired && (
+                      <button onClick={async () => { window.__pearSync?.haptic('medium'); await db.forgetPeerloomSeeder?.(sd.seederKey).catch(() => {}); loadPlSeeders() }}
+                        style={{ padding:'4px 8px', fontSize:11, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                          border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
+                        Stop using
+                      </button>
+                    )}
+                  </div>
+                  {sd.groups.map(g => (
+                    <div key={g.groupId} style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:24,
+                      opacity: g.canChange ? 1 : 0.6 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:12, color: colors.text.primary }}>{g.name}</div>
+                        {g.on && !g.canChange && (
+                          <div style={{ fontSize:11, color: colors.text.muted }}>
+                            Added by {g.addedByName || 'a member'}. Only they or the group owner can remove it.
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ pointerEvents: g.canChange ? 'auto' : 'none' }}>
+                        <Toggle val={g.on} accent={colors.primary}
+                          onChange={async (v) => { window.__pearSync?.haptic('light'); try { await db.setPeerloomSeederGroup(sd.seederKey, g.groupId, v) } catch (e) { setPlMsg(e?.message || 'Could not change that') } loadPlSeeders() }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div style={{ display:'flex', gap:8 }}>
+                <input value={plLink} onChange={e => setPlLink(e.target.value)} placeholder="peerloom://seeder?…"
+                  aria-label="PeerLoom Seeder pairing link" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                  style={{ flex:1, minWidth:0, padding:'8px 10px', fontSize:12, borderRadius:8, fontFamily:FONT,
+                    border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.primary }} />
+                <button onClick={pairPlSeeder} disabled={plBusy || !plLink.trim()}
+                  style={{ padding:'8px 12px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                    border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)',
+                    opacity: plBusy || !plLink.trim() ? 0.5 : 1 }}>
+                  Pair
+                </button>
+              </div>
+              {plMsg && <div style={{ fontSize:11, color: colors.text.muted }}>{plMsg}</div>}
+            </div>
+          )}
           <button onClick={() => { window.__pearSync?.haptic('light'); setBlindPeerOpen(true) }}
             style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
               padding:'12px 14px', borderRadius:10, cursor:'pointer',
