@@ -41,6 +41,8 @@ const {
   buildSeederRevocation, resolveSeederDisplayName,
 } = require('./lib/seederRecord.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
+const plsClient = require('./peerloom-seeder/client.js')
+const plsRecord = require('./lib/peerloomSeeder.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
 const { createStoreFlusher } = require('./lib/storeFlush.js')
@@ -394,6 +396,10 @@ async function handle (method, args) {
     case 'removeBlindPeer':  return removeBlindPeer(args[0])
     case 'renameBlindPeer':  return renameBlindPeer(args[0], args[1])
     case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
+    case 'listPeerloomSeeders': return listPeerloomSeeders()
+    case 'pairPeerloomSeeder': return pairPeerloomSeeder(args[0])
+    case 'setPeerloomSeederGroup': return setPeerloomSeederGroup(args[0], args[1], args[2])
+    case 'forgetPeerloomSeeder': return forgetPeerloomSeeder(args[0])
     case 'listLinkedDevices': return listLinkedDevices()
     case 'setDeviceNickname': return setDeviceNickname(args[0])
     case 'removeDeviceFromList': return removeDeviceFromList(args[0])
@@ -1440,6 +1446,259 @@ async function seederPairScan (link) {
 // Live muxes + their authenticated remote pubkey, so a scan started after a
 // connection already exists can still match it.
 const _pairScanMuxes = new Map() // mux -> remotePubkeyHex
+
+// ── PeerLoom Seeder (proposals/2026-10-13-peerloom-seeder.md) ────────────────
+// The shared seeder for every PeerLoom app. A member pairs this device with one
+// from the link its dashboard shows, then adds it to groups with a signed
+// `pseeder:{seederKey}` row (src/lib/peerloomSeeder.js). Every member registers
+// each group with every seeder its rows name, through blind-peering, which
+// follows new writers itself. Ported from @peerloom/core's src/seeding.js. The
+// personal base is never registered (it is not encrypted).
+//
+// The seeder knows a device by the key it dials with. The main swarm's key is
+// new on every start, so this keeps its own: `plsSeed` in the local db.
+const PLS_LOCAL = 'plSeeder:'
+const PLS_SWEEP_MS = 5000
+// blind-peering drops its connection to a seeder a few seconds after it last
+// uploaded something, so a member with nothing new to send never downloads
+// from it. A pull visits each seeder the groups use, replicates for a while
+// and leaves: at start, after registration changes and once a minute.
+const PLS_PULL_MS = 60 * 1000
+const PLS_PULL_HOLD_MS = 15 * 1000
+let _plsPulling = null
+let _plsPullTimer = null
+let _plsKeyPair = null
+let _plsPeering = null
+let _plsTimer = null
+let _plsSweeping = null
+let _plsAgain = null
+const _plsRegistered = new Map() // groupId -> sorted seeder keys, joined
+
+async function plsKeyPair () {
+  if (_plsKeyPair) return _plsKeyPair
+  let seed = (await db.get('plsSeed').catch(() => null))?.value?.seed
+  if (!seed) {
+    seed = b4a.toString(require('hypercore-crypto').randomBytes(32), 'hex')
+    await db.put('plsSeed', { seed })
+  }
+  _plsKeyPair = require('hypercore-crypto').keyPair(b4a.from(seed, 'hex'))
+  return _plsKeyPair
+}
+
+// The non-revoked seeders a group's rows name.
+async function plsSeedersOf (base) {
+  const out = []
+  if (!base?.view) return out
+  try {
+    for await (const { key, value } of base.view.createReadStream({ gt: plsRecord.PREFIX, lt: plsRecord.PREFIX + '~' })) {
+      const k = plsRecord.parseRecordKey(key)
+      if (k && value && !value.revoked) out.push(k)
+    }
+  } catch {}
+  return out.sort()
+}
+
+async function plsMakePeering () {
+  _plsPeering = plsClient.createPeering({ dht: swarm.dht, store, keyPair: await plsKeyPair() })
+}
+
+async function plsSweepAll () {
+  if (!_plsPeering || !swarm) return
+  let removed = false
+  const wanted = new Map()
+  for (const [groupId, base] of bases) {
+    const keys = await plsSeedersOf(base)
+    wanted.set(groupId, keys)
+    const prev = _plsRegistered.get(groupId)
+    if (prev && prev.split(',').some((k) => k && !keys.includes(k))) removed = true
+  }
+  for (const groupId of _plsRegistered.keys()) if (!bases.has(groupId)) removed = true
+  if (removed) {
+    // blind-peering cannot forget one base, so start over.
+    const old = _plsPeering
+    await plsMakePeering()
+    _plsRegistered.clear()
+    await old.close().catch(() => {})
+  }
+  for (const [groupId, keys] of wanted) {
+    const id = keys.join(',')
+    if (!keys.length || _plsRegistered.get(groupId) === id) continue
+    const base = bases.get(groupId)
+    if (!base) continue
+    try { await base.ready() } catch { continue }
+    _plsRegistered.set(groupId, id)
+    _plsPeering.addAutobaseBackground(base, { keys: keys.map((k) => b4a.from(k, 'hex')), pick: keys.length })
+    console.log('[pls] registered group ' + groupId.slice(0, 8) + ' with ' + keys.length + ' seeder(s)')
+    plsPull()
+  }
+}
+
+async function plsPullAll () {
+  if (!swarm) return
+  const bySeeder = new Map()
+  for (const [, base] of bases) {
+    for (const k of await plsSeedersOf(base)) {
+      if (!bySeeder.has(k)) bySeeder.set(k, [])
+      bySeeder.get(k).push(base)
+    }
+  }
+  const keyPair = await plsKeyPair()
+  await Promise.all([...bySeeder].map(async ([seederKey, list]) => {
+    const conn = swarm.dht.connect(b4a.from(seederKey, 'hex'), { keyPair })
+    conn.on('error', () => {})
+    store.replicate(conn)
+    const opened = await new Promise((resolve) => {
+      const t = setTimeout(() => resolve(false), PLS_PULL_HOLD_MS)
+      conn.once('open', () => { clearTimeout(t); resolve(true) })
+      conn.once('close', () => { clearTimeout(t); resolve(false) })
+    })
+    const end = Date.now() + PLS_PULL_HOLD_MS
+    while (opened && Date.now() < end && !conn.destroyed) {
+      for (const base of list) {
+        try {
+          for (const w of (base.activeWriters || [])) if (w?.core?.update) await w.core.update().catch(() => {})
+          await base.update()
+        } catch {}
+      }
+      await new Promise((r) => setTimeout(r, 1000))
+    }
+    conn.destroy()
+  }))
+}
+
+function plsPull () {
+  if (_plsPulling) return _plsPulling
+  _plsPulling = plsPullAll().catch((e) => console.warn('[pls] pull failed:', e?.message)).finally(() => { _plsPulling = null })
+  return _plsPulling
+}
+
+function plsSweep () {
+  if (!_plsSweeping) {
+    _plsSweeping = plsSweepAll().catch((e) => console.warn('[pls] sweep failed:', e?.message)).finally(() => { _plsSweeping = null })
+    return _plsSweeping
+  }
+  if (!_plsAgain) _plsAgain = _plsSweeping.then(() => { _plsAgain = null; return plsSweep() })
+  return _plsAgain
+}
+
+function startPeerloomSeeding () {
+  if (_plsTimer || !swarm) return
+  plsMakePeering().then(() => {
+    _plsTimer = setInterval(() => plsSweep(), PLS_SWEEP_MS)
+    _plsPullTimer = setInterval(() => plsPull(), PLS_PULL_MS)
+    plsSweep()
+  }).catch((e) => console.warn('[pls] start failed:', e?.message))
+}
+
+async function stopPeerloomSeeding () {
+  clearInterval(_plsTimer); _plsTimer = null
+  clearInterval(_plsPullTimer); _plsPullTimer = null
+  _plsRegistered.clear()
+  const p = _plsPeering
+  _plsPeering = null
+  if (p) await p.close().catch(() => {})
+}
+
+async function plsGroupRow (base, seederKey) {
+  const node = await base.view.get(plsRecord.recordKey(seederKey)).catch(() => null)
+  return node?.value || null
+}
+
+async function plsGroupRecord (groupId) {
+  const base = bases.get(groupId)
+  const node = base ? await base.view.get(NS.groups + groupId).catch(() => null) : null
+  return node?.value || null
+}
+
+// Add (on) or revoke (off) a seeder in one group. Throws when this device may
+// not change that row.
+async function plsWriteRow (groupId, seederKey, on) {
+  const base = bases.get(groupId)
+  if (!base?.writable) throw new Error('This device cannot write to that group yet')
+  const profile = await getProfile()
+  if (!profile?.publicKey || !profile?.secretKey) throw new Error('No profile key')
+  const existing = await plsGroupRow(base, seederKey)
+  const group = await plsGroupRecord(groupId)
+  if (!plsRecord.canChange({ me: profile.publicKey, existing, group })) throw new Error('Only the group owner or whoever added this seeder can change it')
+  if (!existing && !on) return
+  if (existing && !!existing.revoked === !on) return
+  const value = plsRecord.buildRecord({ seederKey, writer: profile.publicKey, secretKey: profile.secretKey, existing, revoked: !on })
+  await safeAppend(base, { op: 'put', type: 'pseeder', key: plsRecord.recordKey(seederKey), value }, 'pseeder')
+  plsSweep()
+}
+
+async function pairPeerloomSeeder (link) {
+  const keyPair = await plsKeyPair()
+  // A short-lived swarm with the fixed key, so the seeder trusts that key.
+  const temp = new Hyperswarm({ keyPair })
+  try {
+    const { seederKey, style } = await plsClient.pair({ swarm: temp, link, app: 'PearCal' })
+    await db.put(PLS_LOCAL + seederKey, { seederKey, style, pairedAt: Date.now() })
+    // Back up every group this device is in (answer 2); it can untick them.
+    for (const groupId of bases.keys()) await plsWriteRow(groupId, seederKey, true).catch((e) => console.warn('[pls] add to group failed:', e?.message))
+    return { seederKey }
+  } finally {
+    await temp.destroy().catch(() => {})
+  }
+}
+
+// Seeders this device paired with plus any a group names, each with its groups.
+async function listPeerloomSeeders () {
+  const profile = await getProfile().catch(() => null)
+  const me = profile?.publicKey || null
+  const seeders = new Map()
+  const entry = (k) => { if (!seeders.has(k)) seeders.set(k, { seederKey: k, paired: false, pairedAt: null, groups: [] }); return seeders.get(k) }
+  for await (const { value } of db.createReadStream({ gt: PLS_LOCAL, lt: PLS_LOCAL + '~' })) {
+    if (value?.seederKey) Object.assign(entry(value.seederKey), { paired: true, pairedAt: value.pairedAt })
+  }
+  const groupRows = []
+  for (const [groupId, base] of bases) {
+    const rows = new Map()
+    try {
+      for await (const { key, value } of base.view.createReadStream({ gt: plsRecord.PREFIX, lt: plsRecord.PREFIX + '~' })) {
+        const k = plsRecord.parseRecordKey(key)
+        if (k) { rows.set(k, value); entry(k) }
+      }
+    } catch {}
+    groupRows.push({ groupId, rows, group: await plsGroupRecord(groupId) })
+  }
+  for (const s of seeders.values()) {
+    for (const { groupId, rows, group } of groupRows) {
+      const row = rows.get(s.seederKey) || null
+      s.groups.push({
+        groupId,
+        name: group?.name || 'Group',
+        on: !!row && !row.revoked,
+        addedBy: row?.addedBy || null,
+        addedByName: (group?.members || []).find((m) => m.publicKey === row?.addedBy)?.name || null,
+        canChange: plsRecord.canChange({ me, existing: row, group })
+      })
+    }
+  }
+  return [...seeders.values()]
+}
+
+async function setPeerloomSeederGroup (seederKey, groupId, on) {
+  await plsWriteRow(groupId, seederKey, !!on)
+  return true
+}
+
+// Stop using a seeder from this device: take it off the groups this device may
+// change, ask it to drop them (after its 7-day grace, unless someone else still
+// backs them up there) and forget the pairing.
+async function forgetPeerloomSeeder (seederKey) {
+  const keyPair = await plsKeyPair()
+  const asker = plsClient.createAsker({ dht: () => swarm.dht, keyPair })
+  for (const [groupId, base] of bases) {
+    const row = await plsGroupRow(base, seederKey)
+    if (!row || row.revoked) continue
+    await plsWriteRow(groupId, seederKey, false).catch(() => {})
+    await asker.ask(seederKey, { t: 'drop', bootstrap: b4a.toString(base.key, 'hex') }).catch(() => {})
+  }
+  await db.del(PLS_LOCAL + seederKey)
+  plsSweep()
+  return true
+}
 
 async function initBlindPeering (key) {
   if (blind) {
@@ -6044,6 +6303,17 @@ function makeApply (groupId) {
       }
 
       // Write to the shared Autobase view
+      // PeerLoom Seeder rows (proposals/2026-10-13-peerloom-seeder.md): signed,
+      // and only the owner or whoever added the seeder may change one.
+      if (val.op === 'put' && val.type === 'pseeder') {
+        const existingRow = await view.get(val.key).catch(() => null)
+        const gRow = await view.get(NS.groups + groupId).catch(() => null)
+        if (plsRecord.acceptRecord({ key: val.key, incoming: val.value, existing: existingRow?.value || null, group: gRow?.value || null })) {
+          await view.put(val.key, val.value)
+        }
+        continue
+      }
+
       if (val.op === 'put') {
         // Last-write-wins: only apply if newer than existing
         const existing = await view.get(val.key)
@@ -7609,6 +7879,7 @@ async function closeStep (label, fn) {
 }
 async function _doShutdown () {
   try { stopRealtimeSyncTick() } catch (e) { console.error('Shutdown step failed: syncTick:', e.message) }
+  try { await stopPeerloomSeeding() } catch (e) { console.error('Shutdown step failed: peerloom seeding:', e.message) }
   // Ordered most- to least- dependent, but every step is independent now, and
   // the two that release the lock run whatever happened above them.
   await closeStep('personalBase', () => closePersonalBase())
@@ -8989,6 +9260,8 @@ async function _doInit (dir, attempt = 0) {
         }
       }
     }
+
+    startPeerloomSeeding()
 
     // Initialize blind peering from user-configured key (if any)
     const savedKey = await getBlindPeerKey()
