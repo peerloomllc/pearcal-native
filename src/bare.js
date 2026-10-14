@@ -42,6 +42,7 @@ const {
 } = require('./lib/seederRecord.js')
 const { parseSeederPairLink } = require('./lib/seederPairLink.js')
 const plsClient = require('./peerloom-seeder/client.js')
+const { DROP_GRACE_MS: PLS_DROP_GRACE_MS } = require('./peerloom-seeder/protocol.js')
 const plsRecord = require('./lib/peerloomSeeder.js')
 const { seederPairTopic } = require('./lib/seederPairTopic.js')
 const { setupSeederPairChannel } = require('./lib/seederPair.js')
@@ -1731,11 +1732,14 @@ async function forgetPeerloomSeeder (seederKey) {
   }
   await db.del(PLS_LOCAL + seederKey)
   plsSweep()
-  // In the background, so an offline seeder does not hold up the screen; one
-  // asker per group so the requests go in parallel.
+  // In the background, so an offline seeder does not hold up the screen. One
+  // asker, so the requests go one after another over one connection at a
+  // time: parallel connections from the same key lost requests (the seeder
+  // keeps one connection per peer).
+  const asker = plsClient.createAsker({ dht: () => plsDht(), keyPair })
   for (const bootstrap of drops) {
-    plsClient.createAsker({ dht: () => plsDht(), keyPair })
-      .ask(seederKey, { t: 'drop', bootstrap }, 10000)
+    asker
+      .ask(seederKey, { t: 'drop', bootstrap, afterMs: PLS_DROP_GRACE_MS }, 10000)
       .catch((e) => console.warn('[pls] drop failed:', e?.message))
   }
   return { ok: true, kept }

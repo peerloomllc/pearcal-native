@@ -6851,7 +6851,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
     let timer = null
     const ask = () => {
       Promise.race([db.getRelayStatus?.(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))])
-        .then(st => { if (st) setRelayStatus(st); else throw new Error('no status') })
+        .then(st => { if (st && typeof st.configured === 'boolean') setRelayStatus(st); else throw new Error('no status') })
         .catch(() => { if (!stopped) timer = setTimeout(ask, 2000) })
     }
     if (db.getRelayStatus) ask()
