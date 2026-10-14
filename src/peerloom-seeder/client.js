@@ -118,6 +118,11 @@ function createAsker ({ dht, keyPair, openSocket = () => null, styleOf = () => '
     return run
   }
 
+  // Resolves once every request sent so far has been answered or has failed.
+  function settled () {
+    return Promise.all([...queues.values()].map((p) => p.catch(() => {}))).then(() => {})
+  }
+
   function usable (socket) {
     return socket && !socket.destroying && !socket.destroyed ? socket : null
   }
@@ -165,7 +170,7 @@ function createAsker ({ dht, keyPair, openSocket = () => null, styleOf = () => '
     })
   }
 
-  return { ask }
+  return { ask, settled }
 }
 
 module.exports = { createPeering, pair, createAsker }
