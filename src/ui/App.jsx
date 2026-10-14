@@ -398,6 +398,12 @@ const iconBtn = {
   padding: '4px 8px', borderRadius: 'var(--radius-md)', fontFamily: FONT, fontWeight: 400,
   color: colors.text.primary,
 }
+// A text-only button (the seeder section's "Paste a link instead").
+const LINKBTN = { background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:FONT, fontSize:13, color:'var(--color-accent)' }
+// A PearCal seeder's pairing link (src/lib/seederPairLink.js); anything else
+// scanned in the seeder section goes to PeerLoom Seeder.
+const PEARCAL_SEEDER_LINK = /^(pearcal:\/\/seedpair|https:\/\/peerloomllc\.com\/seedpair)\b/i
+
 const pillBtn = {
   background: colors.primary, border: 'none',
   borderRadius: 'var(--radius-lg)', color: colors.text.onPrimary,
@@ -884,14 +890,10 @@ export default function App ({ db, notifs, sync }) {
       if (!url || !db || !sync) return
       const mode = qrScanModeRef.current
       qrScanModeRef.current = null
-      if (mode === 'seederPair') {
-        // Scanned a blind peer's QR. Hand to the worklet: join the rendezvous,
-        // verify the seeder pubkey, push our seed bundle. Broadcast progress +
-        // result so the BlindPeerSheet can reflect it.
-        emitter.emit('seederPairResult', { pending: true })
-        db.seederPairScan(url)
-          .then(r => emitter.emit('seederPairResult', r || { ok: false, error: 'no result' }))
-          .catch(e => emitter.emit('seederPairResult', { ok: false, error: e?.message || 'pairing failed' }))
+      if (mode === 'seederAny') {
+        // Scanned in Settings' seeder section: PeerLoom Seeder or a PearCal
+        // seeder. The section routes it by the link.
+        emitter.emit('seederScanned', url)
         return
       }
       if (mode === 'pair') {
@@ -5313,214 +5315,42 @@ function InviteOptionsModal ({ group, link, sync, onQrGroup, onClose, closeRef }
   )
 }
 
-// ─── Admit a Blind Peer (blind-seeder QR pairing) ─────────────────────────────
-// The blind peer (seeder) displays a QR; the member scans it here. Scanning
-// joins the seeder's one-time rendezvous, verifies its pubkey, and pushes an
-// all-groups seed bundle so the seeder enrolls every group — encrypted, so it
-// replicates ciphertext it can never read (proposal 2026-07-15-pearcal-seeder-
-// port, QR-pairing model from PearCircle). "Blind peer" is the user-facing term
-// (project_blind_peer_terminology).
-function BlindPeerSheet ({ db, sync, onClose, qrScanModeRef }) {
-  const bsCloseRef = useRef(null)
-  const [groupInfo, setGroupInfo] = useState({ loading: true })
-  // phase: 'idle' | 'scanning' | 'pairing' | 'success' | 'error'
-  // 'scanning' is the camera being up; 'pairing' is the worklet on the
-  // rendezvous, which is the only phase with a deadline to count down.
-  const [phase, setPhase] = useState('idle')
-  const [result, setResult] = useState(null)
-  const [copied, setCopied] = useState(false)
-  // Seconds left before seederPairScan gives up. Started when the worklet takes
-  // the scanned link, so it counts the same 60s the worklet's own timer does
-  // (issue #265 - the sheet used to sit on a static "Pairing…" with no way to
-  // tell a working pair from a stalled one).
-  const [secsLeft, setSecsLeft] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    db.mintSeedBundle?.()
-      .then(r => { if (!cancelled) setGroupInfo({ loading: false, ...r }) })
-      .catch(() => { if (!cancelled) setGroupInfo({ loading: false, count: 0 }) })
-    return () => { cancelled = true }
-  }, [])
-
-  useEffect(() => {
-    function onResult (r) {
-      if (r?.pending) { setPhase('pairing'); return }
-      if (r?.cancelled) { setPhase('idle'); return }
-      if (r?.ok) { setResult(r); setPhase('success'); window.__pearSync?.haptic('success') }
-      else { setResult(r); setPhase('error') }
-    }
-    emitter.on('seederPairResult', onResult)
-    return () => emitter.off('seederPairResult', onResult)
-  }, [])
-
-  // Tick once a second for as long as the worklet is on the rendezvous. Derived
-  // from a start timestamp rather than by decrementing, so a dropped or delayed
-  // tick (a backgrounded WebView, a slow render) self-corrects instead of
-  // leaving the countdown permanently behind the real deadline.
-  useEffect(() => {
-    if (phase !== 'pairing') { setSecsLeft(null); return }
-    const startedAt = Date.now()
-    setSecsLeft(secondsRemaining(0, SEEDER_PAIR_SCAN_TIMEOUT_MS))
-    const t = setInterval(() => {
-      setSecsLeft(secondsRemaining(Date.now() - startedAt, SEEDER_PAIR_SCAN_TIMEOUT_MS))
-    }, 1000)
-    return () => clearInterval(t)
-  }, [phase])
-
-  const count = groupInfo.count ?? 0
-  const encryptedCount = (groupInfo.groups ?? []).filter(g => g.encrypted).length
-
-  const startScan = () => {
-    if (!qrScanModeRef || !sync?.qrScan) return
-    window.__pearSync?.haptic('light')
-    setPhase('scanning')
-    qrScanModeRef.current = 'seederPair'
-    sync.qrScan()
-  }
-
-  // Reverse of scanning: hand the seeder a link instead of scanning its QR.
-  // Copies the all-groups seed bundle so it can be pasted into the blind peer's
-  // dashboard ("Paste invite" tab). More reliable than QR pairing when the
-  // rendezvous can't hole-punch (e.g. phone + seeder behind the same router),
-  // and easier when the dashboard is open on the same phone.
-  const copyBundle = () => {
-    if (!groupInfo.bundle) return
-    window.__pearSync?.haptic('light')
-    sync?.copyText?.(groupInfo.bundle)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+// ─── Seeder modal ─────────────────────────────────────────────────────────────
+// The seeder section's modal: a question with two buttons, a spinner while a
+// pairing or Stop using runs, or a result with one button.
+function SeederModal ({ title, text, busy = false, confirmLabel, danger = false, onConfirm, onClose, closeLabel = 'Cancel' }) {
   return (
-    <BottomSheet onClose={onClose} zIndex={300} closeRef={bsCloseRef}>
-      <div style={{ padding:'0 20px 8px' }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:10, marginBottom:12 }}>
-          <ShieldCheck size={24} weight="thin" color="var(--color-accent)" />
-          <span style={{ fontSize:17, color: colors.text.primary }}>Admit a blind peer</span>
-        </div>
-
-        {phase === 'success' ? (
-          <div style={{ textAlign:'center', padding:'8px 0 4px' }}>
-            <CheckCircle size={44} weight="thin" color="#5DBF8A" />
-            <div style={{ fontSize:15, color: colors.text.primary, marginTop:10 }}>
-              Paired with your blind peer
-            </div>
-            <div style={{ fontSize:13, color: colors.text.muted, marginTop:6, lineHeight:1.5 }}>
-              It's now keeping {result?.enrolled ?? 0} group{(result?.enrolled ?? 0) === 1 ? '' : 's'} synced,
-              even when no one else is online.
-            </div>
-            {Array.isArray(result?.names) && result.names.length > 0 && (
-              <div style={{ fontSize:12, color: colors.text.muted, marginTop:8 }}>
-                {result.names.join(' · ')}
-              </div>
+    <div data-testid="seeder-modal" style={{ position:'fixed', inset:0, zIndex:1000, display:'flex',
+      alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.55)', padding:24, fontFamily:FONT }}>
+      <div style={{ background: colors.surface.elevated, borderRadius:14, padding:20, maxWidth:400, width:'100%',
+        border:`1px solid ${colors.border}`, textAlign:'center' }}>
+        {busy && (
+          <ArrowsClockwise size={30} weight="thin" color="var(--color-accent)"
+            style={{ animation:'pearSpin 900ms linear infinite', marginBottom:10 }} />
+        )}
+        <div style={{ fontSize:16, color: colors.text.primary, marginBottom: text ? 8 : 0 }}>{title}</div>
+        {text && <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5 }}>{text}</div>}
+        {!busy && (onConfirm || onClose) && (
+          <div style={{ marginTop:18, display:'flex', flexDirection:'column', gap:8 }}>
+            {onConfirm && (
+              <button data-haptic="medium" onClick={onConfirm}
+                style={danger
+                  ? { width:'100%', padding:'11px', fontSize:14, borderRadius:10, cursor:'pointer', fontFamily:FONT, border:'none', background:'#e67b7b', color:'#fff' }
+                  : { ...pillBtn, width:'100%', padding:'11px', fontSize:14 }}>
+                {confirmLabel}
+              </button>
             )}
-            <button onClick={() => bsCloseRef.current?.()}
-              style={{ ...pillBtn, width:'100%', padding:'11px', fontSize:14, marginTop:18 }}>
-              Done
-            </button>
+            {onClose && (
+              <button onClick={onClose}
+                style={{ width:'100%', padding:'11px', fontSize:14, borderRadius:10, cursor:'pointer', fontFamily:FONT,
+                  border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
+                {closeLabel}
+              </button>
+            )}
           </div>
-        ) : (phase === 'pairing' || phase === 'scanning') ? (
-          <div style={{ textAlign:'center', padding:'20px 0' }}>
-            <ArrowsClockwise size={30} weight="thin" color="var(--color-accent)"
-              style={{ animation:'pearSpin 900ms linear infinite' }} />
-            <div style={{ fontSize:14, color: colors.text.primary, marginTop:10 }}>
-              {phase === 'scanning' ? 'Scanning…' : 'Pairing…'}
-            </div>
-            <div style={{ fontSize:13, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
-              Connecting to the blind peer. Make sure you scanned the QR currently on its
-              screen — a QR that's already been used won't connect.
-            </div>
-            {/* The deadline is the worklet's, not this timer's: at 0 the scan
-                itself fails and the error phase takes over, so the countdown
-                only ever reports. */}
-            {phase === 'pairing' && secsLeft != null && (
-              <div style={{ fontSize:12, color: colors.text.muted, marginTop:10 }}>
-                {secsLeft > 0
-                  ? 'Giving up in ' + formatCountdown(secsLeft)
-                  : 'Taking longer than expected…'}
-              </div>
-            )}
-            <button onClick={() => { db.cancelSeederPairScan?.().catch(() => {}); setPhase('idle') }}
-              style={{ background:'none', border:`1px solid ${colors.border}`, color: colors.text.muted,
-                fontFamily:FONT, padding:'8px 20px', fontSize:13, cursor:'pointer', borderRadius:8, marginTop:18 }}>
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5, marginBottom:16 }}>
-              A blind peer is an always-on device (a home server, Umbrel, or Mac) that keeps your
-              groups in sync even when no one else is online. It stores them <b>encrypted</b> and
-              can never read them. Open its screen and <b>scan the QR code</b> it shows.
-            </div>
-
-            {phase === 'error' && (
-              <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', padding:'0 0 12px' }}>
-                {result?.error || 'Pairing failed'} — try again.
-              </div>
-            )}
-
-            {!groupInfo.loading && count === 0 ? (
-              <div style={{ fontSize:13, color: colors.text.muted, textAlign:'center', padding:'8px 0 16px' }}>
-                You're not in any groups yet. Create or join a group first, then admit a blind peer
-                to keep it synced.
-              </div>
-            ) : (
-              <>
-                {!groupInfo.loading && (
-                  <div style={{ fontSize:12, color: colors.text.muted, marginBottom:14 }}>
-                    Will enroll {count} group{count === 1 ? '' : 's'}
-                    {encryptedCount < count && <span> · {encryptedCount} encrypted (blind), {count - encryptedCount} legacy</span>}
-                  </div>
-                )}
-                {!IS_DESKTOP && (
-                  <>
-                    <button data-haptic="light" onClick={startScan}
-                      style={{ ...pillBtn, width:'100%', padding:'12px', fontSize:15,
-                        display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                      <QrCode size={18} weight="thin" /> Scan blind peer QR
-                    </button>
-                    <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginTop:10,
-                      padding:'9px 11px', borderRadius:9, background:'rgba(224,168,86,0.10)',
-                      border:'1px solid rgba(224,168,86,0.28)' }}>
-                      <Warning size={15} weight="thin" color="#E0A856" style={{ flexShrink:0, marginTop:1 }} />
-                      <span style={{ fontSize:11, color: colors.text.muted, lineHeight:1.5 }}>
-                        Scanning needs your phone and the blind peer on <b>different networks</b> — if
-                        they share the same Wi-Fi, the connection often can't form. On the same network,
-                        use <b>Copy invite link</b> below instead.
-                      </span>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:10, margin:'12px 0' }}>
-                      <div style={{ flex:1, height:1, background:colors.border }} />
-                      <span style={{ fontSize:11, color:colors.text.muted }}>or</span>
-                      <div style={{ flex:1, height:1, background:colors.border }} />
-                    </div>
-                  </>
-                )}
-                <button data-haptic="light" onClick={copyBundle}
-                  style={{ width:'100%', padding:'11px', fontSize:14, fontFamily:FONT,
-                    background:'none', color:colors.text.primary, cursor:'pointer',
-                    border:`1px solid ${colors.border}`, borderRadius:10,
-                    display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
-                  {copied
-                    ? <><CheckCircle size={18} weight="thin" color="#5DBF8A" /> Invite copied</>
-                    : <><Copy size={18} weight="thin" /> Copy invite link</>}
-                </button>
-                <div style={{ fontSize:11, color: colors.text.muted, marginTop:8, lineHeight:1.5 }}>
-                  Paste it into the blind peer's dashboard — the <b>Paste invite</b> tab — to enroll
-                  all {count} group{count === 1 ? '' : 's'} without scanning.
-                </div>
-              </>
-            )}
-            <div style={{ fontSize:11, color: colors.text.muted, marginTop:12, lineHeight:1.5 }}>
-              Nothing you scan reveals a group's contents — the pairing only shares each group's
-              encrypted-sync address, never its decryption key.
-            </div>
-          </>
         )}
       </div>
-    </BottomSheet>
+    </div>
   )
 }
 
@@ -6891,7 +6721,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const fileRef = useRef()
   // Blind-seeder admission (proposal 2026-07-15-pearcal-seeder-port). Supersedes
   // the old manual blind-peer-key input; the user scans the seeder's QR instead.
-  const [blindPeerOpen,    setBlindPeerOpen]    = useState(false)
   const [blindPeers,       setBlindPeers]       = useState([])
   const [removeBpConfirm,  setRemoveBpConfirm]  = useState(null)
   const [renameBpKey,      setRenameBpKey]      = useState(null)
@@ -6906,30 +6735,106 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [plLink,    setPlLink]    = useState('')
   const [plBusy,    setPlBusy]    = useState(false)
   const [plMsg,     setPlMsg]     = useState('')
+  const [plPasting, setPlPasting] = useState(false)
+  const [plModal,   setPlModal]   = useState(null) // SeederModal's props, or null
+  const [plPending, setPlPending] = useState({})   // seederKey:groupId -> the switch's new state
   const loadPlSeeders = useCallback(() => {
-    db.listPeerloomSeeders?.().then(list => setPlSeeders(list ?? [])).catch(() => {})
+    return db.listPeerloomSeeders?.().then(list => setPlSeeders(list ?? [])).catch(() => {})
   }, [db])
-  useEffect(() => { loadPlSeeders() }, [loadPlSeeders])
+  useEffect(() => {
+    loadPlSeeders()
+    const t = setInterval(loadPlSeeders, 5000)
+    return () => clearInterval(t)
+  }, [loadPlSeeders])
   // A one-time note for people on the PearCal seeder (Tim, 2026-10-13: a
   // notice, not a migration): PeerLoom Seeder exists, use it, theirs, or both.
   const plInputRef = useRef(null)
   const [plNoteDismissed, setPlNoteDismissed] = useState(() => {
     try { return localStorage.getItem('pearcal:plsNoteDismissed') === '1' } catch { return false }
   })
+  // One seeder section: the same scan pairs PeerLoom Seeder or a PearCal seeder
+  // (the link says which).
+  const pairAnySeeder = async (text) => {
+    // Phone keyboards capitalise the first letter of a typed link.
+    const clean = String(text || '').trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase())
+    if (!clean) return
+    setPlBusy(true); setPlMsg('')
+    setPlModal({ busy: true, title: 'Pairing...', text: 'This can take up to a minute.' })
+    try {
+      if (PEARCAL_SEEDER_LINK.test(clean)) {
+        const r = await db.seederPairScan(clean)
+        if (!r?.ok) throw new Error(r?.error || 'Pairing failed')
+        loadBlindPeers()
+        setPlMsg(`Paired. ${r.enrolled ?? 0} group${r.enrolled === 1 ? ' is' : 's are'} backing up to it.`)
+      } else {
+        const r = await db.pairPeerloomSeeder(clean)
+        setPlMsg(`Paired. ${r?.groups ?? 0} group${r?.groups === 1 ? ' is' : 's are'} backing up to it.`)
+      }
+      window.__pearSync?.haptic('success')
+      setPlLink(''); setPlPasting(false); setPlModal(null)
+    } catch (e) {
+      const m = String(e?.message ?? e)
+      const text = /invalid pairing|not a .*link|pairing link/i.test(m)
+        ? 'That is not a seeder pairing code.'
+        : /timed out|did not answer/i.test(m)
+          ? 'Could not reach the seeder. Check that its dashboard still shows the code, then try again.'
+          : m
+      setPlModal({ title: 'Could not pair', text, onClose: () => setPlModal(null), closeLabel: 'OK' })
+    }
+    setPlBusy(false); loadPlSeeders()
+  }
+  const scanSeeder = () => {
+    if (!qrScanModeRef || !sync?.qrScan) return
+    window.__pearSync?.haptic('light')
+    qrScanModeRef.current = 'seederAny'
+    sync.qrScan()
+  }
+  const pairAnyRef = useRef(pairAnySeeder)
+  pairAnyRef.current = pairAnySeeder
+  useEffect(() => {
+    const onScanned = (url) => pairAnyRef.current(url)
+    emitter.on('seederScanned', onScanned)
+    return () => emitter.off('seederScanned', onScanned)
+  }, [])
+  const setPlGroup = async (seederKey, groupId, on) => {
+    const id = seederKey + ':' + groupId
+    setPlPending(p => ({ ...p, [id]: on }))
+    try { await db.setPeerloomSeederGroup(seederKey, groupId, on) } catch (e) { setPlMsg(e?.message || 'Could not change that') }
+    await loadPlSeeders()
+    setPlPending(p => { const { [id]: _, ...rest } = p; return rest })
+  }
+  const forgetPlSeeder = async (seederKey) => {
+    setPlMsg('')
+    setPlModal({ busy: true, title: 'Stopping...' })
+    const close = () => setPlModal(null)
+    try {
+      const r = await db.forgetPeerloomSeeder(seederKey)
+      await loadPlSeeders()
+      const kept = r?.kept ?? []
+      if (kept.length) {
+        const list = kept.map(g => g.addedByName ? `${g.name} (added by ${g.addedByName})` : g.name).join(', ')
+        setPlModal({ title: 'Stopped on this device', text: `${kept.length === 1 ? 'This group still uses it' : 'These groups still use it'}: ${list}. Only whoever added it or the group owner can remove it there.`, onClose: close, closeLabel: 'OK' })
+      } else {
+        close()
+        setPlMsg('Stopped using this seeder.')
+      }
+    } catch (e) {
+      await loadPlSeeders()
+      setPlModal({ title: 'Could not stop', text: String(e?.message ?? e), onClose: close, closeLabel: 'OK' })
+    }
+  }
+  const askForgetPlSeeder = (seederKey) => {
+    window.__pearSync?.haptic('medium')
+    setPlModal({
+      title: 'Stop using this seeder?',
+      text: 'Your groups stop backing up to it, except where someone else added it.',
+      confirmLabel: 'Stop using', danger: true,
+      onConfirm: () => forgetPlSeeder(seederKey), onClose: () => setPlModal(null),
+    })
+  }
   const dismissPlNote = () => {
     setPlNoteDismissed(true)
     try { localStorage.setItem('pearcal:plsNoteDismissed', '1') } catch {}
-  }
-  const pairPlSeeder = async () => {
-    if (!plLink.trim()) return
-    window.__pearSync?.haptic('light')
-    setPlBusy(true); setPlMsg('Pairing…')
-    try {
-      // Phone keyboards capitalise the first letter of a typed link.
-      await db.pairPeerloomSeeder(plLink.trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase()))
-      setPlLink(''); setPlMsg('Paired. Your groups are backing up to it.')
-    } catch (e) { setPlMsg(e?.message || 'Could not pair') }
-    setPlBusy(false); loadPlSeeders()
   }
   // The off-LAN relay backstop (TODO #130). Default ON — it is what makes the app
   // connect at all on a carrier NAT that can never hole-punch, and PearCal is
@@ -6939,10 +6844,20 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const loadRelayStatus = useCallback(() => {
     db.getRelayStatus?.().then(s => setRelayStatus(s ?? null)).catch(() => {})
   }, [db])
-  useEffect(() => { loadRelayStatus() }, [loadRelayStatus])
-  // Load on mount and refresh whenever the pairing sheet closes (a scan may have
-  // just admitted one).
-  useEffect(() => { if (!blindPeerOpen) loadBlindPeers() }, [blindPeerOpen, loadBlindPeers])
+  // Ask again until it answers: a call made before the worklet is ready can be
+  // refused or never answered, which left the relay switch hidden.
+  useEffect(() => {
+    let stopped = false
+    let timer = null
+    const ask = () => {
+      Promise.race([db.getRelayStatus?.(), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))])
+        .then(st => { if (st) setRelayStatus(st); else throw new Error('no status') })
+        .catch(() => { if (!stopped) timer = setTimeout(ask, 2000) })
+    }
+    if (db.getRelayStatus) ask()
+    return () => { stopped = true; clearTimeout(timer) }
+  }, [db])
+  useEffect(() => { loadBlindPeers() }, [loadBlindPeers])
   // Live refresh (#116 facet #2): the bare backend emits blindPeersChanged when a
   // seederFollow row is added/updated/removed — including a live seeder groupCount
   // update — so the list reflects it in place without a section reopen.
@@ -7746,12 +7661,110 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         </div>
       </>)}
 
-      {/* Blind peer (always-on group replicator) */}
+      {/* Seeders: PeerLoom Seeder and the older PearCal seeder (blind peer) in
+          one section, one scan for both (pearcircle #248 is the template). */}
       <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
-        BLIND PEER
+        SEEDERS
       </div>
       <div style={{ marginBottom:12 }}>
-        <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10 }}>
+        <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10, fontFamily:FONT }}>
+          <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5 }}>
+            A seeder is an always-on computer that keeps your groups in sync while phones sleep.
+            It stores them scrambled and cannot read them.
+          </div>
+          {blindPeers.length > 0 && plSeeders.length === 0 && !plNoteDismissed && (
+            <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px 12px', borderRadius:8,
+              background: colors.surface?.card || 'transparent', border:`1px solid ${colors.border}` }}>
+              <div style={{ fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                There is now PeerLoom Seeder: one seeder for all your PeerLoom apps. You can use it,
+                keep your PearCal seeder, or both.
+              </div>
+              <div style={{ display:'flex', gap:8 }}>
+                <button onClick={() => { dismissPlNote(); if (IS_DESKTOP) setPlPasting(true); else scanSeeder() }}
+                  style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                    border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)' }}>
+                  Set up
+                </button>
+                <button onClick={dismissPlNote}
+                  style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                    border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
+                  Not now
+                </button>
+              </div>
+            </div>
+          )}
+          {!IS_DESKTOP && (
+            <button data-haptic="light" onClick={scanSeeder} disabled={plBusy}
+              style={{ ...pillBtn, width:'100%', padding:'12px', fontSize:15,
+                display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+              <QrCode size={18} weight="thin" /> Scan seeder QR
+            </button>
+          )}
+          {(plPasting || IS_DESKTOP) && (
+            <div style={{ display:'flex', gap:8 }}>
+              <input value={plLink} onChange={e => setPlLink(e.target.value)} placeholder="Paste the seeder link"
+                aria-label="Seeder pairing link" autoCapitalize="none" autoCorrect="off" spellCheck={false} autoFocus={!IS_DESKTOP}
+                style={{ flex:1, minWidth:0, padding:'8px 10px', fontSize:12, borderRadius:8, fontFamily:FONT,
+                  border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.primary }} />
+              <button onClick={() => pairAnySeeder(plLink)} disabled={plBusy || !plLink.trim()}
+                style={{ padding:'8px 12px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                  border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)',
+                  opacity: plBusy || !plLink.trim() ? 0.5 : 1 }}>
+                Pair
+              </button>
+            </div>
+          )}
+          <div style={{ display:'flex', justifyContent:'space-between', gap:8 }}>
+            {!IS_DESKTOP
+              ? <button onClick={() => setPlPasting(v => !v)} style={LINKBTN}>{plPasting ? 'Cancel' : 'Paste a link instead'}</button>
+              : <span />}
+            <button onClick={() => window.__pearSync?.openURL('https://peerloomllc.com/seeder')}
+              style={{ ...LINKBTN, display:'flex', alignItems:'center', gap:4 }}>
+              Get PeerLoom Seeder <ArrowSquareOut size={13} weight="thin" />
+            </button>
+          </div>
+          {plMsg && <div style={{ fontSize:12, color: colors.text.muted }}>{plMsg}</div>}
+          {plSeeders.map(sd => (
+            <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, padding:'12px 14px',
+              borderRadius:10, border:`1px solid ${colors.border}` }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <ShieldCheck size={16} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
+                <div style={{ flex:1, minWidth:0, fontSize:12, color: colors.text.primary, fontFamily:'monospace',
+                  overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {sd.seederKey.slice(0, 16)}…
+                </div>
+                {sd.paired && (
+                  <button onClick={() => askForgetPlSeeder(sd.seederKey)}
+                    style={{ padding:'4px 8px', fontSize:11, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                      border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
+                    Stop using
+                  </button>
+                )}
+              </div>
+              {sd.groups.map(g => {
+                const p = plPending[sd.seederKey + ':' + g.groupId]
+                const busyRow = p !== undefined
+                return (
+                  <div key={g.groupId} style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:24,
+                    opacity: g.canChange && !busyRow ? 1 : 0.6 }}>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:12, color: colors.text.primary }}>{g.name}</div>
+                      {g.on && !g.canChange && (
+                        <div style={{ fontSize:11, color: colors.text.muted }}>
+                          Added by {g.addedByName || 'a member'}. Only they or the group owner can remove it.
+                        </div>
+                      )}
+                    </div>
+                    {busyRow && <span style={{ fontSize:11, color: colors.text.muted }}>{p ? 'Adding...' : 'Removing...'}</span>}
+                    <div style={{ pointerEvents: g.canChange && !busyRow ? 'auto' : 'none' }}>
+                      <Toggle val={busyRow ? p : g.on} accent={colors.primary}
+                        onChange={(v) => setPlGroup(sd.seederKey, g.groupId, v)} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
           {blindPeers.map(bp => {
             const confirming = removeBpConfirm === bp.pubkey
             const renaming = renameBpKey === bp.pubkey
@@ -7794,7 +7807,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                   <ShieldCheck size={18} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontSize:13, color: colors.text.primary }}>
-                      {bp.nickname || 'Blind peer'}
+                      {bp.nickname || 'Seeder'} <span style={{ fontSize:11, color: colors.text.muted }}>(PearCal Seeder)</span>
                     </div>
                     <div style={{ fontSize:11, color: colors.text.muted, fontFamily:'monospace',
                       overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
@@ -7859,102 +7872,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
               </div>
             )
           })}
-          {db.listPeerloomSeeders && (
-            <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'12px 14px', borderRadius:10,
-              border:`1px solid ${colors.border}`, fontFamily:FONT }}>
-              <div style={{ fontSize:14, color: colors.text.primary }}>PeerLoom Seeder</div>
-              <div style={{ fontSize:11, color: colors.text.muted, lineHeight:1.4 }}>
-                Keeps your groups in sync while your phones sleep. It serves all your PeerLoom apps, stores
-                your calendars scrambled and cannot read them. A new member still needs someone in the group online to join.
-              </div>
-              {blindPeers.length > 0 && plSeeders.length === 0 && !plNoteDismissed && (
-                <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px 12px', borderRadius:8,
-                  background: colors.surface?.card || 'transparent', border:`1px solid ${colors.border}` }}>
-                  <div style={{ fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
-                    There is now PeerLoom Seeder: one seeder for all your PeerLoom apps. You can use it,
-                    keep your PearCal seeder, or both.
-                  </div>
-                  <div style={{ display:'flex', gap:8 }}>
-                    <button onClick={() => { dismissPlNote(); plInputRef.current?.focus() }}
-                      style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                        border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)' }}>
-                      Set up
-                    </button>
-                    <button onClick={dismissPlNote}
-                      style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                        border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
-                      Not now
-                    </button>
-                  </div>
-                </div>
-              )}
-              {plSeeders.map(sd => (
-                <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, paddingTop:6,
-                  borderTop:`1px solid ${colors.border}` }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                    <ShieldCheck size={16} weight="thin" color="#5DBF8A" style={{ flexShrink:0 }} />
-                    <div style={{ flex:1, minWidth:0, fontSize:12, color: colors.text.primary, fontFamily:'monospace',
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {sd.seederKey.slice(0, 16)}…
-                    </div>
-                    {sd.paired && (
-                      <button onClick={async () => { window.__pearSync?.haptic('medium'); await db.forgetPeerloomSeeder?.(sd.seederKey).catch(() => {}); loadPlSeeders() }}
-                        style={{ padding:'4px 8px', fontSize:11, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                          border:'1px solid #e67b7b', background:'transparent', color:'#e67b7b' }}>
-                        Stop using
-                      </button>
-                    )}
-                  </div>
-                  {sd.groups.map(g => (
-                    <div key={g.groupId} style={{ display:'flex', alignItems:'center', gap:10, paddingLeft:24,
-                      opacity: g.canChange ? 1 : 0.6 }}>
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ fontSize:12, color: colors.text.primary }}>{g.name}</div>
-                        {g.on && !g.canChange && (
-                          <div style={{ fontSize:11, color: colors.text.muted }}>
-                            Added by {g.addedByName || 'a member'}. Only they or the group owner can remove it.
-                          </div>
-                        )}
-                      </div>
-                      <div style={{ pointerEvents: g.canChange ? 'auto' : 'none' }}>
-                        <Toggle val={g.on} accent={colors.primary}
-                          onChange={async (v) => { window.__pearSync?.haptic('light'); try { await db.setPeerloomSeederGroup(sd.seederKey, g.groupId, v) } catch (e) { setPlMsg(e?.message || 'Could not change that') } loadPlSeeders() }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ))}
-              <div style={{ display:'flex', gap:8 }}>
-                <input ref={plInputRef} value={plLink} onChange={e => setPlLink(e.target.value)} placeholder="peerloom://seeder?…"
-                  aria-label="PeerLoom Seeder pairing link" autoCapitalize="none" autoCorrect="off" spellCheck={false}
-                  style={{ flex:1, minWidth:0, padding:'8px 10px', fontSize:12, borderRadius:8, fontFamily:FONT,
-                    border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.primary }} />
-                <button onClick={pairPlSeeder} disabled={plBusy || !plLink.trim()}
-                  style={{ padding:'8px 12px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
-                    border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)',
-                    opacity: plBusy || !plLink.trim() ? 0.5 : 1 }}>
-                  Pair
-                </button>
-              </div>
-              {plMsg && <div style={{ fontSize:11, color: colors.text.muted }}>{plMsg}</div>}
-            </div>
-          )}
-          <button onClick={() => { window.__pearSync?.haptic('light'); setBlindPeerOpen(true) }}
-            style={{ display:'flex', alignItems:'center', gap:12, width:'100%',
-              padding:'12px 14px', borderRadius:10, cursor:'pointer',
-              border:`1px solid var(--color-accent)`, background:'transparent', fontFamily:FONT }}>
-            <ShieldCheck size={18} weight="thin" color="var(--color-accent)" />
-            <div style={{ flex:1, textAlign:'left' }}>
-              <div style={{ fontSize:14, fontWeight:400, color:'var(--color-accent)' }}>
-                {blindPeers.length ? 'Admit another blind peer' : 'Admit a blind peer'}
-              </div>
-              <div style={{ fontSize:11, color:colors.text.muted }}>
-                {blindPeers.length
-                  ? 'Scan another blind peer’s QR to add it'
-                  : 'Keep groups synced when no one else is online — it can’t read them'}
-              </div>
-            </div>
-          </button>
         </div>
       </div>
 
@@ -8524,9 +8441,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           onRegenerate={async () => { await cancelDevicePairing(); startDevicePairing() }}
           onCancel={cancelDevicePairing} />
       )}
-      {blindPeerOpen && (
-        <BlindPeerSheet db={db} sync={sync} qrScanModeRef={qrScanModeRef} onClose={() => setBlindPeerOpen(false)} />
-      )}
+      {plModal && createPortal(<SeederModal {...plModal} />, document.body)}
     </div>
   )
 }
