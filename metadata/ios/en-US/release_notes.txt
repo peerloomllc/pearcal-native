@@ -1,5 +1,16 @@
-## What's Changed
+What's new in PearCal
 
-Fixed
+  New Features
+  - Back up your calendars to PeerLoom Seeder, an always-on helper that keeps your shared calendars available while your phones are off. One seeder now works for all your PeerLoom apps.
+  - Choose which calendars go to your seeder, using a switch for each one. Everyone in the group can see who added the seeder.
+  - If you already use a PearCal seeder, a short note tells you about PeerLoom Seeder. You can switch to it, keep your current seeder or use both.
 
-  - The app no longer closes right after you open it on iOS 27.
+  Improvements
+  - All your seeders now appear together in one Seeders section in Settings, with a single "Scan seeder QR" button, a "Paste a link instead" option and a link to get PeerLoom Seeder.
+  - Adding or removing a seeder now shows clear progress messages, so you know when it is done.
+  - When you stop using a seeder, your data stays on it for 7 days before it is deleted, in case you change your mind.
+
+  Bug Fixes
+  - PeerLoom Seeder can now be reached when your phone and the seeder are on the same home network.
+  - Stopping a seeder now removes every calendar from it. Before, one could be missed.
+  - The relay setting no longer sometimes goes missing when the app first opens.
