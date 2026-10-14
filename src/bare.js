@@ -1652,14 +1652,19 @@ async function pairPeerloomSeeder (link) {
     const { seederKey, style } = await plsClient.pair({ swarm: temp, link, app: 'PearCal' })
     await db.put(PLS_LOCAL + seederKey, { seederKey, style, pairedAt: Date.now() })
     // Back up every group this device is in (answer 2); it can untick them.
-    for (const groupId of bases.keys()) await plsWriteRow(groupId, seederKey, true).catch((e) => console.warn('[pls] add to group failed:', e?.message))
-    return { seederKey }
+    let groups = 0
+    for (const groupId of bases.keys()) {
+      try { await plsWriteRow(groupId, seederKey, true); groups++ } catch (e) { console.warn('[pls] add to group failed:', e?.message) }
+    }
+    return { seederKey, groups }
   } finally {
     await temp.destroy().catch(() => {})
   }
 }
 
-// Seeders this device paired with plus any a group names, each with its groups.
+// Seeders this device paired with plus any a group still uses, each with its
+// groups. A seeder every group has removed and this device is not paired with
+// is left out.
 async function listPeerloomSeeders () {
   const profile = await getProfile().catch(() => null)
   const me = profile?.publicKey || null
@@ -1674,7 +1679,9 @@ async function listPeerloomSeeders () {
     try {
       for await (const { key, value } of base.view.createReadStream({ gt: plsRecord.PREFIX, lt: plsRecord.PREFIX + '~' })) {
         const k = plsRecord.parseRecordKey(key)
-        if (k) { rows.set(k, value); entry(k) }
+        if (!k) continue
+        rows.set(k, value)
+        if (value && !value.revoked) entry(k)
       }
     } catch {}
     groupRows.push({ groupId, rows, group: await plsGroupRecord(groupId) })
@@ -1701,20 +1708,37 @@ async function setPeerloomSeederGroup (seederKey, groupId, on) {
 }
 
 // Stop using a seeder from this device: take it off the groups this device may
-// change, ask it to drop them (after its 7-day grace, unless someone else still
-// backs them up there) and forget the pairing.
+// change and forget the pairing, then ask it to drop those groups (after its
+// 7-day grace, unless someone else still backs them up there). Returns the
+// groups that keep it because someone else added it.
 async function forgetPeerloomSeeder (seederKey) {
   const keyPair = await plsKeyPair()
-  const asker = plsClient.createAsker({ dht: () => plsDht(), keyPair })
+  const profile = await getProfile().catch(() => null)
+  const me = profile?.publicKey || null
+  const drops = []
+  const kept = []
   for (const [groupId, base] of bases) {
     const row = await plsGroupRow(base, seederKey)
     if (!row || row.revoked) continue
-    await plsWriteRow(groupId, seederKey, false).catch(() => {})
-    await asker.ask(seederKey, { t: 'drop', bootstrap: b4a.toString(base.key, 'hex') }).catch(() => {})
+    const group = await plsGroupRecord(groupId)
+    if (plsRecord.canChange({ me, existing: row, group })) {
+      await plsWriteRow(groupId, seederKey, false).catch(() => {})
+    } else {
+      const addedByName = (group?.members || []).find((m) => m.publicKey === row.addedBy)?.name || null
+      kept.push({ groupId, name: group?.name || 'Group', addedByName })
+    }
+    drops.push(b4a.toString(base.key, 'hex'))
   }
   await db.del(PLS_LOCAL + seederKey)
   plsSweep()
-  return true
+  // In the background, so an offline seeder does not hold up the screen; one
+  // asker per group so the requests go in parallel.
+  for (const bootstrap of drops) {
+    plsClient.createAsker({ dht: () => plsDht(), keyPair })
+      .ask(seederKey, { t: 'drop', bootstrap }, 10000)
+      .catch((e) => console.warn('[pls] drop failed:', e?.message))
+  }
+  return { ok: true, kept }
 }
 
 async function initBlindPeering (key) {
