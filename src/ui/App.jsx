@@ -6910,6 +6910,16 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
     db.listPeerloomSeeders?.().then(list => setPlSeeders(list ?? [])).catch(() => {})
   }, [db])
   useEffect(() => { loadPlSeeders() }, [loadPlSeeders])
+  // A one-time note for people on the PearCal seeder (Tim, 2026-10-13: a
+  // notice, not a migration): PeerLoom Seeder exists, use it, theirs, or both.
+  const plInputRef = useRef(null)
+  const [plNoteDismissed, setPlNoteDismissed] = useState(() => {
+    try { return localStorage.getItem('pearcal:plsNoteDismissed') === '1' } catch { return false }
+  })
+  const dismissPlNote = () => {
+    setPlNoteDismissed(true)
+    try { localStorage.setItem('pearcal:plsNoteDismissed', '1') } catch {}
+  }
   const pairPlSeeder = async () => {
     if (!plLink.trim()) return
     window.__pearSync?.haptic('light')
@@ -7857,6 +7867,27 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 Keeps your groups in sync while your phones sleep. It serves all your PeerLoom apps, stores
                 your calendars scrambled and cannot read them. A new member still needs someone in the group online to join.
               </div>
+              {blindPeers.length > 0 && plSeeders.length === 0 && !plNoteDismissed && (
+                <div style={{ display:'flex', flexDirection:'column', gap:8, padding:'10px 12px', borderRadius:8,
+                  background: colors.surface?.card || 'transparent', border:`1px solid ${colors.border}` }}>
+                  <div style={{ fontSize:12, color: colors.text.primary, lineHeight:1.4 }}>
+                    There is now PeerLoom Seeder: one seeder for all your PeerLoom apps. You can use it,
+                    keep your PearCal seeder, or both.
+                  </div>
+                  <div style={{ display:'flex', gap:8 }}>
+                    <button onClick={() => { dismissPlNote(); plInputRef.current?.focus() }}
+                      style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                        border:`1px solid var(--color-accent)`, background:'transparent', color:'var(--color-accent)' }}>
+                      Set up
+                    </button>
+                    <button onClick={dismissPlNote}
+                      style={{ flex:1, padding:'6px 10px', fontSize:12, borderRadius:8, cursor:'pointer', fontFamily:FONT,
+                        border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.muted }}>
+                      Not now
+                    </button>
+                  </div>
+                </div>
+              )}
               {plSeeders.map(sd => (
                 <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, paddingTop:6,
                   borderTop:`1px solid ${colors.border}` }}>
@@ -7894,7 +7925,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 </div>
               ))}
               <div style={{ display:'flex', gap:8 }}>
-                <input value={plLink} onChange={e => setPlLink(e.target.value)} placeholder="peerloom://seeder?…"
+                <input ref={plInputRef} value={plLink} onChange={e => setPlLink(e.target.value)} placeholder="peerloom://seeder?…"
                   aria-label="PeerLoom Seeder pairing link" autoCapitalize="none" autoCorrect="off" spellCheck={false}
                   style={{ flex:1, minWidth:0, padding:'8px 10px', fontSize:12, borderRadius:8, fontFamily:FONT,
                     border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.primary }} />

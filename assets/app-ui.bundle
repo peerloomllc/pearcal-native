@@ -184,9 +184,9 @@
     }
   });
 
-  // node_modules/scheduler/cjs/scheduler.production.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/scheduler/cjs/scheduler.production.js
   var require_scheduler_production = __commonJS({
-    "node_modules/scheduler/cjs/scheduler.production.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/scheduler/cjs/scheduler.production.js"(exports) {
       "use strict";
       function push(heap, node) {
         var index = heap.length;
@@ -457,9 +457,9 @@
     }
   });
 
-  // node_modules/scheduler/index.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/scheduler/index.js
   var require_scheduler = __commonJS({
-    "node_modules/scheduler/index.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/scheduler/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_scheduler_production();
@@ -469,9 +469,9 @@
     }
   });
 
-  // node_modules/react/cjs/react.production.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/cjs/react.production.js
   var require_react_production = __commonJS({
-    "node_modules/react/cjs/react.production.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/cjs/react.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_PORTAL_TYPE = /* @__PURE__ */ Symbol.for("react.portal");
@@ -915,9 +915,9 @@
     }
   });
 
-  // node_modules/react/index.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/index.js
   var require_react = __commonJS({
-    "node_modules/react/index.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/index.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_production();
@@ -927,9 +927,9 @@
     }
   });
 
-  // node_modules/react-dom/cjs/react-dom.production.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/cjs/react-dom.production.js
   var require_react_dom_production = __commonJS({
-    "node_modules/react-dom/cjs/react-dom.production.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/cjs/react-dom.production.js"(exports) {
       "use strict";
       var React = require_react();
       function formatProdErrorMessage(code) {
@@ -1076,9 +1076,9 @@
     }
   });
 
-  // node_modules/react-dom/index.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/index.js
   var require_react_dom = __commonJS({
-    "node_modules/react-dom/index.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/index.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -1102,9 +1102,9 @@
     }
   });
 
-  // node_modules/react-dom/cjs/react-dom-client.production.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/cjs/react-dom-client.production.js
   var require_react_dom_client_production = __commonJS({
-    "node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/cjs/react-dom-client.production.js"(exports) {
       "use strict";
       var Scheduler = require_scheduler();
       var React = require_react();
@@ -12382,9 +12382,9 @@
     }
   });
 
-  // node_modules/react-dom/client.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/client.js
   var require_client = __commonJS({
-    "node_modules/react-dom/client.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react-dom/client.js"(exports, module) {
       "use strict";
       function checkDCE() {
         if (typeof __REACT_DEVTOOLS_GLOBAL_HOOK__ === "undefined" || typeof __REACT_DEVTOOLS_GLOBAL_HOOK__.checkDCE !== "function") {
@@ -12492,18 +12492,18 @@
     }
   });
 
-  // node_modules/qrcode/lib/can-promise.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/can-promise.js
   var require_can_promise = __commonJS({
-    "node_modules/qrcode/lib/can-promise.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/can-promise.js"(exports, module) {
       module.exports = function() {
         return typeof Promise === "function" && Promise.prototype && Promise.prototype.then;
       };
     }
   });
 
-  // node_modules/qrcode/lib/core/utils.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/utils.js
   var require_utils = __commonJS({
-    "node_modules/qrcode/lib/core/utils.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/utils.js"(exports) {
       var toSJISFunction;
       var CODEWORDS_COUNT = [
         0,
@@ -12580,9 +12580,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/error-correction-level.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/error-correction-level.js
   var require_error_correction_level = __commonJS({
-    "node_modules/qrcode/lib/core/error-correction-level.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/error-correction-level.js"(exports) {
       exports.L = { bit: 1 };
       exports.M = { bit: 0 };
       exports.Q = { bit: 3 };
@@ -12625,9 +12625,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/bit-buffer.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/bit-buffer.js
   var require_bit_buffer = __commonJS({
-    "node_modules/qrcode/lib/core/bit-buffer.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/bit-buffer.js"(exports, module) {
       function BitBuffer() {
         this.buffer = [];
         this.length = 0;
@@ -12660,9 +12660,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/bit-matrix.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/bit-matrix.js
   var require_bit_matrix = __commonJS({
-    "node_modules/qrcode/lib/core/bit-matrix.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/bit-matrix.js"(exports, module) {
       function BitMatrix(size) {
         if (!size || size < 1) {
           throw new Error("BitMatrix size must be defined and greater than 0");
@@ -12689,9 +12689,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/alignment-pattern.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/alignment-pattern.js
   var require_alignment_pattern = __commonJS({
-    "node_modules/qrcode/lib/core/alignment-pattern.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/alignment-pattern.js"(exports) {
       var getSymbolSize = require_utils().getSymbolSize;
       exports.getRowColCoords = function getRowColCoords(version) {
         if (version === 1) return [];
@@ -12724,9 +12724,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/finder-pattern.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/finder-pattern.js
   var require_finder_pattern = __commonJS({
-    "node_modules/qrcode/lib/core/finder-pattern.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/finder-pattern.js"(exports) {
       var getSymbolSize = require_utils().getSymbolSize;
       var FINDER_PATTERN_SIZE = 7;
       exports.getPositions = function getPositions(version) {
@@ -12743,9 +12743,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/mask-pattern.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/mask-pattern.js
   var require_mask_pattern = __commonJS({
-    "node_modules/qrcode/lib/core/mask-pattern.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/mask-pattern.js"(exports) {
       exports.Patterns = {
         PATTERN000: 0,
         PATTERN001: 1,
@@ -12885,9 +12885,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/error-correction-code.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/error-correction-code.js
   var require_error_correction_code = __commonJS({
-    "node_modules/qrcode/lib/core/error-correction-code.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/error-correction-code.js"(exports) {
       var ECLevel = require_error_correction_level();
       var EC_BLOCKS_TABLE = [
         // L  M  Q  H
@@ -13246,9 +13246,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/galois-field.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/galois-field.js
   var require_galois_field = __commonJS({
-    "node_modules/qrcode/lib/core/galois-field.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/galois-field.js"(exports) {
       var EXP_TABLE = new Uint8Array(512);
       var LOG_TABLE = new Uint8Array(256);
       (function initTables() {
@@ -13279,9 +13279,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/polynomial.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/polynomial.js
   var require_polynomial = __commonJS({
-    "node_modules/qrcode/lib/core/polynomial.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/polynomial.js"(exports) {
       var GF = require_galois_field();
       exports.mul = function mul(p1, p22) {
         const coeff = new Uint8Array(p1.length + p22.length - 1);
@@ -13315,9 +13315,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/reed-solomon-encoder.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/reed-solomon-encoder.js
   var require_reed_solomon_encoder = __commonJS({
-    "node_modules/qrcode/lib/core/reed-solomon-encoder.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/reed-solomon-encoder.js"(exports, module) {
       var Polynomial = require_polynomial();
       function ReedSolomonEncoder(degree) {
         this.genPoly = void 0;
@@ -13347,18 +13347,18 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/version-check.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/version-check.js
   var require_version_check = __commonJS({
-    "node_modules/qrcode/lib/core/version-check.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/version-check.js"(exports) {
       exports.isValid = function isValid(version) {
         return !isNaN(version) && version >= 1 && version <= 40;
       };
     }
   });
 
-  // node_modules/qrcode/lib/core/regex.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/regex.js
   var require_regex = __commonJS({
-    "node_modules/qrcode/lib/core/regex.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/regex.js"(exports) {
       var numeric = "[0-9]+";
       var alphanumeric = "[A-Z $%*+\\-./:]+";
       var kanji = "(?:[u3000-u303F]|[u3040-u309F]|[u30A0-u30FF]|[uFF00-uFFEF]|[u4E00-u9FAF]|[u2605-u2606]|[u2190-u2195]|u203B|[u2010u2015u2018u2019u2025u2026u201Cu201Du2225u2260]|[u0391-u0451]|[u00A7u00A8u00B1u00B4u00D7u00F7])+";
@@ -13384,9 +13384,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/mode.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/mode.js
   var require_mode = __commonJS({
-    "node_modules/qrcode/lib/core/mode.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/mode.js"(exports) {
       var VersionCheck = require_version_check();
       var Regex = require_regex();
       exports.NUMERIC = {
@@ -13465,9 +13465,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/version.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/version.js
   var require_version = __commonJS({
-    "node_modules/qrcode/lib/core/version.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/version.js"(exports) {
       var Utils = require_utils();
       var ECCode = require_error_correction_code();
       var ECLevel = require_error_correction_level();
@@ -13560,9 +13560,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/format-info.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/format-info.js
   var require_format_info = __commonJS({
-    "node_modules/qrcode/lib/core/format-info.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/format-info.js"(exports) {
       var Utils = require_utils();
       var G15 = 1 << 10 | 1 << 8 | 1 << 5 | 1 << 4 | 1 << 2 | 1 << 1 | 1 << 0;
       var G15_MASK = 1 << 14 | 1 << 12 | 1 << 10 | 1 << 4 | 1 << 1;
@@ -13578,9 +13578,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/numeric-data.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/numeric-data.js
   var require_numeric_data = __commonJS({
-    "node_modules/qrcode/lib/core/numeric-data.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/numeric-data.js"(exports, module) {
       var Mode = require_mode();
       function NumericData(data) {
         this.mode = Mode.NUMERIC;
@@ -13613,9 +13613,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/alphanumeric-data.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/alphanumeric-data.js
   var require_alphanumeric_data = __commonJS({
-    "node_modules/qrcode/lib/core/alphanumeric-data.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/alphanumeric-data.js"(exports, module) {
       var Mode = require_mode();
       var ALPHA_NUM_CHARS = [
         "0",
@@ -13692,9 +13692,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/byte-data.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/byte-data.js
   var require_byte_data = __commonJS({
-    "node_modules/qrcode/lib/core/byte-data.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/byte-data.js"(exports, module) {
       var Mode = require_mode();
       function ByteData(data) {
         this.mode = Mode.BYTE;
@@ -13722,9 +13722,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/kanji-data.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/kanji-data.js
   var require_kanji_data = __commonJS({
-    "node_modules/qrcode/lib/core/kanji-data.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/kanji-data.js"(exports, module) {
       var Mode = require_mode();
       var Utils = require_utils();
       function KanjiData(data) {
@@ -13761,9 +13761,9 @@
     }
   });
 
-  // node_modules/dijkstrajs/dijkstra.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/dijkstrajs/dijkstra.js
   var require_dijkstra = __commonJS({
-    "node_modules/dijkstrajs/dijkstra.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/dijkstrajs/dijkstra.js"(exports, module) {
       "use strict";
       var dijkstra = {
         single_source_shortest_paths: function(graph, s12, d) {
@@ -13862,9 +13862,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/segments.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/segments.js
   var require_segments = __commonJS({
-    "node_modules/qrcode/lib/core/segments.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/segments.js"(exports) {
       var Mode = require_mode();
       var NumericData = require_numeric_data();
       var AlphanumericData = require_alphanumeric_data();
@@ -14048,9 +14048,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/core/qrcode.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/qrcode.js
   var require_qrcode = __commonJS({
-    "node_modules/qrcode/lib/core/qrcode.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/core/qrcode.js"(exports) {
       var Utils = require_utils();
       var ECLevel = require_error_correction_level();
       var BitBuffer = require_bit_buffer();
@@ -14309,9 +14309,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/renderer/utils.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/utils.js
   var require_utils2 = __commonJS({
-    "node_modules/qrcode/lib/renderer/utils.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/utils.js"(exports) {
       function hex2rgba(hex) {
         if (typeof hex === "number") {
           hex = hex.toString();
@@ -14389,9 +14389,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/renderer/canvas.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/canvas.js
   var require_canvas = __commonJS({
-    "node_modules/qrcode/lib/renderer/canvas.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/canvas.js"(exports) {
       var Utils = require_utils2();
       function clearCanvas(ctx, canvas, size) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -14442,9 +14442,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/renderer/svg-tag.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/svg-tag.js
   var require_svg_tag = __commonJS({
-    "node_modules/qrcode/lib/renderer/svg-tag.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/renderer/svg-tag.js"(exports) {
       var Utils = require_utils2();
       function getColorAttrib(color, attrib) {
         const alpha = color.a / 255;
@@ -14500,9 +14500,9 @@
     }
   });
 
-  // node_modules/qrcode/lib/browser.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/browser.js
   var require_browser = __commonJS({
-    "node_modules/qrcode/lib/browser.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/qrcode/lib/browser.js"(exports) {
       var canPromise = require_can_promise();
       var QRCode2 = require_qrcode();
       var CanvasRenderer = require_canvas();
@@ -14570,9 +14570,9 @@
     }
   });
 
-  // node_modules/react/cjs/react-jsx-runtime.production.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/cjs/react-jsx-runtime.production.js
   var require_react_jsx_runtime_production = __commonJS({
-    "node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/cjs/react-jsx-runtime.production.js"(exports) {
       "use strict";
       var REACT_ELEMENT_TYPE = /* @__PURE__ */ Symbol.for("react.transitional.element");
       var REACT_FRAGMENT_TYPE = /* @__PURE__ */ Symbol.for("react.fragment");
@@ -14600,9 +14600,9 @@
     }
   });
 
-  // node_modules/react/jsx-runtime.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/jsx-runtime.js
   var require_jsx_runtime = __commonJS({
-    "node_modules/react/jsx-runtime.js"(exports, module) {
+    "../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/react/jsx-runtime.js"(exports, module) {
       "use strict";
       if (true) {
         module.exports = require_react_jsx_runtime_production();
@@ -15800,7 +15800,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     return /* @__PURE__ */ (0, import_jsx_runtime2.jsx)(Notice, { tone: NEUTRAL, theme, icon, title: "Waiting for owner approval", children: "The owner must approve your return before you'll see the group's members and events." });
   }
 
-  // node_modules/@phosphor-icons/react/dist/defs/ArrowLeft.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/ArrowLeft.es.js
   var e = __toESM(require_react(), 1);
   var a = /* @__PURE__ */ new Map([
     [
@@ -15829,7 +15829,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/ArrowSquareOut.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/ArrowSquareOut.es.js
   var a2 = __toESM(require_react(), 1);
   var e2 = /* @__PURE__ */ new Map([
     [
@@ -15864,7 +15864,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/ArrowsClockwise.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/ArrowsClockwise.es.js
   var a3 = __toESM(require_react(), 1);
   var e3 = /* @__PURE__ */ new Map([
     [
@@ -15893,7 +15893,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/BookOpen.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/BookOpen.es.js
   var a4 = __toESM(require_react(), 1);
   var e4 = /* @__PURE__ */ new Map([
     [
@@ -15928,7 +15928,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Broadcast.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Broadcast.es.js
   var a5 = __toESM(require_react(), 1);
   var e5 = /* @__PURE__ */ new Map([
     [
@@ -15957,7 +15957,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Bug.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Bug.es.js
   var a6 = __toESM(require_react(), 1);
   var e6 = /* @__PURE__ */ new Map([
     [
@@ -15986,7 +15986,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CalendarBlank.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CalendarBlank.es.js
   var a7 = __toESM(require_react(), 1);
   var e7 = /* @__PURE__ */ new Map([
     [
@@ -16021,7 +16021,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CalendarDot.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CalendarDot.es.js
   var a8 = __toESM(require_react(), 1);
   var e8 = /* @__PURE__ */ new Map([
     [
@@ -16056,7 +16056,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CaretLeft.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CaretLeft.es.js
   var e9 = __toESM(require_react(), 1);
   var a9 = /* @__PURE__ */ new Map([
     [
@@ -16085,7 +16085,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CaretRight.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CaretRight.es.js
   var e10 = __toESM(require_react(), 1);
   var t = /* @__PURE__ */ new Map([
     [
@@ -16114,7 +16114,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Check.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Check.es.js
   var e11 = __toESM(require_react(), 1);
   var a10 = /* @__PURE__ */ new Map([
     [
@@ -16149,7 +16149,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CheckCircle.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CheckCircle.es.js
   var e12 = __toESM(require_react(), 1);
   var a11 = /* @__PURE__ */ new Map([
     [
@@ -16178,7 +16178,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Circle.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Circle.es.js
   var e13 = __toESM(require_react(), 1);
   var t2 = /* @__PURE__ */ new Map([
     [
@@ -16207,7 +16207,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Copy.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Copy.es.js
   var a12 = __toESM(require_react(), 1);
   var e14 = /* @__PURE__ */ new Map([
     [
@@ -16236,7 +16236,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Crown.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Crown.es.js
   var a13 = __toESM(require_react(), 1);
   var l = /* @__PURE__ */ new Map([
     [
@@ -16271,7 +16271,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/CurrencyDollar.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/CurrencyDollar.es.js
   var a14 = __toESM(require_react(), 1);
   var e15 = /* @__PURE__ */ new Map([
     [
@@ -16306,7 +16306,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/DownloadSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/DownloadSimple.es.js
   var a15 = __toESM(require_react(), 1);
   var e16 = /* @__PURE__ */ new Map([
     [
@@ -16341,7 +16341,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/EnvelopeSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/EnvelopeSimple.es.js
   var e17 = __toESM(require_react(), 1);
   var a16 = /* @__PURE__ */ new Map([
     [
@@ -16370,7 +16370,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/FunnelSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/FunnelSimple.es.js
   var a17 = __toESM(require_react(), 1);
   var e18 = /* @__PURE__ */ new Map([
     [
@@ -16405,7 +16405,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/GearSix.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/GearSix.es.js
   var a18 = __toESM(require_react(), 1);
   var l2 = /* @__PURE__ */ new Map([
     [
@@ -16440,7 +16440,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/GridFour.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/GridFour.es.js
   var e19 = __toESM(require_react(), 1);
   var a19 = /* @__PURE__ */ new Map([
     [
@@ -16475,7 +16475,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Hourglass.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Hourglass.es.js
   var a20 = __toESM(require_react(), 1);
   var e20 = /* @__PURE__ */ new Map([
     [
@@ -16510,7 +16510,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Image.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Image.es.js
   var a21 = __toESM(require_react(), 1);
   var e21 = /* @__PURE__ */ new Map([
     [
@@ -16545,7 +16545,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Info.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Info.es.js
   var e22 = __toESM(require_react(), 1);
   var a22 = /* @__PURE__ */ new Map([
     [
@@ -16574,7 +16574,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Lightning.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Lightning.es.js
   var l3 = __toESM(require_react(), 1);
   var a23 = /* @__PURE__ */ new Map([
     [
@@ -16603,7 +16603,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Lock.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Lock.es.js
   var a24 = __toESM(require_react(), 1);
   var e23 = /* @__PURE__ */ new Map([
     [
@@ -16638,7 +16638,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/MapPin.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/MapPin.es.js
   var a25 = __toESM(require_react(), 1);
   var e24 = /* @__PURE__ */ new Map([
     [
@@ -16673,7 +16673,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/PencilSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/PencilSimple.es.js
   var a26 = __toESM(require_react(), 1);
   var e25 = /* @__PURE__ */ new Map([
     [
@@ -16708,7 +16708,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Plus.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Plus.es.js
   var e26 = __toESM(require_react(), 1);
   var a27 = /* @__PURE__ */ new Map([
     [
@@ -16743,7 +16743,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/QrCode.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/QrCode.es.js
   var a28 = __toESM(require_react(), 1);
   var e27 = /* @__PURE__ */ new Map([
     [
@@ -16778,7 +16778,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Repeat.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Repeat.es.js
   var a29 = __toESM(require_react(), 1);
   var e28 = /* @__PURE__ */ new Map([
     [
@@ -16813,7 +16813,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/ShareNetwork.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/ShareNetwork.es.js
   var a30 = __toESM(require_react(), 1);
   var e29 = /* @__PURE__ */ new Map([
     [
@@ -16848,7 +16848,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/ShieldCheck.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/ShieldCheck.es.js
   var a31 = __toESM(require_react(), 1);
   var e30 = /* @__PURE__ */ new Map([
     [
@@ -16883,7 +16883,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/SignOut.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/SignOut.es.js
   var a32 = __toESM(require_react(), 1);
   var e31 = /* @__PURE__ */ new Map([
     [
@@ -16918,7 +16918,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Trash.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Trash.es.js
   var a33 = __toESM(require_react(), 1);
   var e32 = /* @__PURE__ */ new Map([
     [
@@ -16947,7 +16947,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/UploadSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/UploadSimple.es.js
   var a34 = __toESM(require_react(), 1);
   var e33 = /* @__PURE__ */ new Map([
     [
@@ -16982,7 +16982,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/User.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/User.es.js
   var e34 = __toESM(require_react(), 1);
   var a35 = /* @__PURE__ */ new Map([
     [
@@ -17011,7 +17011,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/UserPlus.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/UserPlus.es.js
   var a36 = __toESM(require_react(), 1);
   var e35 = /* @__PURE__ */ new Map([
     [
@@ -17040,7 +17040,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Users.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Users.es.js
   var e36 = __toESM(require_react(), 1);
   var a37 = /* @__PURE__ */ new Map([
     [
@@ -17069,7 +17069,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/Warning.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/Warning.es.js
   var a38 = __toESM(require_react(), 1);
   var e37 = /* @__PURE__ */ new Map([
     [
@@ -17104,7 +17104,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/defs/X.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/defs/X.es.js
   var e38 = __toESM(require_react(), 1);
   var a39 = /* @__PURE__ */ new Map([
     [
@@ -17139,10 +17139,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ]
   ]);
 
-  // node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
   var e39 = __toESM(require_react(), 1);
 
-  // node_modules/@phosphor-icons/react/dist/lib/context.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/lib/context.es.js
   var import_react7 = __toESM(require_react(), 1);
   var o = (0, import_react7.createContext)({
     color: "currentColor",
@@ -17151,7 +17151,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     mirrored: false
   });
 
-  // node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/lib/IconBase.es.js
   var p = e39.forwardRef(
     (s12, a45) => {
       const {
@@ -17191,247 +17191,247 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   );
   p.displayName = "IconBase";
 
-  // node_modules/@phosphor-icons/react/dist/csr/ArrowLeft.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/ArrowLeft.es.js
   var o2 = __toESM(require_react(), 1);
   var r2 = o2.forwardRef((e66, t7) => /* @__PURE__ */ o2.createElement(p, { ref: t7, ...e66, weights: a }));
   r2.displayName = "ArrowLeftIcon";
   var s = r2;
 
-  // node_modules/@phosphor-icons/react/dist/csr/ArrowSquareOut.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/ArrowSquareOut.es.js
   var r3 = __toESM(require_react(), 1);
   var o3 = r3.forwardRef((e66, t7) => /* @__PURE__ */ r3.createElement(p, { ref: t7, ...e66, weights: e2 }));
   o3.displayName = "ArrowSquareOutIcon";
   var n = o3;
 
-  // node_modules/@phosphor-icons/react/dist/csr/ArrowsClockwise.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/ArrowsClockwise.es.js
   var o4 = __toESM(require_react(), 1);
   var r4 = o4.forwardRef((e66, s12) => /* @__PURE__ */ o4.createElement(p, { ref: s12, ...e66, weights: e3 }));
   r4.displayName = "ArrowsClockwiseIcon";
   var m = r4;
 
-  // node_modules/@phosphor-icons/react/dist/csr/BookOpen.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/BookOpen.es.js
   var o5 = __toESM(require_react(), 1);
   var e40 = o5.forwardRef((r11, t7) => /* @__PURE__ */ o5.createElement(p, { ref: t7, ...r11, weights: e4 }));
   e40.displayName = "BookOpenIcon";
   var c = e40;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Broadcast.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Broadcast.es.js
   var o6 = __toESM(require_react(), 1);
   var a40 = o6.forwardRef((r11, t7) => /* @__PURE__ */ o6.createElement(p, { ref: t7, ...r11, weights: e5 }));
   a40.displayName = "BroadcastIcon";
   var n2 = a40;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Bug.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Bug.es.js
   var o7 = __toESM(require_react(), 1);
   var e41 = o7.forwardRef((r11, t7) => /* @__PURE__ */ o7.createElement(p, { ref: t7, ...r11, weights: e6 }));
   e41.displayName = "BugIcon";
   var n3 = e41;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CalendarBlank.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CalendarBlank.es.js
   var a41 = __toESM(require_react(), 1);
   var e42 = a41.forwardRef((o39, r11) => /* @__PURE__ */ a41.createElement(p, { ref: r11, ...o39, weights: e7 }));
   e42.displayName = "CalendarBlankIcon";
   var c2 = e42;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CalendarDot.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CalendarDot.es.js
   var o8 = __toESM(require_react(), 1);
   var a42 = o8.forwardRef((e66, r11) => /* @__PURE__ */ o8.createElement(p, { ref: r11, ...e66, weights: e8 }));
   a42.displayName = "CalendarDotIcon";
   var s2 = a42;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CaretLeft.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CaretLeft.es.js
   var e43 = __toESM(require_react(), 1);
   var t3 = e43.forwardRef((o39, r11) => /* @__PURE__ */ e43.createElement(p, { ref: r11, ...o39, weights: a9 }));
   t3.displayName = "CaretLeftIcon";
   var s3 = t3;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CaretRight.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CaretRight.es.js
   var t4 = __toESM(require_react(), 1);
   var e44 = t4.forwardRef((o39, r11) => /* @__PURE__ */ t4.createElement(p, { ref: r11, ...o39, weights: t }));
   e44.displayName = "CaretRightIcon";
   var s4 = e44;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Check.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Check.es.js
   var e45 = __toESM(require_react(), 1);
   var o9 = e45.forwardRef((c9, r11) => /* @__PURE__ */ e45.createElement(p, { ref: r11, ...c9, weights: a10 }));
   o9.displayName = "CheckIcon";
   var n4 = o9;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CheckCircle.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CheckCircle.es.js
   var e46 = __toESM(require_react(), 1);
   var c3 = e46.forwardRef((o39, r11) => /* @__PURE__ */ e46.createElement(p, { ref: r11, ...o39, weights: a11 }));
   c3.displayName = "CheckCircleIcon";
   var s5 = c3;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Circle.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Circle.es.js
   var e47 = __toESM(require_react(), 1);
   var o10 = e47.forwardRef((r11, c9) => /* @__PURE__ */ e47.createElement(p, { ref: c9, ...r11, weights: t2 }));
   o10.displayName = "CircleIcon";
   var s6 = o10;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Copy.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Copy.es.js
   var o11 = __toESM(require_react(), 1);
   var e48 = o11.forwardRef((r11, t7) => /* @__PURE__ */ o11.createElement(p, { ref: t7, ...r11, weights: e14 }));
   e48.displayName = "CopyIcon";
   var s7 = e48;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Crown.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Crown.es.js
   var o12 = __toESM(require_react(), 1);
   var r5 = o12.forwardRef((e66, t7) => /* @__PURE__ */ o12.createElement(p, { ref: t7, ...e66, weights: l }));
   r5.displayName = "CrownIcon";
   var s8 = r5;
 
-  // node_modules/@phosphor-icons/react/dist/csr/CurrencyDollar.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/CurrencyDollar.es.js
   var r6 = __toESM(require_react(), 1);
   var o13 = r6.forwardRef((e66, a45) => /* @__PURE__ */ r6.createElement(p, { ref: a45, ...e66, weights: e15 }));
   o13.displayName = "CurrencyDollarIcon";
   var m2 = o13;
 
-  // node_modules/@phosphor-icons/react/dist/csr/DownloadSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/DownloadSimple.es.js
   var o14 = __toESM(require_react(), 1);
   var e49 = o14.forwardRef((a45, m3) => /* @__PURE__ */ o14.createElement(p, { ref: m3, ...a45, weights: e16 }));
   e49.displayName = "DownloadSimpleIcon";
   var l4 = e49;
 
-  // node_modules/@phosphor-icons/react/dist/csr/EnvelopeSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/EnvelopeSimple.es.js
   var e50 = __toESM(require_react(), 1);
   var o15 = e50.forwardRef((m3, p3) => /* @__PURE__ */ e50.createElement(p, { ref: p3, ...m3, weights: a16 }));
   o15.displayName = "EnvelopeSimpleIcon";
   var i = o15;
 
-  // node_modules/@phosphor-icons/react/dist/csr/FunnelSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/FunnelSimple.es.js
   var e51 = __toESM(require_react(), 1);
   var o16 = e51.forwardRef((n19, m3) => /* @__PURE__ */ e51.createElement(p, { ref: m3, ...n19, weights: e18 }));
   o16.displayName = "FunnelSimpleIcon";
   var l5 = o16;
 
-  // node_modules/@phosphor-icons/react/dist/csr/GearSix.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/GearSix.es.js
   var e52 = __toESM(require_react(), 1);
   var o17 = e52.forwardRef((r11, a45) => /* @__PURE__ */ e52.createElement(p, { ref: a45, ...r11, weights: l2 }));
   o17.displayName = "GearSixIcon";
   var s9 = o17;
 
-  // node_modules/@phosphor-icons/react/dist/csr/GridFour.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/GridFour.es.js
   var o18 = __toESM(require_react(), 1);
   var r7 = o18.forwardRef((e66, t7) => /* @__PURE__ */ o18.createElement(p, { ref: t7, ...e66, weights: a19 }));
   r7.displayName = "GridFourIcon";
   var s10 = r7;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Hourglass.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Hourglass.es.js
   var o19 = __toESM(require_react(), 1);
   var r8 = o19.forwardRef((s12, a45) => /* @__PURE__ */ o19.createElement(p, { ref: a45, ...s12, weights: e20 }));
   r8.displayName = "HourglassIcon";
   var n5 = r8;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Image.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Image.es.js
   var e53 = __toESM(require_react(), 1);
   var o20 = e53.forwardRef((a45, m3) => /* @__PURE__ */ e53.createElement(p, { ref: m3, ...a45, weights: e21 }));
   o20.displayName = "ImageIcon";
   var I = o20;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Info.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Info.es.js
   var o21 = __toESM(require_react(), 1);
   var e54 = o21.forwardRef((r11, t7) => /* @__PURE__ */ o21.createElement(p, { ref: t7, ...r11, weights: a22 }));
   e54.displayName = "InfoIcon";
   var c4 = e54;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Lightning.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Lightning.es.js
   var o22 = __toESM(require_react(), 1);
   var t5 = o22.forwardRef((n19, i2) => /* @__PURE__ */ o22.createElement(p, { ref: i2, ...n19, weights: a23 }));
   t5.displayName = "LightningIcon";
   var c5 = t5;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Lock.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Lock.es.js
   var o23 = __toESM(require_react(), 1);
   var c6 = o23.forwardRef((e66, r11) => /* @__PURE__ */ o23.createElement(p, { ref: r11, ...e66, weights: e23 }));
   c6.displayName = "LockIcon";
   var n6 = c6;
 
-  // node_modules/@phosphor-icons/react/dist/csr/MapPin.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/MapPin.es.js
   var o24 = __toESM(require_react(), 1);
   var a43 = o24.forwardRef((e66, r11) => /* @__PURE__ */ o24.createElement(p, { ref: r11, ...e66, weights: e24 }));
   a43.displayName = "MapPinIcon";
   var p2 = a43;
 
-  // node_modules/@phosphor-icons/react/dist/csr/PencilSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/PencilSimple.es.js
   var e55 = __toESM(require_react(), 1);
   var o25 = e55.forwardRef((i2, m3) => /* @__PURE__ */ e55.createElement(p, { ref: m3, ...i2, weights: e25 }));
   o25.displayName = "PencilSimpleIcon";
   var a44 = o25;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Plus.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Plus.es.js
   var o26 = __toESM(require_react(), 1);
   var e56 = o26.forwardRef((r11, s12) => /* @__PURE__ */ o26.createElement(p, { ref: s12, ...r11, weights: a27 }));
   e56.displayName = "PlusIcon";
   var n7 = e56;
 
-  // node_modules/@phosphor-icons/react/dist/csr/QrCode.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/QrCode.es.js
   var o27 = __toESM(require_react(), 1);
   var e57 = o27.forwardRef((r11, t7) => /* @__PURE__ */ o27.createElement(p, { ref: t7, ...r11, weights: e27 }));
   e57.displayName = "QrCodeIcon";
   var n8 = e57;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Repeat.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Repeat.es.js
   var e58 = __toESM(require_react(), 1);
   var o28 = e58.forwardRef((t7, a45) => /* @__PURE__ */ e58.createElement(p, { ref: a45, ...t7, weights: e28 }));
   o28.displayName = "RepeatIcon";
   var s11 = o28;
 
-  // node_modules/@phosphor-icons/react/dist/csr/ShareNetwork.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/ShareNetwork.es.js
   var e59 = __toESM(require_react(), 1);
   var o29 = e59.forwardRef((r11, t7) => /* @__PURE__ */ e59.createElement(p, { ref: t7, ...r11, weights: e29 }));
   o29.displayName = "ShareNetworkIcon";
   var n9 = o29;
 
-  // node_modules/@phosphor-icons/react/dist/csr/ShieldCheck.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/ShieldCheck.es.js
   var e60 = __toESM(require_react(), 1);
   var o30 = e60.forwardRef((c9, r11) => /* @__PURE__ */ e60.createElement(p, { ref: r11, ...c9, weights: e30 }));
   o30.displayName = "ShieldCheckIcon";
   var h = o30;
 
-  // node_modules/@phosphor-icons/react/dist/csr/SignOut.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/SignOut.es.js
   var o31 = __toESM(require_react(), 1);
   var t6 = o31.forwardRef((e66, r11) => /* @__PURE__ */ o31.createElement(p, { ref: r11, ...e66, weights: e31 }));
   t6.displayName = "SignOutIcon";
   var c7 = t6;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Trash.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Trash.es.js
   var o32 = __toESM(require_react(), 1);
   var r9 = o32.forwardRef((a45, e66) => /* @__PURE__ */ o32.createElement(p, { ref: e66, ...a45, weights: e32 }));
   r9.displayName = "TrashIcon";
   var n10 = r9;
 
-  // node_modules/@phosphor-icons/react/dist/csr/UploadSimple.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/UploadSimple.es.js
   var o33 = __toESM(require_react(), 1);
   var e61 = o33.forwardRef((a45, m3) => /* @__PURE__ */ o33.createElement(p, { ref: m3, ...a45, weights: e33 }));
   e61.displayName = "UploadSimpleIcon";
   var l6 = e61;
 
-  // node_modules/@phosphor-icons/react/dist/csr/User.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/User.es.js
   var e62 = __toESM(require_react(), 1);
   var o34 = e62.forwardRef((r11, s12) => /* @__PURE__ */ e62.createElement(p, { ref: s12, ...r11, weights: a35 }));
   o34.displayName = "UserIcon";
   var n11 = o34;
 
-  // node_modules/@phosphor-icons/react/dist/csr/UserPlus.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/UserPlus.es.js
   var e63 = __toESM(require_react(), 1);
   var o35 = e63.forwardRef((r11, s12) => /* @__PURE__ */ e63.createElement(p, { ref: s12, ...r11, weights: e35 }));
   o35.displayName = "UserPlusIcon";
   var n12 = o35;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Users.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Users.es.js
   var e64 = __toESM(require_react(), 1);
   var o36 = e64.forwardRef((r11, s12) => /* @__PURE__ */ e64.createElement(p, { ref: s12, ...r11, weights: a37 }));
   o36.displayName = "UsersIcon";
   var n13 = o36;
 
-  // node_modules/@phosphor-icons/react/dist/csr/Warning.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/Warning.es.js
   var o37 = __toESM(require_react(), 1);
   var r10 = o37.forwardRef((n19, a45) => /* @__PURE__ */ o37.createElement(p, { ref: a45, ...n19, weights: e37 }));
   r10.displayName = "WarningIcon";
   var c8 = r10;
 
-  // node_modules/@phosphor-icons/react/dist/csr/X.es.js
+  // ../../../../../../home/tim/peerloomllc/pearcal-native/node_modules/@phosphor-icons/react/dist/csr/X.es.js
   var o38 = __toESM(require_react(), 1);
   var e65 = o38.forwardRef((r11, t7) => /* @__PURE__ */ o38.createElement(p, { ref: t7, ...r11, weights: a39 }));
   e65.displayName = "XIcon";
@@ -26037,6 +26037,21 @@ ${link}`;
     (0, import_react8.useEffect)(() => {
       loadPlSeeders();
     }, [loadPlSeeders]);
+    const plInputRef = (0, import_react8.useRef)(null);
+    const [plNoteDismissed, setPlNoteDismissed] = (0, import_react8.useState)(() => {
+      try {
+        return localStorage.getItem("pearcal:plsNoteDismissed") === "1";
+      } catch {
+        return false;
+      }
+    });
+    const dismissPlNote = () => {
+      setPlNoteDismissed(true);
+      try {
+        localStorage.setItem("pearcal:plsNoteDismissed", "1");
+      } catch {
+      }
+    };
     const pairPlSeeder = async () => {
       if (!plLink.trim()) return;
       window.__pearSync?.haptic("light");
@@ -27300,6 +27315,58 @@ ${link}`;
           }, children: [
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "PeerLoom Seeder" }),
             /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, lineHeight: 1.4 }, children: "Keeps your groups in sync while your phones sleep. It serves all your PeerLoom apps, stores your calendars scrambled and cannot read them. A new member still needs someone in the group online to join." }),
+            blindPeers.length > 0 && plSeeders.length === 0 && !plNoteDismissed && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              padding: "10px 12px",
+              borderRadius: 8,
+              background: colors.surface?.card || "transparent",
+              border: `1px solid ${colors.border}`
+            }, children: [
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 12, color: colors.text.primary, lineHeight: 1.4 }, children: "There is now PeerLoom Seeder: one seeder for all your PeerLoom apps. You can use it, keep your PearCal seeder, or both." }),
+              /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", gap: 8 }, children: [
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                  "button",
+                  {
+                    onClick: () => {
+                      dismissPlNote();
+                      plInputRef.current?.focus();
+                    },
+                    style: {
+                      flex: 1,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontFamily: FONT,
+                      border: `1px solid var(--color-accent)`,
+                      background: "transparent",
+                      color: "var(--color-accent)"
+                    },
+                    children: "Set up"
+                  }
+                ),
+                /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+                  "button",
+                  {
+                    onClick: dismissPlNote,
+                    style: {
+                      flex: 1,
+                      padding: "6px 10px",
+                      fontSize: 12,
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontFamily: FONT,
+                      border: `1px solid ${colors.border}`,
+                      background: "transparent",
+                      color: colors.text.muted
+                    },
+                    children: "Not now"
+                  }
+                )
+              ] })
+            ] }),
             plSeeders.map((sd) => /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: {
               display: "flex",
               flexDirection: "column",
@@ -27382,6 +27449,7 @@ ${link}`;
               /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
                 "input",
                 {
+                  ref: plInputRef,
                   value: plLink,
                   onChange: (e66) => setPlLink(e66.target.value),
                   placeholder: "peerloom://seeder?\u2026",
