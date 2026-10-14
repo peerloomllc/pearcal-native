@@ -98,9 +98,10 @@ per-arch native prebuilds + the Node host):
 | `build-umbrel-image.sh` | pushes `ghcr.io/peerloomllc/pearcal-seeder` (multi-arch) |
 | `build-start9-s9pk.sh` | `start9/pearcal-seeder.s9pk` (reuses the pushed image) |
 
-The release flow (`scripts/release.sh` at the repo root) builds the self-managed
-installers and attaches each installer + its `.sha256` sidecar to the GitHub
-release so deployed seeders can self-update.
+`scripts/release.sh` no longer builds or publishes any of these. PeerLoom
+Seeder (peerloomllc/peerloom-seeder) is now the one seeder for every PeerLoom
+app. Seeders already installed keep running but get no further updates from
+PearCal releases.
 
 ## Configuration
 
