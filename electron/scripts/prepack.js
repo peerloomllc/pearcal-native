@@ -63,6 +63,19 @@ function main () {
     copyDirRecursive(libFrom, path.join(vendorSrc, 'lib'))
   }
 
+  // src/peerloom-seeder/ - vendored PeerLoom Seeder client (required by bare.js)
+  copyDirRecursive(path.join(srcDir, 'peerloom-seeder'), path.join(vendorSrc, 'peerloom-seeder'))
+
+  // Fail the build if bare.js requires a relative file that did not get
+  // vendored. v1.0.49 shipped without peerloom-seeder/ and crashed on launch.
+  const bareSrc = fs.readFileSync(path.join(vendorSrc, 'bare.js'), 'utf8')
+  for (const m of bareSrc.matchAll(/require\(['"](\.\/[^'"]+)['"]\)/g)) {
+    if (!fs.existsSync(path.join(vendorSrc, m[1]))) {
+      console.error(`[prepack] bare.js requires ${m[1]} but it was not vendored`)
+      process.exit(1)
+    }
+  }
+
   console.log(`[prepack] vendored src/ → ${path.relative(repoRoot, vendorSrc)}`)
 }
 
