@@ -21,6 +21,7 @@ export {
   fmtDate,
   parseDate,
   FOREVER_INITIAL_WINDOW_MONTHS,
+  planForeverExtensions,
 } from './lib/recurring.js'
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
 export { birthdayTitle, withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays } from './lib/birthdays.js'
@@ -44,6 +45,7 @@ export { useRsvps } from './hooks/useRsvps.js'
 export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
 export { useHolidayRepair } from './hooks/useHolidayRepair.js'
+export { useForeverTopUp } from './hooks/useForeverTopUp.js'
 
 export { emitter } from './emitter.js'
 

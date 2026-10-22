@@ -60,6 +60,73 @@ export function expandRecurring (ev) {
   return out
 }
 
+// Tail extension for `repeatForever` series (TODO #82 Phase 3). Moved here
+// from the phone's App.jsx for #183: the desktop never extended them, so a
+// desktop-only user's forever series (birthdays included) ended a year in.
+//
+// Re-extend when the latest materialised occurrence is within this many days
+// of `now`; add another year of occurrences each time.
+export const FOREVER_REEXTEND_THRESHOLD_DAYS = 90
+export const FOREVER_EXTEND_WINDOW_MONTHS = 12
+
+// The occurrences to add: for any series whose latest occurrence is still
+// flagged `repeatForever: true` and falls inside the threshold window, the
+// next year of them. Pure; the caller saves them.
+//
+// Only the LATEST occurrence's flag matters. If a user toggled forever OFF
+// with scope='future' at some midpoint, every occurrence at or after that
+// point is now forever=false, so the latest is forever=false and we skip
+// extension - the series ends naturally at its materialized tail. Mixed
+// flags (e.g. r0..r9 true, r10..r364 false) are handled correctly by this
+// rule without any special-casing.
+export function planForeverExtensions (events, now = new Date()) {
+  if (!Array.isArray(events)) return []
+  const thresholdMs = FOREVER_REEXTEND_THRESHOLD_DAYS * 24 * 60 * 60 * 1000
+
+  // Group ALL series occurrences (regardless of flag) so we can inspect the
+  // latest's flag below.
+  const seriesMap = new Map()
+  for (const ev of events) {
+    if (!ev || ev.isShadow || !ev.recurrenceId) continue
+    if (!seriesMap.has(ev.recurrenceId)) seriesMap.set(ev.recurrenceId, [])
+    seriesMap.get(ev.recurrenceId).push(ev)
+  }
+
+  const newOccurrences = []
+  for (const [rid, occurrences] of seriesMap) {
+    occurrences.sort((a, b) => a.date.localeCompare(b.date))
+    const last = occurrences[occurrences.length - 1]
+    if (!last.repeatForever) continue
+    const lastDate = _parse(last.date)
+    if (lastDate.getTime() - now.getTime() > thresholdMs) continue
+
+    let maxIdx = 0
+    for (const occ of occurrences) {
+      const m = occ.id.match(/_r(\d+)$/)
+      if (m) maxIdx = Math.max(maxIdx, parseInt(m[1], 10))
+    }
+
+    const target = new Date(lastDate.getFullYear(), lastDate.getMonth() + FOREVER_EXTEND_WINDOW_MONTHS, lastDate.getDate())
+    const cur = new Date(lastDate)
+    let i = maxIdx
+    let added = 0
+    const HARD_CAP = 500
+    while (added < HARD_CAP) {
+      stepRecurrenceDate(cur, last)
+      if (cur > target) break
+      i++
+      added++
+      newOccurrences.push(withBirthdayTitle({
+        ...last,
+        id: rid + '_r' + i,
+        date: _fmt(cur),
+        recurrenceId: rid,
+      }))
+    }
+  }
+  return newOccurrences
+}
+
 // Date-formatting helpers exported for callers that need to align dates
 // with expandRecurring's output (e.g. extendForeverSeries in bare.js).
 export const fmtDate = _fmt

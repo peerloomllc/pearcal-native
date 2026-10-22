@@ -27,7 +27,7 @@ import {
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
-  withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays,
+  withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays, planForeverExtensions,
   formatTime, formatRelativeTime, todayStr, dateStr, formatBytes,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
@@ -291,71 +291,14 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 const MORNING_OF = -1
 const DAY_BEFORE = -2
 
-// Tail-extension thresholds for `repeatForever` series (TODO #82 Phase 3).
-// Re-extend when the latest materialised occurrence is within this many days
-// of now; add another year of occurrences each time.
-const FOREVER_REEXTEND_THRESHOLD_DAYS = 90
-const FOREVER_EXTEND_WINDOW_MONTHS = 12
-
-// Walk the just-loaded events list, find any series whose latest occurrence
-// is still flagged `repeatForever: true` and falls inside the threshold
-// window, generate the next chunk of occurrences, persist them via
-// db.putEvent (which mirrors to personal-base for sync), and return the new
-// occurrences so the caller can merge into local state.
-//
-// Only the LATEST occurrence's flag matters. If a user toggled forever OFF
-// with scope='future' at some midpoint, every occurrence at or after that
-// point is now forever=false, so the latest is forever=false and we skip
-// extension — the series ends naturally at its materialized tail. Mixed
-// flags (e.g. r0..r9 true, r10..r364 false) are handled correctly by this
-// rule without any special-casing.
+// Boot-time tail extension for `repeatForever` series (TODO #82 Phase 3):
+// planForeverExtensions (src/ui-shared/lib/recurring.js, shared with the
+// desktop since #183) picks the new occurrences; this persists them via
+// db.putEvent (which mirrors to personal-base for sync) and returns them so
+// the caller can merge them into local state.
 async function extendForeverSeriesIfNeeded (events, db) {
   if (!Array.isArray(events) || !db) return []
-  const now = new Date()
-  const thresholdMs = FOREVER_REEXTEND_THRESHOLD_DAYS * 24 * 60 * 60 * 1000
-
-  // Group ALL series occurrences (regardless of flag) so we can inspect the
-  // latest's flag below.
-  const seriesMap = new Map()
-  for (const ev of events) {
-    if (!ev || ev.isShadow || !ev.recurrenceId) continue
-    if (!seriesMap.has(ev.recurrenceId)) seriesMap.set(ev.recurrenceId, [])
-    seriesMap.get(ev.recurrenceId).push(ev)
-  }
-
-  const newOccurrences = []
-  for (const [rid, occurrences] of seriesMap) {
-    occurrences.sort((a, b) => a.date.localeCompare(b.date))
-    const last = occurrences[occurrences.length - 1]
-    if (!last.repeatForever) continue
-    const lastDate = parseDate(last.date)
-    if (lastDate.getTime() - now.getTime() > thresholdMs) continue
-
-    let maxIdx = 0
-    for (const occ of occurrences) {
-      const m = occ.id.match(/_r(\d+)$/)
-      if (m) maxIdx = Math.max(maxIdx, parseInt(m[1], 10))
-    }
-
-    const target = new Date(lastDate.getFullYear(), lastDate.getMonth() + FOREVER_EXTEND_WINDOW_MONTHS, lastDate.getDate())
-    const cur = new Date(lastDate)
-    let i = maxIdx
-    let added = 0
-    const HARD_CAP = 500
-    while (added < HARD_CAP) {
-      stepRecurrenceDate(cur, last)
-      if (cur > target) break
-      i++
-      added++
-      newOccurrences.push(withBirthdayTitle({
-        ...last,
-        id: rid + '_r' + i,
-        date: fmtDate(cur),
-        recurrenceId: rid,
-      }))
-    }
-  }
-
+  const newOccurrences = planForeverExtensions(events)
   for (const occ of newOccurrences) {
     await db.putEvent(occ).catch(e => console.warn('[FOREVER-EXTEND-ERR]', e?.message))
   }
