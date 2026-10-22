@@ -35,6 +35,7 @@ import { useVisibleGroups } from './hooks/useVisibleGroups.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { canEditEvent } from './lib/eventPermissions.js'
+import { RecoveryPhraseModal } from './components/RecoveryPhraseModal.jsx'
 
 const FONT = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif"
 
@@ -102,6 +103,14 @@ export default function App ({ db, notifs, sync }) {
   const [groupSettings, setGroupSettings] = useState(null)        // group object or null
   const [newGroupOpen,  setNewGroupOpen]  = useState(false)
   const [joinGroupOpen, setJoinGroupOpen] = useState(false)
+  // The one-time Recovery phrase screen waits a moment after launch, so it does
+  // not cover the calendar before it has even drawn.
+  const [phraseIntroReady, setPhraseIntroReady] = useState(false)
+  useEffect(() => {
+    if (!profile?.onboardingComplete) return
+    const t = setTimeout(() => setPhraseIntroReady(true), 1500)
+    return () => clearTimeout(t)
+  }, [profile?.onboardingComplete])
   const [linkedDevicesOpen, setLinkedDevicesOpen] = useState(false)
 
   const groupsById = useMemo(() => {
@@ -717,6 +726,11 @@ export default function App ({ db, notifs, sync }) {
           onJoined={(g) => setGroups(prev => prev.some(x => x.id === g.id) ? prev : [...prev, g])}
           onClose={() => setJoinGroupOpen(false)}
         />
+      )}
+      {/* One-time Recovery phrase screen (decided 2026-10-22): after setup and
+          once after updating; never on top of the tour. */}
+      {!profile.tourPending && !profile.recoveryPhraseIntroSeen && phraseIntroReady && (
+        <RecoveryPhraseModal tokens={tokens} intro onClose={() => updateProfile({ recoveryPhraseIntroSeen: true })} />
       )}
       {profile.tourPending && (
         <Tour

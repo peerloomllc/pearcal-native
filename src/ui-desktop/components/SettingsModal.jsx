@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from 'react'
 import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
+import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -31,6 +32,7 @@ const WEEK_STARTS = [
 
 
 export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onImportIcs, onClose }) {
+  const [phraseOpen, setPhraseOpen] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
   const icsFileRef = useRef(null)
   // Set when a picked file parses to nothing usable, so the click isn't silent.
@@ -447,6 +449,17 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
             </div>
           </div>
         )}
+
+        <div style={{ marginBottom: 18 }}>
+          <div style={label}>Recovery phrase</div>
+          <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
+            12 words that bring back who you are on a new device, and your calendars if you use a seeder.
+          </div>
+          <button onClick={() => setPhraseOpen(true)} style={{ ...btnBase, width: '100%' }}>
+            Show my recovery phrase
+          </button>
+          {phraseOpen && <RecoveryPhraseModal tokens={tokens} onClose={() => setPhraseOpen(false)} />}
+        </div>
 
         {onOpenLinkedDevices && (
           <div style={{ marginBottom: 18 }}>

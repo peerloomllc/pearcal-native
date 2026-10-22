@@ -1637,6 +1637,18 @@ export default function App ({ db, notifs, sync }) {
     setShowEncryptionNotice(true)
   }, [ready, profile?.onboardingComplete, profile?.encryptionNoticeSeen])
 
+  // One-time Recovery phrase screen (decided 2026-10-22): after setup, and once
+  // for existing users after updating, who have never seen their words. Waits
+  // for the other one-time notices and the tour so two sheets never stack.
+  const [showPhraseIntro, setShowPhraseIntro] = useState(false)
+  useEffect(() => {
+    if (!ready || !profile || !profile.onboardingComplete) return
+    if (profile.recoveryPhraseIntroSeen || profile.tourPending) return
+    if (showEncryptionNotice || showDonationReminder) return
+    const t = setTimeout(() => setShowPhraseIntro(true), 1500)
+    return () => clearTimeout(t)
+  }, [ready, profile?.onboardingComplete, profile?.recoveryPhraseIntroSeen, profile?.tourPending, showEncryptionNotice, showDonationReminder])
+
   // Plain dark screen while the WebView data loads. Matches the RN loading
   // screen background (#111) so the handoff is seamless, with no second icon
   // flashing between the native loading screen and the calendar.
@@ -1787,6 +1799,13 @@ export default function App ({ db, notifs, sync }) {
             onDismiss={() => setConfirmSheet(null)}
             closeRef={closeConfirmSheetRef}
           />
+        )}
+
+        {showPhraseIntro && (
+          <RecoveryPhraseSheet intro onDismiss={() => {
+            setShowPhraseIntro(false)
+            updateProfile({ recoveryPhraseIntroSeen: true })
+          }} />
         )}
 
         {infoSheet && (
@@ -6230,6 +6249,71 @@ function ConfirmSheet ({ title, message, icon, confirmLabel, dangerous, onConfir
   )
 }
 
+// The 12 words (proposals/2026-10-22-phrase-recovers-calendars.md, section 2).
+// `intro` is the one-time screen after setup or after updating, with Skip;
+// otherwise it is the Settings entry. The words only reach this screen after
+// the phone's own unlock (app/index.tsx revealRecoveryPhrase); there is no
+// copy button and nothing is uploaded.
+function RecoveryPhraseSheet ({ intro = false, onDismiss, closeRef }) {
+  const bsCloseRef = useRef(null)
+  const [words, setWords] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    if (closeRef) {
+      closeRef.current = () => { bsCloseRef.current?.(); return true }
+      return () => { closeRef.current = null }
+    }
+  }, [])
+
+  const show = async () => {
+    setBusy(true); setMsg('')
+    try {
+      const w = await window.__pearDB.call('revealRecoveryPhrase')
+      setWords(String(w).trim().split(/\s+/))
+    } catch (e) {
+      setMsg(/cancel/.test(e?.message || '') ? 'Unlock was cancelled.' : "Couldn't show your words: " + (e?.message || e))
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <BottomSheet onClose={onDismiss} zIndex={250} closeRef={bsCloseRef}>
+      <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center', fontFamily:FONT }}>
+        <Key size={28} weight="thin" color={colors.primary} />
+        <div style={{ fontSize:17, color: colors.text.primary }}>Your recovery phrase</div>
+        {!words && (<>
+          <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>
+            These 12 words are the key to your PearCal. If you lose this device, they bring
+            back who you are and, with a seeder, your calendars. Write them down and keep them
+            somewhere safe.{intro ? ' You can see them again any time in Profile.' : ''}
+          </div>
+          <div style={{ fontSize:13, color: colors.text.primary, lineHeight:1.5, padding:'10px 12px', borderRadius:10, border:`1px solid ${colors.border}` }}>
+            Anyone with these words can read every calendar your seeders keep. PearCal never uploads them.
+          </div>
+          {msg && <div style={{ fontSize:13, color:'var(--color-muted)' }}>{msg}</div>}
+          <Button onClick={show} disabled={busy} style={{ marginTop:4 }}>{busy ? 'Unlocking…' : 'Show my words'}</Button>
+          <Button variant="secondary" onClick={() => bsCloseRef.current?.()}>{intro ? 'Skip' : 'Cancel'}</Button>
+        </>)}
+        {words && (<>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, width:'100%', marginTop:4 }}>
+            {words.map((w, i) => (
+              <div key={i} style={{ display:'flex', gap:8, alignItems:'baseline', padding:'8px 10px', borderRadius:8,
+                border:`1px solid ${colors.border}`, fontSize:15, color: colors.text.primary, textAlign:'left' }}>
+                <span style={{ fontSize:11, color:'var(--color-muted)', minWidth:16 }}>{i + 1}</span>{w}
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize:13, color:'var(--color-muted)', lineHeight:1.5 }}>
+            Write them down in this order. Don't share them or store them in a photo or a note that syncs.
+          </div>
+          <Button onClick={() => bsCloseRef.current?.()}>Done</Button>
+        </>)}
+      </div>
+    </BottomSheet>
+  )
+}
+
 function InfoSheet ({ title, message, icon, onDismiss, closeRef }) {
   const bsCloseRef = useRef(null)
 
@@ -6738,6 +6822,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [plPasting, setPlPasting] = useState(false)
   const [plModal,   setPlModal]   = useState(null) // SeederModal's props, or null
   const [plPending, setPlPending] = useState({})   // seederKey:groupId -> the switch's new state
+  const [showPhrase, setShowPhrase] = useState(false)
   // The calendar list backup (proposals/2026-10-22-phrase-recovers-calendars.md):
   // how many paired seeders hold this device's latest version.
   const [keyringSt, setKeyringSt] = useState(null)
@@ -7664,6 +7749,18 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           </div>
         </div>
       </>)}
+
+      {/* Recovery phrase (proposals/2026-10-22-phrase-recovers-calendars.md). */}
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        RECOVERY PHRASE
+      </div>
+      <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:10, fontFamily:FONT }}>
+        <div style={{ fontSize:13, color: colors.text.muted, lineHeight:1.5 }}>
+          12 words that bring back who you are on a new device, and your calendars if you use a seeder.
+        </div>
+        <Button variant="secondary" onClick={() => setShowPhrase(true)}>Show my recovery phrase</Button>
+      </div>
+      {showPhrase && <RecoveryPhraseSheet onDismiss={() => setShowPhrase(false)} />}
 
       {/* Seeders: PeerLoom Seeder and the older PearCal seeder (blind peer) in
           one section, one scan for both (pearcircle #248 is the template). */}

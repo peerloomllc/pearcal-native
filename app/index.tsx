@@ -15,6 +15,7 @@ import Constants from 'expo-constants'
 import * as FileSystem from 'expo-file-system/legacy'
 import * as SecureStore from 'expo-secure-store'
 import * as Clipboard from 'expo-clipboard'
+import * as LocalAuthentication from 'expo-local-authentication'
 import { requestLocalNetworkPermission } from '../modules/local-network'
 
 const { PearCalNotifications } = NativeModules
@@ -585,6 +586,27 @@ export default function Root () {
     }
   }, [pendingInvite, dbReady, webViewReady])
 
+  // The 12 words for the Recovery phrase screen
+  // (proposals/2026-10-22-phrase-recovers-calendars.md, section 2). The phone's
+  // own unlock comes first: fingerprint, face or its PIN, whichever it has.
+  // A phone with no lock at all has nothing to ask, and the screen's warning
+  // is the only gate. The words come straight from secure storage to the
+  // screen; nothing is copied or uploaded.
+  async function revealRecoveryPhrase (): Promise<string> {
+    const level = await LocalAuthentication.getEnrolledLevelAsync().catch(() => LocalAuthentication.SecurityLevel.NONE)
+    if (level !== LocalAuthentication.SecurityLevel.NONE) {
+      const r = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Show your recovery phrase',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      })
+      if (!r.success) throw new Error(r.error === 'user_cancel' || r.error === 'system_cancel' || r.error === 'app_cancel' ? 'cancelled' : 'not unlocked')
+    }
+    const words = await SecureStore.getItemAsync(MNEMONIC_KEY)
+    if (!words) throw new Error('no phrase stored')
+    return words
+  }
+
   const onWebViewMessage = useCallback((e: any) => {
     try {
       const msg = JSON.parse(e.nativeEvent.data)
@@ -629,6 +651,15 @@ export default function Root () {
         Clipboard.setStringAsync(text)
           .then(() => respond({ ok: true }))
           .catch((err: any) => respond({ ok: false, error: err?.message ?? String(err) }))
+        return
+      }
+      if (msg.method === 'revealRecoveryPhrase') {
+        const respond = (o: any) => webViewRef.current?.injectJavaScript(
+          'window.__pearResponse(' + JSON.stringify({ ...o, id: msg.id }) + ');true;'
+        )
+        revealRecoveryPhrase()
+          .then((words) => respond({ result: words }))
+          .catch((err: any) => respond({ error: err?.message ?? String(err) }))
         return
       }
       if (msg.method === 'exportIcs') {

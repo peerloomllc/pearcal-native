@@ -53,6 +53,8 @@
     <string>Used to set your profile photo</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>PearCal connects directly to nearby devices on your Wi-Fi to sync calendars peer-to-peer.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Face ID protects your recovery phrase, so only you can see it.</string>
     <key>NSBonjourServices</key>
     <array>
       <string>_hyperswarm._udp</string>
