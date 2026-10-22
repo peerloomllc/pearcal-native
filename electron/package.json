@@ -30,7 +30,7 @@
     "corestore": "^7.8.0",
     "electron-updater": "^6.8.9",
     "hyperbee": "^2.27.3",
-    "hypercore": "^11.26.0",
+    "hypercore": "11.26.0",
     "hyperdht": "6.33.0",
     "hyperswarm": "^4.17.0",
     "keet-identity-key": "^3.1.0",
@@ -45,7 +45,7 @@
   "build": {
     "appId": "com.pearcal.desktop",
     "productName": "PearCal",
-    "copyright": "Copyright © 2026 PeerLoom LLC",
+    "copyright": "Copyright \u00a9 2026 PeerLoom LLC",
     "publish": [
       {
         "provider": "github",
@@ -133,5 +133,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "PearCal"
     }
+  },
+  "overrides": {
+    "hypercore": "11.26.0"
   }
 }
