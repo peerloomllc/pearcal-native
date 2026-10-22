@@ -653,7 +653,21 @@ signers reached each other only through another member. With the final rule
 the device run showed one nudge per burst of plain-writer entries, signing
 caught up within about 70 seconds, then nothing.
 
-Reproduces on unpatched Autobase 7.25.1 and on the latest, 7.28.2.
+Reproduces on unpatched Autobase 7.25.1 and on the latest, 7.28.2. Reported as
+holepunchto/autobase#380.
+
+**Online through another member.** "Online" meant "announced on a connection
+that is still open", so a member the owner reached only through someone else
+counted as offline, and the policy would not promote or keep it. Each device
+now sends its direct peers a `liveSeen` message every minute listing the
+writers it sees and how long ago (`src/lib/liveness.js`), only for groups it
+shares with that peer. Ages, not timestamps, so clocks need not agree; a relay
+passes the original age on, so a sighting expires three minutes after it was
+made however many hops it travels. Older builds ignore the message.
+`signer-policy-e2e.js` step 1b firewalls the owner and one member from each
+other for the whole run: the owner sees that member online through the others
+(sighting about 6 s old), and every later step passes, on the mobile and the
+desktop engine.
 In `signer-policy-e2e.js`, step 4 stalled in 4 of 6 runs before the nudge, and
 step 4b, added to force the case by stopping a promoted signer for good,
 stalled in 2 of 2. After the nudge both pass in 2 of 2 full runs.

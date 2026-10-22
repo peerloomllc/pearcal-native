@@ -53,6 +53,7 @@ const { resetPlan } = require('./lib/resetPlan.js')
 const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const { classifyRollout, REQUIRED_VERSION } = require('./lib/rolloutGate.js')
 const { decideIndexerChange } = require('./lib/indexerPolicy.js')
+const { buildLiveSeen, mergeLiveSeen, isRelayedLive, SHARE_INTERVAL_MS } = require('./lib/liveness.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -2290,11 +2291,30 @@ async function debugGroup (id) {
     writers = [...(base.activeWriters ?? [])].map(w => ({
       k: hex(w.core.key), signer: signers.has(hex(w.core.key)),
       len: w.length, avail: w.available, core: w.core.length,
-      live: _liveWriters.has(id + ':' + b4a.toString(w.core.key, 'hex')),
+      live: isWriterLive(id, b4a.toString(w.core.key, 'hex')),
+      direct: _liveWriters.has(id + ':' + b4a.toString(w.core.key, 'hex')),
     }))
   } catch (e) { writers = { err: e.message } }
+  // Every writer this device counts as online, and how: directly connected,
+  // or seen through another member and how long ago (liveness.js). activeWriters
+  // above only lists writers with unsigned entries, so it misses idle members.
+  const liveness = []
+  try {
+    const now = Date.now()
+    const keys = new Set()
+    for (const k of _liveWriters.keys()) if (k.startsWith(id + ':')) keys.add(k.slice(id.length + 1))
+    for (const k of (_relayedLive.get(id) ?? new Map()).keys()) keys.add(k)
+    for (const k of keys) {
+      const seenAt = _relayedLive.get(id)?.get(k)
+      liveness.push({
+        k: k.slice(0, 12), live: isWriterLive(id, k, now),
+        direct: _liveWriters.has(id + ':' + k),
+        relayedAgeMs: seenAt === undefined ? null : now - seenAt,
+      })
+    }
+  } catch (e) {}
   return {
-    l: local, v: viewData, b: true,
+    l: local, v: viewData, b: true, liveness,
     me: b4a.toString(base.local.key, 'hex').slice(0, 12),
     total: base.length, signed: base.indexedLength, writers,
     // This device's own signing state, as Autobase holds it: whether it acts
@@ -2496,6 +2516,51 @@ function releaseLiveWriters (connSet) {
   connSet.clear()
 }
 
+// Online through another member (src/lib/liveness.js). groupId -> Map(writer
+// key -> seenAt). Filled from peers' `liveSeen` messages, read by
+// isWriterLive, so the signer policy and the nudge treat a member reached only
+// through someone else as online.
+const _relayedLive = new Map()
+// Which groups each open writer-announce channel shares with us, learned from
+// the writers that announced on it. liveSeen only ever goes out for those, so
+// a peer never learns about calendars it is not in.
+const _channelWriters = new Map()   // msg -> connLiveWriters set
+function isWriterLive (groupId, writerKey, now = Date.now()) {
+  if (_liveWriters.has(groupId + ':' + writerKey)) return true
+  const relayed = _relayedLive.get(groupId)
+  return !!relayed && isRelayedLive(relayed, writerKey, now)
+}
+function receiveLiveSeen (liveSeen) {
+  if (!liveSeen || typeof liveSeen !== 'object') return
+  const now = Date.now()
+  for (const [groupId, entries] of Object.entries(liveSeen)) {
+    const base = bases.get(groupId)
+    if (!base?.local?.key) continue
+    let relayed = _relayedLive.get(groupId)
+    if (!relayed) { relayed = new Map(); _relayedLive.set(groupId, relayed) }
+    mergeLiveSeen(relayed, entries, b4a.toString(base.local.key, 'hex'), now)
+  }
+}
+let _lastLiveShare = 0
+function runLiveShareTick () {
+  const now = Date.now()
+  if (now - _lastLiveShare < SHARE_INTERVAL_MS) return
+  _lastLiveShare = now
+  for (const [msg, connSet] of _channelWriters) {
+    const shared = new Set([...connSet].map(k => k.slice(0, k.indexOf(':'))))
+    const out = {}
+    for (const groupId of shared) {
+      const base = bases.get(groupId)
+      if (!base?.local?.key) continue
+      const direct = [b4a.toString(base.local.key, 'hex')]
+      for (const k of _liveWriters.keys()) if (k.startsWith(groupId + ':')) direct.push(k.slice(groupId.length + 1))
+      out[groupId] = buildLiveSeen(direct, _relayedLive.get(groupId) ?? new Map(), now)
+    }
+    if (!Object.keys(out).length) continue
+    try { msg.send(Buffer.from(JSON.stringify({ liveSeen: out }))) } catch (e) {}
+  }
+}
+
 // Grant a device write access to a group (TODO #159 release N+1). Every group
 // addWriter goes through here so two rules hold everywhere:
 //
@@ -2587,7 +2652,7 @@ async function runIndexerPolicyTick () {
           v: value?.v,
           firstSeen: value?.firstSeen,
           lastSeen: value?.ts,
-          live: _liveWriters.has(groupId + ':' + wk),
+          live: isWriterLive(groupId, wk, now),
         })
       }
       for (const k of indexers) {
@@ -2641,11 +2706,11 @@ async function runIndexerPolicyTick () {
 //   unsigned" alone fired every minute for as long as a signer was away (seen
 //   on the emulator + TCL + Mac test, 2026-10-22). Plain-writer entries are
 //   what stall, so they are what justifies a nudge;
-// - this is the lowest-keyed signer among those directly connected, so two
-//   signers seldom both nudge. Direct connection is only a tie-break: signers
-//   often reach each other through another member (the emulator and TCL did,
-//   via the Mac), so "is a majority directly connected" was dropped as a gate
-//   after it blocked every nudge in exactly that layout.
+// - this is the lowest-keyed signer among those online (isWriterLive, which
+//   counts members seen through others), so two signers seldom both nudge.
+//   It is only a tie-break. "Is a majority online" was dropped as a gate after
+//   it blocked every nudge on devices whose signers reached each other only
+//   through another member, before liveness could see past one hop.
 const NUDGE_STALL_MS = 60 * 1000
 const _nudgeWatch = new Map()   // groupId -> { signed, since, plainAtNudge }
 async function runSignNudgeTick () {
@@ -2667,7 +2732,7 @@ async function runSignNudgeTick () {
       if (plain === 0 || plain === w.plainAtNudge) continue
 
       const me = hex(base.local.key)
-      if (signers.some(k => k !== me && k < me && _liveWriters.has(groupId + ':' + k))) continue
+      if (signers.some(k => k !== me && k < me && isWriterLive(groupId, k, now))) continue
 
       w.plainAtNudge = plain
       console.log('[signers] nudge', groupId, 'signed stuck at', signed, 'of', total)
@@ -8082,6 +8147,7 @@ async function runRealtimeSyncTick () {
   // Signer policy (TODO #159 release N+1): owner only, throttled per group.
   await runIndexerPolicyTick().catch(e => console.warn('[signers] tick:', e?.message))
   await runSignNudgeTick().catch(() => {})
+  runLiveShareTick()
   // Backup-integrity (TODO #11): primary re-publishes sibling-authored personal
   // events into its own core so re-paired devices reliably recover them.
   await runPersonalConsolidation().catch(() => {})
@@ -8856,10 +8922,12 @@ async function _doInit (dir, attempt = 0) {
             } catch(e) {}
           }
           activeChannels.add(msg)
+          _channelWriters.set(msg, connLiveWriters)
           if (_remotePubkeyHex) activeChannelPubkeys.set(msg, _remotePubkeyHex)
         },
         onclose () {
           activeChannels.delete(msg)
+          _channelWriters.delete(msg)
           activeChannelPubkeys.delete(msg)
         }
       })
@@ -8873,6 +8941,10 @@ async function _doInit (dir, attempt = 0) {
         onmessage: async function (buf) {
           try {
             const parsed = JSON.parse(buf.toString())
+            // Who this peer sees online, for groups we share (liveness.js).
+            // Builds before this one fall through to the announce path and
+            // park one empty entry in pendingWriterAnnouncements, harmlessly.
+            if (parsed.liveSeen) { receiveLiveSeen(parsed.liveSeen); return }
             // Handle member left broadcast from non-owner
             if (parsed.memberLeft) {
               const { memberLeft: memberId, groupId } = parsed

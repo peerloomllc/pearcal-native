@@ -13,6 +13,8 @@
 //
 // Checks:
 //   1. Three members join an owner's calendar as PLAIN writers: one signer.
+//   1b. Owner and cal are firewalled from each other for the rest of the run;
+//      the owner still sees cal as online through ana and ben.
 //   2. Once they have been around past the stability window, the owner
 //      promotes two in one batch: three signers, and every peer agrees.
 //   3. Reconnecting does not undo it (no re-grant on announce).
@@ -49,8 +51,16 @@ function peer () {
   // Point Hyperswarm at the local testnet. Everything else is untouched.
   const hsPath = fromBare('hyperswarm')
   const Hyperswarm = require(hsPath)
+  // `block` is a test-only firewall: swarm public keys this peer refuses to
+  // connect to in either direction, so two peers can be made to reach each
+  // other only through a third (step 1b).
+  const blocked = new Set((process.env.BLOCK || '').split(',').filter(Boolean))
+  let theSwarm = null
   class LocalSwarm extends Hyperswarm {
-    constructor (opts = {}) { super({ ...opts, bootstrap }) }
+    constructor (opts = {}) {
+      super({ ...opts, bootstrap, firewall: (key) => blocked.has(key.toString('hex')) })
+      theSwarm = this
+    }
   }
   require.cache[hsPath].exports = LocalSwarm
 
@@ -95,7 +105,13 @@ function peer () {
     for (const line of lines) {
       if (!line.trim()) continue
       const m = JSON.parse(line)
-      if (m.ctl === 'start') {
+      if (m.ctl === 'swarmKey') {
+        out({ type: 'response', id: m.id, result: theSwarm ? theSwarm.keyPair.publicKey.toString('hex') : null })
+      } else if (m.ctl === 'block') {
+        blocked.add(m.key)
+        for (const c of theSwarm ? theSwarm.connections : []) if (c.remotePublicKey && c.remotePublicKey.toString('hex') === m.key) c.destroy()
+        out({ type: 'response', id: m.id, result: true })
+      } else if (m.ctl === 'start') {
         await waitEvent('bareReady', 30000)
         toBare({ method: 'init', dataDir, platform: 'desktop' })
         await waitEvent('ready')
@@ -124,12 +140,12 @@ async function main () {
   const peers = {}
   // A restart is a new PROCESS on the same data, the way a phone restarts the
   // app. Re-initialising inside one process never reconnected on this host.
-  function launch (name) {
+  function launch (name, env = {}) {
     const dir = path.join(root, name)
     fs.mkdirSync(dir, { recursive: true })
     const log = fs.createWriteStream(path.join(root, name + '.log'), { flags: 'a' })
     const proc = spawn(process.execPath, [__filename, 'peer'], {
-      env: { ...process.env, DATA_DIR: dir, BOOTSTRAP: JSON.stringify(testnet.bootstrap) },
+      env: { ...process.env, DATA_DIR: dir, BOOTSTRAP: JSON.stringify(testnet.bootstrap), ...env },
       stdio: ['pipe', 'pipe', 'pipe'],
     })
     const pending = new Map()
@@ -255,10 +271,29 @@ async function main () {
   const before = await info('owner', gid)
   check('1. new members join as plain writers', before?.count === 1, 'signers=' + before?.count + ' policy=' + before?.policy)
 
+  // 1b. Owner and cal refuse each other, so everything between them goes
+  // through ana or ben. The owner must still see cal as online, which is what
+  // lets it promote or keep cal (liveness.js).
+  const calKey = await peers.cal.ctl('swarmKey')
+  const separate = async () => {
+    const ownerKey = await peers.owner.ctl('swarmKey')
+    await peers.cal.ctl('block', { key: ownerKey })
+    await peers.owner.ctl('block', { key: calKey })
+  }
+  await separate()
+  const calWriter = (await peers.cal.call('debugGroup', gid)).me
+  const seesCal = async () => ((await peers.owner.call('debugGroup', gid)).liveness || []).find(w => w.k === calWriter)
+  const relayed = await until(async () => { const w = await seesCal(); return w && w.live && !w.direct ? w : null }, 240000, 5000)
+  const lastSeen = relayed || await seesCal()
+  check('1b. owner sees cal, reached only through others, as online', !!relayed,
+    relayed ? JSON.stringify(relayed) : 'cal=' + calWriter + ' owner sees ' + JSON.stringify((await peers.owner.call('debugGroup', gid)).liveness))
+  if (process.env.STOP_AFTER_1B) return finish(failures ? 1 : 0)
+
   await stop('owner')
   const n = await backdate('owner', gid, (k, v) => ({ ...v, firstSeen: Date.now() - 2 * DAY }))
-  await launch('owner')
-  console.log('      backdated firstSeen on', n, 'device records, owner restarted')
+  await launch('owner', { BLOCK: calKey })
+  await separate()
+  console.log('      backdated firstSeen on', n, 'device records, owner restarted, still cut off from cal')
 
   const grown = await until(async () => {
     const i = await info('owner', gid)
