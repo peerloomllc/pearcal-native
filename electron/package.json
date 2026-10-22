@@ -1,6 +1,6 @@
 {
   "name": "pearcal-electron",
-  "version": "1.0.49",
+  "version": "1.0.50",
   "description": "PearCal desktop client (Electron). Mirrors PearGuard's pattern.",
   "homepage": "https://peerloomllc.com/pearcal/",
   "author": {
@@ -45,7 +45,7 @@
   "build": {
     "appId": "com.pearcal.desktop",
     "productName": "PearCal",
-    "copyright": "Copyright \u00a9 2026 PeerLoom LLC",
+    "copyright": "Copyright © 2026 PeerLoom LLC",
     "publish": [
       {
         "provider": "github",

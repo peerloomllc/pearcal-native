@@ -1,16 +1,24 @@
-What's new in PearCal
+## What's Changed
 
-  New Features
-  - Back up your calendars to PeerLoom Seeder, an always-on helper that keeps your shared calendars available while your phones are off. One seeder now works for all your PeerLoom apps.
-  - Choose which calendars go to your seeder, using a switch for each one. Everyone in the group can see who added the seeder.
-  - If you already use a PearCal seeder, a short note tells you about PeerLoom Seeder. You can switch to it, keep your current seeder or use both.
+New Features
+  - Get your calendars back with your 12 words. On a new phone or computer, choose "I already use PearCal", then "Enter my 12 words". If you use a PeerLoom Seeder, your calendars come back on their own.
+  - Your personal events, private notes and reminders come back with your 12 words too.
+  - See your 12-word recovery phrase in Settings. Your phone asks for your fingerprint, face or PIN first (Touch ID on a Mac). New users see it once after setup, and existing users see it once after this update.
+  - Birthdays: add birthdays in Settings and they show on your calendar every year, with the age when you know the birth year and a reminder that morning.
+  - Desktop: you can now pair a PeerLoom Seeder from Settings, so your computer backs up your calendars too.
 
-  Improvements
-  - All your seeders now appear together in one Seeders section in Settings, with a single "Scan seeder QR" button, a "Paste a link instead" option and a link to get PeerLoom Seeder.
-  - Adding or removing a seeder now shows clear progress messages, so you know when it is done.
-  - When you stop using a seeder, your data stays on it for 7 days before it is deleted, in case you change your mind.
+Improvements
+  - Settings now shows whether your calendar list and each of your calendars are fully backed up to your seeder.
+  - After a restore, each calendar tells you whether it is waiting for another member to come online. If nobody else was in it, you can make a copy you own.
+  - Your seeder now keeps everyone's changes to a shared calendar, not just yours, so a restore brings back the whole calendar.
+  - Shared calendars stay in sync more reliably when a member's old device is gone for good.
+  - Members you reach through another member now count as online.
 
-  Bug Fixes
-  - PeerLoom Seeder can now be reached when your phone and the seeder are on the same home network.
-  - Stopping a seeder now removes every calendar from it. Before, one could be missed.
-  - The relay setting no longer sometimes goes missing when the app first opens.
+Security
+  - On Android, screenshots are blocked while your 12 words are on screen.
+
+Bug Fixes
+  - Desktop: fixed a crash when opening the app.
+  - Desktop: fixed calendars that could not open.
+  - Desktop: events set to repeat forever no longer stop after a year.
+  - Typing a whole word on the restore screen no longer spills letters into the next word.
