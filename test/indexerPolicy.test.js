@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { decideIndexerChange, STABLE_MS, DEAD_MS } = require('../src/lib/indexerPolicy.js')
+const { decideIndexerChange, STABLE_MS, DEAD_MS, OWNER_AWAY_MS } = require('../src/lib/indexerPolicy.js')
 
 const NOW = 1_000_000_000_000
 const OLD = NOW - STABLE_MS - 1
@@ -54,7 +54,8 @@ test('offline, old-version and removed devices are not promoted', () => {
 
 test('prefers a person who does not already sign', () => {
   const r = decideIndexerChange(base({
-    writers: [W('k0', 'owner', 'idOwner'), W('k2', 'ana', 'a'), W('k3', 'ben', 'b')],
+    // The owner's own second device ranks last: it would add no new person.
+    writers: [W('k5', 'owner', 'idOwner'), W('k2', 'ana', 'a'), W('k3', 'ben', 'b')],
   }))
   assert.deepEqual(keys(r), ['+k2', '+k3'])
 })
@@ -157,4 +158,73 @@ test('of two live owner devices that sign, only the lower key proposes', () => {
     writers: [W('k0', 'owner', 'idOwner'), W('k2', 'ana', 'a'), W('k3', 'ben', 'b')],
   }
   assert.equal(decideIndexerChange(base(s)).reason, 'another owner device proposes')
+})
+
+// The backup proposer (TODO #159 follow-up).
+const longGone = NOW - DEAD_MS - 1
+
+test('an owner restored onto a new phone still proposes without being a signer', () => {
+  const r = decideIndexerChange(base({
+    myKey: 'k9',
+    indexers: ['k1', 'k2', 'k3'],
+    writers: [
+      W('k1', 'owner', 'idOwner', false, { lastSeen: longGone }),
+      W('k2', 'ana', 'a'), W('k3', 'ben', 'b'), W('k4', 'cal', 'c'),
+    ],
+  }))
+  assert.deepEqual(keys(r), ['+k4', '-k1'])
+})
+
+const standIn = (over = {}) => base({
+  myKey: 'k2', myIdentity: 'a', isOwner: false, ownerIdentity: 'idOwner',
+  ownerLastSeen: longGone,
+  indexers: ['k1', 'k2', 'k3'],
+  writers: [
+    W('k1', 'owner', 'idOwner', false, { lastSeen: longGone }),
+    W('k3', 'ben', 'b'), W('k4', 'cal', 'c'),
+  ],
+  ...over,
+})
+
+test('with the owner gone a week, the lowest online signer stands in', () => {
+  assert.deepEqual(keys(decideIndexerChange(standIn())), ['+k4', '-k1'])
+})
+
+test('a stand-in waits while the owner was seen within the week', () => {
+  const r = decideIndexerChange(standIn({ ownerLastSeen: NOW - OWNER_AWAY_MS + 60000 }))
+  assert.deepEqual(r.ops, [])
+})
+
+test('a stand-in never acts while any owner device is online', () => {
+  const r = decideIndexerChange(standIn({
+    writers: [W('k1', 'owner', 'idOwner', false), W('k8', 'owner', 'idOwner'), W('k3', 'ben', 'b'), W('k4', 'cal', 'c')],
+  }))
+  assert.equal(r.reason, 'owner is online')
+})
+
+test('only the lowest-keyed signer stands in', () => {
+  const r = decideIndexerChange(standIn({
+    myKey: 'k3', myIdentity: 'b',
+    writers: [W('k1', 'owner', 'idOwner', false, { lastSeen: longGone }), W('k2', 'ana', 'a'), W('k4', 'cal', 'c')],
+  }))
+  assert.equal(r.reason, 'another signer stands in')
+})
+
+test('a member who is not a signer never stands in', () => {
+  const r = decideIndexerChange(standIn({ myKey: 'k4', myIdentity: 'c' }))
+  assert.deepEqual(r.ops, [])
+})
+
+test('a stand-in with no word of the owner at all waits', () => {
+  const r = decideIndexerChange(standIn({ ownerLastSeen: undefined }))
+  assert.deepEqual(r.ops, [])
+})
+
+test('demotions are marked so apply can tell them from a plain grant', () => {
+  const r = decideIndexerChange(base({
+    indexers: ['k1', 'k2', 'k3'],
+    writers: [W('k2', 'ana', 'a'), W('k3', 'gone', 'g', false), W('k4', 'cal', 'c')],
+  }))
+  assert.deepEqual(r.ops.find(o => o.addWriter === 'k3'), { addWriter: 'k3', indexer: false, demote: true })
+  assert.deepEqual(r.ops.find(o => o.addWriter === 'k4'), { addWriter: 'k4', indexer: true })
 })

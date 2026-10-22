@@ -345,6 +345,8 @@ async function handle (method, args) {
     case 'buildReinvite':    return buildInviteFor(args[0], { reinvite: true })
     case 'reinviteMember':   return reinviteMember(args[0], args[1])
     case 'debugGroup':       return debugGroup(args[0])
+    // Diagnostic: ask Autobase to ack now, for a signer that has stopped acking.
+    case 'debugGroupAck':    return bases.get(args[0])?.ack().then(() => true)
     case 'listMembers':      return listMembers(args[0])
     case 'putMember':        return putMember(args[0], args[1])
     case 'removeMember':     return removeMember(args[0], args[1])
@@ -2277,7 +2279,41 @@ async function debugGroup (id) {
       viewData = { m: (vNode.value.members ?? []).map(m => m.name), r: (vNode.value.removedMembers ?? []).map(m => m.name || m.id) }
     }
   } catch (e) { viewData = { err: e.message } }
-  return { l: local, v: viewData, b: true }
+  // Who signs, and how much of each writer this device holds (#159). A signer
+  // only acks once every signer's announced length is downloaded
+  // (autobase/lib/linearizer.js), so a writer whose `available` trails its
+  // `length` is what a stalled signed count points at.
+  let writers = null
+  try {
+    const hex = k => b4a.toString(k, 'hex').slice(0, 12)
+    const signers = new Set((base.linearizer?.indexers ?? []).map(w => hex(w.core.key)))
+    writers = [...(base.activeWriters ?? [])].map(w => ({
+      k: hex(w.core.key), signer: signers.has(hex(w.core.key)),
+      len: w.length, avail: w.available, core: w.core.length,
+      live: _liveWriters.has(id + ':' + b4a.toString(w.core.key, 'hex')),
+    }))
+  } catch (e) { writers = { err: e.message } }
+  return {
+    l: local, v: viewData, b: true,
+    me: b4a.toString(base.local.key, 'hex').slice(0, 12),
+    total: base.length, signed: base.indexedLength, writers,
+    // This device's own signing state, as Autobase holds it: whether it acts
+    // as a signer, whether its apply state was built as one, whether its ack
+    // timer runs, and how many signers the SIGNED system declares.
+    self: {
+      isIndexer: !!base.isIndexer,
+      localIndexer: !!base._applyState?.localIndexer,
+      ackTimer: !!base._ackTimer,
+      ff: typeof base.isFastForwarding === 'function' ? base.isFastForwarding() : null,
+      signedSigners: base.core?.manifest?.signers?.length ?? null,
+      // An ack in flight sets _acking; if it never clears, every later ack is
+      // skipped (autobase index.js ack()).
+      acking: !!base._acking,
+      appending: base._appending != null,
+      heads: base.linearizer ? base.linearizer.heads.size : null,
+      shouldAck: base.linearizer && base.localWriter ? base.linearizer.shouldAck(base.localWriter) : null,
+    },
+  }
 }
 
 async function listGroups () {
@@ -2419,7 +2455,7 @@ function indexerInfoFor (groupId) {
     signed,
     behind,
     behindPct: total > 0 ? Math.round((behind / total) * 100) : 0,
-    // What the signer policy last decided here, owner devices only. Lets the
+    // What the signer policy last decided on this device. Lets the
     // rollout be read off a device the same way the counts above are.
     policy: _indexerPolicyLast.get(groupId)?.reason ?? null,
   }
@@ -2475,9 +2511,15 @@ function releaseLiveWriters (connSet) {
 // callers can record knownWriter exactly as before.
 async function grantGroupWriter (base, groupId, writerKey, label) {
   if (!base) return false
+  // Not loaded yet means "don't know", and the answer to "don't know" is to
+  // wait: callers retry on the next announce. A restarted device used to
+  // re-grant every writer here because the system was not open yet.
+  if (!base.system) return false
   try {
-    if (base.system && await base.system.get(b4a.from(writerKey, 'hex'))) return true
-  } catch (e) {}
+    if (await base.system.get(b4a.from(writerKey, 'hex'))) return true
+  } catch (e) {
+    return false
+  }
   const op = { addWriter: writerKey }
   if (await mayGrantPlainWriter(groupId, writerKey)) op.indexer = false
   return safeAppend(base, op, label)
@@ -2495,7 +2537,8 @@ async function mayGrantPlainWriter (groupId, writerKey) {
   }
 }
 
-// The signer policy, run by the owner's device (TODO #159 release N+1). Reads
+// The signer policy (TODO #159 release N+1). Run by the owner's device, or by
+// a stand-in signer once the owner has been away a week. Reads
 // this device's view of the group, asks indexerPolicy.js what to change, and
 // appends the result as ONE batch so the signer set never passes through two.
 // Throttled per group: Autobase only moves the set once the batch is signed,
@@ -2518,7 +2561,8 @@ async function runIndexerPolicyTick () {
       if (prev && now - prev.at < (prev.ops ? INDEXER_POLICY_AFTER_PROPOSAL_MS : INDEXER_POLICY_IDLE_MS)) continue
       if (!base?.writable || _degradedBases.has(base)) continue
       const group = await getGroup(groupId).catch(() => null)
-      if (!group || group.ownerId !== profile.id) continue
+      if (!group) continue
+      const isOwner = group.ownerId === profile.id
       const indexerList = base.linearizer?.indexers ?? base.system?.indexers ?? []
       const indexers = indexerList.map(i => b4a.toString(i.core?.key ?? i.key, 'hex'))
       if (!indexers.length) continue
@@ -2550,11 +2594,19 @@ async function runIndexerPolicyTick () {
         if (!writers.some(w => w.key === k)) writers.push({ key: k, lastSeen: watch, live: false })
       }
 
+      // For a stand-in: when was any device of the owner's last heard from?
+      // Never heard at all counts from when this device started watching.
+      const ownerIdentity = (group.members ?? []).find(m => m.id === group.ownerId)?.identityPublicKey ?? null
+      const ownerSeen = writers.filter(w => ownerIdentity && w.identity === ownerIdentity && Number.isFinite(w.lastSeen)).map(w => w.lastSeen)
+      const ownerLastSeen = ownerSeen.length ? Math.max(...ownerSeen) : watch
+
       const gate = await rolloutStatusFor(groupId, group)
       const decision = decideIndexerChange({
         myKey: b4a.toString(base.local.key, 'hex'),
         myIdentity,
-        isOwner: true,
+        isOwner,
+        ownerIdentity,
+        ownerLastSeen,
         gateReady: !!gate?.ready,
         minVersion: PROTOCOL_VERSION,
         indexers,
@@ -2569,6 +2621,46 @@ async function runIndexerPolicyTick () {
     } catch (e) {
       console.warn('[signers] policy error for', groupId, e?.message)
     }
+  }
+}
+
+// Autobase stall with plain writers (#159). While one of three signers is
+// offline, entries written by a device that does NOT sign are never signed:
+// the two remaining signers each decide there is nothing to ack, and stay
+// that way until a signer appends a real value (test/harness/indexer-nudge.js,
+// 5 of 5 runs). Everyone still sees the entries, only signing waits. It never
+// came up while every device signed, which is why it surfaced with #349.
+//
+// So a signer that sees the signed count stuck appends one tiny `nudge` entry.
+// apply() has no branch for it on any build, so every peer treats it the same.
+// Only when a majority of signers is online (a nudge cannot help otherwise),
+// after a minute without progress, and at most every ten minutes per stall,
+// so a calendar stuck for other reasons does not fill up with nudges.
+const NUDGE_STALL_MS = 60 * 1000
+const NUDGE_REPEAT_MS = 10 * 60 * 1000
+const _nudgeWatch = new Map()   // groupId -> { signed, since, lastNudge }
+async function runSignNudgeTick () {
+  const now = Date.now()
+  for (const [groupId, base] of bases) {
+    try {
+      if (!base?.writable || !base.isIndexer || _degradedBases.has(base)) { _nudgeWatch.delete(groupId); continue }
+      const signed = base.indexedLength ?? 0
+      const total = base.length ?? 0
+      const w = _nudgeWatch.get(groupId)
+      if (!w || w.signed !== signed || total <= signed) {
+        _nudgeWatch.set(groupId, { signed, since: now, lastNudge: w && w.signed === signed ? w.lastNudge : 0 })
+        continue
+      }
+      if (now - w.since < NUDGE_STALL_MS) continue
+      if (w.lastNudge && now - w.lastNudge < NUDGE_REPEAT_MS) continue
+      const signers = (base.linearizer?.indexers ?? []).map(i => b4a.toString(i.core.key, 'hex'))
+      const me = b4a.toString(base.local.key, 'hex')
+      const online = signers.filter(k => k === me || _liveWriters.has(groupId + ':' + k)).length
+      if (online < Math.floor(signers.length / 2) + 1) continue
+      w.lastNudge = now
+      console.log('[signers] nudge', groupId, 'signed stuck at', signed, 'of', total)
+      await safeAppend(base, { nudge: now }, 'sign nudge')
+    } catch (e) {}
   }
 }
 
@@ -6332,16 +6424,27 @@ function makeApply (groupId) {
       if (val.addWriter) {
         // Swallow addWriter on a migrated old base — new writers belong on the new base.
         if (migratedGroups.has(groupId)) continue
-        // Demotion (#159 release N+1): `indexer: false` for a key that is
-        // ALREADY a writer takes away signing and nothing else. It must not go
-        // through the block checks below. Those read this device's local
-        // records, so a peer that blocked the writer would skip the demotion
-        // while every other peer applied it, and the group would disagree
-        // about who signs. Losing privilege is always safe to apply.
+        // `indexer: false` (#159 release N+1) means two different things, told
+        // apart by `demote`:
+        //
+        // - A GRANT (no `demote`): add this device as a plain writer. For a key
+        //   that is already a writer it changes nothing. A device that has not
+        //   caught up can re-grant a writer it does not know about yet, and if
+        //   that op linearised after a promotion it would otherwise demote a
+        //   signer the policy just chose. Seen in signer-policy-e2e.js.
+        // - A DEMOTION (`demote: true`, written only by the signer policy):
+        //   take signing away from an existing writer and nothing else. It must
+        //   not go through the block checks below. Those read this device's
+        //   local records, so a peer that blocked the writer would skip it while
+        //   every other peer applied it, and the group would disagree about who
+        //   signs. Losing privilege is always safe to apply.
+        //
+        // Both read only base state, so every peer decides the same way.
         if (val.indexer === false) {
           const keyBuf = b4a.from(val.addWriter, 'hex')
           const existing = await host.system.get(keyBuf).catch(() => null)
-          if (existing) {
+          if (val.demote === true) {
+            if (!existing) continue
             // Never demote the last signer: nothing could ever be finalised
             // again (harness scenario H). Autobase guards this for
             // removeWriter but not for a demotion through add.
@@ -6350,6 +6453,7 @@ function makeApply (groupId) {
             await host.addWriter(keyBuf, { indexer: false })
             continue
           }
+          if (existing) continue
         }
         // Check if this writer was blocked by the owner — if so skip granting access
         const writerBlocked = await db.get('blockedWriter:' + groupId + ':' + val.addWriter).catch(() => null)
@@ -7965,6 +8069,7 @@ async function runRealtimeSyncTick () {
   await runGroupWriterRedundancyTick().catch(() => {})
   // Signer policy (TODO #159 release N+1): owner only, throttled per group.
   await runIndexerPolicyTick().catch(e => console.warn('[signers] tick:', e?.message))
+  await runSignNudgeTick().catch(() => {})
   // Backup-integrity (TODO #11): primary re-publishes sibling-authored personal
   // events into its own core so re-paired devices reliably recover them.
   await runPersonalConsolidation().catch(() => {})
