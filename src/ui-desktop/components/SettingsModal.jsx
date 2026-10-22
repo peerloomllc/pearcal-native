@@ -1,24 +1,22 @@
 // Settings modal - display preferences (24h / week start), holidays, .ics
-// import/export, storage reports, linked devices, About. Blind-peer management
-// is the remaining gap against mobile's settings tab (#163).
+// import/export, storage reports, PeerLoom Seeder, recovery phrase, linked
+// devices, About. The older PearCal seeder (blind peer) is still phone-only.
 //
 // The storage section is read-only on purpose. Mobile ships the same two
 // reports and hides its two write actions, Reclaim Storage and Sweep Orphaned
 // Data, behind `{false && ...}` (#154, PR #143), so desktop does not offer them
 // either.
 //
-// No recovery-phrase surface: the seed is an internal identity seed, never
-// shown, exported or backed up (removed 2026-07-27).
-//
 // updateProfile-routed prefs use the wrapper from App.jsx (db.updateProfile
 // + optimistic setProfile) since bare's profileChanged event only fires
 // on sibling-device sync, never on local writes.
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
+import { calendarListLine, calendarsLine } from '../../ui-shared/lib/seederStatus.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -450,6 +448,8 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         )}
 
+        <SeederSection tokens={tokens} db={db} sync={sync} label={label} btnBase={btnBase} />
+
         <div style={{ marginBottom: 18 }}>
           <div style={label}>Recovery phrase</div>
           <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
@@ -490,6 +490,153 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           onClose={() => setStorageReport(null)}
         />
       )}
+    </div>
+  )
+}
+
+// TODO #179: PeerLoom Seeder on desktop, ported from the phone's Settings
+// (src/ui/App.jsx). Desktop has no camera for the QR code, so the link from the
+// seeder's dashboard is pasted. Without this a desktop-only user had no seeder,
+// so no backup of the calendar list and no recovery from the 12 words.
+function SeederSection ({ tokens, db, sync, label, btnBase }) {
+  const [seeders, setSeeders] = useState([])
+  const [st, setSt] = useState(null)
+  const [link, setLink] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [pending, setPending] = useState({})   // seederKey:groupId -> the switch's new state
+  const [confirm, setConfirm] = useState(null) // seederKey being asked about
+
+  const load = useCallback(() => {
+    db.keyringStatus?.().then(x => setSt(x ?? null)).catch(() => {})
+    return db.listPeerloomSeeders?.().then(list => setSeeders(list ?? [])).catch(() => {})
+  }, [db])
+  useEffect(() => {
+    load()
+    const t = setInterval(load, 5000)
+    return () => clearInterval(t)
+  }, [load])
+
+  async function pair () {
+    const clean = link.trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase())
+    if (!clean) return
+    setBusy(true); setMsg('Pairing… this can take up to a minute.')
+    try {
+      const r = await db.pairPeerloomSeeder(clean)
+      setMsg(`Paired. ${r?.groups ?? 0} group${r?.groups === 1 ? ' is' : 's are'} backing up to it.`)
+      setLink('')
+    } catch (e) {
+      const m = String(e?.message ?? e)
+      setMsg(/invalid pairing|not a .*link|pairing link/i.test(m)
+        ? 'That is not a seeder pairing link.'
+        : /timed out|did not answer/i.test(m)
+          ? 'Could not reach the seeder. Check that its dashboard still shows the code, then try again.'
+          : 'Could not pair: ' + m)
+    }
+    setBusy(false); load()
+  }
+
+  async function setGroup (seederKey, groupId, on) {
+    const id = seederKey + ':' + groupId
+    setPending(p => ({ ...p, [id]: on }))
+    try { await db.setPeerloomSeederGroup(seederKey, groupId, on) } catch (e) { setMsg(e?.message || 'Could not change that') }
+    await load()
+    setPending(p => { const { [id]: _, ...rest } = p; return rest })
+  }
+
+  async function forget (seederKey) {
+    setConfirm(null); setBusy(true); setMsg('Stopping…')
+    try {
+      const r = await db.forgetPeerloomSeeder(seederKey)
+      const kept = r?.kept ?? []
+      setMsg(kept.length
+        ? `Stopped on this computer. ${kept.length === 1 ? 'This group still uses it' : 'These groups still use it'}: ${kept.map(g => g.addedByName ? `${g.name} (added by ${g.addedByName})` : g.name).join(', ')}. Only whoever added it or the group owner can remove it there.`
+        : 'Stopped using this seeder.')
+    } catch (e) { setMsg('Could not stop: ' + (e?.message ?? e)) }
+    setBusy(false); load()
+  }
+
+  const small = { fontSize: 12, color: tokens.muted, lineHeight: 1.5 }
+  const listLine = calendarListLine(st)
+  const calLine = calendarsLine(st)
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={label}>PeerLoom Seeder</div>
+      <div style={{ ...small, padding: '4px 0 8px' }}>
+        An always-on box that keeps your groups available when your devices are off, and keeps your
+        calendar list so your 12 words can bring your calendars back. It only ever holds scrambled data.
+        Paste the pairing link its dashboard shows.
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input value={link} onChange={e => { setLink(e.target.value); setMsg('') }}
+          onKeyDown={e => { if (e.key === 'Enter') pair() }}
+          placeholder="Pairing link" spellCheck={false} disabled={busy}
+          style={{ flex: 1, minWidth: 0, padding: '7px 10px', fontSize: 12, borderRadius: 5,
+            border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
+            fontFamily: 'ui-monospace, monospace', outline: 'none' }} />
+        <button onClick={pair} disabled={busy || !link.trim()}
+          style={{ ...btnBase, opacity: busy || !link.trim() ? 0.5 : 1, cursor: busy || !link.trim() ? 'default' : 'pointer' }}>
+          Pair
+        </button>
+      </div>
+      {msg && <div style={{ ...small, paddingTop: 6 }}>{msg}</div>}
+      {listLine && <div style={{ ...small, paddingTop: 6 }}>{listLine}</div>}
+      {calLine && <div style={{ ...small, paddingTop: 2, color: calLine.warn ? '#F5A623' : tokens.muted }}>{calLine.text}</div>}
+      {seeders.map(sd => (
+        <div key={sd.seederKey} style={{ marginTop: 8, padding: '10px 12px', borderRadius: 6, border: `1px solid ${tokens.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontFamily: 'ui-monospace, monospace', color: tokens.text,
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {sd.seederKey.slice(0, 16)}…
+            </div>
+            {sd.paired && confirm !== sd.seederKey && (
+              <button onClick={() => setConfirm(sd.seederKey)} disabled={busy}
+                style={{ ...btnBase, padding: '4px 10px', fontSize: 12, color: '#C0504A', borderColor: '#C0504A' }}>
+                Stop using
+              </button>
+            )}
+            {confirm === sd.seederKey && (
+              <>
+                <button onClick={() => setConfirm(null)} style={{ ...btnBase, padding: '4px 10px', fontSize: 12 }}>Keep</button>
+                <button onClick={() => forget(sd.seederKey)}
+                  style={{ ...btnBase, padding: '4px 10px', fontSize: 12, background: '#C0504A', color: '#fff', borderColor: '#C0504A' }}>
+                  Stop using it
+                </button>
+              </>
+            )}
+          </div>
+          {confirm === sd.seederKey && (
+            <div style={{ ...small, paddingTop: 6 }}>
+              This computer stops backing up to it, and removes it from the groups you added it to.
+            </div>
+          )}
+          {sd.groups.map(g => {
+            const p = pending[sd.seederKey + ':' + g.groupId]
+            const busyRow = p !== undefined
+            return (
+              <div key={g.groupId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0 0 12px',
+                opacity: g.canChange && !busyRow ? 1 : 0.6 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: tokens.text }}>{g.name}</div>
+                  {g.on && !g.canChange && (
+                    <div style={{ fontSize: 11, color: tokens.muted }}>
+                      Added by {g.addedByName || 'a member'}. Only they or the group owner can remove it.
+                    </div>
+                  )}
+                </div>
+                {busyRow && <span style={{ fontSize: 11, color: tokens.muted }}>{p ? 'Adding…' : 'Removing…'}</span>}
+                <div style={{ pointerEvents: g.canChange && !busyRow ? 'auto' : 'none' }}>
+                  <ToggleSwitch tokens={tokens} value={busyRow ? p : g.on} onChange={(v) => setGroup(sd.seederKey, g.groupId, v)} />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+      <button onClick={() => (sync?.openURL || db.openURL)?.('https://peerloomllc.com/seeder')}
+        style={{ background: 'none', border: 'none', padding: '8px 0 0', fontSize: 12, color: tokens.accent, cursor: 'pointer', fontFamily: tokens.font }}>
+        Get PeerLoom Seeder
+      </button>
     </div>
   )
 }
