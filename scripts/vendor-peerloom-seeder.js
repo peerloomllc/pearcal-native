@@ -12,7 +12,7 @@ const path = require('path')
 const root = path.join(__dirname, '..')
 const from = path.join(root, '..', 'peerloom-seeder')
 const to = path.join(root, 'src', 'peerloom-seeder')
-const FILES = ['client.js', 'protocol.js']
+const FILES = ['client.js', 'protocol.js', 'keyringRecord.js']
 
 function vendor () {
   fs.mkdirSync(to, { recursive: true })
