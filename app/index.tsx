@@ -662,6 +662,13 @@ export default function Root () {
           .catch((err: any) => respond({ error: err?.message ?? String(err) }))
         return
       }
+      // TODO #178: no screenshots while the recovery words are on screen.
+      // Android only; iOS has no equivalent and the screens warn instead.
+      if (msg.method === 'setScreenSecure') {
+        PearCalShare?.setScreenSecure?.(!!msg.args?.[0])?.catch?.(() => {})
+        webViewRef.current?.injectJavaScript('window.__pearResponse(' + JSON.stringify({ id: msg.id, result: true }) + ');true;')
+        return
+      }
       if (msg.method === 'exportIcs') {
         PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
