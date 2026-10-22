@@ -3405,7 +3405,10 @@ function restoreErrorText (e) {
 }
 
 // The 12 recovery words, one at a time with suggestions (#176 step 4).
-// 4 letters pick a word; pasting fills all 12.
+// A word goes in once it is typed in full, or on space, Enter or a tap on the
+// suggestion once enough letters pick it (4 always do). It does not go in at
+// 4 letters by itself: someone typing the whole word would put its rest into
+// the next one. Pasting fills all 12.
 function PhraseEntry ({ onSubmit, onBack }) {
   const [words, setWords] = useState([])
   const [typed, setTyped] = useState('')
@@ -3440,10 +3443,7 @@ function PhraseEntry ({ onSubmit, onBack }) {
       if (w) { accept(w); return }
       setTyped(t); setErr('Not a recovery word: ' + t); return
     }
-    if (t.length >= 4) {
-      const w = pickWord(t, BIP39_WORDS)
-      if (w) { accept(w); return }
-    }
+    if (pickWord(t, BIP39_WORDS) === t) { accept(t); return }
     setTyped(t)
     setErr(t && !suggestWords(t, BIP39_WORDS, 1).length ? 'No recovery word starts with "' + t + '"' : '')
   }

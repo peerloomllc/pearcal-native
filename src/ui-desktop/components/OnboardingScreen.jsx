@@ -104,7 +104,9 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
   }
 
   // #176 step 4: the 12 recovery words, one box each. Pasting into any box
-  // fills all 12; 4 letters pick a word and move on.
+  // fills all 12. A word typed in full moves on; space, Enter or leaving the
+  // box completes one that enough letters pick (4 always do). Not at 4 letters
+  // by itself, or the rest of a word typed in full lands in the next box.
   function setWord (i, v) {
     const parts = phraseWordsFrom(v)
     if (parts.length > 1) {
@@ -115,19 +117,24 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
       return
     }
     const t = parts[0] || ''
-    const picked = t.length >= 4 ? pickWord(t, BIP39_WORDS) : null
-    setWords(prev => prev.map((w, j) => j === i ? (picked || t) : w))
+    setWords(prev => prev.map((w, j) => j === i ? t : w))
     setErr('')
-    if (picked && i < 11) wordRefs.current[i + 1]?.focus()
+    if (t && pickWord(t, BIP39_WORDS) === t && i < 11) wordRefs.current[i + 1]?.focus()
+  }
+
+  function completeWord (i) {
+    const picked = pickWord(words[i], BIP39_WORDS)
+    if (picked && picked !== words[i]) setWords(prev => prev.map((w, j) => j === i ? picked : w))
   }
 
   async function handleRestore () {
-    const bad = unknownWords(words.filter(Boolean), BIP39_WORDS)
+    const done = words.map(w => BIP39_WORDS.includes(w) ? w : (pickWord(w, BIP39_WORDS) || w))
+    const bad = unknownWords(done.filter(Boolean), BIP39_WORDS)
     if (words.some(w => !w)) { setErr('Fill in all 12 words.'); return }
     if (bad.length) { setErr('Not a recovery word: ' + bad.join(', ')); return }
     setBusy(true); setErr('')
     try {
-      await db.restoreFromPhrase(words.join(' '))
+      await db.restoreFromPhrase(done.join(' '))
       // Name and avatar stay on each device, so they are asked for next.
       setRestored(true); setMode('fresh')
     } catch (e) {
@@ -230,7 +237,8 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
                     <input ref={el => { wordRefs.current[i] = el }} value={w} list="bip39-words"
                       autoFocus={i === 0} autoComplete="off" spellCheck={false}
                       onChange={e => setWord(i, e.target.value)}
-                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && i < 11) { e.preventDefault(); wordRefs.current[i + 1]?.focus() } }}
+                      onBlur={() => completeWord(i)}
+                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && i < 11) { e.preventDefault(); completeWord(i); wordRefs.current[i + 1]?.focus() } }}
                       style={{ ...inputBase, padding: '6px 6px', fontFamily: 'ui-monospace, monospace', fontSize: 12,
                         borderColor: bad ? '#C0504A' : tokens.border }} />
                   </label>
