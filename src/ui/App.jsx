@@ -19,6 +19,7 @@ import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
 import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
+import { calendarListLine, calendarsLine } from '../ui-shared/lib/seederStatus.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs, icsFileGroups, routeIcsImport,
@@ -8022,27 +8023,14 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             </button>
           </div>
           {plMsg && <div style={{ fontSize:12, color: colors.text.muted }}>{plMsg}</div>}
-          {keyringSt?.paired > 0 && (
-            <div style={{ fontSize:12, color: colors.text.muted, lineHeight:1.5 }}>
-              {keyringSt.seeders > 0
-                ? `Your calendar list is backed up to ${keyringSt.seeders === keyringSt.paired ? (keyringSt.paired === 1 ? 'your seeder' : `all ${keyringSt.paired} of your seeders`) : `${keyringSt.seeders} of your ${keyringSt.paired} seeders`}.`
-                : !keyringSt.at ? 'Backing up your calendar list…'
-                : Object.values(keyringSt.refused || {}).includes('not-paired') ? "Your calendar list isn't backed up: your seeder doesn't recognise this device any more. Pair it again to fix this."
-                : Object.values(keyringSt.refused || {}).includes('full') ? "Your calendar list isn't backed up: your seeder has no room for another list from this device."
-                : "Your calendar list isn't backed up yet. Your seeder may be offline or need an update."}
-            </div>
+          {calendarListLine(keyringSt) && (
+            <div style={{ fontSize:12, color: colors.text.muted, lineHeight:1.5 }}>{calendarListLine(keyringSt)}</div>
           )}
           {/* TODO #181: the list is not enough for a restore; each calendar's
               events have to be on the seeder too. */}
-          {keyringSt?.paired > 0 && keyringSt.calendars?.total > 0 && (
-            <div style={{ fontSize:12, color: keyringSt.calendars.incomplete.length ? '#F5A623' : colors.text.muted, lineHeight:1.5 }}>
-              {keyringSt.calendars.complete === keyringSt.calendars.total
-                ? (keyringSt.calendars.total === 1 ? 'Your calendar is fully on your seeder.' : `All ${keyringSt.calendars.total} calendars are fully on your seeder.`)
-                : keyringSt.calendars.incomplete.length
-                  ? `Not fully on your seeder yet: ${keyringSt.calendars.incomplete.join(', ')}. Your seeder copies the rest when a device that has those events is online.`
-                  : keyringSt.calendars.complete > 0
-                    ? `${keyringSt.calendars.complete} of ${keyringSt.calendars.total} calendars are fully on your seeder. Still checking: ${keyringSt.calendars.checking.join(', ')}.`
-                    : 'Checking your calendars on your seeder…'}
+          {calendarsLine(keyringSt) && (
+            <div style={{ fontSize:12, color: calendarsLine(keyringSt).warn ? '#F5A623' : colors.text.muted, lineHeight:1.5 }}>
+              {calendarsLine(keyringSt).text}
             </div>
           )}
           {plSeeders.map(sd => (
