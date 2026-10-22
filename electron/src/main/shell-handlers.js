@@ -321,6 +321,21 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
       // AlarmManager state survives process restart on the OS side).
       return { handled: true, result: null }
 
+    case 'revealRecoveryPhrase': {
+      // The 12 words for the Recovery phrase screen (proposals/2026-10-22-
+      // phrase-recovers-calendars.md). Touch ID first on a Mac that has it
+      // (decided 2026-10-22); elsewhere the screen's warning and its "Show my
+      // words" button are the gate, since Windows and Linux offer no prompt an
+      // app can rely on.
+      const { systemPreferences } = require('electron')
+      if (process.platform === 'darwin' && systemPreferences.canPromptTouchID?.()) {
+        try { await systemPreferences.promptTouchID('show your recovery phrase') } catch (e) { throw new Error('cancelled') }
+      }
+      const words = await require('./native-handlers').dispatchNativeRequest('getMnemonic')
+      if (!words) throw new Error('no phrase stored')
+      return { handled: true, result: words }
+    }
+
     case 'desktopGetLaunchAtLogin':
       // Opt-in "Launch at startup" (TODO #103). Default off — desktop
       // reminders are in-memory setTimeout handles that die with the process,
