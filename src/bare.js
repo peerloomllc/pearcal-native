@@ -405,6 +405,7 @@ async function handle (method, args) {
     case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
     case 'listPeerloomSeeders': return listPeerloomSeeders()
     case 'keyringStatus':    return keyringStatus()
+    case 'keyringCheck':     return keyringCheck()
     // Diagnostic: back the calendar list up now, even if nothing changed.
     case 'keyringBackupNow': return _keyringSync ? _keyringSync.run({ force: true }) : { written: false }
     case 'pairPeerloomSeeder': return pairPeerloomSeeder(args[0])
@@ -1828,6 +1829,26 @@ function startKeyringBackup () {
 // Something in the calendar list or the seeder list changed.
 function pokeKeyring () {
   if (_keyringSync) _keyringSync.poke()
+}
+
+// Diagnostic: fetch each paired seeder's copy and open it with this device's
+// own words, as a restore would. Says per seeder whether it holds a copy this
+// device can read, its seq and how many calendars it lists; no keys leave.
+async function keyringCheck () {
+  const { deriveKeys, open: openKeyring, groups: keyringGroups } = require('./lib/keyring.js')
+  const keys = deriveKeys(await nativeRequest('getMnemonic'))
+  const locator = b4a.toString(keys.locator, 'hex')
+  const out = []
+  for (const seederKey of await pairedSeederKeys()) {
+    try {
+      const r = await plsAsker().ask(seederKey, { t: 'keyring-get', locator }, 15000)
+      const k = r?.rec ? openKeyring(r.rec, keys) : null
+      out.push({ seederKey, held: !!r?.rec, opens: !!k, seq: r?.rec?.seq ?? null, calendars: k ? keyringGroups(k).length : null })
+    } catch (e) {
+      out.push({ seederKey, held: false, error: e?.message || String(e) })
+    }
+  }
+  return out
 }
 
 async function keyringStatus () {

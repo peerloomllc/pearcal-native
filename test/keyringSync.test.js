@@ -1,6 +1,6 @@
 const test = require('node:test')
 const assert = require('node:assert')
-const { createKeyringSync } = require('../src/lib/keyringSync.js')
+const { createKeyringSync, refusalOf } = require('../src/lib/keyringSync.js')
 const { deriveKeys, open, groups, seeders } = require('../src/lib/keyring.js')
 const { checkSealed } = require('../src/peerloom-seeder/keyringRecord.js')
 
@@ -128,7 +128,7 @@ test('one seeder refusing does not stop the others', async () => {
   const d = device({ seederMap: new Map([[K('d'), good], [K('e'), bad]]), entries: [entry('g1')] })
   const r = await d.sync.run()
   assert.deepEqual(r.held, [K('d')])
-  assert.deepEqual(await d.sync.status(), { seeders: 1, paired: 2, at: d.db.get('keyring:local').at })
+  assert.deepEqual(await d.sync.status(), { seeders: 1, paired: 2, at: d.db.get('keyring:local').at, refused: { [K('e')]: 'full' } })
 })
 
 test('restoring another identity onto the device starts a fresh keyring', async () => {
@@ -170,4 +170,19 @@ test('a change in the same millisecond as the last write still wins', async () =
   d.entries = [entry('g1', 'New')]
   await sync.run()
   assert.equal(groups(stored(s))[0].name, 'New')
+})
+
+test('a seeder that no longer knows this device is reported as such', async () => {
+  const bad = { get: async () => null, put: async () => { throw new Error('Only paired devices can back up a file list') } }
+  const d = device({ seederMap: new Map([[K('d'), bad]]), entries: [entry('g1')] })
+  await d.sync.run()
+  assert.deepEqual((await d.sync.status()).refused, { [K('d')]: 'not-paired' })
+})
+
+test('refusals map to reasons Settings can act on', () => {
+  assert.equal(refusalOf('Only paired devices can back up a file list'), 'not-paired')
+  assert.equal(refusalOf('This device has backed up too many file lists here'), 'full')
+  assert.equal(refusalOf('This file list belongs to someone else'), 'taken')
+  assert.equal(refusalOf('seeder did not answer'), 'offline')
+  assert.equal(refusalOf('something new'), 'other')
 })

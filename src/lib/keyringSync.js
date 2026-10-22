@@ -24,6 +24,16 @@ const { deriveKeys, empty, seal, open, clean, merge } = require('./keyring.js')
 
 const hex = (buf) => b4a.toString(buf, 'hex')
 
+// The seeder's refusal (peerloom-seeder src/seeder.js putKeyring, worded for
+// PearOffice's "file list") as a reason Settings can act on.
+function refusalOf (message) {
+  if (/Only paired devices/i.test(message)) return 'not-paired'
+  if (/too many/i.test(message)) return 'full'
+  if (/belongs to someone else/i.test(message)) return 'taken'
+  if (/did not answer|timed out|refused|ECONN|closed/i.test(message)) return 'offline'
+  return 'other'
+}
+
 /**
  * @param {object} o
  * @param {() => Promise<string>} o.getMnemonic
@@ -103,17 +113,20 @@ function createKeyringSync ({ getMnemonic, listGroups, isGone, listSeeders, keyr
     seq = Math.max(seq + 1, 1)
     const rec = seal(keyring, ks, seq)
     const held = []
+    const refused = {}   // seederKey -> why it said no, for Settings
     let behind = false
     for (const s of seederKeys) {
       try {
         await keyringPut(s, rec)
         held.push(s)
       } catch (e) {
-        if (/newer/.test(e?.message || '')) behind = true
-        log('keyring not backed up to ' + s.slice(0, 8) + ': ' + (e?.message || e))
+        const why = e?.message || String(e)
+        if (/newer/.test(why)) behind = true
+        else refused[s] = refusalOf(why)
+        log('keyring not backed up to ' + s.slice(0, 8) + ': ' + why)
       }
     }
-    await store.put('keyring:local', { seq, keyring, fingerprint, held, locator, at: now() })
+    await store.put('keyring:local', { seq, keyring, fingerprint, held, refused, locator, at: now() })
     emit({ seeders: held.length, paired: seederKeys.length })
     // Another device wrote in between: merge its version in and write again.
     if (behind) poke({ soon: true })
@@ -141,11 +154,14 @@ function createKeyringSync ({ getMnemonic, listGroups, isGone, listSeeders, keyr
     if (checker.unref) checker.unref()
   }
 
-  // For Settings: how many paired seeders hold the latest version, and when.
+  // For Settings: how many paired seeders hold the latest version, and when,
+  // and why any paired seeder said no.
   async function status () {
     const last = await local()
     const paired = await listSeeders()
-    return { seeders: last.held.filter((s) => paired.includes(s)).length, paired: paired.length, at: last.at || null }
+    const refused = {}
+    for (const s of paired) if (last.refused?.[s]) refused[s] = last.refused[s]
+    return { seeders: last.held.filter((s) => paired.includes(s)).length, paired: paired.length, at: last.at || null, refused }
   }
 
   function close () {
@@ -157,4 +173,4 @@ function createKeyringSync ({ getMnemonic, listGroups, isGone, listSeeders, keyr
   return { start, poke, run, status, close }
 }
 
-module.exports = { createKeyringSync }
+module.exports = { createKeyringSync, refusalOf }

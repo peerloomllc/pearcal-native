@@ -7732,7 +7732,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             <div style={{ fontSize:12, color: colors.text.muted, lineHeight:1.5 }}>
               {keyringSt.seeders > 0
                 ? `Your calendar list is backed up to ${keyringSt.seeders === keyringSt.paired ? (keyringSt.paired === 1 ? 'your seeder' : `all ${keyringSt.paired} of your seeders`) : `${keyringSt.seeders} of your ${keyringSt.paired} seeders`}.`
-                : keyringSt.at ? 'Your calendar list is not backed up yet. Your seeder may be offline or need an update.' : 'Backing up your calendar list…'}
+                : !keyringSt.at ? 'Backing up your calendar list…'
+                : Object.values(keyringSt.refused || {}).includes('not-paired') ? "Your calendar list isn't backed up: your seeder doesn't recognise this device any more. Pair it again to fix this."
+                : Object.values(keyringSt.refused || {}).includes('full') ? "Your calendar list isn't backed up: your seeder has no room for another list from this device."
+                : "Your calendar list isn't backed up yet. Your seeder may be offline or need an update."}
             </div>
           )}
           {plSeeders.map(sd => (
