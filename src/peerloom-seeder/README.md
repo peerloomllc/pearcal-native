@@ -1,1 +1,1 @@
-Copied from peerloom-seeder (ec85ca2) by scripts/vendor-peerloom-seeder.js. Do not edit here.
+Copied from peerloom-seeder (acd17da) by scripts/vendor-peerloom-seeder.js. Do not edit here.
