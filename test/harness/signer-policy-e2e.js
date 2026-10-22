@@ -28,7 +28,11 @@ const os = require('os')
 const { spawn } = require('child_process')
 
 // The mobile engine and its own node_modules, which is what ships to phones.
-const BARE_ENTRY = require.resolve('../../src/bare.js')
+// PEARCAL_E2E_ENGINE=desktop runs the desktop's copy (electron/vendor, after
+// `cd electron && node scripts/prepack.js`) with electron/node_modules instead.
+const BARE_ENTRY = process.env.PEARCAL_E2E_ENGINE === 'desktop'
+  ? require.resolve('../../electron/vendor/src/bare.js')
+  : require.resolve('../../src/bare.js')
 const DAY = 24 * 60 * 60 * 1000
 
 if (process.argv[2] === 'peer') peer()
