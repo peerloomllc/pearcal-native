@@ -1490,6 +1490,7 @@ let _plsTimer = null
 let _plsSweeping = null
 let _plsAgain = null
 const _plsRegistered = new Map() // groupId -> sorted seeder keys, joined
+const _plsWriterCores = new Map() // groupId -> Map(writer key hex -> core session)
 
 async function plsKeyPair () {
   if (_plsKeyPair) return _plsKeyPair
@@ -1564,6 +1565,8 @@ async function plsSweepAll () {
     await plsMakePeering()
     _plsRegistered.clear()
     await old.close().catch(() => {})
+    for (const cores of _plsWriterCores.values()) for (const core of cores.values()) core.close().catch(() => {})
+    _plsWriterCores.clear()
   }
   for (const [groupId, keys] of wanted) {
     const id = keys.join(',')
@@ -1576,6 +1579,40 @@ async function plsSweepAll () {
     console.log('[pls] registered group ' + groupId.slice(0, 8) + ' with ' + keys.length + ' seeder(s)')
     plsPull()
   }
+  for (const [groupId, keys] of wanted) {
+    const base = bases.get(groupId)
+    if (keys.length && base && _plsRegistered.get(groupId) === keys.join(',')) await plsAddWriters(groupId, base, keys)
+  }
+}
+
+// blind-peering registers a base's own core, its views and the writers it is
+// still applying, once. A member whose writes this device applied long ago is
+// in none of those, so the seeder never heard of that member's core unless the
+// member's own device registered it, and a restore from the seeder could not
+// rebuild the calendar (TODO #180, found on the TCL 2026-10-22). So every
+// writer the base lists is registered on its own, and new ones on later sweeps.
+async function plsAddWriters (groupId, base, keys) {
+  let have = _plsWriterCores.get(groupId)
+  if (!have) { have = new Map(); _plsWriterCores.set(groupId, have) }
+  const target = base.wakeupCapability?.key
+  if (!target) return
+  const fresh = []
+  try {
+    // system.list() is not safe inside apply; the sweep runs outside it.
+    for await (const { key } of base.system.list()) {
+      const hex = b4a.toString(key, 'hex')
+      if (!have.has(hex)) fresh.push(key)
+    }
+  } catch (e) {
+    console.warn('[pls] writers of ' + groupId.slice(0, 8) + ':', e?.message)
+    return
+  }
+  for (const key of fresh) {
+    const core = store.get({ key })
+    have.set(b4a.toString(key, 'hex'), core)
+    _plsPeering.addCoreBackground(core, { target, referrer: target, keys: keys.map((k) => b4a.from(k, 'hex')), pick: keys.length })
+  }
+  if (fresh.length) console.log('[pls] registered ' + fresh.length + ' writer core(s) of group ' + groupId.slice(0, 8))
 }
 
 async function plsPullAll () {
