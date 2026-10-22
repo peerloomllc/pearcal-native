@@ -633,7 +633,7 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
           })}
         </div>
       ))}
-      <button onClick={() => (sync?.openURL || db.openURL)?.('https://peerloomllc.com/seeder')}
+      <button onClick={() => sync?.openURL?.('https://peerloomllc.com/seeder')}
         style={{ background: 'none', border: 'none', padding: '8px 0 0', fontSize: 12, color: tokens.accent, cursor: 'pointer', fontFamily: tokens.font }}>
         Get PeerLoom Seeder
       </button>
