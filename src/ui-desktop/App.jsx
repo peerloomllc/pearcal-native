@@ -650,6 +650,8 @@ export default function App ({ db, notifs, sync }) {
           sync={sync}
           events={events}
           setEvents={setEvents}
+          onSaveEvent={saveEvent}
+          onDeleteEvent={deleteEvent}
           onOpenLinkedDevices={openLinkedDevices}
           onImportIcs={setIcsImport}
           onClose={() => setSettingsOpen(false)}

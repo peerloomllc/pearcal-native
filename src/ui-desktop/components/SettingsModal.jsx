@@ -17,6 +17,8 @@ import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
 import { calendarListLine, calendarsLine, personalLine } from '../../ui-shared/lib/seederStatus.js'
+import { parseBirthday, birthdayEvent, listBirthdays } from '../../ui-shared/lib/birthdays.js'
+import { MORNING_OF } from '../lib/reminderOptions.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -29,7 +31,7 @@ const WEEK_STARTS = [
 ]
 
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onOpenLinkedDevices, onImportIcs, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, onClose }) {
   const [phraseOpen, setPhraseOpen] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
   const icsFileRef = useRef(null)
@@ -448,6 +450,11 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         )}
 
+        {onSaveEvent && (
+          <BirthdaysSection tokens={tokens} events={events} label={label} btnBase={btnBase}
+            onSaveEvent={onSaveEvent} onDeleteEvent={onDeleteEvent} />
+        )}
+
         <SeederSection tokens={tokens} db={db} sync={sync} label={label} btnBase={btnBase} />
 
         <div style={{ marginBottom: 18 }}>
@@ -490,6 +497,78 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           onClose={() => setStorageReport(null)}
         />
       )}
+    </div>
+  )
+}
+
+// TODO #182: the birthday list, as on the phone. Each birthday is a yearly
+// personal event (src/ui-shared/lib/birthdays.js) with a reminder on the
+// morning of the day; removing one deletes every stored year of it.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+function BirthdaysSection ({ tokens, events, label, btnBase, onSaveEvent, onDeleteEvent }) {
+  const list = listBirthdays(events)
+  const [name, setName] = useState('')
+  const [month, setMonth] = useState('')
+  const [day, setDay] = useState('')
+  const [year, setYear] = useState('')
+  const [err, setErr] = useState('')
+  const [confirmId, setConfirmId] = useState(null)
+  const small = { fontSize: 12, color: tokens.muted, lineHeight: 1.5 }
+  const field = { padding: '6px 8px', fontSize: 13, borderRadius: 5, border: `1px solid ${tokens.border}`,
+    background: tokens.bg, color: tokens.text, fontFamily: tokens.font, outline: 'none', boxSizing: 'border-box' }
+
+  function add () {
+    const r = parseBirthday({ name, month, day, year })
+    if (r.error) { setErr(r.error); return }
+    onSaveEvent(birthdayEvent(r.birthday), { reminders: [MORNING_OF] })
+    setName(''); setMonth(''); setDay(''); setYear(''); setErr('')
+  }
+
+  function remove (seriesId) {
+    setConfirmId(null)
+    for (const ev of events) if (ev.birthday && (ev.recurrenceId || ev.id) === seriesId) onDeleteEvent(ev.id)
+  }
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={label}>Birthdays</div>
+      <div style={{ ...small, padding: '4px 0 8px' }}>
+        Birthdays show on your calendar every year, with a reminder that morning. Only you see them unless you
+        share one into a group. The year is optional; with it, the calendar shows the age.
+      </div>
+      {list.map(b => (
+        <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${tokens.border}` }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13, color: tokens.text }}>{b.birthday.name}</div>
+            <div style={{ fontSize: 11, color: tokens.muted }}>
+              {b.birthday.day} {MONTHS[b.birthday.month - 1]}{b.birthday.year ? ' ' + b.birthday.year + ' · turns ' + (Number(b.next.slice(0, 4)) - b.birthday.year) + ' on ' + Number(b.next.slice(8, 10)) + ' ' + MONTHS[Number(b.next.slice(5, 7)) - 1] + ' ' + b.next.slice(0, 4) : ''}
+            </div>
+          </div>
+          {confirmId === b.id ? (
+            <>
+              <button onClick={() => setConfirmId(null)} style={{ ...btnBase, padding: '3px 10px', fontSize: 12 }}>Keep</button>
+              <button onClick={() => remove(b.id)} style={{ ...btnBase, padding: '3px 10px', fontSize: 12, background: '#C0504A', color: '#fff', borderColor: '#C0504A' }}>Remove</button>
+            </>
+          ) : (
+            <button onClick={() => setConfirmId(b.id)} style={{ ...btnBase, padding: '3px 10px', fontSize: 12 }}>Remove</button>
+          )}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 6, paddingTop: 8 }}>
+        <input value={name} onChange={e => { setName(e.target.value); setErr('') }} placeholder="Name" style={{ ...field, flex: 1, minWidth: 0 }} />
+        <select value={day} onChange={e => { setDay(e.target.value); setErr('') }} style={{ ...field, width: 64 }}>
+          <option value="">Day</option>
+          {Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
+        </select>
+        <select value={month} onChange={e => { setMonth(e.target.value); setErr('') }} style={{ ...field, width: 110 }}>
+          <option value="">Month</option>
+          {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+        </select>
+        <input value={year} onChange={e => { setYear(e.target.value.replace(/\D/g, '').slice(0, 4)); setErr('') }}
+          onKeyDown={e => { if (e.key === 'Enter') add() }} placeholder="Year" style={{ ...field, width: 64 }} />
+        <button onClick={add} style={btnBase}>Add</button>
+      </div>
+      {err && <div style={{ ...small, color: '#C0504A', paddingTop: 6 }}>{err}</div>}
     </div>
   )
 }
