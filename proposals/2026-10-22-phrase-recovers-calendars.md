@@ -74,6 +74,11 @@ behind a device-unlock prompt, with the warning "Anyone with these words can
 read every calendar your seeders keep". No copy to clipboard by default, no
 cloud backup, nothing uploaded. The PR #282 scrub of old cloud copies stays.
 
+The words are also shown once right after first setup, with **Skip** and a
+note that they stay in Settings. Existing users, who have never seen theirs,
+get the same one-time screen after updating. Either way the app says plainly
+where the words are and that they never leave the device.
+
 ### 3. Restore
 
 Onboarding gets "I already use PearCal → Enter my 12 words": one word at a
@@ -172,17 +177,18 @@ it.
 4. Restore flow and the per-calendar states, including the copy.
 5. Personal data keyring (section 4).
 
+## Decided 2026-10-22
+
+1. Calendars first; personal events, notes and reminders follow as step 5 of
+   this work, in the second keyring (section 4).
+2. The keyring is on by default once you pair a seeder, with the stronger
+   warning on the phrase screens.
+3. A calendar nobody else can let you back into offers **Make a copy you own**:
+   same events, new keys, you as owner, other members re-invited by hand.
+4. The words are in Settings behind the unlock prompt, and also shown once
+   after first setup (and once to existing users after updating), with Skip
+   (section 2).
+
 ## Open questions
 
-1. **Personal events, notes and reminders:** include them in this work as the
-   second keyring (section 4), or ship calendars first and decide later?
-   Recommended: calendars first, personal data as step 5 of the same work.
-2. **On by default once you pair a seeder?** PearOffice decided yes, with the
-   stronger phrase warning. Recommended: the same.
-3. **A calendar nobody else can let you back into:** offer "Make a copy you
-   own" (new keys, same events, members re-invited by hand), or leave it
-   read-only? Recommended: the copy, as in PearOffice.
-4. **Seeing the phrase:** behind the device unlock prompt only, or also
-   offered once right after first setup? PR #282's lesson was that nobody
-   should be surprised by where the words went. Recommended: Settings only,
-   behind the unlock prompt.
+None.
