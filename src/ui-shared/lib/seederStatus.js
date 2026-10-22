@@ -26,3 +26,12 @@ export function calendarsLine (st) {
   if (c.complete > 0) return { text: `${c.complete} of ${c.total} calendars are fully on your seeder. Still checking: ${c.checking.join(', ')}.`, warn: false }
   return { text: 'Checking your calendars on your seeder…', warn: false }
 }
+
+// Personal events, private notes and reminders (#176 step 5).
+export function personalLine (st) {
+  const p = st?.personal
+  if (!st || !(st.paired > 0) || !p) return null
+  if (!(p.seeders > 0)) return p.at ? null : 'Backing up your personal events, notes and reminders…'
+  const dropped = p.dropped > 0 ? ` ${p.dropped} of the oldest past events did not fit and are left out.` : ''
+  return 'Your personal events, notes and reminders are backed up too.' + dropped
+}

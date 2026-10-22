@@ -20,7 +20,7 @@ function keyringWith (ids, seederKeys = []) {
   return k
 }
 
-function setup ({ held = {}, announcing = Object.keys(held), have = [], refuseClaim = [] } = {}) {
+function setup ({ held = {}, announcing = Object.keys(held), have = [], refuseClaim = [], restorePersonal = null } = {}) {
   const keys = deriveKeys(PHRASE)
   const db = new Map([['restore:pending', { at: 1 }]])
   const added = []
@@ -41,6 +41,7 @@ function setup ({ held = {}, announcing = Object.keys(held), have = [], refuseCl
     addSeeder: async (s) => { paired.push(s) },
     haveGroup: async (id) => have.includes(id),
     addGroup: async (e, seederKeys) => { added.push({ id: e.groupId, seederKeys }) },
+    restorePersonal,
     store: { get: async (k) => db.get(k), put: async (k, v) => { db.set(k, v) }, del: async (k) => { db.delete(k) } },
     lookMs: 300,
     settleMs: 20,
@@ -55,7 +56,7 @@ test('finds the list on two seeders, merges them, claims both and opens each cal
     held: { [S1]: seal(keyringWith(['g1', 'g2']), keys, 3), [S2]: seal(keyringWith(['g2', 'g3'], [S2]), keys, 5) },
   })
   const out = await r.start()
-  assert.deepStrictEqual(out, { calendars: 3, added: 3, seeders: 2 })
+  assert.deepStrictEqual(out, { calendars: 3, added: 3, seeders: 2, personal: 0 })
   assert.deepStrictEqual(added.map(a => a.id).sort(), ['g1', 'g2', 'g3'])
   assert.deepStrictEqual(paired.sort(), [S1, S2])
   assert.ok(claims.every(c => c.ok), 'every claim verifies against the sign key')
@@ -104,4 +105,24 @@ test('merge keeps a removal from one seeder over an older listing on another', a
   const { r, added } = setup({ held: { [S1]: seal(keyringWith(['g1', 'g2']), keys, 1), [S2]: seal(merge(gone, empty()), keys, 2) } })
   await r.start()
   assert.deepStrictEqual(added.map(a => a.id), ['g2'])
+})
+
+test('personal data is restored from the same seeders, and a failure there does not stop the calendars', async () => {
+  const keys = deriveKeys(PHRASE)
+  const calls = []
+  const { r, added, db } = setup({
+    held: { [S1]: seal(keyringWith(['g1'], [S2]), keys, 1) },
+    announcing: [S1],
+    restorePersonal: async (k, seederKeys) => { calls.push({ ok: k.personalLocator.equals(keys.personalLocator), seederKeys }); return 7 },
+  })
+  const out = await r.start()
+  assert.strictEqual(out.personal, 7)
+  assert.deepStrictEqual(calls, [{ ok: true, seederKeys: [S1, S2] }])
+  assert.strictEqual(db.get('restore:status').personal, 7)
+  assert.deepStrictEqual(added.map(a => a.id), ['g1'])
+
+  const bad = setup({ held: { [S1]: seal(keyringWith(['g1']), keys, 1) }, restorePersonal: async () => { throw new Error('boom') } })
+  const out2 = await bad.r.start()
+  assert.strictEqual(out2.personal, 0)
+  assert.deepStrictEqual(bad.added.map(a => a.id), ['g1'])
 })
