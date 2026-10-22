@@ -52,6 +52,7 @@ const { shouldBounceSwarm } = require('./lib/swarmBounce.js')
 const { resetPlan } = require('./lib/resetPlan.js')
 const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const { classifyRollout, REQUIRED_VERSION } = require('./lib/rolloutGate.js')
+const { decideIndexerChange } = require('./lib/indexerPolicy.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -2418,6 +2419,9 @@ function indexerInfoFor (groupId) {
     signed,
     behind,
     behindPct: total > 0 ? Math.round((behind / total) * 100) : 0,
+    // What the signer policy last decided here, owner devices only. Lets the
+    // rollout be read off a device the same way the counts above are.
+    policy: _indexerPolicyLast.get(groupId)?.reason ?? null,
   }
 }
 
@@ -2435,6 +2439,137 @@ async function rolloutStatusFor (groupId, group) {
     if (value) devices.push({ memberId: value.memberId, v: value.v })
   }
   return classifyRollout(group?.members, devices, PROTOCOL_VERSION)
+}
+
+// Writers that have announced on a connection that is still open, counted per
+// connection so a device reachable twice stays live until both close. This is
+// the signer policy's "online right now" test (indexerPolicy.js rule 3).
+const _liveWriters = new Map()
+function markWriterLive (groupId, writerKey, connSet) {
+  const k = groupId + ':' + writerKey
+  if (connSet.has(k)) return
+  connSet.add(k)
+  _liveWriters.set(k, (_liveWriters.get(k) || 0) + 1)
+}
+function releaseLiveWriters (connSet) {
+  for (const k of connSet) {
+    const n = (_liveWriters.get(k) || 1) - 1
+    if (n > 0) _liveWriters.set(k, n)
+    else _liveWriters.delete(k)
+  }
+  connSet.clear()
+}
+
+// Grant a device write access to a group (TODO #159 release N+1). Every group
+// addWriter goes through here so two rules hold everywhere:
+//
+// 1. A device that is already a writer is never re-granted. Older builds
+//    re-appended a bare `{ addWriter }` on every reconnect, which Autobase reads
+//    as "make it a signer" and which would quietly undo a demotion.
+// 2. Once every member runs this release, new devices join as plain writers
+//    (`indexer: false`) and the signer policy decides who signs. Until then,
+//    and for a device whose version we have not heard, the grant is written
+//    the old way so no peer can read it differently.
+//
+// Returns true when the device is a writer afterwards (or already was), so
+// callers can record knownWriter exactly as before.
+async function grantGroupWriter (base, groupId, writerKey, label) {
+  if (!base) return false
+  try {
+    if (base.system && await base.system.get(b4a.from(writerKey, 'hex'))) return true
+  } catch (e) {}
+  const op = { addWriter: writerKey }
+  if (await mayGrantPlainWriter(groupId, writerKey)) op.indexer = false
+  return safeAppend(base, op, label)
+}
+
+async function mayGrantPlainWriter (groupId, writerKey) {
+  try {
+    const dv = await db.get('deviceVersion:' + groupId + ':' + writerKey).catch(() => null)
+    if (!(Number(dv?.value?.v) >= PROTOCOL_VERSION)) return false
+    const group = await getGroup(groupId).catch(() => null)
+    const gate = group ? await rolloutStatusFor(groupId, group) : null
+    return !!gate?.ready
+  } catch (e) {
+    return false
+  }
+}
+
+// The signer policy, run by the owner's device (TODO #159 release N+1). Reads
+// this device's view of the group, asks indexerPolicy.js what to change, and
+// appends the result as ONE batch so the signer set never passes through two.
+// Throttled per group: Autobase only moves the set once the batch is signed,
+// and proposing again before that would act on a stale count, so a group waits
+// 30 minutes after a proposal. With nothing proposed it looks again every two
+// minutes, since the first look after a restart usually comes before any peer
+// has reconnected.
+const INDEXER_POLICY_AFTER_PROPOSAL_MS = 30 * 60 * 1000
+const INDEXER_POLICY_IDLE_MS = 2 * 60 * 1000
+const _indexerPolicyLast = new Map()   // groupId -> { at, reason, ops }
+async function runIndexerPolicyTick () {
+  if (!_identity) return
+  const profile = await getProfile().catch(() => null)
+  if (!profile?.id) return
+  const myIdentity = b4a.toString(_identity.identityPublicKey, 'hex')
+  const now = Date.now()
+  for (const [groupId, base] of bases) {
+    try {
+      const prev = _indexerPolicyLast.get(groupId)
+      if (prev && now - prev.at < (prev.ops ? INDEXER_POLICY_AFTER_PROPOSAL_MS : INDEXER_POLICY_IDLE_MS)) continue
+      if (!base?.writable || _degradedBases.has(base)) continue
+      const group = await getGroup(groupId).catch(() => null)
+      if (!group || group.ownerId !== profile.id) continue
+      const indexerList = base.linearizer?.indexers ?? base.system?.indexers ?? []
+      const indexers = indexerList.map(i => b4a.toString(i.core?.key ?? i.key, 'hex'))
+      if (!indexers.length) continue
+
+      // A signer we hold no record for (the TCL specimen's retired bootstrap
+      // key is one) gets its "last seen" from when this device started
+      // watching, so it can be replaced DEAD_MS after this release, not never.
+      const watchKey = 'indexerWatchSince:' + groupId
+      let watch = (await db.get(watchKey).catch(() => null))?.value?.ts
+      if (!watch) { watch = now; await db.put(watchKey, { ts: now }).catch(() => {}) }
+
+      const writers = []
+      for await (const { key, value } of db.createReadStream({
+        gt: 'deviceVersion:' + groupId + ':', lt: 'deviceVersion:' + groupId + ':\xff'
+      })) {
+        const wk = key.slice(('deviceVersion:' + groupId + ':').length)
+        const wi = await db.get('writerIdentity:' + groupId + ':' + wk).catch(() => null)
+        writers.push({
+          key: wk,
+          memberId: value?.memberId ?? null,
+          identity: wi?.value?.identityPublicKey ?? null,
+          v: value?.v,
+          firstSeen: value?.firstSeen,
+          lastSeen: value?.ts,
+          live: _liveWriters.has(groupId + ':' + wk),
+        })
+      }
+      for (const k of indexers) {
+        if (!writers.some(w => w.key === k)) writers.push({ key: k, lastSeen: watch, live: false })
+      }
+
+      const gate = await rolloutStatusFor(groupId, group)
+      const decision = decideIndexerChange({
+        myKey: b4a.toString(base.local.key, 'hex'),
+        myIdentity,
+        isOwner: true,
+        gateReady: !!gate?.ready,
+        minVersion: PROTOCOL_VERSION,
+        indexers,
+        writers,
+        activeMemberIds: (group.members ?? []).map(m => m.id),
+        now,
+      })
+      _indexerPolicyLast.set(groupId, { at: now, reason: decision.reason, ops: decision.ops.length })
+      if (!decision.ops.length) continue
+      console.log('[signers]', groupId, decision.reason, decision.ops.map(o => (o.indexer ? '+' : '-') + o.addWriter.slice(0, 12)).join(' '))
+      await safeAppend(base, decision.ops, 'signer policy')
+    } catch (e) {
+      console.warn('[signers] policy error for', groupId, e?.message)
+    }
+  }
 }
 
 // When this device started recording sync activity at all. Written once, ever.
@@ -2964,7 +3099,7 @@ async function _joinGroupImpl (group) {
         const knownKey = 'knownWriter:' + group.id + ':' + writerKey
         const already = await db.get(knownKey).catch(() => null)
         if (already) continue
-        safeAppend(base, { addWriter: writerKey })
+        grantGroupWriter(base, group.id, writerKey, 'owner pending')
           .then((ok) => { if (ok) db.put(knownKey, { ts: Date.now() }).catch(() => {}) })
           .catch(e => console.error('[OWNER] pending addWriter error:', e.message))
       }
@@ -3926,7 +4061,7 @@ async function maybeCrossGrantGroupWriter (groupId, groupWriterKey, siblingPerso
   const already = await db.get(knownKey).catch(() => null)
   if (already?.value) return
   try {
-    if (!(await safeAppend(base, { addWriter: groupWriterKey }))) return
+    if (!(await grantGroupWriter(base, groupId, groupWriterKey, 'xgrant'))) return
     await db.put(knownKey, { ts: Date.now() }).catch(() => {})
     console.log('[xgrant] granted sibling writer', groupWriterKey.slice(0, 16) + '…', 'on group', groupId)
   } catch (e) {
@@ -4715,7 +4850,7 @@ async function _handlePairGroupWriters (parsed, replySend) {
     const knownKey = 'knownWriter:' + groupId + ':' + writerKey
     if ((await db.get(knownKey).catch(() => null))?.value) { granted.push(groupId); continue }
     try {
-      if (!(await safeAppend(base, { addWriter: writerKey }))) continue
+      if (!(await grantGroupWriter(base, groupId, writerKey, 'pair fan-out'))) continue
       await db.put(knownKey, { ts: Date.now() }).catch(() => {})
       granted.push(groupId)
       console.log('[pair] fan-out addWriter on group', groupId, 'for', writerKey.slice(0, 16) + '…')
@@ -5781,7 +5916,7 @@ async function approveRejoin (groupId, identityPublicKey) {
     await db.del('blockedWriter:' + groupId + ':' + pending.writerKey).catch(() => {})
     const alreadyGranted = await db.get('knownWriter:' + groupId + ':' + pending.writerKey).catch(() => null)
     if (!alreadyGranted && base) {
-      safeAppend(base, { addWriter: pending.writerKey })
+      grantGroupWriter(base, groupId, pending.writerKey, 'approve rejoin')
         .then((ok) => { if (ok) db.put('knownWriter:' + groupId + ':' + pending.writerKey, { ts: Date.now() }).catch(() => {}) })
         .catch(e => console.error('[APPROVE_REJOIN] addWriter error:', e.message))
     }
@@ -6197,6 +6332,25 @@ function makeApply (groupId) {
       if (val.addWriter) {
         // Swallow addWriter on a migrated old base — new writers belong on the new base.
         if (migratedGroups.has(groupId)) continue
+        // Demotion (#159 release N+1): `indexer: false` for a key that is
+        // ALREADY a writer takes away signing and nothing else. It must not go
+        // through the block checks below. Those read this device's local
+        // records, so a peer that blocked the writer would skip the demotion
+        // while every other peer applied it, and the group would disagree
+        // about who signs. Losing privilege is always safe to apply.
+        if (val.indexer === false) {
+          const keyBuf = b4a.from(val.addWriter, 'hex')
+          const existing = await host.system.get(keyBuf).catch(() => null)
+          if (existing) {
+            // Never demote the last signer: nothing could ever be finalised
+            // again (harness scenario H). Autobase guards this for
+            // removeWriter but not for a demotion through add.
+            const idx = host.system.indexers || []
+            if (idx.length === 1 && b4a.equals(idx[0].key, keyBuf)) continue
+            await host.addWriter(keyBuf, { indexer: false })
+            continue
+          }
+        }
         // Check if this writer was blocked by the owner — if so skip granting access
         const writerBlocked = await db.get('blockedWriter:' + groupId + ':' + val.addWriter).catch(() => null)
         if (writerBlocked) continue
@@ -6215,8 +6369,9 @@ function makeApply (groupId) {
         // Release N reader, same as the personal base above and for the same
         // reasons: read an explicit `indexer` field, DEFAULT TRUE when absent so
         // this release still agrees with peers on old code about every grant
-        // they author. Nothing writes the field yet, so this is behaviour-
-        // preserving. proposals/2026-08-07-non-indexer-writers.md (TODO #159)
+        // they author. From release N+1 grantGroupWriter writes the field, and
+        // only once every member of the group runs N+1 (rolloutGate.js).
+        // proposals/2026-08-07-non-indexer-writers.md (TODO #159)
         await host.addWriter(b4a.from(val.addWriter, 'hex'), { indexer: val.indexer !== false })
         continue
       }
@@ -7808,6 +7963,8 @@ async function runRealtimeSyncTick () {
   // Multi-device write-redundancy convergence (Phase A): re-publish our group
   // writer keys + cross-grant siblings on groups we're a writer of.
   await runGroupWriterRedundancyTick().catch(() => {})
+  // Signer policy (TODO #159 release N+1): owner only, throttled per group.
+  await runIndexerPolicyTick().catch(e => console.warn('[signers] tick:', e?.message))
   // Backup-integrity (TODO #11): primary re-publishes sibling-authored personal
   // events into its own core so re-paired devices reliably recover them.
   await runPersonalConsolidation().catch(() => {})
@@ -8536,6 +8693,10 @@ async function _doInit (dir, attempt = 0) {
       // Open a dedicated Protomux channel for writer key exchange
       // Per-connection dedup set — scoped here so both onopen and onmessage can access it
       const connSeenWriters = new Set()
+      // Writers that announced on THIS connection, for the signer policy's
+      // "online right now" test. Released when the connection closes.
+      const connLiveWriters = new Set()
+      stream.on('close', () => releaseLiveWriters(connLiveWriters))
       const channel = mux.createChannel({
         protocol: 'pearcal/writer-announce',
         id: Buffer.from('pearcal-writer-announce-v1'),
@@ -8850,9 +9011,16 @@ async function _doInit (dir, attempt = 0) {
               // gate exists to prevent, and it would have opened the gate early.
               // rolloutStatusFor takes the MINIMUM across a member's devices.
               const _v = Number.isFinite(Number(parsed.v)) ? Number(parsed.v) : 1
-              await db.put('deviceVersion:' + groupId + ':' + writerKey, {
-                v: _v, memberId: parsed.memberId ?? null, ts: Date.now()
+              const _dvKey = 'deviceVersion:' + groupId + ':' + writerKey
+              const _prevDv = await db.get(_dvKey).catch(() => null)
+              // firstSeen feeds the signer policy's stability window
+              // (indexerPolicy.js). Kept across announces; records from before
+              // this field start their window now, which only delays.
+              await db.put(_dvKey, {
+                v: _v, memberId: parsed.memberId ?? null, ts: Date.now(),
+                firstSeen: _prevDv?.value?.firstSeen ?? Date.now(),
               }).catch(() => {})
+              markWriterLive(groupId, writerKey, connLiveWriters)
             }
 
             const base = bases.get(groupId)
@@ -9039,7 +9207,7 @@ async function _doInit (dir, attempt = 0) {
                   return
                 }
                 console.log('[ADDWRITER] granting write to:', writerKey, 'for group:', groupId, 'as', isOwner ? 'owner' : 'member')
-                safeAppend(base, { addWriter: writerKey })
+                grantGroupWriter(base, groupId, writerKey, 'writer-announce')
                   .then(async (ok) => {
                     if (!ok) return
                     // Persist so we skip redundant addWriter on future reconnects

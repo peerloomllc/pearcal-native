@@ -577,6 +577,41 @@ like if we have to stop halfway - a mix of indexers and plain writers, with
 majority computed over the indexers only, which is still strictly better than
 all-indexers.
 
+## Release N+1 as built (2026-10-22)
+
+**No `removeWriter` needed.** PearCal's apply() has no `removeWriter` branch, so
+the swap (J) and the repair (K) looked like they needed a new op and another
+staged release. They do not. Autobase's `system.add()` on an EXISTING indexer
+with `isIndexer: false` drops it from the signer set and leaves it a writer, and
+that is `{ addWriter: k, indexer: false }`, which release N already reads.
+`test/harness/indexer-demote.js`:
+
+| Scenario | Result |
+| --- | --- |
+| L: 7 signers, 4 awake, demote 4 in one batch | 3 signers, all awake peers agree, still signs after a further loss |
+| M: 3 signers, one gone, promote + demote in one batch | 3 signers, signing |
+| N: the demoted device comes back | agrees on 3, is not one, can still write |
+
+**Why the gate moved to v3 anyway.** Release N builds re-append a bare
+`{ addWriter }` for an existing writer on reconnect, which promotes a demoted or
+plain writer straight back to signer. And their apply skips a demotion of a
+writer they have blocked locally while a v3 build applies it. So v3 builds never
+re-grant an existing writer (`grantGroupWriter`), apply a demotion without the
+block checks and never demote the last signer. The policy only acts once every
+member of a group is on v3.
+
+**What ships:** new devices join as plain writers once the group's gate is open;
+the owner's device runs the policy in `src/lib/indexerPolicy.js` (grow 1 -> 3 or
+2 -> 3, replace a signer unseen for 14 days or no longer a member, repair any
+group above three while a majority is online). Real-engine check:
+`test/harness/signer-policy-e2e.js`, three engines on a local DHT, all checks
+pass.
+
+**Not in this release:** the fallback proposer when the owner is away or is not
+itself a signer (for example a restored owner on a new device), so such groups
+are not repaired yet; the personal base, which keeps today's behaviour; and the
+#155 banner wording for the margin.
+
 ## Open questions
 
 1. **Who holds indexer authority after the owner?** The obvious hook is the
