@@ -26,6 +26,8 @@
 //   9. The calendar Ana is in lets the new device back in while she is online.
 //  10. The calendar only the owner was in offers a copy, and the copy has its
 //      event.
+//  11. A personal event, its private note and its reminder come back too
+//      (step 5), and the seeder's files do not hold them in the clear.
 
 const path = require('path')
 const fs = require('fs')
@@ -125,6 +127,15 @@ async function main () {
   const soloEvent = { id: 'e-solo-1', date: '2026-11-03', title: 'Solo marker event', groups: [second.id] }
   await peers.owner.call('putEvent', soloEvent)
   await peers.owner.call('putEvent:sync', second.id, soloEvent)
+  // Step 5: personal data, in no shared calendar.
+  const PERSONAL = 'Personal marker 9Z'
+  const personalEvent = { id: 'e-personal-1', date: '2026-11-04', title: PERSONAL }
+  await peers.owner.call('putEvent', personalEvent)
+  await peers.owner.call('putPrivateNote', personalEvent.id, 'Private note marker 4K')
+  await peers.owner.call('putReminders', personalEvent.id, [{ minutes: 30 }])
+  const pb = await peers.owner.call('personalBackupNow')
+  console.log('      personal backup:', JSON.stringify(pb))
+
   // Ana in and the solo event on the seeder before the device is lost.
   await until(async () => (await peers.owner.call('listGroups')).find(g => g.id === shared.id)?.members?.length >= 2 || null, 120000, 3000)
   await has(kk => keyring.groups(kk).some(e => e.groupId === shared.id))
@@ -163,6 +174,23 @@ async function main () {
   const moved = (Array.isArray(events) ? events : []).find(ev => ev.id === soloEvent.id)
   check('10. the solo calendar offers a copy, which has its event', !!soloCopy && copied?.events >= 1 && !afterCopy.some(g => g.id === second.id) && afterCopy.some(g => g.id === copied.groupId) && moved?.groups?.includes(copied.groupId),
     JSON.stringify({ state: (await peers.restored.call('listGroups')).find(x => x.id === second.id)?.recovery, copied, moved: moved?.groups }))
+
+  const pEvents = await peers.restored.call('listEvents', {})
+  const pBack = (Array.isArray(pEvents) ? pEvents : []).find(e => e.id === personalEvent.id)
+  const pNote = await peers.restored.call('getPrivateNote', personalEvent.id).catch(() => null)
+  const pRem = await peers.restored.call('getReminders', personalEvent.id).catch(() => null)
+  const plain = []
+  const walk2 = (d) => {
+    for (const f of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, f.name)
+      if (f.isDirectory()) walk2(p)
+      else { const buf = fs.readFileSync(p); if (buf.includes(PERSONAL) || buf.includes('Private note marker 4K')) plain.push(path.relative(seederDir, p)) }
+    }
+  }
+  walk2(seederDir)
+  check('11. personal event, note and reminder come back; the seeder holds them encrypted',
+    pBack?.title === PERSONAL && /Private note marker 4K/.test(JSON.stringify(pNote)) && /30/.test(JSON.stringify(pRem)) && rs?.personal >= 1 && plain.length === 0,
+    JSON.stringify({ event: !!pBack, note: pNote, reminders: pRem, restored: rs?.personal, plain }))
 
   await dht.destroy().catch(() => {})
   await done()

@@ -45,7 +45,10 @@ const NS = {
   root: 'pearcal/keyring/root/1',
   locator: 'pearcal/keyring/locator/1',
   sign: 'pearcal/keyring/sign/1',
-  box: 'pearcal/keyring/box/1'
+  box: 'pearcal/keyring/box/1',
+  // A second keyring at its own address: personal events, private notes and
+  // reminders (src/lib/personalKeyring.js, step 5). Same sign and box keys.
+  personal: 'pearcal/keyring/personal/1'
 }
 const MAX_GROUPS = 2000
 const MAX_SEEDERS = 32
@@ -70,7 +73,7 @@ function deriveKeys (mnemonic) {
   const locator = hash(root, NS.locator)
   const signKeyPair = { publicKey: b4a.alloc(sodium.crypto_sign_PUBLICKEYBYTES), secretKey: b4a.alloc(sodium.crypto_sign_SECRETKEYBYTES) }
   sodium.crypto_sign_seed_keypair(signKeyPair.publicKey, signKeyPair.secretKey, hash(root, NS.sign))
-  return { locator, topic: topicOf(locator), signKeyPair, boxKey: hash(root, NS.box) }
+  return { locator, topic: topicOf(locator), signKeyPair, boxKey: hash(root, NS.box), personalLocator: hash(root, NS.personal) }
 }
 
 function empty () {
@@ -78,17 +81,22 @@ function empty () {
 }
 
 function seal (keyring, keys, seq) {
+  return sealAt(clean(keyring), keys.locator, keys, seq)
+}
+
+// Any JSON value, sealed at `locator` with the keyring's sign and box keys.
+function sealAt (value, locator, keys, seq) {
   if (!Number.isSafeInteger(seq) || seq < 1) throw new Error('seq must be a positive integer')
-  const plain = b4a.from(JSON.stringify(clean(keyring)))
+  const plain = b4a.from(JSON.stringify(value))
   const nonce = b4a.alloc(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES)
   sodium.randombytes_buf(nonce)
   const ciphertext = b4a.alloc(plain.length + sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES)
-  sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(ciphertext, plain, keys.locator, null, nonce, keys.boxKey)
-  if (ciphertext.length > MAX_BYTES) throw new Error('The calendar list is too large to back up')
+  sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(ciphertext, plain, locator, null, nonce, keys.boxKey)
+  if (ciphertext.length > MAX_BYTES) throw new Error('Too large to back up')
   const sig = b4a.alloc(sodium.crypto_sign_BYTES)
-  sodium.crypto_sign_detached(sig, signed(keys.locator, seq, nonce, ciphertext), keys.signKeyPair.secretKey)
+  sodium.crypto_sign_detached(sig, signed(locator, seq, nonce, ciphertext), keys.signKeyPair.secretKey)
   return {
-    locator: hex(keys.locator),
+    locator: hex(locator),
     seq,
     nonce: b4a.toString(nonce, 'base64'),
     ciphertext: b4a.toString(ciphertext, 'base64'),
@@ -100,16 +108,20 @@ function seal (keyring, keys, seq) {
 // The keyring in a sealed version, or null when it is not ours, does not
 // check out or does not decrypt.
 function open (rec, keys) {
+  const parsed = openAt(rec, keys.locator, keys)
+  return parsed === null ? null : clean(parsed)
+}
+
+// The JSON value sealed at `locator`, or null.
+function openAt (rec, locator, keys) {
   const bytes = checkSealed(rec)
   if (!bytes) return null
-  if (!b4a.equals(bytes.locator, keys.locator) || !b4a.equals(bytes.signKey, keys.signKeyPair.publicKey)) return null
+  if (!b4a.equals(bytes.locator, locator) || !b4a.equals(bytes.signKey, keys.signKeyPair.publicKey)) return null
   const plain = b4a.alloc(bytes.ciphertext.length - sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES)
   try {
-    sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(plain, null, bytes.ciphertext, keys.locator, bytes.nonce, keys.boxKey)
+    sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(plain, null, bytes.ciphertext, locator, bytes.nonce, keys.boxKey)
   } catch { return null }
-  let parsed
-  try { parsed = JSON.parse(b4a.toString(plain)) } catch { return null }
-  return clean(parsed)
+  try { return JSON.parse(b4a.toString(plain)) } catch { return null }
 }
 
 // What a calendar contributes to the keyring, from its local group record.
@@ -213,6 +225,6 @@ function seeders (k) {
 }
 
 module.exports = {
-  deriveKeys, topicOf, signClaim, empty, seal, checkSealed, open, clean, merge,
+  deriveKeys, topicOf, signClaim, empty, seal, sealAt, checkSealed, open, openAt, clean, merge,
   entryFromGroup, groups, seeders, NS, MAX_BYTES, MAX_GROUPS, TOMBSTONE_MS
 }

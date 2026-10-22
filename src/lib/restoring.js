@@ -34,9 +34,10 @@ const hex = (buf) => b4a.toString(buf, 'hex')
  * @param {(seederKey: string) => Promise<void>} o.addSeeder  remember as paired
  * @param {(groupId: string) => Promise<boolean>} o.haveGroup
  * @param {(entry: object, seederKeys: string[]) => Promise<void>} o.addGroup  save with its keys, then join
+ * @param {(keys: object, seederKeys: string[]) => Promise<number>} [o.restorePersonal]  personal events, notes and reminders; returns how many events
  * @param {{ get, put, del }} o.store
  */
-function createRestoring ({ getMnemonic, lookup, keyringGet, keyringClaim, deviceKey, addSeeder, haveGroup, addGroup, store, emit = () => {}, log = () => {}, now = () => Date.now(), lookMs = 90 * 1000, settleMs = 5000, retryMs = 5000 }) {
+function createRestoring ({ getMnemonic, lookup, keyringGet, keyringClaim, deviceKey, addSeeder, haveGroup, addGroup, restorePersonal = null, store, emit = () => {}, log = () => {}, now = () => Date.now(), lookMs = 90 * 1000, settleMs = 5000, retryMs = 5000 }) {
   let closed = false
   let running = null
   let stop = null
@@ -136,6 +137,12 @@ function createRestoring ({ getMnemonic, lookup, keyringGet, keyringClaim, devic
       }
     }))
 
+    // Personal events, notes and reminders, from the same seeders (step 5).
+    let personal = 0
+    if (restorePersonal) {
+      try { personal = await restorePersonal(keys, fromSeeders) } catch (err) { log('restore: personal data: ' + (err?.message || err)) }
+    }
+
     let added = 0
     for (const e of list) {
       if (closed) return null
@@ -148,9 +155,9 @@ function createRestoring ({ getMnemonic, lookup, keyringGet, keyringClaim, devic
       }
     }
     await store.del('restore:pending')
-    await setStatus({ state: 'done', calendars: list.length, added, seeders: claimed.length })
-    log('restore: ' + list.length + ' calendars from ' + found.holders.length + ' seeder(s), ' + claimed.length + ' claimed')
-    return { calendars: list.length, added, seeders: claimed.length }
+    await setStatus({ state: 'done', calendars: list.length, added, seeders: claimed.length, personal })
+    log('restore: ' + list.length + ' calendars and ' + personal + ' personal events from ' + found.holders.length + ' seeder(s), ' + claimed.length + ' claimed')
+    return { calendars: list.length, added, seeders: claimed.length, personal }
   }
 
   // Starts a restore, or carries on with one a restart cut short.

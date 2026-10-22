@@ -19,7 +19,7 @@ import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
 import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
-import { calendarListLine, calendarsLine } from '../ui-shared/lib/seederStatus.js'
+import { calendarListLine, calendarsLine, personalLine } from '../ui-shared/lib/seederStatus.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs, icsFileGroups, routeIcsImport,
@@ -8028,6 +8028,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           )}
           {/* TODO #181: the list is not enough for a restore; each calendar's
               events have to be on the seeder too. */}
+          {personalLine(keyringSt) && (
+            <div style={{ fontSize:12, color: colors.text.muted, lineHeight:1.5 }}>{personalLine(keyringSt)}</div>
+          )}
           {calendarsLine(keyringSt) && (
             <div style={{ fontSize:12, color: calendarsLine(keyringSt).warn ? '#F5A623' : colors.text.muted, lineHeight:1.5 }}>
               {calendarsLine(keyringSt).text}

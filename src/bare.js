@@ -57,6 +57,8 @@ const { buildLiveSeen, mergeLiveSeen, isRelayedLive, SHARE_INTERVAL_MS } = requi
 const { createKeyringSync } = require('./lib/keyringSync.js')
 const { entryFromGroup } = require('./lib/keyring.js')
 const { createRestoring } = require('./lib/restoring.js')
+const { createPersonalBackup, fetchPersonal } = require('./lib/personalBackup.js')
+const { TOMBSTONE_MS: PERSONAL_TOMBSTONE_MS } = require('./lib/personalKeyring.js')
 const { groupCoverage, summarise: summariseCoverage } = require('./lib/seederCoverage.js')
 const {
   computeReminderFireTime,
@@ -413,6 +415,7 @@ async function handle (method, args) {
     case 'keyringCheck':     return keyringCheck()
     // Diagnostic: back the calendar list up now, even if nothing changed.
     case 'keyringBackupNow': return _keyringSync ? _keyringSync.run({ force: true }) : { written: false }
+    case 'personalBackupNow': return _personalBackup ? _personalBackup.run({ force: true }) : { written: false }
     case 'pairPeerloomSeeder': return pairPeerloomSeeder(args[0])
     case 'setPeerloomSeederGroup': return setPeerloomSeederGroup(args[0], args[1], args[2])
     case 'forgetPeerloomSeeder': return forgetPeerloomSeeder(args[0])
@@ -627,6 +630,7 @@ async function getPrivateNote (eventId) {
 }
 
 async function putPrivateNote (eventId, text) {
+  pokePersonal()
   if (!text) {
     await db.del(NS.privateNotes + eventId).catch(() => {})
     // Empty text = delete. The helper turns null into a del op.
@@ -1729,6 +1733,7 @@ async function stopPeerloomSeeding () {
   clearInterval(_plsPullTimer); _plsPullTimer = null
   _plsRegistered.clear()
   if (_keyringSync) { _keyringSync.close(); _keyringSync = null }
+  if (_personalBackup) { _personalBackup.close(); _personalBackup = null }
   if (_restoring) { _restoring.close(); _restoring = null }
   const p = _plsPeering
   _plsPeering = null
@@ -1774,6 +1779,7 @@ async function pairPeerloomSeeder (link) {
     const { seederKey, style } = await plsClient.pair({ swarm: temp, link, app: 'PearCal' })
     await db.put(PLS_LOCAL + seederKey, { seederKey, style, pairedAt: Date.now() })
     pokeKeyring()
+    pokePersonal()
     // Back up every group this device is in (answer 2); it can untick them.
     let groups = 0
     for (const groupId of bases.keys()) {
@@ -1916,7 +1922,82 @@ async function keyringEntries () {
   return out
 }
 
+// ── Personal data backup (same proposal, section 4, step 5) ──────────────────
+// Events in no shared calendar, private notes and reminders live in the
+// personal base, which is not encrypted and so never goes to a seeder. A
+// sealed snapshot does (src/lib/personalBackup.js), at most every 10 minutes.
+let _personalBackup = null
+
+async function personalSnapshot () {
+  const out = { v: 1, events: {}, notes: {}, reminders: {}, deleted: {} }
+  for await (const { value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!value?.id || (Array.isArray(value.groups) && value.groups.length)) continue
+    if (String(value.id).startsWith('holiday-')) continue // regenerated from the holiday settings
+    const { privateNote, _prevDate, ...e } = value
+    const have = out.events[e.id]
+    if (!have || (e.updatedAt || 0) >= (have.updatedAt || 0)) out.events[e.id] = e
+  }
+  for await (const { key, value } of db.createReadStream({ gt: NS.privateNotes, lt: NS.privateNotes + '\xff' })) {
+    if (value?.text) out.notes[key.slice(NS.privateNotes.length)] = { text: value.text, updatedAt: value.updatedAt || 0 }
+  }
+  for await (const { key, value } of db.createReadStream({ gt: 'reminders:', lt: 'reminders:\xff' })) {
+    if (Array.isArray(value)) out.reminders[key.slice('reminders:'.length)] = value
+  }
+  const since = Date.now() - PERSONAL_TOMBSTONE_MS
+  for await (const { key, value } of db.createReadStream({ gt: NS.deleted, lt: NS.deleted + '\xff' })) {
+    if (typeof value?.ts === 'number' && value.ts >= since) out.deleted[key.slice(NS.deleted.length)] = value.ts
+  }
+  return out
+}
+
+function startPersonalBackup () {
+  if (_personalBackup) return
+  _personalBackup = createPersonalBackup({
+    getMnemonic: () => nativeRequest('getMnemonic'),
+    snapshot: personalSnapshot,
+    listSeeders: pairedSeederKeys,
+    keyringGet: (seederKey, locator) => plsAsker().ask(seederKey, { t: 'keyring-get', locator }).then((r) => r.rec || null),
+    keyringPut: (seederKey, rec) => plsAsker().ask(seederKey, { t: 'keyring-put', rec }),
+    store: {
+      get: async (k) => (await db.get(k).catch(() => null))?.value,
+      put: (k, v) => db.put(k, v),
+    },
+    log: (m) => console.log('[personal]', m),
+  })
+  _personalBackup.start()
+}
+
+function pokePersonal () {
+  if (_personalBackup) _personalBackup.poke()
+}
+
+// A restore: write the snapshot the seeders hold into this device. Returns how
+// many events it brought back.
+async function restorePersonal (keys, seederKeys) {
+  const { snapshot, seq } = await fetchPersonal(seederKeys, keys, (s, locator) => plsAsker().ask(s, { t: 'keyring-get', locator }, 15000).then((r) => r.rec || null))
+  if (!snapshot) return 0
+  let events = 0
+  for (const e of Object.values(snapshot.events)) {
+    if (await db.get(NS.deleted + e.id).catch(() => null)) continue
+    await db.put(NS.events + e.date + ':' + e.id, e)
+    await personalBaseAppendEvent(personalAppendValue(e, null)).catch(() => {})
+    events++
+  }
+  for (const [id, n] of Object.entries(snapshot.notes)) {
+    await db.put(NS.privateNotes + id, n)
+    await personalBaseAppendNote(id, n).catch(() => {})
+  }
+  for (const [id, r] of Object.entries(snapshot.reminders)) {
+    await db.put('reminders:' + id, r)
+    await personalBaseAppendReminders(id, r).catch(() => {})
+  }
+  await db.put('personal:local', { seq, fingerprint: '', held: [], locator: b4a.toString(keys.personalLocator, 'hex'), at: Date.now() })
+  scheduleWidgetCacheRefresh()
+  return events
+}
+
 function startKeyringBackup () {
+  startPersonalBackup()
   if (_keyringSync) return
   _keyringSync = createKeyringSync({
     getMnemonic: () => nativeRequest('getMnemonic'),
@@ -1962,8 +2043,9 @@ async function keyringCheck () {
 
 async function keyringStatus () {
   const calendars = await seederCoverage().catch(() => null)
-  if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null, calendars }
-  return { ...await _keyringSync.status(), calendars }
+  const personal = _personalBackup ? await _personalBackup.status().catch(() => null) : null
+  if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null, calendars, personal }
+  return { ...await _keyringSync.status(), calendars, personal }
 }
 
 // ── Restore from the recovery phrase (same proposal, step 4) ──────────────────
@@ -2035,6 +2117,7 @@ function startRestoring () {
     },
     haveGroup: async (groupId) => !!(await db.get(NS.groups + groupId).catch(() => null)),
     addGroup: addRecoveredGroup,
+    restorePersonal,
     store: {
       get: async (k) => (await db.get(k).catch(() => null))?.value,
       put: (k, v) => db.put(k, v),
@@ -2196,6 +2279,7 @@ async function putEvent (event) {
   // refuses every mirror of a row that is plainly alive locally.
   await db.del(plan.clearTombstoneKey).catch(() => {})
   if (privateNote !== undefined) await putPrivateNote(event.id, privateNote)
+  if (!(toStore.groups && toStore.groups.length)) pokePersonal()
   // Mirror to personal base if this is a personal-scope event (no groups) and
   // multi-device is enabled. No-op otherwise. On a move, `_prevDate` rides along
   // so a sibling relocates its own row instead of keeping a copy at each date.
@@ -2258,6 +2342,7 @@ async function unshareEventFromGroup (eventKey, groupId) {
 }
 
 async function deleteEvent (date, id) {
+  pokePersonal()
   // Read the event first so we can decide whether to wipe reminders. Series
   // reminders live at the series-root key (TODO #82 Phase 1) and must
   // outlive any single-occurrence delete; only one-off events own their
@@ -2509,6 +2594,7 @@ async function putReminders (eventId, reminders) {
   const id = reminderKeyId(eventId)
   await db.put('reminders:' + id, reminders)
   await personalBaseAppendReminders(id, reminders).catch(() => {})
+  pokePersonal()
   // Consolidation marker (backup-integrity): own records are already in our
   // core, so runPersonalConsolidation skips them. Reminders carry no updatedAt,
   // so the token is the serialized value.

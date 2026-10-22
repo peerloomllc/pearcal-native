@@ -16,7 +16,7 @@ import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEven
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
-import { calendarListLine, calendarsLine } from '../../ui-shared/lib/seederStatus.js'
+import { calendarListLine, calendarsLine, personalLine } from '../../ui-shared/lib/seederStatus.js'
 
 // Injected by electron/scripts/bundle-ui.sh from electron/package.json#version
 // at build time. Falls back to "0.0.0" only if someone runs the bundle without
@@ -559,6 +559,7 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
   const small = { fontSize: 12, color: tokens.muted, lineHeight: 1.5 }
   const listLine = calendarListLine(st)
   const calLine = calendarsLine(st)
+  const persLine = personalLine(st)
   return (
     <div style={{ marginBottom: 18 }}>
       <div style={label}>PeerLoom Seeder</div>
@@ -581,6 +582,7 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
       </div>
       {msg && <div style={{ ...small, paddingTop: 6 }}>{msg}</div>}
       {listLine && <div style={{ ...small, paddingTop: 6 }}>{listLine}</div>}
+      {persLine && <div style={{ ...small, paddingTop: 2 }}>{persLine}</div>}
       {calLine && <div style={{ ...small, paddingTop: 2, color: calLine.warn ? '#F5A623' : tokens.muted }}>{calLine.text}</div>}
       {seeders.map(sd => (
         <div key={sd.seederKey} style={{ marginTop: 8, padding: '10px 12px', borderRadius: 6, border: `1px solid ${tokens.border}` }}>
