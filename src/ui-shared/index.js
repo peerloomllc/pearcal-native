@@ -23,6 +23,7 @@ export {
   FOREVER_INITIAL_WINDOW_MONTHS,
 } from './lib/recurring.js'
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
+export { birthdayTitle, withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays } from './lib/birthdays.js'
 export { formatBytes } from './lib/bytes.js'
 export {
   computeEaster,

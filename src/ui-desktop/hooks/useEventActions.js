@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { expandRecurring } from '../../ui-shared/index.js'
+import { expandRecurring, withBirthdayTitle } from '../../ui-shared/index.js'
 
 // Mutation handlers for the desktop renderer. Mirrors the basic flow of
 // mobile App.jsx's saveEvent / deleteEvent at src/ui/App.jsx — write to
@@ -82,7 +82,8 @@ export function useEventActions ({ db, notifs, sync, profile, events, setEvents 
       occurrences = [ev]
     }
 
-    const withAuthor = occurrences.map(occ => ({
+    // A birthday edited for the whole series must keep each row's own age (#182).
+    const withAuthor = occurrences.map(occ => withBirthdayTitle({
       ...occ,
       updatedByName: profile?.name ?? 'Someone',
       updatedById:   profile?.id ?? '',

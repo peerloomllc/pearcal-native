@@ -5,6 +5,8 @@
 // start date is used; the bare worklet's `extendForeverSeries` boot hook
 // re-extends the tail. See TODO #82 Phase 3.
 
+import { withBirthdayTitle } from './birthdays.js'
+
 export const FOREVER_INITIAL_WINDOW_MONTHS = 12
 
 const _fmt = d => String(d.getFullYear()) + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0')
@@ -50,7 +52,8 @@ export function expandRecurring (ev) {
   const out = []
   let i = 0
   while (cur <= end && i < 500) {
-    out.push({ ...ev, id: i === 0 ? ev.id : ev.id + '_r' + i, date: _fmt(cur), recurrenceId })
+    // A birthday's title carries the age for its own year (#182).
+    out.push(withBirthdayTitle({ ...ev, id: i === 0 ? ev.id : ev.id + '_r' + i, date: _fmt(cur), recurrenceId }))
     stepRecurrenceDate(cur, ev)
     i++
   }

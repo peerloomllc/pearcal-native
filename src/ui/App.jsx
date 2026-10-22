@@ -27,6 +27,7 @@ import {
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
   expandRecurring, stepRecurrenceDate, fmtDate, parseDate,
+  withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays,
   formatTime, formatRelativeTime, todayStr, dateStr, formatBytes,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
@@ -45,7 +46,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple, GridFour, PencilSimple, Broadcast,
+  FunnelSimple, GridFour, PencilSimple, Broadcast, Cake,
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -346,12 +347,12 @@ async function extendForeverSeriesIfNeeded (events, db) {
       if (cur > target) break
       i++
       added++
-      newOccurrences.push({
+      newOccurrences.push(withBirthdayTitle({
         ...last,
         id: rid + '_r' + i,
         date: fmtDate(cur),
         recurrenceId: rid,
-      })
+      }))
     }
   }
 
@@ -1034,7 +1035,8 @@ export default function App ({ db, notifs, sync }) {
     } else {
       occurrences = [ev]
     }
-    const withAuthor = occurrences.map(occ => ({
+    // A birthday edited for the whole series must keep each row's own age (#182).
+    const withAuthor = occurrences.map(occ => withBirthdayTitle({
       ...occ, updatedByName: profile?.name ?? 'Someone', updatedById: profile?.id ?? ''
     }))
     // Optimistic UI: update calendar and close modal immediately (no async blocking).
@@ -1743,6 +1745,7 @@ export default function App ({ db, notifs, sync }) {
           {tab === 'profile' && (
             <ProfileTab profile={profile} groups={groups} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
+              deleteEventSeries={deleteEventSeries}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
               qrScanModeRef={qrScanModeRef}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
@@ -3394,6 +3397,90 @@ function EncryptionNoticeModal ({ onDismiss }) {
         </button>
       </div>
     </div>
+  )
+}
+
+// TODO #182: the birthday list in Settings. Each birthday is a yearly
+// personal event (src/ui-shared/lib/birthdays.js) with a reminder on the
+// morning of the day; removing one deletes the whole series.
+function BirthdaysSection ({ events, saveEvent, deleteEventSeries }) {
+  const list = useMemo(() => listBirthdays(events), [events])
+  const [adding, setAdding] = useState(false)
+  const [name, setName] = useState('')
+  const [month, setMonth] = useState('')
+  const [day, setDay] = useState('')
+  const [year, setYear] = useState('')
+  const [err, setErr] = useState('')
+  const [confirmId, setConfirmId] = useState(null)
+  const field = { background:colors.surface.input, border:`1px solid ${colors.border}`, borderRadius:8,
+    padding:'8px 10px', color:colors.text.primary, fontSize:14, fontFamily:FONT, outline:'none', boxSizing:'border-box' }
+
+  function add () {
+    const r = parseBirthday({ name, month, day, year })
+    if (r.error) { setErr(r.error); return }
+    saveEvent(birthdayEvent(r.birthday), 'one', {}, [MORNING_OF])
+    window.__pearSync?.haptic('success')
+    setName(''); setMonth(''); setDay(''); setYear(''); setErr(''); setAdding(false)
+  }
+
+  return (
+    <>
+      <div style={{ fontSize:11, color:colors.text.muted, letterSpacing:'0.08em', textAlign:'center', marginTop:16, marginBottom:8 }}>
+        BIRTHDAYS
+      </div>
+      <div style={{ padding:'0 16px 14px', display:'flex', flexDirection:'column', gap:8 }}>
+        {list.length === 0 && !adding && (
+          <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5 }}>
+            Birthdays show on your calendar every year, with a reminder that morning. Only you see them unless you share one into a group.
+          </div>
+        )}
+        {list.map(b => (
+          <div key={b.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 0', borderBottom:`1px solid ${colors.border}` }}>
+            <Cake size={18} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:13, color:colors.text.primary }}>{b.birthday.name}</div>
+              <div style={{ fontSize:11, color:colors.text.muted }}>
+                {b.birthday.day} {MONTHS[b.birthday.month - 1]}{b.birthday.year ? ' ' + b.birthday.year : ''}
+                {b.birthday.year ? ' · turns ' + (Number(b.next.slice(0, 4)) - b.birthday.year) + ' on ' + Number(b.next.slice(8, 10)) + ' ' + MONTHS[Number(b.next.slice(5, 7)) - 1] + ' ' + b.next.slice(0, 4) : ''}
+              </div>
+            </div>
+            {confirmId === b.id ? (
+              <>
+                <button onClick={() => setConfirmId(null)} style={{ ...LINKBTN, fontSize:12, color:colors.text.muted }}>Keep</button>
+                <button onClick={() => { setConfirmId(null); deleteEventSeries(b.id) }} style={{ ...LINKBTN, fontSize:12, color:'#e67b7b' }}>Remove</button>
+              </>
+            ) : (
+              <button onClick={() => setConfirmId(b.id)} style={{ ...LINKBTN, fontSize:12, color:colors.text.muted }}>Remove</button>
+            )}
+          </div>
+        ))}
+        {adding ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:8, paddingTop:4 }}>
+            <input value={name} onChange={e => { setName(e.target.value); setErr('') }} placeholder="Name" style={field} />
+            <div style={{ display:'flex', gap:8 }}>
+              <select value={day} onChange={e => { setDay(e.target.value); setErr('') }} style={{ ...field, flex:'0 0 64px', minWidth:0 }}>
+                <option value="">Day</option>
+                {Array.from({ length: 31 }, (_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}
+              </select>
+              <select value={month} onChange={e => { setMonth(e.target.value); setErr('') }} style={{ ...field, flex:1, minWidth:0 }}>
+                <option value="">Month</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <input value={year} onChange={e => { setYear(e.target.value.replace(/\D/g, '').slice(0, 4)); setErr('') }}
+                placeholder="Year" inputMode="numeric" style={{ ...field, flex:'0 0 64px', minWidth:0 }} />
+            </div>
+            <div style={{ fontSize:11, color:colors.text.muted }}>The year is optional. With it, the calendar shows the age.</div>
+            {err && <div style={{ fontSize:12, color:'#e67b7b' }}>{err}</div>}
+            <div style={{ display:'flex', gap:12, justifyContent:'flex-end' }}>
+              <button onClick={() => { setAdding(false); setErr('') }} style={{ ...LINKBTN, color:colors.text.muted }}>Cancel</button>
+              <button onClick={add} style={LINKBTN}>Add</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setAdding(true)} style={{ ...LINKBTN, alignSelf:'flex-start', paddingTop:4 }}>+ Add a birthday</button>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -6964,7 +7051,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
+function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -7701,6 +7788,8 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
           </>
         )
       })()}
+
+      <BirthdaysSection events={events} saveEvent={saveEvent} deleteEventSeries={deleteEventSeries} />
 
       </div>
 
