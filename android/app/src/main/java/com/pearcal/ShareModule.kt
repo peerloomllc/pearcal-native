@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.*
@@ -109,6 +110,18 @@ class ShareModule(reactContext: ReactApplicationContext) :
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("SHARE_ERROR", e.message)
+        }
+    }
+
+    // TODO #178: keeps the 12 recovery words out of screenshots and the
+    // Recents thumbnail while a screen shows them.
+    @ReactMethod
+    fun setScreenSecure(on: Boolean, promise: Promise) {
+        val activity = reactApplicationContext.currentActivity ?: return promise.resolve(false)
+        activity.runOnUiThread {
+            if (on) activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            promise.resolve(true)
         }
     }
 

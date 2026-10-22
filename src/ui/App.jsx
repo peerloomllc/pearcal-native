@@ -3396,6 +3396,16 @@ function EncryptionNoticeModal ({ onDismiss }) {
   )
 }
 
+// TODO #178: Android blocks screenshots and the Recents thumbnail while
+// `on`; app/index.tsx answers it, other hosts ignore it.
+function useScreenSecure (on) {
+  useEffect(() => {
+    if (!on || IS_DESKTOP) return
+    window.__pearDB?.call('setScreenSecure', true).catch(() => {})
+    return () => { window.__pearDB?.call('setScreenSecure', false).catch(() => {}) }
+  }, [on])
+}
+
 // What restoreFromPhrase's errors mean to the person typing (#176 step 4).
 function restoreErrorText (e) {
   const m = e?.message || String(e || '')
@@ -3410,6 +3420,7 @@ function restoreErrorText (e) {
 // 4 letters by itself: someone typing the whole word would put its rest into
 // the next one. Pasting fills all 12.
 function PhraseEntry ({ onSubmit, onBack }) {
+  useScreenSecure(true)
   const [words, setWords] = useState([])
   const [typed, setTyped] = useState('')
   const [err, setErr] = useState('')
@@ -6450,6 +6461,8 @@ function RecoveryPhraseSheet ({ intro = false, onDismiss, closeRef }) {
       return () => { closeRef.current = null }
     }
   }, [])
+
+  useScreenSecure(!!words)
 
   const show = async () => {
     setBusy(true); setMsg('')
