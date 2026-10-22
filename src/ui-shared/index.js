@@ -50,5 +50,5 @@ export { Tour } from './components/Tour.jsx'
 // The three "your calendar is in trouble" notices, shared so a host cannot ship
 // without them (#163). Mobile had all three; the shipped v1.0.43 desktop had none.
 export {
-  GroupNotices, KeylessNotice, SyncHealthNotice, PendingApprovalNotice, fmtSyncAge,
+  GroupNotices, KeylessNotice, SyncHealthNotice, PendingApprovalNotice, RecoveryNotice, fmtSyncAge,
 } from './components/GroupNotices.jsx'

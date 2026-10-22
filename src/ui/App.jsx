@@ -17,6 +17,8 @@ import { handleInviteLink } from '../invite.js'
 import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
 import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
+import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
+import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs, icsFileGroups, routeIcsImport,
@@ -29,7 +31,7 @@ import {
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
   useProfile, useRsvps, useGroups, useEvents, useHolidayRepair,
   emitter, Tour,
-  KeylessNotice, SyncHealthNotice, PendingApprovalNotice,
+  KeylessNotice, SyncHealthNotice, PendingApprovalNotice, RecoveryNotice,
 } from '../ui-shared/index.js'
 export { parseIcs, generateIcs, emitter } from '../ui-shared/index.js'
 import {
@@ -497,6 +499,7 @@ function mergeGroupState (prev, incoming) {
   // has to grow whenever listGroups/getGroup attach something new.
   if (merged.indexers === undefined && prev?.indexers !== undefined) merged.indexers = prev.indexers
   if (merged.rollout === undefined && prev?.rollout !== undefined) merged.rollout = prev.rollout
+  if (merged.recovery === undefined && prev?.recovery !== undefined) merged.recovery = prev.recovery
   return merged
 }
 
@@ -747,6 +750,17 @@ export default function App ({ db, notifs, sync }) {
     }
     emitter.on('groupDeleted', onGroupDeleted)
 
+    // #176: a restore from the 12 words opened its calendars, or a copy
+    // replaced one. Both change the list wholesale.
+    async function onRestoreChanged (st) {
+      if (!db || !st || (st.state !== 'done' && st.state !== 'copied')) return
+      const fresh = await db.listGroups().catch(() => null)
+      if (fresh) setGroups(fresh)
+      const evts = await db.listEvents().catch(() => null)
+      if (evts) setEvents(evts)
+    }
+    emitter.on('restoreChanged', onRestoreChanged)
+
     function onInviteBlocked () {
       setBlockedToast(true)
       setTimeout(() => setBlockedToast(false), 4000)
@@ -835,6 +849,7 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('syncing', onSyncing)
       emitter.off('synced',  onSynced)
       emitter.off('groupDeleted', onGroupDeleted)
+      emitter.off('restoreChanged', onRestoreChanged)
       emitter.off('inviteBlocked', onInviteBlocked)
       emitter.off('joinFailed', onJoinFailed)
       emitter.off('joinStalled', onJoinStalled)
@@ -3381,6 +3396,130 @@ function EncryptionNoticeModal ({ onDismiss }) {
   )
 }
 
+// What restoreFromPhrase's errors mean to the person typing (#176 step 4).
+function restoreErrorText (e) {
+  const m = e?.message || String(e || '')
+  if (/invalid BIP39/i.test(m)) return "These words aren't a recovery phrase. Check each word and their order."
+  if (/different id/i.test(m)) return 'This device already has calendars under someone else. Restore on a fresh install.'
+  return m || 'Something went wrong. Try again.'
+}
+
+// The 12 recovery words, one at a time with suggestions (#176 step 4).
+// 4 letters pick a word; pasting fills all 12.
+function PhraseEntry ({ onSubmit, onBack }) {
+  const [words, setWords] = useState([])
+  const [typed, setTyped] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const inputRef = useRef(null)
+  const full = words.length === 12
+  const suggestions = full ? [] : suggestWords(typed, BIP39_WORDS)
+
+  function accept (w) {
+    setWords(prev => prev.length < 12 ? [...prev, w] : prev)
+    setTyped('')
+    setErr('')
+    inputRef.current?.focus()
+  }
+
+  function onChange (v) {
+    const parts = phraseWordsFrom(v)
+    if (parts.length > 1) {
+      // A paste, or a space after a word.
+      const all = [...words, ...parts].slice(0, 12)
+      const bad = unknownWords(all, BIP39_WORDS)
+      if (bad.length) { setTyped(v); setErr('Not a recovery word: ' + bad.join(', ')); return }
+      setWords(all)
+      setTyped('')
+      setErr('')
+      return
+    }
+    const t = (parts[0] || '')
+    if (/\s$/.test(v) && t) {
+      const w = BIP39_WORDS.includes(t) ? t : pickWord(t, BIP39_WORDS)
+      if (w) { accept(w); return }
+      setTyped(t); setErr('Not a recovery word: ' + t); return
+    }
+    if (t.length >= 4) {
+      const w = pickWord(t, BIP39_WORDS)
+      if (w) { accept(w); return }
+    }
+    setTyped(t)
+    setErr(t && !suggestWords(t, BIP39_WORDS, 1).length ? 'No recovery word starts with "' + t + '"' : '')
+  }
+
+  async function submit () {
+    if (!full || busy) return
+    setBusy(true); setErr('')
+    try { await onSubmit(words.join(' ')) } catch (e) { setErr(restoreErrorText(e)) }
+    setBusy(false)
+  }
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:14, flex:1, justifyContent:'center', width:'100%' }}>
+      <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Enter your 12 words</div>
+      <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
+        {full ? 'All 12 words are in.' : 'Word ' + (words.length + 1) + ' of 12. You can also paste all 12 at once.'}
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:6, width:'100%', maxWidth:300 }}>
+        {Array.from({ length: 12 }, (_, i) => (
+          <div key={i} style={{ background:colors.surface.input, border:`1px solid ${i === words.length ? 'var(--color-accent)' : colors.border}`,
+            borderRadius:8, padding:'6px 6px', fontSize:12, color: words[i] ? colors.text.primary : colors.text.muted,
+            fontFamily:'monospace', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+            {i + 1}. {words[i] || ''}
+          </div>
+        ))}
+      </div>
+      {!full && (
+        <input ref={inputRef} value={typed} autoFocus
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === 'Enter') onChange(typed + ' ')
+            else if (e.key === 'Backspace' && !typed && words.length) setWords(w => w.slice(0, -1))
+          }}
+          autoCapitalize="none" autoCorrect="off" autoComplete="off" spellCheck={false}
+          placeholder={'Word ' + (words.length + 1)}
+          style={{ background:colors.surface.input, border:`1px solid ${colors.border}`, borderRadius:10,
+            padding:'12px 16px', color:colors.text.primary, fontSize:16, fontFamily:'monospace',
+            width:'100%', maxWidth:300, boxSizing:'border-box', outline:'none', textAlign:'center' }} />
+      )}
+      {suggestions.length > 0 && (
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'center', maxWidth:300 }}>
+          {suggestions.map(w => (
+            <button key={w} onClick={() => accept(w)}
+              style={{ background:'none', border:`1px solid ${colors.border}`, borderRadius:14, padding:'6px 12px',
+                color:colors.text.primary, fontSize:14, fontFamily:'monospace', cursor:'pointer' }}>
+              {w}
+            </button>
+          ))}
+        </div>
+      )}
+      {err && <div style={{ fontSize:13, color:'#e67b7b', textAlign:'center', maxWidth:300 }}>{err}</div>}
+      {full && (
+        <button onClick={submit} disabled={busy}
+          style={{ ...pillBtn, padding:'12px 24px', fontSize:15, width:'100%', maxWidth:260, boxSizing:'border-box', opacity: busy ? 0.5 : 1 }}>
+          {busy ? 'Restoring…' : 'Restore'}
+        </button>
+      )}
+      <div style={{ display:'flex', gap:16 }}>
+        {words.length > 0 && !busy && (
+          <button onClick={() => { setWords(w => w.slice(0, -1)); setErr('') }}
+            style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT, fontSize:13, cursor:'pointer', padding:4 }}>
+            Remove last word
+          </button>
+        )}
+        <button onClick={onBack} disabled={busy}
+          style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT, fontSize:13, cursor:'pointer', padding:4, opacity: busy ? 0.4 : 1 }}>
+          Back
+        </button>
+      </div>
+      <div style={{ fontSize:12, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.5' }}>
+        Your calendars come back if a PeerLoom Seeder you paired kept your calendar list.
+      </div>
+    </div>
+  )
+}
+
 function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, qrScanModeRef, closeOnboardSubModeRef, onComplete }) {
   const [name, setName] = useState(profile?.name ?? '')
   const [saving, setSaving] = useState(false)
@@ -3388,7 +3527,8 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
   const fileRef = useRef(null)
   const total = 5
   const [slideDir, setSlideDir] = useState(1)
-  const [restoreMode, setRestoreMode] = useState(null) // null | 'pair' | 'pair-waiting'
+  const [restoreMode, setRestoreMode] = useState(null) // null | 'choose' | 'words' | 'pair' | 'pair-waiting'
+  const [restored, setRestored] = useState(false)
   const [restoreError, setRestoreError] = useState('')
   const [pairInput, setPairInput] = useState('')
 
@@ -3401,9 +3541,11 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
       if (restoreMode === 'pair-waiting') return true  // swallow — mid-handshake
       if (restoreMode === 'pair') {
         db.cancelPairing?.().catch(() => {})
-        setRestoreMode(null); setRestoreError(''); setPairInput('')
+        setRestoreMode('choose'); setRestoreError(''); setPairInput('')
         return true
       }
+      if (restoreMode === 'words') { setRestoreMode('choose'); return true }
+      if (restoreMode === 'choose') { setRestoreMode(null); return true }
       return false
     }
     return () => { if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null }
@@ -3501,9 +3643,38 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
   const hasPhoto = profile?.avatar?.startsWith?.('data:')
   const dots = Array.from({ length: total }, (_, i) => i)
 
+  async function restoreWords (phrase) {
+    await db.restoreFromPhrase(phrase)
+    // The name and photo stay on this device, so they are asked for next.
+    setRestored(true)
+    setRestoreMode(null)
+    setSlideDir(1); setStep(2)
+  }
+
   const slides = [
-    // Slide 0 — Welcome (or pair sub-flow when restoreMode is set)
-    restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
+    // Slide 0 — Welcome (or a restore sub-flow when restoreMode is set)
+    restoreMode === 'choose' ? (
+      <div key="0-choose" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
+        <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Welcome back</div>
+        <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
+          Is your other device at hand? Pair with it. Lost it? Enter the 12 words from Settings → Recovery phrase.
+        </div>
+        <button onClick={() => setRestoreMode('pair')}
+          style={{ ...pillBtn, padding:'12px 24px', fontSize:15, width:'100%', maxWidth:260, boxSizing:'border-box' }}>
+          Pair with another device
+        </button>
+        <button onClick={() => setRestoreMode('words')}
+          style={{ ...pillBtn, padding:'12px 24px', fontSize:15, width:'100%', maxWidth:260, boxSizing:'border-box' }}>
+          Enter my 12 words
+        </button>
+        <button onClick={() => setRestoreMode(null)}
+          style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT, fontSize:13, cursor:'pointer', padding:4 }}>
+          Back
+        </button>
+      </div>
+    ) : restoreMode === 'words' ? (
+      <PhraseEntry key="0-words" onSubmit={restoreWords} onBack={() => setRestoreMode('choose')} />
+    ) : restoreMode === 'pair' || restoreMode === 'pair-waiting' ? (
       <div key="0-pair" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, flex:1, justifyContent:'center' }}>
         <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>Pair with another device</div>
         <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290, lineHeight:'1.6' }}>
@@ -3549,7 +3720,7 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
             // consuming a different link errors with "another pair session in
             // progress" until the timer fires.
             db.cancelPairing?.().catch(() => {})
-            setRestoreMode(null); setRestoreError(''); setPairInput('')
+            setRestoreMode('choose'); setRestoreError(''); setPairInput('')
           }}
           disabled={restoreMode === 'pair-waiting'}
           style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT,
@@ -3569,7 +3740,7 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
           style={{ ...pillBtn, padding:'12px 40px', fontSize:16, marginTop:8 }}>
           Get Started
         </button>
-        <button onClick={() => setRestoreMode('pair')}
+        <button onClick={() => setRestoreMode('choose')}
           style={{ background:'none', border:'none', color:colors.text.muted, fontFamily:FONT,
             fontSize:13, cursor:'pointer', padding:4, textDecoration:'underline' }}>
           I already use PearCal
@@ -3598,7 +3769,9 @@ function OnboardingModal ({ step, setStep, profile, onUpdateProfile, db, sync, q
       <User size={48} weight="thin" color="var(--color-accent)" />
       <div style={{ fontSize:22, fontWeight:400, color: colors.text.primary, textAlign:'center' }}>What's your name?</div>
       <div style={{ fontSize:14, color:colors.text.muted, textAlign:'center', maxWidth:290 }}>
-        This is how you'll appear to group members in shared groups.
+        {restored
+          ? "Your 12 words are in. Your calendars appear as they're found. Meanwhile, what name should members see?"
+          : "This is how you'll appear to group members in shared groups."}
       </div>
       <input value={name} onChange={e => setName(e.target.value)}
         placeholder="Your name"
@@ -5099,6 +5272,14 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
   // block key for an encrypted group (#164). Better a visible refusal than a
   // link that quietly produces a member who can never sync.
   const [copyFailed,       setCopyFailed]       = useState(null)
+  const [recovering,       setRecovering]       = useState(null)   // groupId being copied (#176)
+  const [recoverErr,       setRecoverErr]       = useState({})
+
+  async function recoverCopy (g) {
+    setRecovering(g.id); setRecoverErr(prev => ({ ...prev, [g.id]: '' }))
+    try { await db.recoverCopy(g.id) } catch (e) { setRecoverErr(prev => ({ ...prev, [g.id]: e?.message || 'Could not copy it' })) }
+    setRecovering(null)
+  }
   const [inviteModalGroup, setInviteModalGroup] = useState(null)
 
   useEffect(() => {
@@ -5161,6 +5342,9 @@ function GroupsTab ({ groups, profile, sync, db, readyGroupKeys, pendingApproval
             {(() => {
               const theme = { text: colors.text.primary, muted: colors.text.muted }
               return (<>
+                <RecoveryNotice group={g} theme={theme} onCopy={() => recoverCopy(g)}
+                  busy={recovering === g.id} error={recoverErr[g.id]}
+                  icon={<Hourglass size={18} weight="thin" color="#F5C474" />} />
                 <PendingApprovalNotice pending={pendingApprovalGroups?.has(g.id)} theme={theme}
                   icon={<Hourglass size={18} weight="thin" color="#F5C474" />} />
                 <KeylessNotice group={g} theme={theme}

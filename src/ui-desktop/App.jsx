@@ -297,7 +297,17 @@ export default function App ({ db, notifs, sync }) {
     emitter.on('pendingApproval', onPendingApproval)
     emitter.on('pendingApprovalCleared', onPendingApprovalCleared)
     emitter.on('groupKeyUpdated', onGroupKeyUpdated)
+    // #176: a restore from the 12 words opened its calendars, or a copy
+    // replaced one. Both change the list wholesale.
+    async function onRestoreChanged (st) {
+      if (!db || !st || (st.state !== 'done' && st.state !== 'copied')) return
+      const fresh = await db.listGroups().catch(() => null)
+      if (fresh) setGroups(fresh)
+      const evts = await db.listEvents().catch(() => null)
+      if (evts) setEvents(evts)
+    }
     emitter.on('groupDeleted',    onGroupDeleted)
+    emitter.on('restoreChanged',  onRestoreChanged)
     emitter.on('group:joined',    onGroupJoined)
     window.addEventListener('pear:groupJoined', onDomGroupJoined)
     return () => {
@@ -306,6 +316,7 @@ export default function App ({ db, notifs, sync }) {
       emitter.off('pendingApprovalCleared', onPendingApprovalCleared)
       emitter.off('groupKeyUpdated', onGroupKeyUpdated)
       emitter.off('groupDeleted',    onGroupDeleted)
+      emitter.off('restoreChanged',  onRestoreChanged)
       emitter.off('group:joined',    onGroupJoined)
       window.removeEventListener('pear:groupJoined', onDomGroupJoined)
     }

@@ -46,6 +46,7 @@ window.addEventListener('pear:qrScanResult', e => emitter.emit('qrScanResult', e
 window.addEventListener('pear:cameraResult', e => emitter.emit('cameraResult', e.detail))
 window.addEventListener('pear:groupKeyUpdated', e => emitter.emit('groupKeyUpdated', e.detail))
 window.addEventListener('pear:groupDeleted', e => emitter.emit('groupDeleted', e.detail))
+window.addEventListener('pear:restoreChanged', e => emitter.emit('restoreChanged', e.detail))
 window.addEventListener('pear:inviteBlocked', (e) => { emitter.emit('groupDeleted', e.detail); emitter.emit('inviteBlocked') })
 // A join that was refused outright, and one that simply never landed (TODO #119).
 // joinFailed already tore the stub group down in the worklet, so drop it from the
@@ -122,6 +123,9 @@ const db = {
   forgetPeerloomSeeder: (k) => window.__pearDB.call('forgetPeerloomSeeder', k),
   setSeederAutoFollow: (pk, on) => window.__pearDB.call('setSeederAutoFollow', pk, on),
   restoreMnemonic:    (m) => window.__pearDB.call('restoreMnemonic', m),
+  restoreFromPhrase:  (m) => window.__pearDB.call('restoreFromPhrase', m),
+  restoreStatus:      ()  => window.__pearDB.call('restoreStatus'),
+  recoverCopy:        (gid) => window.__pearDB.call('recoverCopy', gid),
   listPendingRejoins: ()  => window.__pearDB.call('listPendingRejoins'),
   approveRejoin:      (gid, ipk) => window.__pearDB.call('approveRejoin', gid, ipk),
   denyRejoin:         (gid, ipk) => window.__pearDB.call('denyRejoin', gid, ipk),
