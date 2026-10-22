@@ -47,3 +47,14 @@ test('the list has one entry per birthday, soonest first', async () => {
   const list = listBirthdays([...ana, ...ben, { id: 'x', date: '2026-11-01', title: 'Not a birthday' }], today)
   assert.deepStrictEqual(list.map(b => [b.birthday.name, b.next, b.title]), [["Ben", '2026-12-03', "Ben's birthday"], ['Ana', '2027-05-01', 'Ana turns 35']])
 })
+
+test('a forever series near its end gets another year, birthdays with their ages (#183)', async () => {
+  const { birthdayEvent } = await import('../src/ui-shared/lib/birthdays.js')
+  const { expandRecurring, planForeverExtensions } = await import('../src/ui-shared/lib/recurring.js')
+  const rows = expandRecurring(birthdayEvent({ name: 'Ana', month: 5, day: 1, year: 1992 }, new Date(2026, 9, 22)))
+  // A year on, the last row (2027-05-01) is within 90 days.
+  const add = planForeverExtensions(rows, new Date(2027, 2, 15))
+  assert.deepStrictEqual(add.map(o => [o.id.replace(/^bday-[a-z0-9]+/, 'bday'), o.date, o.title]), [['bday_r2', '2028-05-01', 'Ana turns 36']])
+  assert.deepStrictEqual(planForeverExtensions(rows, new Date(2026, 9, 22)), [], 'not yet near the end')
+  assert.deepStrictEqual(planForeverExtensions([...rows, ...add], new Date(2027, 2, 15)), [], 'nothing twice')
+})

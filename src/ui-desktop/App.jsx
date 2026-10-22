@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair,
+  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp,
   emitter, Tour,
 } from '../ui-shared/index.js'
 import { Sidebar } from './components/Sidebar/index.jsx'
@@ -84,6 +84,8 @@ export default function App ({ db, notifs, sync }) {
   const [myRsvps] = useRsvps(db)
   // Move any holiday event still sitting at a date an older build got wrong.
   useHolidayRepair(db, profile, events, setEvents, eventsReady)
+  // Another year of every "repeat forever" series, birthdays included (#183).
+  useForeverTopUp(db, events, setEvents, eventsReady)
   const view      = useViewState()
   const visibleGroups = useVisibleGroups(groups)
   const { saveEvent, deleteEvent } = useEventActions({
