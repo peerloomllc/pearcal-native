@@ -14,7 +14,16 @@
 
 // Bumped when peers gain the ability to read the `indexer` field. Mirrors
 // PROTOCOL_VERSION in bare.js; kept here so the pure logic has no import back.
-const REQUIRED_VERSION = 2
+//
+// 2 = reads the `indexer` field (release N, v1.0.43).
+// 3 = also never re-grants a device that is already a writer, and applies a
+//     demotion even for a writer this device has blocked (release N+1).
+// The gate waits for 3, not 2. A v2 build re-appends a bare `{ addWriter }`
+// for an existing writer on every reconnect, which reads as "make it a signer"
+// and silently undoes a demotion. And a v2 build skips a demotion of a writer
+// it has blocked locally while a v3 build applies it, which is two different
+// signer sets from one op.
+const REQUIRED_VERSION = 3
 
 // Peers from before the handshake existed send no version at all. Recorded as 1
 // rather than left absent, so "on old code" and "never met" stay distinct - they

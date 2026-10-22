@@ -95,3 +95,9 @@ test('a future version still counts as ready', () => {
   const r = classifyRollout([M('a', 'Ana')], [D('a', REQUIRED_VERSION + 5)])
   assert.equal(r.ready, true)
 })
+
+test('a release-N (v2) device is not enough for release N+1', () => {
+  const r = classifyRollout([M('a', 'Ana')], [D('a', 2)])
+  assert.equal(REQUIRED_VERSION, 3)
+  assert.equal(r.ready, false)
+})
