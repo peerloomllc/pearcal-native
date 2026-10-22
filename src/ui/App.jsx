@@ -8019,6 +8019,19 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 : "Your calendar list isn't backed up yet. Your seeder may be offline or need an update."}
             </div>
           )}
+          {/* TODO #181: the list is not enough for a restore; each calendar's
+              events have to be on the seeder too. */}
+          {keyringSt?.paired > 0 && keyringSt.calendars?.total > 0 && (
+            <div style={{ fontSize:12, color: keyringSt.calendars.incomplete.length ? '#F5A623' : colors.text.muted, lineHeight:1.5 }}>
+              {keyringSt.calendars.complete === keyringSt.calendars.total
+                ? (keyringSt.calendars.total === 1 ? 'Your calendar is fully on your seeder.' : `All ${keyringSt.calendars.total} calendars are fully on your seeder.`)
+                : keyringSt.calendars.incomplete.length
+                  ? `Not fully on your seeder yet: ${keyringSt.calendars.incomplete.join(', ')}. Your seeder copies the rest when a device that has those events is online.`
+                  : keyringSt.calendars.complete > 0
+                    ? `${keyringSt.calendars.complete} of ${keyringSt.calendars.total} calendars are fully on your seeder. Still checking: ${keyringSt.calendars.checking.join(', ')}.`
+                    : 'Checking your calendars on your seeder…'}
+            </div>
+          )}
           {plSeeders.map(sd => (
             <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, padding:'12px 14px',
               borderRadius:10, border:`1px solid ${colors.border}` }}>
