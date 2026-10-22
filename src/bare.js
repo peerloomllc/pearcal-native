@@ -57,6 +57,7 @@ const { buildLiveSeen, mergeLiveSeen, isRelayedLive, SHARE_INTERVAL_MS } = requi
 const { createKeyringSync } = require('./lib/keyringSync.js')
 const { entryFromGroup } = require('./lib/keyring.js')
 const { createRestoring } = require('./lib/restoring.js')
+const { groupCoverage, summarise: summariseCoverage } = require('./lib/seederCoverage.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -1621,7 +1622,7 @@ async function plsPullAll () {
   for (const [groupId, base] of bases) {
     for (const k of await plsSeedersFor(groupId, base)) {
       if (!bySeeder.has(k)) bySeeder.set(k, [])
-      bySeeder.get(k).push(base)
+      bySeeder.get(k).push([groupId, base])
     }
   }
   const keyPair = await plsKeyPair()
@@ -1635,17 +1636,66 @@ async function plsPullAll () {
       conn.once('close', () => { clearTimeout(t); resolve(false) })
     })
     const end = Date.now() + PLS_PULL_HOLD_MS
+    let checked = false
     while (opened && Date.now() < end && !conn.destroyed) {
-      for (const base of list) {
+      for (const [, base] of list) {
         try {
           for (const w of (base.activeWriters || [])) if (w?.core?.update) await w.core.update().catch(() => {})
           await base.update()
         } catch {}
       }
       await new Promise((r) => setTimeout(r, 1000))
+      // While the seeder is connected, over this connection or the
+      // registration one (it keeps one per device, so this one may close).
+      if (!checked) checked = await plsCheckHeld(seederKey, list).catch((e) => { console.warn('[pls] check failed:', e?.message); return false })
     }
+    if (!checked) await plsCheckHeld(seederKey, list).catch(() => false)
     conn.destroy()
   }))
+}
+
+// TODO #181: while connected to a seeder, how much of each writer core of
+// each calendar it holds against what this device has (src/lib/seederCoverage.js),
+// kept as `plsHeld:{groupId}` for Settings. Records nothing for a calendar
+// when no core has the seeder as a peer right now, since then it cannot tell;
+// true when it recorded at least one.
+async function plsCheckHeld (seederKey, list) {
+  const sk = b4a.from(seederKey, 'hex')
+  let recorded = false
+  for (const [groupId, base] of list) {
+    const cores = []
+    try {
+      for await (const { key } of base.system.list()) cores.push(store.get({ key }))
+    } catch { continue }
+    try {
+      await Promise.all(cores.map((c) => c.ready()))
+      // A core opened just now joins the connection's replication: give the
+      // seeder a moment to say what it has of it.
+      await new Promise((r) => setTimeout(r, 1500))
+      let seen = false
+      const writers = cores.map((c) => {
+        const theirs = (c.peers || []).filter((p) => p.remotePublicKey && b4a.equals(p.remotePublicKey, sk))
+        if (theirs.length) seen = true
+        return { localLength: c.length, seederContiguous: theirs.length ? Math.max(...theirs.map((p) => p.remoteContiguousLength || 0)) : null }
+      })
+      if (!seen) continue
+      recorded = true
+      const prev = (await db.get('plsHeld:' + groupId).catch(() => null))?.value || {}
+      await db.put('plsHeld:' + groupId, { ...prev, [seederKey]: { ...groupCoverage(writers), at: Date.now() } })
+    } finally {
+      for (const c of cores) await c.close().catch(() => {})
+    }
+  }
+  return recorded
+}
+
+// Settings: which of this device's calendars are fully on a paired seeder.
+async function seederCoverage () {
+  const paired = await pairedSeederKeys()
+  const groups = (await keyringEntries()).map((e) => ({ id: e.groupId, name: e.name }))
+  const records = {}
+  for (const g of groups) records[g.id] = (await db.get('plsHeld:' + g.id).catch(() => null))?.value || {}
+  return summariseCoverage(groups, records, paired)
 }
 
 function plsPull () {
@@ -1911,8 +1961,9 @@ async function keyringCheck () {
 }
 
 async function keyringStatus () {
-  if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null }
-  return _keyringSync.status()
+  const calendars = await seederCoverage().catch(() => null)
+  if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null, calendars }
+  return { ...await _keyringSync.status(), calendars }
 }
 
 // ── Restore from the recovery phrase (same proposal, step 4) ──────────────────
@@ -3259,6 +3310,7 @@ async function deleteGroup (id) {
   await db.del(NS.groupMembers + id).catch(() => {})
   await db.del('joinedAt:' + id).catch(() => {})
   await db.del('lastSync:' + id).catch(() => {})
+  await db.del('plsHeld:' + id).catch(() => {})
   _lastSyncStamp.delete(id)
   // Clean up member records
   for await (const { key } of db.createReadStream({ gt: NS.members + id, lt: NS.members + id + '\xff' })) {

@@ -20,6 +20,7 @@
 //   2. With Ana offline and the owner restarted, the seeder gets Ana's
 //      earlier writes from the owner.
 //   3. The seeder holds Ana's writes from after the pairing.
+//   4. keyringStatus reports the calendar as fully on the seeder (#181).
 
 const path = require('path')
 const fs = require('fs')
@@ -112,6 +113,10 @@ async function main () {
   const anaLen = (await peers.ana.call('debugGroup', group.id))?.writers?.find(w => anaKey.startsWith(w.k) || w.k.startsWith(anaKey.slice(0, 12)))?.core
   const a = await until(async () => { const h = await held(anaKey); return full(h) && h.length === anaLen ? h : null }, 150000, 5000)
   check("3. the seeder holds Ana's writes from after the pairing", !!a, JSON.stringify(a || await held(anaKey)) + ' ana has ' + anaLen)
+
+  // #181: Settings says so, from what the owner sees on its pulls.
+  const cov = await until(async () => { const c = (await peers.owner.call('keyringStatus'))?.calendars; return c && c.total >= 1 && c.complete === c.total ? c : null }, 180000, 5000)
+  check('4. Settings says the calendar is fully on the seeder', !!cov, JSON.stringify(cov || (await peers.owner.call('keyringStatus'))?.calendars))
 
   await done()
 }
