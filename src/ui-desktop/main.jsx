@@ -116,6 +116,7 @@ const db = {
   getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
   setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
   listPeerloomSeeders: () => window.__pearDB.call('listPeerloomSeeders'),
+  keyringStatus:       () => window.__pearDB.call('keyringStatus'),
   pairPeerloomSeeder:  (link) => window.__pearDB.call('pairPeerloomSeeder', link),
   setPeerloomSeederGroup: (k, gid, on) => window.__pearDB.call('setPeerloomSeederGroup', k, gid, on),
   forgetPeerloomSeeder: (k) => window.__pearDB.call('forgetPeerloomSeeder', k),

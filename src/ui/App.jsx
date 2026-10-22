@@ -6738,7 +6738,11 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [plPasting, setPlPasting] = useState(false)
   const [plModal,   setPlModal]   = useState(null) // SeederModal's props, or null
   const [plPending, setPlPending] = useState({})   // seederKey:groupId -> the switch's new state
+  // The calendar list backup (proposals/2026-10-22-phrase-recovers-calendars.md):
+  // how many paired seeders hold this device's latest version.
+  const [keyringSt, setKeyringSt] = useState(null)
   const loadPlSeeders = useCallback(() => {
+    db.keyringStatus?.().then(st => setKeyringSt(st ?? null)).catch(() => {})
     return db.listPeerloomSeeders?.().then(list => setPlSeeders(list ?? [])).catch(() => {})
   }, [db])
   useEffect(() => {
@@ -7724,6 +7728,13 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
             </button>
           </div>
           {plMsg && <div style={{ fontSize:12, color: colors.text.muted }}>{plMsg}</div>}
+          {keyringSt?.paired > 0 && (
+            <div style={{ fontSize:12, color: colors.text.muted, lineHeight:1.5 }}>
+              {keyringSt.seeders > 0
+                ? `Your calendar list is backed up to ${keyringSt.seeders === keyringSt.paired ? (keyringSt.paired === 1 ? 'your seeder' : `all ${keyringSt.paired} of your seeders`) : `${keyringSt.seeders} of your ${keyringSt.paired} seeders`}.`
+                : keyringSt.at ? 'Your calendar list is not backed up yet. Your seeder may be offline or need an update.' : 'Backing up your calendar list…'}
+            </div>
+          )}
           {plSeeders.map(sd => (
             <div key={sd.seederKey} style={{ display:'flex', flexDirection:'column', gap:6, padding:'12px 14px',
               borderRadius:10, border:`1px solid ${colors.border}` }}>

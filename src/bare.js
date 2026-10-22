@@ -54,6 +54,8 @@ const { classifySyncHealth, shouldStampSync } = require('./lib/syncHealth.js')
 const { classifyRollout, REQUIRED_VERSION } = require('./lib/rolloutGate.js')
 const { decideIndexerChange } = require('./lib/indexerPolicy.js')
 const { buildLiveSeen, mergeLiveSeen, isRelayedLive, SHARE_INTERVAL_MS } = require('./lib/liveness.js')
+const { createKeyringSync } = require('./lib/keyringSync.js')
+const { entryFromGroup } = require('./lib/keyring.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -402,6 +404,9 @@ async function handle (method, args) {
     case 'renameBlindPeer':  return renameBlindPeer(args[0], args[1])
     case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
     case 'listPeerloomSeeders': return listPeerloomSeeders()
+    case 'keyringStatus':    return keyringStatus()
+    // Diagnostic: back the calendar list up now, even if nothing changed.
+    case 'keyringBackupNow': return _keyringSync ? _keyringSync.run({ force: true }) : { written: false }
     case 'pairPeerloomSeeder': return pairPeerloomSeeder(args[0])
     case 'setPeerloomSeederGroup': return setPeerloomSeederGroup(args[0], args[1], args[2])
     case 'forgetPeerloomSeeder': return forgetPeerloomSeeder(args[0])
@@ -1606,6 +1611,7 @@ function startPeerloomSeeding () {
     _plsTimer = setInterval(() => plsSweep(), PLS_SWEEP_MS)
     _plsPullTimer = setInterval(() => plsPull(), PLS_PULL_MS)
     plsSweep()
+    startKeyringBackup()
   }).catch((e) => console.warn('[pls] start failed:', e?.message))
 }
 
@@ -1613,6 +1619,7 @@ async function stopPeerloomSeeding () {
   clearInterval(_plsTimer); _plsTimer = null
   clearInterval(_plsPullTimer); _plsPullTimer = null
   _plsRegistered.clear()
+  if (_keyringSync) { _keyringSync.close(); _keyringSync = null }
   const p = _plsPeering
   _plsPeering = null
   if (p) await p.close().catch(() => {})
@@ -1656,6 +1663,7 @@ async function pairPeerloomSeeder (link) {
   try {
     const { seederKey, style } = await plsClient.pair({ swarm: temp, link, app: 'PearCal' })
     await db.put(PLS_LOCAL + seederKey, { seederKey, style, pairedAt: Date.now() })
+    pokeKeyring()
     // Back up every group this device is in (answer 2); it can untick them.
     let groups = 0
     for (const groupId of bases.keys()) {
@@ -1736,6 +1744,7 @@ async function forgetPeerloomSeeder (seederKey) {
   }
   await db.del(PLS_LOCAL + seederKey)
   plsSweep()
+  pokeKeyring()
   // In the background, so an offline seeder does not hold up the screen. One
   // asker, so the requests go one after another over one connection at a
   // time: parallel connections from the same key lost requests (the seeder
@@ -1747,6 +1756,83 @@ async function forgetPeerloomSeeder (seederKey) {
       .catch((e) => console.warn('[pls] drop failed:', e?.message))
   }
   return { ok: true, kept }
+}
+
+// ── Calendar list backup (proposals/2026-10-22-phrase-recovers-calendars.md) ──
+// Every device paired with a PeerLoom Seeder keeps an encrypted list of its
+// calendars there (src/lib/keyring.js), so the 12 words can bring them back.
+// On by default once paired (decided 2026-10-22). src/lib/keyringSync.js does
+// the merging and writing; this supplies the app's side.
+let _keyringSync = null
+let _plsAskerInst = null
+const _plsStyles = new Map()   // seederKey -> the names it was paired under
+
+// One asker for keyring requests. Over the blind-peering connection to that
+// seeder when one is open: the seeder keeps one connection per device key, and
+// a second one from the same key lost requests (see forgetPeerloomSeeder).
+function plsAsker () {
+  if (!_plsAskerInst) {
+    _plsAskerInst = plsClient.createAsker({
+      dht: () => plsDht(),
+      keyPair: () => _plsKeyPair,
+      openSocket: (seederKey) => {
+        const bp = _plsPeering?.blindPeers?.get(seederKey)
+        return bp && bp.connected && bp.socket
+      },
+      styleOf: (seederKey) => _plsStyles.get(seederKey) || 'peerloom',
+    })
+  }
+  return _plsAskerInst
+}
+
+async function pairedSeederKeys () {
+  const out = []
+  for await (const { value } of db.createReadStream({ gt: PLS_LOCAL, lt: PLS_LOCAL + '\xff' })) {
+    if (!value?.seederKey) continue
+    out.push(value.seederKey)
+    if (value.style) _plsStyles.set(value.seederKey, value.style)
+  }
+  return out.sort()
+}
+
+async function keyringEntries () {
+  const out = []
+  for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
+    if (!value?.id || value.migratedTo || value.deleted) continue
+    if (await isForgottenGroup(value.id)) continue
+    const e = entryFromGroup(value)
+    if (e) out.push(e)
+  }
+  return out
+}
+
+function startKeyringBackup () {
+  if (_keyringSync) return
+  _keyringSync = createKeyringSync({
+    getMnemonic: () => nativeRequest('getMnemonic'),
+    listGroups: keyringEntries,
+    isGone: async (groupId) => !!(await db.get('keyringLeft:' + groupId).catch(() => null)) || await isForgottenGroup(groupId),
+    listSeeders: pairedSeederKeys,
+    keyringGet: (seederKey, locator) => plsAsker().ask(seederKey, { t: 'keyring-get', locator }).then((r) => r.rec || null),
+    keyringPut: (seederKey, rec) => plsAsker().ask(seederKey, { t: 'keyring-put', rec }),
+    store: {
+      get: async (k) => (await db.get(k).catch(() => null))?.value,
+      put: (k, v) => db.put(k, v),
+    },
+    emit: (data) => send({ type: 'event', event: 'keyringChanged', data }),
+    log: (m) => console.log('[keyring]', m),
+  })
+  _keyringSync.start()
+}
+
+// Something in the calendar list or the seeder list changed.
+function pokeKeyring () {
+  if (_keyringSync) _keyringSync.poke()
+}
+
+async function keyringStatus () {
+  if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null }
+  return _keyringSync.status()
 }
 
 async function initBlindPeering (key) {
@@ -2775,6 +2861,7 @@ async function putGroupRecord (groupId, value, tag) {
   })
   if (encrypted && !next.encrypted) next = { ...next, encrypted: true }
   await db.put(key, next)
+  pokeKeyring()
   return next
 }
 
@@ -2937,6 +3024,10 @@ async function reinviteMember (groupId, memberId) {
 }
 
 async function deleteGroup (id) {
+  // Gone from this device: the calendar list backup marks it removed, so a
+  // restore does not bring back a calendar the person left.
+  await db.put('keyringLeft:' + id, { ts: Date.now() }).catch(() => {})
+  pokeKeyring()
   await db.del(NS.groups + id)
   await db.del(NS.groupMembers + id).catch(() => {})
   await db.del('joinedAt:' + id).catch(() => {})
