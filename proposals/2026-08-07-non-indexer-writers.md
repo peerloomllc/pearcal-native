@@ -612,6 +612,54 @@ itself a signer (for example a restored owner on a new device), so such groups
 are not repaired yet; the personal base, which keeps today's behaviour; and the
 #155 banner wording for the margin.
 
+### Follow-up, same day: backup proposer, and an Autobase stall
+
+**Backup proposer.** The owner's lowest-keyed online device proposes whether or
+not it signs, so an owner restored onto a new phone still repairs its
+calendars. If no owner device has been seen for seven days, the lowest-keyed
+online signer that is not the owner's stands in. The week keeps an owner who is
+merely offline from racing a stand-in; if both act anyway the result is four
+signers, which the next run repairs.
+
+**Grants never demote.** A device that had not caught up could re-grant an
+existing signer as `{ addWriter, indexer: false }`, which Autobase reads as a
+demotion. Demotions now also carry `demote: true`, and apply treats
+`indexer: false` without it as a no-op for an existing writer. A device whose
+base is not open yet no longer re-grants at all.
+
+**Autobase does not sign plain-writer entries while a signer is missing.** With
+three signers, one offline, and entries written by a non-signer, the two
+remaining signers never sign them: `linearizer.shouldAck` is false on both and
+a forced ack changes nothing. The entries replicate and apply; only
+`indexedLength` stays put, until a signer appends any real value.
+`test/harness/indexer-nudge.js`:
+
+| Case | Signed |
+| --- | --- |
+| Plain writer, one of three signers gone | no (5 of 5 runs) |
+| Then one entry from a signer | yes |
+| Same entries written by a signer | yes |
+| Every device a signer | yes |
+
+It never showed before because every entry was signer-authored. The fix is
+`runSignNudgeTick`: a signer whose signed count has not moved for a minute
+appends one `{ nudge }` entry, only if a non-signer has written since its last
+nudge, and only if no lower-keyed signer is directly connected. apply has no
+branch for it on any build. Two earlier trigger rules failed on devices
+(emulator + TCL + Mac + a Linux engine): "anything unsigned" fired every minute
+forever, because three signers always leave a few acks unsigned at the tip; and
+"a majority of signers directly connected" blocked every nudge when the
+signers reached each other only through another member. With the final rule
+the device run showed one nudge per burst of plain-writer entries, signing
+caught up within about 70 seconds, then nothing.
+
+Reproduces on unpatched Autobase 7.25.1 and on the latest, 7.28.2.
+In `signer-policy-e2e.js`, step 4 stalled in 4 of 6 runs before the nudge, and
+step 4b, added to force the case by stopping a promoted signer for good,
+stalled in 2 of 2. After the nudge both pass in 2 of 2 full runs.
+
+**Worth reporting upstream** to Autobase, with indexer-nudge.js as the repro.
+
 ## Open questions
 
 1. **Who holds indexer authority after the owner?** The obvious hook is the

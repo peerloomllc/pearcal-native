@@ -19,7 +19,11 @@ const M = '/home/tim/peerloomllc/pearcal-native/node_modules/'
 const Autobase = require(M + 'autobase')
 const Corestore = require(M + 'corestore')
 const os = require('os'), path = require('path'), fs = require('fs')
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'demote-'))
+// Test data goes on disk, not os.tmpdir(): /tmp is a RAM disk on Tim's machine
+// and one run of this script writes hundreds of MB. PEARCAL_TEST_TMP overrides.
+const testTmp = process.env.PEARCAL_TEST_TMP || path.join(os.homedir(), '.cache', 'pearcal-tests')
+fs.mkdirSync(testTmp, { recursive: true })
+const root = fs.mkdtempSync(path.join(testTmp, 'demote-'))
 const open = s => s.get('view', { valueEncoding: 'json' })
 
 // Same shape as PearCal's group apply: addWriter with the indexer field read
