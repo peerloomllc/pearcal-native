@@ -1978,6 +1978,14 @@ async function recoveryStateFor (groupId) {
   }
   const group = (await base.view.get(NS.groups + groupId).catch(() => null))?.value
   if (!group) return 'waiting'
+  // The member list is only complete once every other device's writes are
+  // here and applied. A member whose writes have not arrived is not in it
+  // yet: on the TCL (2026-10-22) a second member's core was missing from the
+  // seeder and the list showed only the owner, which offered a copy wrongly.
+  for (const w of base.activeWriters || []) {
+    if (!w?.core || (base.local && b4a.equals(w.core.key, base.local.key))) continue
+    if (w.core.length === 0 || w.length < w.core.length) return 'waiting'
+  }
   const split = (await base.view.get(NS.groupMembers + groupId).catch(() => null))?.value
   const members = split?.members || group.members || []
   const me = (await getProfile().catch(() => null))?.id
