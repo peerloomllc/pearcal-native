@@ -18,6 +18,14 @@
 //   4. The seeder's files contain neither the calendar's name nor its key.
 //   5. A new calendar reaches the seeder's copy.
 //   6. A calendar left is marked removed there.
+//
+// Then the owner loses the device and restores from the 12 words on a new one
+// (step 4):
+//   7. The restore finds the list and pairs the new device with the seeder.
+//   8. Both calendars come back with their keys saved.
+//   9. The calendar Ana is in lets the new device back in while she is online.
+//  10. The calendar only the owner was in offers a copy, and the copy has its
+//      event.
 
 const path = require('path')
 const fs = require('fs')
@@ -109,6 +117,52 @@ async function main () {
   await peers.owner.call('leaveGroup', group.id)
   const k6 = await has(kk => kk.groups[group.id]?.removed === true)
   check('6. a calendar left is marked removed there', !!k6, k6 ? JSON.stringify(k6.groups[group.id]) : '')
+
+  // --- step 4: lose the device, restore from the words -----------------------
+  const shared = await peers.owner.call('createGroup', 'Shared with Ana', {})
+  await peers.ana.call('putGroup', shared)
+  await peers.ana.call('joinGroup', shared)
+  const soloEvent = { id: 'e-solo-1', date: '2026-11-03', title: 'Solo marker event', groups: [second.id] }
+  await peers.owner.call('putEvent', soloEvent)
+  await peers.owner.call('putEvent:sync', second.id, soloEvent)
+  // Ana in and the solo event on the seeder before the device is lost.
+  await until(async () => (await peers.owner.call('listGroups')).find(g => g.id === shared.id)?.members?.length >= 2 || null, 120000, 3000)
+  await has(kk => keyring.groups(kk).some(e => e.groupId === shared.id))
+  await new Promise(r => setTimeout(r, 20000))
+  await E.stop('owner')
+  console.log('      owner device gone')
+
+  await launch('restored')
+  const before = await peers.restored.call('getProfile')
+  await peers.restored.call('restoreFromPhrase', ownerWords)
+  const rs = await until(async () => { const s = await peers.restored.call('restoreStatus'); return s && s.state !== 'looking' && s.state !== 'opening' ? s : null }, 150000, 3000)
+  check('7. the restore finds the list and pairs with the seeder', rs?.state === 'done' && rs.seeders === 1 && (await peers.restored.call('keyringStatus'))?.paired === 1,
+    JSON.stringify(rs) + ' id changed: ' + (before?.id !== (await peers.restored.call('getProfile'))?.id))
+
+  const back = await peers.restored.call('listGroups')
+  const gotShared = await peers.restored.call('getGroup', shared.id)
+  const gotSolo = await peers.restored.call('getGroup', second.id)
+  check('8. both calendars come back with their keys', gotShared?.encryptionKey === shared.encryptionKey && gotSolo?.encryptionKey === second.encryptionKey && !back.some(g => g.id === group.id),
+    back.map(g => g.name + ':' + (g.recovery || 'in')).join(', '))
+
+  const sharedIn = await until(async () => {
+    const g = (await peers.restored.call('listGroups')).find(x => x.id === shared.id)
+    return g && !g.recovery ? g : null
+  }, 180000, 5000)
+  check('9. Ana lets the new device back into the shared calendar', !!sharedIn,
+    JSON.stringify((await peers.restored.call('listGroups')).find(x => x.id === shared.id)?.recovery))
+
+  const soloCopy = await until(async () => {
+    const g = (await peers.restored.call('listGroups')).find(x => x.id === second.id)
+    return g?.recovery === 'copy' ? g : null
+  }, 180000, 5000)
+  let copied = null
+  if (soloCopy) copied = await peers.restored.call('recoverCopy', second.id).catch(e => ({ error: e.message }))
+  const afterCopy = await peers.restored.call('listGroups')
+  const events = copied?.groupId ? await peers.restored.call('listEvents', {}).catch(() => []) : []
+  const moved = (Array.isArray(events) ? events : []).find(ev => ev.id === soloEvent.id)
+  check('10. the solo calendar offers a copy, which has its event', !!soloCopy && copied?.events >= 1 && !afterCopy.some(g => g.id === second.id) && afterCopy.some(g => g.id === copied.groupId) && moved?.groups?.includes(copied.groupId),
+    JSON.stringify({ state: (await peers.restored.call('listGroups')).find(x => x.id === second.id)?.recovery, copied, moved: moved?.groups }))
 
   await dht.destroy().catch(() => {})
   await done()

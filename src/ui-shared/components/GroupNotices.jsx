@@ -105,6 +105,43 @@ export function SyncHealthNotice ({ group, theme, icon = null }) {
   )
 }
 
+/**
+ * #176 - a calendar the recovery phrase brought back, before another member's
+ * device has let this one write to it again (`group.recovery` from
+ * listGroups/getGroup). 'copy' when nobody else is in it, so nobody ever can:
+ * the way out is a copy this person owns. `onCopy` returns a promise.
+ */
+export function RecoveryNotice ({ group, theme, icon = null, onCopy = null, busy = false, error = '' }) {
+  if (group?.recovery === 'waiting') {
+    return (
+      <Notice tone={NEUTRAL} theme={theme} icon={icon} title="Waiting for another member to come online">
+        This calendar came back with your recovery phrase. You can see it, and once another member
+        opens PearCal you can change it again.
+      </Notice>
+    )
+  }
+  if (group?.recovery !== 'copy') return null
+  return (
+    <Notice tone={AMBER} theme={theme} icon={icon} title="Nobody else can let you back in"
+      footer={error || null}>
+      Only you were in this calendar, and the device that could change it is gone. A copy you own
+      has the same events and new keys. Anyone else you want in it will need a new invite.
+      {onCopy ? (
+        <div style={{ marginTop: 8 }}>
+          <button onClick={onCopy} disabled={busy}
+            style={{
+              background: AMBER.fg, color: '#1a1a1a', border: 'none', borderRadius: 8,
+              padding: '6px 12px', fontSize: 12, cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.6 : 1, fontFamily: 'inherit',
+            }}>
+            {busy ? 'Copying…' : 'Make a copy you own'}
+          </button>
+        </div>
+      ) : null}
+    </Notice>
+  )
+}
+
 /** Joiner is waiting on the owner to approve a return (rejoin gating). */
 export function PendingApprovalNotice ({ pending, theme, icon = null }) {
   if (!pending) return null
@@ -119,9 +156,10 @@ export function PendingApprovalNotice ({ pending, theme, icon = null }) {
  * All three in the order they should appear, for a host with nothing special to
  * say. `icons` is optional: { keyless, stale, pending }.
  */
-export function GroupNotices ({ group, pendingApproval, theme, icons = {} }) {
+export function GroupNotices ({ group, pendingApproval, theme, icons = {}, onRecoverCopy = null, recoverBusy = false, recoverError = '' }) {
   return (
     <>
+      <RecoveryNotice group={group} theme={theme} icon={icons.recovery} onCopy={onRecoverCopy} busy={recoverBusy} error={recoverError} />
       <PendingApprovalNotice pending={pendingApproval} theme={theme} icon={icons.pending} />
       <KeylessNotice group={group} theme={theme} icon={icons.keyless} />
       <SyncHealthNotice group={group} theme={theme} icon={icons.stale} />

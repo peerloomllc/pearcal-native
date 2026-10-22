@@ -10,12 +10,17 @@
 //             identity (name, avatar, groups, mnemonic) installed.
 
 import { useEffect, useRef, useState } from 'react'
+import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
+import { phraseWordsFrom, pickWord, unknownWords } from '../../ui-shared/lib/phraseWords.js'
 import { emitter } from '../../ui-shared/index.js'
 
 const AVATAR_SUGGESTIONS = ['🍐', '🐝', '🌿', '🦊', '🌊', '🔥', '⭐', '🎯', '🍋', '🌸', '🐢', '🦋']
 
 export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
-  const [mode,    setMode]    = useState(null)        // null | 'fresh' | 'pair'
+  const [mode,    setMode]    = useState(null)        // null | 'fresh' | 'pair' | 'words'
+  const [words,   setWords]   = useState(() => Array(12).fill(''))
+  const [restored, setRestored] = useState(false)
+  const wordRefs = useRef([])
   const [name,    setName]    = useState(profile?.name ?? '')
   const [avatar,  setAvatar]  = useState(profile?.avatar ?? '')
   const [busy,    setBusy]    = useState(false)
@@ -98,6 +103,42 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
     }
   }
 
+  // #176 step 4: the 12 recovery words, one box each. Pasting into any box
+  // fills all 12; 4 letters pick a word and move on.
+  function setWord (i, v) {
+    const parts = phraseWordsFrom(v)
+    if (parts.length > 1) {
+      const next = Array(12).fill('')
+      parts.slice(0, 12).forEach((w, j) => { next[j] = w })
+      setWords(next); setErr('')
+      wordRefs.current[Math.min(parts.length, 11)]?.focus()
+      return
+    }
+    const t = parts[0] || ''
+    const picked = t.length >= 4 ? pickWord(t, BIP39_WORDS) : null
+    setWords(prev => prev.map((w, j) => j === i ? (picked || t) : w))
+    setErr('')
+    if (picked && i < 11) wordRefs.current[i + 1]?.focus()
+  }
+
+  async function handleRestore () {
+    const bad = unknownWords(words.filter(Boolean), BIP39_WORDS)
+    if (words.some(w => !w)) { setErr('Fill in all 12 words.'); return }
+    if (bad.length) { setErr('Not a recovery word: ' + bad.join(', ')); return }
+    setBusy(true); setErr('')
+    try {
+      await db.restoreFromPhrase(words.join(' '))
+      // Name and avatar stay on each device, so they are asked for next.
+      setRestored(true); setMode('fresh')
+    } catch (e) {
+      const m = e?.message || ''
+      setErr(/invalid BIP39/i.test(m) ? "These words aren't a recovery phrase. Check each word and their order."
+        : /different id/i.test(m) ? 'This device already has calendars under someone else. Restore on a fresh install.'
+        : 'Could not restore: ' + (m || 'unknown error'))
+    }
+    setBusy(false)
+  }
+
   async function cancelPair () {
     try { await db.cancelPairing() } catch {}
     setPairWaiting(false); setBusy(false); setPasteUrl(''); setErr('')
@@ -158,14 +199,71 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
             }}>
               Pair with an existing device
             </button>
+            <button onClick={() => { setMode('words'); setErr('') }} style={{
+              ...btnBase, padding: '12px 18px', fontSize: 14, fontWeight: 500,
+            }}>
+              Enter my 12 words
+            </button>
             <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, textAlign: 'center', marginTop: 8 }}>
               Pair to bring your identity, profile, and groups across from another device running PearCal.
+              Lost your devices? Your 12 words bring back who you are, and your calendars if a PeerLoom
+              Seeder you paired kept your calendar list.
             </div>
           </div>
         )}
 
+        {mode === 'words' && (
+          <>
+            <div style={{ fontSize: 13, color: tokens.text, lineHeight: 1.5, marginBottom: 12 }}>
+              Enter the 12 words from Settings → Recovery phrase on your old device, in order.
+              Pasting all 12 into the first box fills them in.
+            </div>
+            <datalist id="bip39-words">
+              {BIP39_WORDS.map(w => <option key={w} value={w} />)}
+            </datalist>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+              {words.map((w, i) => {
+                const bad = w && !BIP39_WORDS.includes(w) && !BIP39_WORDS.some(x => x.startsWith(w))
+                return (
+                  <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: tokens.muted }}>
+                    <span style={{ width: 18, textAlign: 'right' }}>{i + 1}</span>
+                    <input ref={el => { wordRefs.current[i] = el }} value={w} list="bip39-words"
+                      autoFocus={i === 0} autoComplete="off" spellCheck={false}
+                      onChange={e => setWord(i, e.target.value)}
+                      onKeyDown={e => { if ((e.key === 'Enter' || e.key === ' ') && i < 11) { e.preventDefault(); wordRefs.current[i + 1]?.focus() } }}
+                      style={{ ...inputBase, padding: '6px 6px', fontFamily: 'ui-monospace, monospace', fontSize: 12,
+                        borderColor: bad ? '#C0504A' : tokens.border }} />
+                  </label>
+                )
+              })}
+            </div>
+            {err && <div style={{ fontSize: 12, color: '#C0504A', marginBottom: 10 }}>{err}</div>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 18 }}>
+              <button onClick={() => { setMode(null); setWords(Array(12).fill('')); setErr('') }} disabled={busy}
+                      style={{ ...btnBase, minWidth: 140, opacity: busy ? 0.5 : 1 }}>
+                Back
+              </button>
+              <button onClick={handleRestore}
+                      disabled={busy || words.some(x => !x)}
+                      style={{
+                        ...accentBtn, minWidth: 140,
+                        opacity: (busy || words.some(x => !x)) ? 0.5 : 1,
+                        cursor:  (busy || words.some(x => !x)) ? 'default' : 'pointer',
+                      }}>
+                {busy ? 'Restoring…' : 'Restore'}
+              </button>
+            </div>
+          </>
+        )}
+
         {mode === 'fresh' && (
           <>
+            {restored && (
+              <div style={{ fontSize: 13, color: tokens.text, lineHeight: 1.5, marginBottom: 14 }}>
+                Your 12 words are in. Your calendars appear as they're found. Meanwhile, what name
+                should members see?
+              </div>
+            )}
             <div style={{ marginBottom: 16 }}>
               <div style={label}>Your name</div>
               <input ref={nameRef} value={name}
@@ -192,10 +290,12 @@ export function OnboardingScreen ({ tokens, profile, db, updateProfile }) {
             </div>
             {err && <div style={{ fontSize: 12, color: '#C0504A', marginBottom: 10 }}>{err}</div>}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 18 }}>
-              <button onClick={() => { setMode(null); setErr('') }} disabled={busy}
-                      style={{ ...btnBase, minWidth: 140, opacity: busy ? 0.5 : 1 }}>
-                Back
-              </button>
+              {!restored && (
+                <button onClick={() => { setMode(null); setErr('') }} disabled={busy}
+                        style={{ ...btnBase, minWidth: 140, opacity: busy ? 0.5 : 1 }}>
+                  Back
+                </button>
+              )}
               <button onClick={handleFreshFinish}
                       disabled={busy || !name.trim()}
                       style={{

@@ -56,6 +56,7 @@ const { decideIndexerChange } = require('./lib/indexerPolicy.js')
 const { buildLiveSeen, mergeLiveSeen, isRelayedLive, SHARE_INTERVAL_MS } = require('./lib/liveness.js')
 const { createKeyringSync } = require('./lib/keyringSync.js')
 const { entryFromGroup } = require('./lib/keyring.js')
+const { createRestoring } = require('./lib/restoring.js')
 const {
   computeReminderFireTime,
   computeStartFireTime,
@@ -405,6 +406,9 @@ async function handle (method, args) {
     case 'setSeederAutoFollow': return setSeederAutoFollow(args[0], args[1])
     case 'listPeerloomSeeders': return listPeerloomSeeders()
     case 'keyringStatus':    return keyringStatus()
+    case 'restoreFromPhrase': return restoreFromPhrase(args[0])
+    case 'restoreStatus':    return restoreStatus()
+    case 'recoverCopy':      return recoverCopy(args[0])
     case 'keyringCheck':     return keyringCheck()
     // Diagnostic: back the calendar list up now, even if nothing changed.
     case 'keyringBackupNow': return _keyringSync ? _keyringSync.run({ force: true }) : { written: false }
@@ -1511,6 +1515,22 @@ async function plsSeedersOf (base) {
   return out.sort()
 }
 
+// A calendar brought back by the recovery phrase has no data yet, so no rows
+// name its seeders: until it does, use the seeders the restore found
+// (`recovered:{groupId}`, src/lib/restoring.js).
+const _plsHints = new Map() // groupId -> seeder keys
+async function plsSeedersFor (groupId, base) {
+  const keys = await plsSeedersOf(base)
+  if (keys.length) return keys
+  return [...(_plsHints.get(groupId) || [])].sort()
+}
+
+async function loadPlsHints () {
+  for await (const { key, value } of db.createReadStream({ gt: 'recovered:', lt: 'recovered:\xff' })) {
+    if (Array.isArray(value?.seeders)) _plsHints.set(key.slice('recovered:'.length), value.seeders)
+  }
+}
+
 // The swarm's DHT, direct first and through the relay after a failed
 // holepunch to that seeder (a Start9 on the same network needs the relay).
 let _plsDht = null
@@ -1532,7 +1552,7 @@ async function plsSweepAll () {
   let removed = false
   const wanted = new Map()
   for (const [groupId, base] of bases) {
-    const keys = await plsSeedersOf(base)
+    const keys = await plsSeedersFor(groupId, base)
     wanted.set(groupId, keys)
     const prev = _plsRegistered.get(groupId)
     if (prev && prev.split(',').some((k) => k && !keys.includes(k))) removed = true
@@ -1561,8 +1581,8 @@ async function plsSweepAll () {
 async function plsPullAll () {
   if (!swarm) return
   const bySeeder = new Map()
-  for (const [, base] of bases) {
-    for (const k of await plsSeedersOf(base)) {
+  for (const [groupId, base] of bases) {
+    for (const k of await plsSeedersFor(groupId, base)) {
       if (!bySeeder.has(k)) bySeeder.set(k, [])
       bySeeder.get(k).push(base)
     }
@@ -1608,11 +1628,12 @@ function plsSweep () {
 
 function startPeerloomSeeding () {
   if (_plsTimer || !swarm) return
-  plsMakePeering().then(() => {
+  loadPlsHints().catch(() => {}).then(() => plsMakePeering()).then(() => {
     _plsTimer = setInterval(() => plsSweep(), PLS_SWEEP_MS)
     _plsPullTimer = setInterval(() => plsPull(), PLS_PULL_MS)
     plsSweep()
     startKeyringBackup()
+    startRestoring()
   }).catch((e) => console.warn('[pls] start failed:', e?.message))
 }
 
@@ -1621,6 +1642,7 @@ async function stopPeerloomSeeding () {
   clearInterval(_plsPullTimer); _plsPullTimer = null
   _plsRegistered.clear()
   if (_keyringSync) { _keyringSync.close(); _keyringSync = null }
+  if (_restoring) { _restoring.close(); _restoring = null }
   const p = _plsPeering
   _plsPeering = null
   if (p) await p.close().catch(() => {})
@@ -1854,6 +1876,140 @@ async function keyringCheck () {
 async function keyringStatus () {
   if (!_keyringSync) return { seeders: 0, paired: (await pairedSeederKeys()).length, at: null }
   return _keyringSync.status()
+}
+
+// ── Restore from the recovery phrase (same proposal, step 4) ──────────────────
+// Onboarding's "Enter my 12 words" calls restoreFromPhrase. It restores the
+// identity, then src/lib/restoring.js finds the calendar list on the seeders
+// announcing its topic, claims them and opens each calendar. A calendar stays
+// `recovered:{groupId}` until another member's device lets this one write.
+let _restoring = null
+
+async function restoreFromPhrase (words) {
+  const out = await restoreMnemonic(words)
+  await db.put('restore:pending', { at: Date.now() })
+  await db.del('restore:status').catch(() => {})
+  if (_restoring) _restoring.start()
+  else startRestoring()
+  return out
+}
+
+// The seeders announcing a keyring's topic, by the key they are dialled with.
+async function plsLookup (topic) {
+  const out = new Set()
+  if (!swarm?.dht) return []
+  for await (const data of swarm.dht.lookup(topic)) {
+    for (const p of data.peers || []) if (p.publicKey) out.add(b4a.toString(p.publicKey, 'hex'))
+  }
+  return [...out]
+}
+
+async function addRecoveredGroup (e, seederKeys) {
+  await db.put('recovered:' + e.groupId, { at: Date.now(), seeders: seederKeys })
+  _plsHints.set(e.groupId, seederKeys)
+  await db.del('keyringLeft:' + e.groupId).catch(() => {})
+  const profile = await getProfile().catch(() => null)
+  const self = profile ? {
+    id: profile.id,
+    name: profile.name,
+    avatar: profile.avatar ?? '?',
+    publicKey: profile.publicKey,
+    ...(profile.identityPublicKey ? { identityPublicKey: profile.identityPublicKey } : {}),
+  } : null
+  const record = {
+    id: e.groupId,
+    name: e.name,
+    ownerId: e.ownerId,
+    groupKey: e.groupKey,
+    ...(e.encryptionKey ? { encryptionKey: e.encryptionKey } : {}),
+    members: self ? [self] : [],
+    joinedAt: Date.now(),
+  }
+  // Save the record with its key first: joinGroup alone does not, and the
+  // calendar would come back keyless after the next restart.
+  await putGroupRecord(e.groupId, record, 'restore')
+  await joinGroup(record)
+  plsSweep()
+}
+
+function startRestoring () {
+  if (_restoring || !swarm) return
+  _restoring = createRestoring({
+    getMnemonic: () => nativeRequest('getMnemonic'),
+    lookup: plsLookup,
+    keyringGet: (seederKey, locator) => plsAsker().ask(seederKey, { t: 'keyring-get', locator }, 15000).then((r) => r.rec || null),
+    keyringClaim: (seederKey, locator, sig) => plsAsker().ask(seederKey, { t: 'keyring-claim', locator, sig }, 15000),
+    deviceKey: async () => b4a.toString((await plsKeyPair()).publicKey, 'hex'),
+    addSeeder: async (seederKey) => {
+      if (await db.get(PLS_LOCAL + seederKey).catch(() => null)) return
+      await db.put(PLS_LOCAL + seederKey, { seederKey, style: 'peerloom', pairedAt: Date.now(), via: 'keyring' })
+      pokeKeyring()
+    },
+    haveGroup: async (groupId) => !!(await db.get(NS.groups + groupId).catch(() => null)),
+    addGroup: addRecoveredGroup,
+    store: {
+      get: async (k) => (await db.get(k).catch(() => null))?.value,
+      put: (k, v) => db.put(k, v),
+      del: (k) => db.del(k).catch(() => {}),
+    },
+    emit: (data) => send({ type: 'event', event: 'restoreChanged', data }),
+    log: (m) => console.log('[restore]', m),
+  })
+  _restoring.start()
+}
+
+async function restoreStatus () {
+  return (await db.get('restore:status').catch(() => null))?.value || null
+}
+
+// For a calendar brought back by the phrase: null once this device can write
+// to it again, 'copy' when its members are known and nobody else is one (so
+// nobody can let this device back in), otherwise 'waiting'.
+async function recoveryStateFor (groupId) {
+  const rec = await db.get('recovered:' + groupId).catch(() => null)
+  if (!rec?.value) return null
+  const base = bases.get(groupId)
+  if (!base) return 'waiting'
+  if (base.writable) {
+    await db.del('recovered:' + groupId).catch(() => {})
+    _plsHints.delete(groupId)
+    plsSweep()
+    return null
+  }
+  const group = (await base.view.get(NS.groups + groupId).catch(() => null))?.value
+  if (!group) return 'waiting'
+  const split = (await base.view.get(NS.groupMembers + groupId).catch(() => null))?.value
+  const members = split?.members || group.members || []
+  const me = (await getProfile().catch(() => null))?.id
+  return members.some((m) => m?.id && m.id !== me) ? 'waiting' : 'copy'
+}
+
+// "Make a copy you own" (decided 2026-10-22): a new calendar with the same
+// events, new keys and this person as owner. The old one is read-only for
+// good, so it goes once the copy holds its events.
+async function recoverCopy (oldId) {
+  if ((await recoveryStateFor(oldId)) !== 'copy') throw new Error('Only a calendar nobody else can let you back into can be copied')
+  const old = await getGroup(oldId)
+  const base = bases.get(oldId)
+  await base.update().catch(() => {})
+  const copy = await createGroup(old.name, { color: old.color, emoji: old.emoji, icon: old.icon })
+  // Close the old calendar first, so nothing mirrors its events back under
+  // the old id while they move.
+  await leaveGroup(oldId)
+  let events = 0
+  for await (const { key, value } of db.createReadStream({ gt: NS.events, lt: NS.events + '\xff' })) {
+    if (!Array.isArray(value?.groups) || !value.groups.includes(oldId)) continue
+    const ev = { ...value, groups: value.groups.map((g) => g === oldId ? copy.id : g) }
+    await db.put(key, ev)
+    await syncPutEvent(copy.id, ev)
+    events++
+  }
+  await deleteGroup(oldId)
+  await db.del('recovered:' + oldId).catch(() => {})
+  _plsHints.delete(oldId)
+  console.log('[restore] copied ' + oldId + ' to ' + copy.id + ' with ' + events + ' events')
+  send({ type: 'event', event: 'restoreChanged', data: { state: 'copied', from: oldId, to: copy.id } })
+  return { groupId: copy.id, events }
 }
 
 async function initBlindPeering (key) {
@@ -2369,6 +2525,7 @@ async function getGroup (id) {
   if (g && g.id) {
     g.indexers = indexerInfoFor(g.id)
     g.rollout = await rolloutStatusFor(g.id, g).catch(() => null)
+    g.recovery = await recoveryStateFor(g.id).catch(() => null)
   }
   return g
 }
@@ -2493,6 +2650,10 @@ async function listGroups () {
     // #159: how many devices can sign, and are we clear to change that yet.
     hydrated.indexers = indexerInfoFor(value.id)
     hydrated.rollout = await rolloutStatusFor(value.id, hydrated).catch(() => null)
+    // #176: a calendar brought back by the recovery phrase, not yet let in.
+    // Always set, null when there is nothing to say, so the UI can tell an
+    // enriched record from a raw one (mergeGroupState).
+    hydrated.recovery = await recoveryStateFor(value.id).catch(() => null)
     groups.push(hydrated)
   }
   return groups
@@ -3260,6 +3421,13 @@ async function createGroup (name, metadata) {
 
   await base.close()
   await joinGroup(group)
+  // Back the new calendar up to every seeder this device is paired with, as
+  // pairing does for the calendars already here, so the recovery phrase can
+  // bring its events back too. In the background: it waits on the base.
+  pairedSeederKeys().then(async (keys) => {
+    for (const k of keys) await plsWriteRow(groupId, k, true).catch((e) => console.warn('[pls] add new group failed:', e?.message))
+  }).catch(() => {})
+  pokeKeyring()
   return group
 }
 

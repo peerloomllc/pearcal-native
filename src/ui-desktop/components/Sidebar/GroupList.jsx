@@ -15,6 +15,8 @@ function troubleWith (g, pendingApprovalGroups) {
       ? "Can't sync on this device - open group settings"
       : "Hasn't synced since you joined - open group settings"
   }
+  if (g?.recovery === 'copy') return 'Nobody else can let you back in - open group settings'
+  if (g?.recovery === 'waiting') return 'Waiting for another member to come online'
   if (g?.syncHealth?.state === 'stale') return "Hasn't synced in a while - open group settings"
   if (pendingApprovalGroups?.has?.(g?.id)) return 'Waiting for owner approval - open group settings'
   return null

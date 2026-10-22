@@ -26,6 +26,14 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
   const [saving,  setSaving]  = useState(false)
   const [saved,   setSaved]   = useState(false)
   const [linkCopied, setLinkCopied] = useState(false)
+  // #176: "Make a copy you own" for a calendar nobody else can let you back
+  // into. The copy arrives through restoreChanged; this one closes.
+  const [recovering, setRecovering] = useState(false)
+  const [recoverErr, setRecoverErr] = useState('')
+  async function recoverCopy () {
+    setRecovering(true); setRecoverErr('')
+    try { await db.recoverCopy(group.id); onClose() } catch (e) { setRecoverErr(e?.message || 'Could not copy it'); setRecovering(false) }
+  }
   const myMember = (group?.members ?? []).find(m => m.id === profile?.id)
   const [nickname, setNickname] = useState(myMember?.nickname ?? '')
   const [nickSaving, setNickSaving] = useState(false)
@@ -182,7 +190,10 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
         <GroupNotices
           group={group}
           pendingApproval={pendingApproval}
-          theme={{ text: tokens.text, muted: tokens.muted }} />
+          theme={{ text: tokens.text, muted: tokens.muted }}
+          onRecoverCopy={recoverCopy}
+          recoverBusy={recovering}
+          recoverError={recoverErr} />
 
         {!isOwner && (
           <div style={{
