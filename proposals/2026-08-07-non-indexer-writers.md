@@ -642,9 +642,18 @@ a forced ack changes nothing. The entries replicate and apply; only
 | Every device a signer | yes |
 
 It never showed before because every entry was signer-authored. The fix is
-`runSignNudgeTick`: a signer whose signed count has not moved for a minute,
-with a majority of signers online, appends one `{ nudge }` entry, at most every
-ten minutes per stall. apply has no branch for it on any build.
+`runSignNudgeTick`: a signer whose signed count has not moved for a minute
+appends one `{ nudge }` entry, only if a non-signer has written since its last
+nudge, and only if no lower-keyed signer is directly connected. apply has no
+branch for it on any build. Two earlier trigger rules failed on devices
+(emulator + TCL + Mac + a Linux engine): "anything unsigned" fired every minute
+forever, because three signers always leave a few acks unsigned at the tip; and
+"a majority of signers directly connected" blocked every nudge when the
+signers reached each other only through another member. With the final rule
+the device run showed one nudge per burst of plain-writer entries, signing
+caught up within about 70 seconds, then nothing.
+
+Reproduces on unpatched Autobase 7.25.1 and on the latest, 7.28.2.
 In `signer-policy-e2e.js`, step 4 stalled in 4 of 6 runs before the nudge, and
 step 4b, added to force the case by stopping a promoted signer for good,
 stalled in 2 of 2. After the nudge both pass in 2 of 2 full runs.

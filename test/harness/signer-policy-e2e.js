@@ -219,14 +219,20 @@ async function main () {
 
   const group = await peers.owner.call('createGroup', 'SignerTest', {})
   const gid = group.id
+  // Join the way the app's invite flow does (App.jsx): save the group record,
+  // key included, THEN join. joinGroup alone opens the base with the key but
+  // never stores it, so a member restarted later comes back keyless, on the
+  // unencrypted topic, unable to find anyone. That is what made "ana" lag
+  // after her restart in early runs of this script.
+  const join = async name => { await peers[name].call('putGroup', group); await peers[name].call('joinGroup', group) }
   // One at a time: joining both at once left the second one's every
   // connection timing out on this host.
-  await peers.ana.call('joinGroup', group)
+  await join('ana')
   await until(async () => ((await peers.owner.call('listGroups')).find(x => x.id === gid)?.members?.length ?? 0) >= 2, 120000)
   await until(async () => ((await peers.owner.call('listGroups')).find(x => x.id === gid)?.members?.length ?? 0) >= 2, 120000)
-  await peers.ben.call('joinGroup', group)
+  await join('ben')
   await until(async () => ((await peers.owner.call('listGroups')).find(x => x.id === gid)?.members?.length ?? 0) >= 3, 120000)
-  await peers.cal.call('joinGroup', group)
+  await join('cal')
 
   let seen = {}
   const joined = await until(async () => {

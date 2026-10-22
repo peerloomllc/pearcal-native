@@ -2633,12 +2633,21 @@ async function runIndexerPolicyTick () {
 //
 // So a signer that sees the signed count stuck appends one tiny `nudge` entry.
 // apply() has no branch for it on any build, so every peer treats it the same.
-// Only when a majority of signers is online (a nudge cannot help otherwise),
-// after a minute without progress, and at most every ten minutes per stall,
-// so a calendar stuck for other reasons does not fill up with nudges.
+//
+// When to nudge, each condition from a real failure:
+// - signed has not moved for a minute and something is unsigned;
+// - a NON-signer has written since this device last nudged. With three
+//   signers a few ack entries always sit unsigned at the tip, so "something is
+//   unsigned" alone fired every minute for as long as a signer was away (seen
+//   on the emulator + TCL + Mac test, 2026-10-22). Plain-writer entries are
+//   what stall, so they are what justifies a nudge;
+// - this is the lowest-keyed signer among those directly connected, so two
+//   signers seldom both nudge. Direct connection is only a tie-break: signers
+//   often reach each other through another member (the emulator and TCL did,
+//   via the Mac), so "is a majority directly connected" was dropped as a gate
+//   after it blocked every nudge in exactly that layout.
 const NUDGE_STALL_MS = 60 * 1000
-const NUDGE_REPEAT_MS = 10 * 60 * 1000
-const _nudgeWatch = new Map()   // groupId -> { signed, since, lastNudge }
+const _nudgeWatch = new Map()   // groupId -> { signed, since, plainAtNudge }
 async function runSignNudgeTick () {
   const now = Date.now()
   for (const [groupId, base] of bases) {
@@ -2646,18 +2655,21 @@ async function runSignNudgeTick () {
       if (!base?.writable || !base.isIndexer || _degradedBases.has(base)) { _nudgeWatch.delete(groupId); continue }
       const signed = base.indexedLength ?? 0
       const total = base.length ?? 0
-      const w = _nudgeWatch.get(groupId)
-      if (!w || w.signed !== signed || total <= signed) {
-        _nudgeWatch.set(groupId, { signed, since: now, lastNudge: w && w.signed === signed ? w.lastNudge : 0 })
-        continue
-      }
+      const w = _nudgeWatch.get(groupId) ?? { signed: -1, since: now, plainAtNudge: null }
+      _nudgeWatch.set(groupId, w)
+      if (w.signed !== signed || total <= signed) { w.signed = signed; w.since = now; continue }
       if (now - w.since < NUDGE_STALL_MS) continue
-      if (w.lastNudge && now - w.lastNudge < NUDGE_REPEAT_MS) continue
-      const signers = (base.linearizer?.indexers ?? []).map(i => b4a.toString(i.core.key, 'hex'))
-      const me = b4a.toString(base.local.key, 'hex')
-      const online = signers.filter(k => k === me || _liveWriters.has(groupId + ':' + k)).length
-      if (online < Math.floor(signers.length / 2) + 1) continue
-      w.lastNudge = now
+
+      const hex = k => b4a.toString(k, 'hex')
+      const signers = (base.linearizer?.indexers ?? []).map(i => hex(i.core.key))
+      let plain = 0
+      for (const wr of (base.activeWriters ?? [])) if (!signers.includes(hex(wr.core.key))) plain += wr.length
+      if (plain === 0 || plain === w.plainAtNudge) continue
+
+      const me = hex(base.local.key)
+      if (signers.some(k => k !== me && k < me && _liveWriters.has(groupId + ':' + k))) continue
+
+      w.plainAtNudge = plain
       console.log('[signers] nudge', groupId, 'signed stuck at', signed, 'of', total)
       await safeAppend(base, { nudge: now }, 'sign nudge')
     } catch (e) {}
