@@ -525,6 +525,17 @@ export default function Root () {
             )
           }
         }
+        // #24: a calendar file opened or shared into the app. The native side
+        // already read it; the WebView parses it and opens the import sheet.
+        if (PearCalLink.getPendingIcs) {
+          const raw = await PearCalLink.getPendingIcs()
+          if (raw && webViewRef.current) {
+            const { text, filename } = JSON.parse(raw)
+            webViewRef.current.injectJavaScript(
+              `if(window.__pearHandleIcs) { window.__pearHandleIcs(${JSON.stringify(text)}, ${JSON.stringify(filename)}); } true;`
+            )
+          }
+        }
       } catch(e) {}
     }, 1000)
     return () => clearInterval(interval)

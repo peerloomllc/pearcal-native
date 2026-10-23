@@ -27,6 +27,41 @@
             "BROWSABLE",
             "DEFAULT"
           ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "mimeType": "text/calendar"
+            },
+            {
+              "mimeType": "application/ics"
+            },
+            {
+              "mimeType": "text/x-vcalendar"
+            }
+          ],
+          "category": [
+            "DEFAULT",
+            "BROWSABLE"
+          ]
+        },
+        {
+          "action": "SEND",
+          "data": [
+            {
+              "mimeType": "text/calendar"
+            },
+            {
+              "mimeType": "application/ics"
+            },
+            {
+              "mimeType": "text/x-vcalendar"
+            }
+          ],
+          "category": [
+            "DEFAULT"
+          ]
         }
       ],
       "versionCode": 1000050,
@@ -46,7 +81,19 @@
         ],
         "LSApplicationQueriesSchemes": [
           "lightning"
-        ]
+        ],
+        "CFBundleDocumentTypes": [
+          {
+            "CFBundleTypeName": "Calendar file",
+            "CFBundleTypeRole": "Viewer",
+            "LSHandlerRank": "Alternate",
+            "LSItemContentTypes": [
+              "com.apple.ical.ics",
+              "public.calendar-event"
+            ]
+          }
+        ],
+        "LSSupportsOpeningDocumentsInPlace": false
       }
     },
     "plugins": [

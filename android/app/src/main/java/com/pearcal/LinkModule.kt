@@ -12,6 +12,9 @@ class LinkModule(reactContext: ReactApplicationContext) :
         var pendingLink: String? = null
         var pendingTab: String? = null
         var pendingGroupSettingsId: String? = null
+        // #24: a calendar file opened or shared into the app, as JSON
+        // { text, filename }, waiting for the JS side to poll it.
+        var pendingIcs: String? = null
     }
 
     override fun getName() = NAME
@@ -32,6 +35,12 @@ class LinkModule(reactContext: ReactApplicationContext) :
     fun getPendingGroupSettingsId(promise: Promise) {
         promise.resolve(pendingGroupSettingsId)
         pendingGroupSettingsId = null
+    }
+
+    @ReactMethod
+    fun getPendingIcs(promise: Promise) {
+        promise.resolve(pendingIcs)
+        pendingIcs = null
     }
 
     @ReactMethod
