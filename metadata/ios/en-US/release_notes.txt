@@ -1,24 +1,12 @@
 ## What's Changed
 
 New Features
-  - Get your calendars back with your 12 words. On a new phone or computer, choose "I already use PearCal", then "Enter my 12 words". If you use a PeerLoom Seeder, your calendars come back on their own.
-  - Your personal events, private notes and reminders come back with your 12 words too.
-  - See your 12-word recovery phrase in Settings. Your phone asks for your fingerprint, face or PIN first (Touch ID on a Mac). New users see it once after setup, and existing users see it once after this update.
-  - Birthdays: add birthdays in Settings and they show on your calendar every year, with the age when you know the birth year and a reminder that morning.
-  - Desktop: you can now pair a PeerLoom Seeder from Settings, so your computer backs up your calendars too.
+  - Open calendar files straight into PearCal. Tap a calendar file (.ics) in your email, Files or another app, or share it to PearCal, and the import screen opens on its own.
+  - Desktop: you can now hand a group over to another member, or claim a group whose owner has been inactive for more than 30 days.
+  - Desktop: "Reset app data" is now in Settings. Clear your calendar and groups and stay the same person, or start over as a new user.
 
 Improvements
-  - Settings now shows whether your calendar list and each of your calendars are fully backed up to your seeder.
-  - After a restore, each calendar tells you whether it is waiting for another member to come online. If nobody else was in it, you can make a copy you own.
-  - Your seeder now keeps everyone's changes to a shared calendar, not just yours, so a restore brings back the whole calendar.
-  - Shared calendars stay in sync more reliably when a member's old device is gone for good.
-  - Members you reach through another member now count as online.
-
-Security
-  - On Android, screenshots are blocked while your 12 words are on screen.
-
-Bug Fixes
-  - Desktop: fixed a crash when opening the app.
-  - Desktop: fixed calendars that could not open.
-  - Desktop: events set to repeat forever no longer stop after a year.
-  - Typing a whole word on the restore screen no longer spills letters into the next word.
+  - Repeating events now carry over when you import a calendar file. Birthdays and other yearly, monthly, weekly or daily events from Google, Apple or Yandex keep repeating instead of showing up only once.
+  - Exporting keeps repeating events as a single repeating entry, so "repeat forever" events keep all their future dates and other calendar apps see one series instead of hundreds of copies.
+  - Importing a file you already imported no longer creates duplicates of repeating events.
+  - If a calendar file has no events PearCal can read, you now get a short message instead of nothing happening.
