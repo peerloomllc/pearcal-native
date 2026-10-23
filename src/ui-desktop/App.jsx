@@ -665,7 +665,7 @@ export default function App ({ db, notifs, sync }) {
           events={icsImport.events}
           filename={icsImport.filename}
           groups={groups}
-          existingEventIds={new Set((events ?? []).map(e => e.id))}
+          existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
           onImport={(toImport) => {
             for (const { ev, uid, keptGroups } of toImport) {
               const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
@@ -679,9 +679,11 @@ export default function App ({ db, notifs, sync }) {
                 meetingLink: ev.meetingLink ?? '',
                 groups: keptGroups, invitees: [],
                 color: firstGroup?.color ?? '', colors: [],
-                recurrence: 'none', recurrenceId: '', recurrenceEnd: '',
-                recurrenceNth: 0, recurrenceWeekday: 0, recurrenceInterval: 1,
-                repeatForever: false, rsvpEnabled: false,
+                // A repeat rule the file carried (#184); saveEvent expands it.
+                recurrence: ev.recurrence ?? 'none', recurrenceId: '', recurrenceEnd: ev.recurrenceEnd ?? '',
+                recurrenceNth: ev.recurrenceNth ?? 0, recurrenceWeekday: ev.recurrenceWeekday ?? 0,
+                recurrenceInterval: ev.recurrenceInterval ?? 1,
+                repeatForever: !!ev.repeatForever, rsvpEnabled: false,
                 editPermission: keptGroups.length ? 'everyone' : 'creator',
                 creatorId: profile?.id ?? 'unknown',
               }, {})

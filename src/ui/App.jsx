@@ -8751,7 +8751,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
       {icsImport && (
         <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}
           groups={groups}
-          existingEventIds={new Set((events ?? []).map(e => e.id))}
+          existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
           onImport={(toImport) => {
             if (!saveEvent) return
             for (const r of toImport) {
@@ -8768,8 +8768,10 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 meetingLink: ev.meetingLink ?? '',
                 groups: keptGroups, invitees: [],
                 color: firstGroup?.color ?? '#6C9BF5', colors: [], reminder: 0,
-                recurrence: 'none', recurrenceId: '', recurrenceEnd: '',
-                recurrenceNth: 0, recurrenceWeekday: 0,
+                // A repeat rule the file carried (#184); saveEvent expands it.
+                recurrence: ev.recurrence ?? 'none', recurrenceId: '', recurrenceEnd: ev.recurrenceEnd ?? '',
+                recurrenceNth: ev.recurrenceNth ?? 0, recurrenceWeekday: ev.recurrenceWeekday ?? 0,
+                recurrenceInterval: ev.recurrenceInterval ?? 1, repeatForever: !!ev.repeatForever,
                 editPermission: 'everyone', creatorId: profile?.id ?? '',
               }, 'one', {}, [])
             }
