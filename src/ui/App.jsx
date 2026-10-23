@@ -19,7 +19,7 @@ import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
 import QRCode from 'qrcode'
 import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
-import { calendarListLine, calendarsLine, personalLine } from '../ui-shared/lib/seederStatus.js'
+import { calendarListLine, calendarsLine, personalLine, PEARCAL_SEEDER_LINK } from '../ui-shared/lib/seederStatus.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs, icsFileGroups, routeIcsImport,
@@ -349,7 +349,6 @@ const iconBtn = {
 const LINKBTN = { background:'none', border:'none', padding:0, cursor:'pointer', fontFamily:FONT, fontSize:13, color:'var(--color-accent)' }
 // A PearCal seeder's pairing link (src/lib/seederPairLink.js); anything else
 // scanned in the seeder section goes to PeerLoom Seeder.
-const PEARCAL_SEEDER_LINK = /^(pearcal:\/\/seedpair|https:\/\/peerloomllc\.com\/seedpair)\b/i
 
 const pillBtn = {
   background: colors.primary, border: 'none',

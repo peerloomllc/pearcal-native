@@ -61,6 +61,7 @@ window.addEventListener('pear:pairingFailed',    e => emitter.emit('pairingFaile
 window.addEventListener('pear:pairingExpired',   e => emitter.emit('pairingExpired', e.detail))
 window.addEventListener('pear:profileChanged',   e => emitter.emit('profileChanged', e.detail))
 window.addEventListener('pear:linkedDevicesChanged', e => emitter.emit('linkedDevicesChanged', e.detail))
+window.addEventListener('pear:blindPeersChanged', e => emitter.emit('blindPeersChanged', e.detail))
 
 const db = {
   getProfile:    ()          => window.__pearDB.call('getProfile'),
@@ -123,6 +124,13 @@ const db = {
   setPeerloomSeederGroup: (k, gid, on) => window.__pearDB.call('setPeerloomSeederGroup', k, gid, on),
   forgetPeerloomSeeder: (k) => window.__pearDB.call('forgetPeerloomSeeder', k),
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),
+  // PearCal seeders (blind peers), #163: pair by pasted link, list, rename,
+  // remove and auto-follow, as on the phone.
+  listBlindPeers:     ()   => window.__pearDB.call('listBlindPeers'),
+  removeBlindPeer:    (pk) => window.__pearDB.call('removeBlindPeer', pk),
+  renameBlindPeer:    (pk, n) => window.__pearDB.call('renameBlindPeer', pk, n),
+  setSeederAutoFollow: (pk, on) => window.__pearDB.call('setSeederAutoFollow', pk, on),
+  seederPairScan:     (link) => window.__pearDB.call('seederPairScan', link),
   restoreMnemonic:    (m) => window.__pearDB.call('restoreMnemonic', m),
   restoreFromPhrase:  (m) => window.__pearDB.call('restoreFromPhrase', m),
   restoreStatus:      ()  => window.__pearDB.call('restoreStatus'),

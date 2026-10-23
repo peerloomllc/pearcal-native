@@ -3,6 +3,10 @@
 // Each is null when there is nothing to say; `warn` marks a calendar that is
 // not fully on the seeder.
 
+// A PearCal seeder's pairing link. Anything else pasted or scanned into the
+// seeder section is taken as a PeerLoom Seeder link.
+export const PEARCAL_SEEDER_LINK = /^(pearcal:\/\/seedpair|https:\/\/peerloomllc\.com\/seedpair)\b/i
+
 export function calendarListLine (st) {
   if (!st || !(st.paired > 0)) return null
   if (st.seeders > 0) {

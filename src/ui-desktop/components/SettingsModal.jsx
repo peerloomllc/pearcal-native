@@ -1,6 +1,6 @@
 // Settings modal - display preferences (24h / week start), holidays, .ics
-// import/export, storage reports, PeerLoom Seeder, recovery phrase, linked
-// devices, About. The older PearCal seeder (blind peer) is still phone-only.
+// import/export, storage reports, seeders (PeerLoom Seeder and the older
+// PearCal seeder), recovery phrase, linked devices, About.
 //
 // The storage section is read-only on purpose. Mobile ships the same two
 // reports and hides its two write actions, Reclaim Storage and Sweep Orphaned
@@ -12,11 +12,11 @@
 // on sibling-device sync, never on local writes.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
+import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs, emitter } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
-import { calendarListLine, calendarsLine, personalLine } from '../../ui-shared/lib/seederStatus.js'
+import { calendarListLine, calendarsLine, personalLine, PEARCAL_SEEDER_LINK } from '../../ui-shared/lib/seederStatus.js'
 import { parseBirthday, birthdayEvent, listBirthdays } from '../../ui-shared/lib/birthdays.js'
 import { MORNING_OF } from '../lib/reminderOptions.js'
 
@@ -577,6 +577,9 @@ function BirthdaysSection ({ tokens, events, label, btnBase, onSaveEvent, onDele
 // (src/ui/App.jsx). Desktop has no camera for the QR code, so the link from the
 // seeder's dashboard is pasted. Without this a desktop-only user had no seeder,
 // so no backup of the calendar list and no recovery from the 12 words.
+//
+// #163: the same box pairs a PearCal seeder (the link says which), and those
+// are listed below with rename, remove and auto-follow, as on the phone.
 function SeederSection ({ tokens, db, sync, label, btnBase }) {
   const [seeders, setSeeders] = useState([])
   const [st, setSt] = useState(null)
@@ -585,6 +588,7 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
   const [msg, setMsg] = useState('')
   const [pending, setPending] = useState({})   // seederKey:groupId -> the switch's new state
   const [confirm, setConfirm] = useState(null) // seederKey being asked about
+  const [blindPeers, setBlindPeers] = useState([])
 
   const load = useCallback(() => {
     db.keyringStatus?.().then(x => setSt(x ?? null)).catch(() => {})
@@ -595,14 +599,31 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
     const t = setInterval(load, 5000)
     return () => clearInterval(t)
   }, [load])
+  // The engine emits blindPeersChanged when a PearCal seeder is added, renamed,
+  // removed or reports a new group count.
+  const loadBlindPeers = useCallback(() => {
+    db.listBlindPeers?.().then(list => setBlindPeers(list ?? [])).catch(() => {})
+  }, [db])
+  useEffect(() => {
+    loadBlindPeers()
+    emitter.on('blindPeersChanged', loadBlindPeers)
+    return () => emitter.off('blindPeersChanged', loadBlindPeers)
+  }, [loadBlindPeers])
 
   async function pair () {
     const clean = link.trim().replace(/^[a-z]+:/i, (m) => m.toLowerCase())
     if (!clean) return
     setBusy(true); setMsg('Pairing… this can take up to a minute.')
     try {
-      const r = await db.pairPeerloomSeeder(clean)
-      setMsg(`Paired. ${r?.groups ?? 0} group${r?.groups === 1 ? ' is' : 's are'} backing up to it.`)
+      if (PEARCAL_SEEDER_LINK.test(clean)) {
+        const r = await db.seederPairScan(clean)
+        if (!r?.ok) throw new Error(r?.error || 'Pairing failed')
+        loadBlindPeers()
+        setMsg(`Paired. ${r.enrolled ?? 0} group${r.enrolled === 1 ? ' is' : 's are'} backing up to it.`)
+      } else {
+        const r = await db.pairPeerloomSeeder(clean)
+        setMsg(`Paired. ${r?.groups ?? 0} group${r?.groups === 1 ? ' is' : 's are'} backing up to it.`)
+      }
       setLink('')
     } catch (e) {
       const m = String(e?.message ?? e)
@@ -714,10 +735,110 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
           })}
         </div>
       ))}
+      {blindPeers.map(bp => (
+        <BlindPeerRow key={bp.pubkey} bp={bp} tokens={tokens} db={db} btnBase={btnBase} small={small} onChanged={loadBlindPeers} />
+      ))}
       <button onClick={() => sync?.openURL?.('https://peerloomllc.com/seeder')}
         style={{ background: 'none', border: 'none', padding: '8px 0 0', fontSize: 12, color: tokens.accent, cursor: 'pointer', fontFamily: tokens.font }}>
         Get PeerLoom Seeder
       </button>
+    </div>
+  )
+}
+
+// One PearCal seeder. The name is local to this computer; a blank name falls
+// back to the name the seeder gives itself.
+function BlindPeerRow ({ bp, tokens, db, btnBase, small, onChanged }) {
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [confirm, setConfirm] = useState(false)
+
+  async function save () {
+    if (saving) return
+    setSaving(true)
+    try {
+      await db.renameBlindPeer(bp.pubkey, draft.trim().slice(0, 32))
+      setRenaming(false)
+    } catch (e) { console.error('renameBlindPeer failed', e) }
+    setSaving(false)
+    onChanged()
+  }
+  async function remove () {
+    await db.removeBlindPeer(bp.pubkey).catch(() => {})
+    setConfirm(false)
+    onChanged()
+  }
+  async function setAutoFollow (on) {
+    await db.setSeederAutoFollow(bp.pubkey, on).catch(() => {})
+    onChanged()
+  }
+
+  const smallBtn = { ...btnBase, padding: '4px 10px', fontSize: 12 }
+  return (
+    <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 6, border: `1px solid ${tokens.border}` }}>
+      {renaming ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <input autoFocus value={draft} maxLength={32} onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') { e.preventDefault(); save() }
+              if (e.key === 'Escape') { e.preventDefault(); setRenaming(false) }
+            }}
+            placeholder={bp.seederName || 'Seeder'}
+            style={{ padding: '7px 10px', fontSize: 12, borderRadius: 5, border: `1px solid ${tokens.border}`,
+              background: tokens.bg, color: tokens.text, fontFamily: tokens.font, outline: 'none' }} />
+          <div style={small}>A name just for this computer. Leave blank to use the seeder's own name.</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button onClick={() => setRenaming(false)} disabled={saving} style={smallBtn}>Cancel</button>
+            <button onClick={save} disabled={saving} style={{ ...smallBtn, opacity: saving ? 0.5 : 1 }}>
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: tokens.text }}>
+                {bp.nickname || 'Seeder'} <span style={{ fontSize: 11, color: tokens.muted }}>(PearCal Seeder)</span>
+              </div>
+              <div style={{ fontSize: 11, color: tokens.muted, fontFamily: 'ui-monospace, monospace',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {String(bp.pubkey).slice(0, 16)}…
+              </div>
+              {/* TODO #125: the engine counts live coverage and supplies the wording. */}
+              {bp.coverageLabel && (
+                <div style={{ fontSize: 11, color: bp.coverageLabel.tone === 'warn' ? '#F5A623' : tokens.muted }}>
+                  {bp.coverageLabel.text}
+                </div>
+              )}
+            </div>
+            {confirm ? (
+              <>
+                <button onClick={() => setConfirm(false)} style={smallBtn}>Keep</button>
+                <button onClick={remove}
+                  style={{ ...smallBtn, background: '#C0504A', color: '#fff', borderColor: '#C0504A' }}>
+                  Remove it
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => { setDraft(bp.override ?? ''); setRenaming(true) }} style={smallBtn}>Rename</button>
+                <button onClick={() => setConfirm(true)} style={{ ...smallBtn, color: '#C0504A', borderColor: '#C0504A' }}>Remove</button>
+              </>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: tokens.text }}>Auto-follow new groups</div>
+              <div style={{ fontSize: 11, color: tokens.muted }}>
+                Seeds groups you create later. Shares topic keys, it still can't read them.
+              </div>
+            </div>
+            <ToggleSwitch tokens={tokens} value={!!bp.autoFollow} onChange={setAutoFollow} />
+          </div>
+        </>
+      )}
     </div>
   )
 }
