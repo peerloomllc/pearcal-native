@@ -55,9 +55,10 @@ if (MODE === 'fault' || MODE === 'hang') {
 }
 
 const { createBareKitShim } = require('../../electron/src/main/barekit-shim.js')
+const { tmpDir } = require('../helpers/tmpdir')
 const shim = createBareKitShim()
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pc-leak-'))
+const dataDir = tmpDir('pc-leak-')
 const mnemonicFile = path.join(dataDir, 'mnemonic.txt')
 
 let buf = ''

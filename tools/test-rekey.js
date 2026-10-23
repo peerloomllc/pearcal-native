@@ -12,6 +12,7 @@ const Hyperbee  = require('hyperbee')
 const b4a       = require('b4a')
 
 const { rekeyGroup, NS } = require('../src/lib/rekey.js')
+const { tmpDir } = require('../test/helpers/tmpdir')
 
 let failed = 0
 function check (name, ok, detail) {
@@ -38,7 +39,7 @@ function makeApply () {
 async function run () {
   console.log('building old group')
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pearcal-rekey-'))
+  const tmpDir = tmpDir('pearcal-rekey-')
   process.on('exit', () => { try { fs.rmSync(tmpDir, { recursive: true, force: true }) } catch {} })
 
   const store = new Corestore(tmpDir)

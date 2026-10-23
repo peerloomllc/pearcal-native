@@ -20,11 +20,12 @@ const Corestore = require('corestore')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
 const ROUNDS = Number(process.argv[2] || 6)
 const APPENDS_PER_ROUND = Number(process.argv[3] || 40)
 
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'reapply-'))
+const root = tmpDir('reapply-')
 let applyCalls = 0
 let appliedNodes = 0
 

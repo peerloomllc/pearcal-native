@@ -17,7 +17,8 @@ const M = '/home/tim/peerloomllc/pearcal-native/node_modules/'
 const Autobase = require(M + 'autobase')
 const Corestore = require(M + 'corestore')
 const os = require('os'), path = require('path'), fs = require('fs')
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rule-'))
+const { tmpDir } = require('../helpers/tmpdir')
+const root = tmpDir('rule-')
 let n = 0
 const open = s => s.get('view', { valueEncoding: 'json' })
 

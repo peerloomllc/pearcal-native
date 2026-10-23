@@ -55,9 +55,10 @@ const net = require('net')
 const os = require('os')
 const path = require('path')
 const fs = require('fs')
+const { tmpDir } = require('../helpers/tmpdir')
 
 const NODES = Number(process.argv[2] || 2500)
-const root = fs.mkdtempSync(path.join(os.tmpdir(), 'starve-'))
+const root = tmpDir('starve-')
 const open = store => store.get('view', { valueEncoding: 'json' })
 
 async function apply (nodes, view, host) {
