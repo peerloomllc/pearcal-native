@@ -1,6 +1,7 @@
 // Settings modal - display preferences (24h / week start), holidays, .ics
 // import/export, storage reports, PeerLoom Seeder, recovery phrase, linked
-// devices, About. The older PearCal seeder (blind peer) is still phone-only.
+// devices, reset app data, About. The older PearCal seeder (blind peer) is
+// phone-only and being retired.
 //
 // The storage section is read-only on purpose. Mobile ships the same two
 // reports and hides its two write actions, Reclaim Storage and Sweep Orphaned
@@ -16,6 +17,7 @@ import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEven
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
+import { ResetAppDataModal } from './ResetAppDataModal.jsx'
 import { calendarListLine, calendarsLine, personalLine } from '../../ui-shared/lib/seederStatus.js'
 import { parseBirthday, birthdayEvent, listBirthdays } from '../../ui-shared/lib/birthdays.js'
 import { MORNING_OF } from '../lib/reminderOptions.js'
@@ -33,6 +35,7 @@ const WEEK_STARTS = [
 
 export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, onClose }) {
   const [phraseOpen, setPhraseOpen] = useState(false)
+  const [resetOpen, setResetOpen] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
   const icsFileRef = useRef(null)
   // Set when a picked file parses to nothing usable, so the click isn't silent.
@@ -480,6 +483,18 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         )}
 
+        {sync?.resetAppData && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={label}>Reset</div>
+            <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, padding: '4px 0 8px' }}>
+              Clear this computer's calendar and groups, and optionally start over as a new user.
+            </div>
+            <button onClick={() => setResetOpen(true)} style={{ ...btnBase, width: '100%', color: '#C0504A', borderColor: '#C0504A' }}>
+              Reset app data
+            </button>
+          </div>
+        )}
+
         <div style={{ marginBottom: 4 }}>
           <div style={label}>About</div>
           <div style={{ ...row, fontSize: 13, color: tokens.text }}>
@@ -488,6 +503,7 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         </div>
       </div>
+      {resetOpen && <ResetAppDataModal tokens={tokens} sync={sync} onClose={() => setResetOpen(false)} />}
       {storageReport && (
         <StorageReportModal
           tokens={tokens}

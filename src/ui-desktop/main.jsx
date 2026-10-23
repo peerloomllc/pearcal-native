@@ -175,6 +175,9 @@ const sync = {
   exportIcs: (content) => window.__pearDB.call('exportIcs', content),
   takePhoto: () => window.__pearDB.call('takePhoto'),
   openURL: (url) => window.__pearDB.call('openURL', url),
+  // #163. The engine wipes and re-inits, then emits appDataReset, which the
+  // Electron main process answers by clearing session storage and relaunching.
+  resetAppData: (opts) => window.__pearDB.call('resetAppData', opts),
 }
 
 window.__pearBuildReinviteLink = function(group, publicKey) { return buildReinviteLink(group, publicKey) }
