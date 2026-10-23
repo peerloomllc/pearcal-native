@@ -54,6 +54,22 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="pearcal"/>
       </intent-filter>
+      <!-- #24: open or share a calendar file (.ics) into PearCal's import sheet. -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <category android:name="android.intent.category.BROWSABLE"/>
+        <data android:mimeType="text/calendar"/>
+        <data android:mimeType="application/ics"/>
+        <data android:mimeType="text/x-vcalendar"/>
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.SEND"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:mimeType="text/calendar"/>
+        <data android:mimeType="application/ics"/>
+        <data android:mimeType="text/x-vcalendar"/>
+      </intent-filter>
     </activity>
       <receiver android:name=".NotificationReceiver" android:exported="false"/>
     <receiver android:name=".widget.DailyWidgetReceiver" android:exported="true">

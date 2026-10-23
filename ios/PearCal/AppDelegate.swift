@@ -84,7 +84,32 @@ public class AppDelegate: ExpoAppDelegate {
     if url.scheme == "pearcal" {
       LinkModule.pendingLink = url.absoluteString
     }
+    if url.isFileURL, ["ics", "ical"].contains(url.pathExtension.lowercased()) {
+      return queueCalendarFile(url)
+    }
     return super.application(app, open: url, options: options) || RCTLinkingManager.application(app, open: url, options: options)
+  }
+
+  // #24: a calendar file opened into the app (Files, Mail, the share sheet).
+  // Cold launches arrive here too, via SceneDelegate. Without
+  // LSSupportsOpeningDocumentsInPlace iOS hands over a copy in Documents/Inbox,
+  // which is read and then deleted; the JS side opens the import sheet.
+  private func queueCalendarFile(_ url: URL) -> Bool {
+    let scoped = url.startAccessingSecurityScopedResource()
+    defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+    let maxBytes = 5 * 1024 * 1024
+    guard let data = try? Data(contentsOf: url), data.count <= maxBytes,
+          let text = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) else {
+      NSLog("[PearCal] could not read calendar file %@", url.lastPathComponent)
+      return false
+    }
+    if url.path.contains("/Inbox/") { try? FileManager.default.removeItem(at: url) }
+    let payload: [String: String] = ["text": text, "filename": url.lastPathComponent]
+    if let json = try? JSONSerialization.data(withJSONObject: payload),
+       let str = String(data: json, encoding: .utf8) {
+      LinkModule.pendingIcs = str
+    }
+    return true
   }
 
   // Universal Links

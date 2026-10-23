@@ -507,6 +507,29 @@ export default function App ({ db, notifs, sync }) {
   const [confirmSheet, setConfirmSheet] = useState(null) // null | { title, message, icon, confirmLabel, dangerous, onConfirm }
   const closeConfirmSheetRef = useRef(null)
   const [infoSheet, setInfoSheet] = useState(null) // null | { title, message, icon }
+  // The .ics import sheet lives here, not in ProfileTab, because a calendar
+  // file opened from another app (#24) can arrive on any tab.
+  const [icsImport, setIcsImport] = useState(null) // null | { events, filename }
+  const openIcsFile = useCallback((text, filename) => {
+    const parsed = parseIcs(text)
+    if (parsed.length === 0) {
+      setInfoSheet({ title: 'No events found', message: `${filename || 'That file'} has no events PearCal can read.`,
+        icon: <Warning size={36} weight="thin" color="var(--color-destructive)" /> })
+      return
+    }
+    setIcsImport({ events: parsed, filename })
+  }, [])
+  useEffect(() => {
+    // Drain on every event as well as on mount, so a file is opened once.
+    const drain = () => {
+      const files = window.__pearDrainIcs?.() ?? []
+      const last = files[files.length - 1]
+      if (last) openIcsFile(last.text, last.filename)
+    }
+    drain()
+    window.addEventListener('pear:pendingIcs', drain)
+    return () => window.removeEventListener('pear:pendingIcs', drain)
+  }, [openIcsFile])
   const closeInfoSheetRef = useRef(null)
   const [scopeSheet, setScopeSheet] = useState(null) // null | { ev }
   const closeScopeSheetRef = useRef(null)
@@ -1690,7 +1713,7 @@ export default function App ({ db, notifs, sync }) {
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               deleteEventSeries={deleteEventSeries}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
-              qrScanModeRef={qrScanModeRef}
+              qrScanModeRef={qrScanModeRef} onIcsFile={openIcsFile}
               onToggleDark={() => { const nd = !dark; setDark(nd); updateProfile({ dark: nd }) }} />
           )}
           {tab === 'about' && (
@@ -1768,6 +1791,38 @@ export default function App ({ db, notifs, sync }) {
             setShowPhraseIntro(false)
             updateProfile({ recoveryPhraseIntroSeen: true })
           }} />
+        )}
+
+        {icsImport && (
+          <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}
+            groups={groups}
+            existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
+            onImport={(toImport) => {
+              if (!saveEvent) return
+              for (const r of toImport) {
+                const { ev, uid, keptGroups } = r
+                const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
+                // Pick color from first matched group if available
+                const firstGroup = keptGroups.length
+                  ? (groups ?? []).find(g => g.id === keptGroups[0])
+                  : null
+                saveEvent({
+                  id, title: ev.title, date: ev.date,
+                  allDay: ev.allDay ?? true, start: ev.start ?? '', end: ev.end ?? '',
+                  endDate: ev.endDate ?? '', desc: ev.desc ?? '', location: ev.location ?? '',
+                  meetingLink: ev.meetingLink ?? '',
+                  groups: keptGroups, invitees: [],
+                  color: firstGroup?.color ?? '#6C9BF5', colors: [], reminder: 0,
+                  // A repeat rule the file carried (#184); saveEvent expands it.
+                  recurrence: ev.recurrence ?? 'none', recurrenceId: '', recurrenceEnd: ev.recurrenceEnd ?? '',
+                  recurrenceNth: ev.recurrenceNth ?? 0, recurrenceWeekday: ev.recurrenceWeekday ?? 0,
+                  recurrenceInterval: ev.recurrenceInterval ?? 1, repeatForever: !!ev.repeatForever,
+                  editPermission: 'everyone', creatorId: profile?.id ?? '',
+                }, 'one', {}, [])
+              }
+              setIcsImport(null)
+            }}
+            onClose={() => setIcsImport(null)} />
         )}
 
         {infoSheet && (
@@ -6994,7 +7049,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef }) {
+function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef, onIcsFile }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -7025,7 +7080,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   const [resetError,        setResetError]        = useState(null)
   const closeResetSheetRef  = useRef(null)
 
-  const [icsImport, setIcsImport] = useState(null)
   const icsFileRef = useRef(null)
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const use24h    = profile?.use24h    ?? localeUse24h
@@ -7899,11 +7953,7 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 if (!file) return
                 e.target.value = ''
                 const reader = new FileReader()
-                reader.onload = ev => {
-                  const parsed = parseIcs(ev.target.result)
-                  if (parsed.length === 0) return
-                  setIcsImport({ events: parsed, filename: file.name })
-                }
+                reader.onload = ev => onIcsFile?.(String(ev.target.result ?? ''), file.name)
                 reader.readAsText(file)
               }} />
             <button onClick={() => icsFileRef.current?.click()}
@@ -8748,37 +8798,6 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
         </BottomSheet>
       )}
 
-      {icsImport && (
-        <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}
-          groups={groups}
-          existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
-          onImport={(toImport) => {
-            if (!saveEvent) return
-            for (const r of toImport) {
-              const { ev, uid, keptGroups } = r
-              const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
-              // Pick color from first matched group if available
-              const firstGroup = keptGroups.length
-                ? (groups ?? []).find(g => g.id === keptGroups[0])
-                : null
-              saveEvent({
-                id, title: ev.title, date: ev.date,
-                allDay: ev.allDay ?? true, start: ev.start ?? '', end: ev.end ?? '',
-                endDate: ev.endDate ?? '', desc: ev.desc ?? '', location: ev.location ?? '',
-                meetingLink: ev.meetingLink ?? '',
-                groups: keptGroups, invitees: [],
-                color: firstGroup?.color ?? '#6C9BF5', colors: [], reminder: 0,
-                // A repeat rule the file carried (#184); saveEvent expands it.
-                recurrence: ev.recurrence ?? 'none', recurrenceId: '', recurrenceEnd: ev.recurrenceEnd ?? '',
-                recurrenceNth: ev.recurrenceNth ?? 0, recurrenceWeekday: ev.recurrenceWeekday ?? 0,
-                recurrenceInterval: ev.recurrenceInterval ?? 1, repeatForever: !!ev.repeatForever,
-                editPermission: 'everyone', creatorId: profile?.id ?? '',
-              }, 'one', {}, [])
-            }
-            setIcsImport(null)
-          }}
-          onClose={() => setIcsImport(null)} />
-      )}
 
       </div>
 

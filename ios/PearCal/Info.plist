@@ -22,6 +22,22 @@
     <string>$(MARKETING_VERSION)</string>
     <key>CFBundleSignature</key>
     <string>????</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleTypeName</key>
+        <string>Calendar file</string>
+        <key>CFBundleTypeRole</key>
+        <string>Viewer</string>
+        <key>LSHandlerRank</key>
+        <string>Alternate</string>
+        <key>LSItemContentTypes</key>
+        <array>
+          <string>com.apple.ical.ics</string>
+          <string>public.calendar-event</string>
+        </array>
+      </dict>
+    </array>
     <key>CFBundleURLTypes</key>
     <array>
       <dict>
@@ -38,6 +54,8 @@
     <array>
       <string>lightning</string>
     </array>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <false/>
     <key>LSMinimumSystemVersion</key>
     <string>12.0</string>
     <key>LSRequiresIPhoneOS</key>

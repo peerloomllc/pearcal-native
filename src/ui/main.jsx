@@ -297,6 +297,19 @@ window.__pearOpenGroupSettings = function(groupId) {
   window.dispatchEvent(new CustomEvent('pear:openGroupSettings', { detail: groupId }))
 }
 
+// #24: a calendar file opened into the app. Buffered like invites below, in
+// case it arrives before <App> has registered its listener.
+const __pearIcsBuffer = []
+window.__pearHandleIcs = function(text, filename) {
+  if (!text) return
+  const file = { text, filename: filename || 'calendar.ics' }
+  __pearIcsBuffer.push(file)
+  window.dispatchEvent(new CustomEvent('pear:pendingIcs', { detail: file }))
+}
+window.__pearDrainIcs = function() {
+  return __pearIcsBuffer.splice(0)
+}
+
 // Buffer invites that arrive before the App component has mounted its
 // `pear:pendingJoin` listener. On iOS cold-open the native side can deliver
 // the URL, RN can inject __pearHandleInvite, and the CustomEvent can fire
