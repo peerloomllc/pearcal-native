@@ -1,7 +1,7 @@
 // Group settings modal — name, emoji, color, member list (read-only),
-// leave, delete. Mobile's GroupSettingsModal also covers ownership
-// transfer, member kick/admin promotion, rejoin approvals, history
-// sweeps, and member-nickname editing — those live behind D7.2.
+// ownership transfer and claim, leave, delete. Mobile's GroupSettingsModal
+// also covers member kick/admin promotion, rejoin approvals and history
+// sweeps — those live behind D7.2.
 //
 // Save semantics: edits stay local until "Save"; Leave/Delete are
 // confirmed via window.confirm. Owners cannot leave (must delete);
@@ -42,6 +42,16 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
   const fileRef = useRef(null)
 
   const isOwner   = group?.ownerId === profile?.id
+  const isMember  = (group?.members ?? []).some(m => m.id === profile?.id)
+  // Mirrors the bare.js constant (CLAIM_OWNERSHIP_INACTIVITY_MS). Keep in sync.
+  const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000
+  const ownerInactiveMs = Date.now() - (group?.lastOwnerActivityTs ?? group?.updatedAt ?? 0)
+  const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS
+  const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 86_400_000))
+  const nonOwnerMembers = (group?.members ?? []).filter(m => m.id !== group?.ownerId)
+  const [transferPicker, setTransferPicker] = useState(false)
+  const [ownershipBusy, setOwnershipBusy] = useState(false)
+  const [ownershipErr, setOwnershipErr] = useState('')
   const dirty = (name.trim() !== (group?.name ?? '').trim())
              || (emoji !== (group?.emoji ?? ''))
              || (color !== (group?.color ?? GROUP_COLORS[0]))
@@ -91,6 +101,23 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
     if (!confirm('Leave "' + (group?.name ?? 'this group') + '"? Your local copy of its events will be removed from this device.')) return
     await onLeave(group.id)
     onClose()
+  }
+
+  // The new owner shows up when the op syncs back through the group record,
+  // so there is nothing to update here on success.
+  async function handleTransfer (m) {
+    const who = m.nickname?.trim() || m.name || 'this member'
+    if (!confirm('Transfer ownership to ' + who + '? They will gain the ability to remove members and approve rejoins in "' + (group?.name ?? 'this group') + '". You will lose these privileges.')) return
+    setTransferPicker(false); setOwnershipBusy(true); setOwnershipErr('')
+    try { await db.transferOwnership(group.id, m.id) } catch (e) { setOwnershipErr('Transfer failed: ' + (e?.message ?? e)) }
+    setOwnershipBusy(false)
+  }
+
+  async function handleClaim () {
+    if (!confirm('Claim ownership of "' + (group?.name ?? 'this group') + '"? The current owner has been inactive for ' + ownerInactiveDays + ' day' + (ownerInactiveDays === 1 ? '' : 's') + '. You will be able to remove members and approve rejoins. If the owner returns and writes again before other members accept your claim, it may be rejected.')) return
+    setOwnershipBusy(true); setOwnershipErr('')
+    try { await db.claimOwnership(group.id) } catch (e) { setOwnershipErr('Claim failed: ' + (e?.message ?? e)) }
+    setOwnershipBusy(false)
   }
 
   async function handleDelete () {
@@ -344,6 +371,57 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
             })}
           </div>
         </div>
+
+        {((isOwner && nonOwnerMembers.length > 0) || canClaimOwnership || ownershipErr) && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={label}>Ownership</div>
+            {isOwner && nonOwnerMembers.length > 0 && !transferPicker && (
+              <button onClick={() => setTransferPicker(true)} disabled={ownershipBusy}
+                      style={{ ...btnBase, width: '100%', opacity: ownershipBusy ? 0.5 : 1 }}>
+                {ownershipBusy ? 'Transferring…' : 'Transfer ownership to…'}
+              </button>
+            )}
+            {isOwner && transferPicker && (
+              <div style={{ border: `1px solid ${tokens.border}`, borderRadius: 6, background: tokens.bg }}>
+                <div style={{ padding: '7px 10px', fontSize: 12, color: tokens.muted, borderBottom: `1px solid ${tokens.border}` }}>
+                  Pick a member to promote. They'll gain owner privileges; you'll lose them.
+                </div>
+                {nonOwnerMembers.map(m => {
+                  const display = m.nickname?.trim() || m.name || 'Unnamed'
+                  return (
+                    <button key={m.id} onClick={() => handleTransfer(m)} style={{
+                      display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '7px 10px',
+                      background: 'transparent', border: 'none', borderBottom: `1px solid ${tokens.border}`,
+                      color: tokens.text, fontSize: 13, fontFamily: tokens.font, cursor: 'pointer', textAlign: 'left',
+                    }}>
+                      <MemberAvatar avatar={m.avatar} avatarHash={m.avatarHash}
+                                    name={display} color={m.color ?? tokens.muted}
+                                    size={26} fontSize={12} />
+                      {display}
+                    </button>
+                  )
+                })}
+                <button onClick={() => setTransferPicker(false)} style={{
+                  width: '100%', padding: '7px 10px', background: 'transparent', border: 'none',
+                  color: tokens.muted, fontSize: 12, fontFamily: tokens.font, cursor: 'pointer',
+                }}>Cancel</button>
+              </div>
+            )}
+            {canClaimOwnership && (
+              <div style={{ border: '1px solid #F5C47466', background: '#F5C47411', borderRadius: 6, padding: '10px 12px' }}>
+                <div style={{ fontSize: 12, color: tokens.text, lineHeight: 1.45, marginBottom: 8 }}>
+                  The owner has been inactive for {ownerInactiveDays} day{ownerInactiveDays === 1 ? '' : 's'}.
+                  If you can't reach them, you can claim ownership of this group.
+                </div>
+                <button onClick={handleClaim} disabled={ownershipBusy}
+                        style={{ ...btnBase, color: '#E5864A', borderColor: '#E5864A66', opacity: ownershipBusy ? 0.5 : 1 }}>
+                  {ownershipBusy ? 'Claiming…' : 'Claim ownership'}
+                </button>
+              </div>
+            )}
+            {ownershipErr && <div style={{ fontSize: 12, color: '#C0504A', marginTop: 6 }}>{ownershipErr}</div>}
+          </div>
+        )}
 
         <div style={{ marginBottom: 14 }}>
           <div style={label}>Invite</div>

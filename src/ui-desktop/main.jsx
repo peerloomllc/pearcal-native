@@ -127,6 +127,10 @@ const db = {
   restoreFromPhrase:  (m) => window.__pearDB.call('restoreFromPhrase', m),
   restoreStatus:      ()  => window.__pearDB.call('restoreStatus'),
   recoverCopy:        (gid) => window.__pearDB.call('recoverCopy', gid),
+  // #163: hand a group to another member, or claim one whose owner has gone
+  // quiet. The engine checks both again in apply().
+  transferOwnership:  (gid, targetId) => window.__pearDB.call('transferOwnership', gid, targetId),
+  claimOwnership:     (gid) => window.__pearDB.call('claimOwnership', gid),
   listPendingRejoins: ()  => window.__pearDB.call('listPendingRejoins'),
   approveRejoin:      (gid, ipk) => window.__pearDB.call('approveRejoin', gid, ipk),
   denyRejoin:         (gid, ipk) => window.__pearDB.call('denyRejoin', gid, ipk),
