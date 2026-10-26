@@ -1739,7 +1739,7 @@ if priors:
         echo "    Build ${_ios_build_number} is still ${_BUILD_STATE}, not VALID."
         echo "    Wait for processing to finish, then re-run. Skipping submission."
       elif ! _asc_attach_build "$ASC_VERSION_ID" "$_BUILD_ID"; then
-        PUBLISH_FAILED=true
+        PUBLISH_FAILED=true; APP_STORE_FAILED=true
       else
 
         # Export compliance. Apple blocks submission until every build answers
