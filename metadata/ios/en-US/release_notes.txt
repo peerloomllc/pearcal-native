@@ -1,12 +1,5 @@
 ## What's Changed
 
-New Features
-  - Open calendar files straight into PearCal. Tap a calendar file (.ics) in your email, Files or another app, or share it to PearCal, and the import screen opens on its own.
-  - Desktop: you can now hand a group over to another member, or claim a group whose owner has been inactive for more than 30 days.
-  - Desktop: "Reset app data" is now in Settings. Clear your calendar and groups and stay the same person, or start over as a new user.
+### ✨ New Features
 
-Improvements
-  - Repeating events now carry over when you import a calendar file. Birthdays and other yearly, monthly, weekly or daily events from Google, Apple or Yandex keep repeating instead of showing up only once.
-  - Exporting keeps repeating events as a single repeating entry, so "repeat forever" events keep all their future dates and other calendar apps see one series instead of hundreds of copies.
-  - Importing a file you already imported no longer creates duplicates of repeating events.
-  - If a calendar file has no events PearCal can read, you now get a short message instead of nothing happening.
+- Automatic calendar export: PearCal can now keep an up-to-date copy of the calendars you choose in a folder. Other apps, such as a backup tool, Nextcloud, Syncthing or a personal assistant, can then read your schedule. Turn it on in Settings. On a phone, the copy updates while PearCal is open and catches up the next time you open it.
