@@ -74,72 +74,6 @@ done
 
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Helper: fetch the current live version from the Apple App Store.
-# Uses the public iTunes Search API — no credentials required.
-# Returns bare X.Y.Z or "".
-# ---------------------------------------------------------------------------
-_appstore_latest_version() {
-  local bundle_id="${1:-${BUNDLE_ID:-com.pearcal}}"
-
-  # Preferred: asc CLI (sees all versions including in-review and TestFlight)
-  if command -v asc &>/dev/null \
-     && [ -n "${ASC_KEY_ID:-}" ] \
-     && [ -n "${ASC_APP_ID:-}" ]; then
-    if _asc_auth_linux 2>/dev/null; then
-      local ver
-      ver=$(asc versions list --app "$ASC_APP_ID" --output json 2>/dev/null \
-        | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-items = data.get('data', data) if isinstance(data, dict) else data
-if isinstance(items, list) and items:
-    versions = [v.get('attributes', v).get('versionString', '') for v in items if v.get('attributes', v).get('versionString')]
-    if versions:
-        versions.sort(key=lambda v: tuple(int(x) for x in v.split('.') if x.isdigit()), reverse=True)
-        print(versions[0])
-" 2>/dev/null)
-      if [ -n "$ver" ]; then
-        echo "$ver"
-        return
-      fi
-    fi
-  fi
-
-  # Fallback: iTunes Search API (only sees live App Store version)
-  curl -sf --max-time 8 \
-    "https://itunes.apple.com/lookup?bundleId=${bundle_id}" \
-    2>/dev/null \
-    | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-results = d.get('results', [])
-print(results[0].get('version', '') if results else '')
-" 2>/dev/null || echo ""
-}
-
-# ---------------------------------------------------------------------------
-# Helper: authenticate asc CLI on the local (Linux) machine.
-# Returns 1 if asc is not installed or the .p8 key file is missing.
-# ---------------------------------------------------------------------------
-_asc_auth_linux() {
-  if ! command -v asc &>/dev/null; then
-    echo "WARNING: asc CLI not installed on this machine. Skipping ASC operations."
-    return 1
-  fi
-  local key_file="${ASC_PRIVATE_KEY_PATH:-$HOME/.appstoreconnect/AuthKey_${ASC_KEY_ID}.p8}"
-  if [ ! -f "$key_file" ]; then
-    echo "WARNING: API key file not found at $key_file"
-    return 1
-  fi
-  asc auth login \
-    --bypass-keychain \
-    --name "${APP_NAME:-App}-CI" \
-    --key-id "$ASC_KEY_ID" \
-    --issuer-id "$ASC_ISSUER_ID" \
-    --private-key "$key_file" >/dev/null 2>&1
-}
-
 # Uses $REPO_ROOT so this works regardless of invocation directory.
 # ---------------------------------------------------------------------------
 
@@ -1277,19 +1211,6 @@ print(json.dumps({'tag_name': '${RELEASE_TAG}', 'name': '${RELEASE_TAG}', 'body'
 
   # Helper: pick a sensible Content-Type per extension. GitHub doesn't
   # validate but it surfaces in the asset's metadata.
-  _release_content_type () {
-    case "$1" in
-      *.apk)      echo "application/vnd.android.package-archive" ;;
-      *.dmg)      echo "application/x-apple-diskimage" ;;
-      *.exe)      echo "application/vnd.microsoft.portable-executable" ;;
-      *.AppImage) echo "application/x-executable" ;;
-      *.deb)      echo "application/vnd.debian.binary-package" ;;
-      *.pkg)      echo "application/vnd.apple.installer+xml" ;;
-      *.sha256)   echo "text/plain" ;;
-      *.yml)      echo "text/yaml" ;;
-      *)          echo "application/octet-stream" ;;
-    esac
-  }
 
   # Helper: upload one asset to the release. Returns 0 on success, 1 on
   # parsable API error. We don't bail the whole script on a single asset
@@ -1326,7 +1247,7 @@ except Exception:
   _upload_release_asset () {
     local file="$1"
     local name; name=$(basename "$file")
-    local ctype; ctype=$(_release_content_type "$name")
+    local ctype; ctype=$(_asset_content_type "$name")
     local attempt=0
     while [ $attempt -lt 2 ]; do
       attempt=$((attempt + 1))
@@ -1402,7 +1323,7 @@ except Exception:
   _upload_resps=()
   for _f in "${UPLOAD_QUEUE[@]}"; do
     _name=$(basename "$_f")
-    _ctype=$(_release_content_type "$_name")
+    _ctype=$(_asset_content_type "$_name")
     _rf=$(mktemp); _upload_resps+=("$_rf")
     echo "    uploading $_name ($_ctype, $(du -h "$_f" | cut -f1))"
     curl -s \
