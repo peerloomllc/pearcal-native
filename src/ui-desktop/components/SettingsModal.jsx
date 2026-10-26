@@ -33,7 +33,7 @@ const WEEK_STARTS = [
 ]
 
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, groups = [], autoExport, onClose }) {
   const [phraseOpen, setPhraseOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
@@ -433,6 +433,11 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
           </div>
         </div>
 
+        {autoExport?.config && (
+          <AutoExportSection tokens={tokens} groups={groups} autoExport={autoExport}
+            label={label} row={row} btnBase={btnBase} />
+        )}
+
         {sync?.storageBreakdown && (
           <div style={{ marginBottom: 18 }}>
             <div style={label}>Storage</div>
@@ -734,6 +739,63 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
         style={{ background: 'none', border: 'none', padding: '8px 0 0', fontSize: 12, color: tokens.accent, cursor: 'pointer', fontFamily: tokens.font }}>
         Get PeerLoom Seeder
       </button>
+    </div>
+  )
+}
+
+// Automatic .ics export to a folder (TODO #186). Settings and the folder live
+// in Electron main; useAutoExport in App.jsx does the writing, so this section
+// only edits the settings.
+function AutoExportSection ({ tokens, groups, autoExport, label, row, btnBase }) {
+  const { config, update, pickFolder } = autoExport
+  const chosen = new Set(config.calendars ?? [])
+  const calendars = [{ id: 'personal', name: 'Personal' }, ...groups.map(g => ({ id: g.id, name: g.name || 'Untitled group' }))]
+
+  async function handleEnable (next) {
+    let cfg = config
+    if (next && !cfg.folder) {
+      cfg = await pickFolder()
+      if (!cfg?.folder) return
+    }
+    // First switch-on ticks every calendar, so it does something right away.
+    const patch = { enabled: next }
+    if (next && !(cfg.calendars ?? []).length) patch.calendars = calendars.map(c => c.id)
+    await update(patch)
+  }
+
+  function toggleCalendar (id, on) {
+    const next = new Set(chosen)
+    if (on) next.add(id); else next.delete(id)
+    update({ calendars: [...next] })
+  }
+
+  let status = 'Keeps one .ics file per calendar in a folder you pick and updates it whenever events change, as long as PearCal is running (the tray counts). Other apps on this computer, such as a backup tool or an AI assistant, can read them. Anyone who can open the folder can read these events.'
+  if (config.enabled && config.lastError) status = 'Could not write to the folder: ' + config.lastError
+  else if (config.enabled && config.lastWrite) status = 'Last updated ' + new Date(config.lastWrite).toLocaleString() + '.'
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={label}>Automatic export</div>
+      <div style={row}>
+        <div style={{ flex: 1, fontSize: 13 }}>Keep a copy in a folder</div>
+        <ToggleSwitch tokens={tokens} value={!!(config.enabled && config.folder)} onChange={handleEnable} />
+      </div>
+      {config.folder && (
+        <div style={row}>
+          <div title={config.folder} style={{ flex: 1, minWidth: 0, fontSize: 12, color: tokens.muted,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{config.folder}</div>
+          <button onClick={pickFolder} style={btnBase}>Change folder</button>
+        </div>
+      )}
+      {config.enabled && config.folder && calendars.map(c => (
+        <div key={c.id} style={{ ...row, padding: '5px 0' }}>
+          <div style={{ flex: 1, fontSize: 13 }}>{c.name}</div>
+          <ToggleSwitch tokens={tokens} value={chosen.has(c.id)} onChange={on => toggleCalendar(c.id, on)} />
+        </div>
+      ))}
+      <div style={{ fontSize: 12, color: tokens.muted, lineHeight: 1.5, paddingTop: 6 }}>
+        {status}
+      </div>
     </div>
   )
 }

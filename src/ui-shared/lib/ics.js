@@ -340,3 +340,28 @@ export function generateIcs (events) {
   lines.push('END:VCALENDAR')
   return lines.join('\r\n')
 }
+
+// Files for the desktop's automatic export (#186): one .ics per chosen
+// calendar, rewritten whenever events change so a local tool such as a home
+// AI agent can read the calendar. `calendarIds` holds 'personal' and/or group
+// ids. An event shared with two chosen groups appears in both files. Holidays
+// are left out, as in the manual export. File names come from the calendar
+// name so they read well in a folder; a clash gets the group id appended.
+export function autoExportFiles (events, groups, calendarIds) {
+  const chosen = new Set(calendarIds ?? [])
+  const cals = []
+  if (chosen.has('personal')) cals.push({ id: 'personal', name: 'Personal' })
+  for (const g of groups ?? []) if (chosen.has(g.id)) cals.push({ id: g.id, name: g.name || g.id })
+  const own = (events ?? []).filter(e => !e.id?.startsWith('holiday-'))
+  const used = new Set()
+  return cals.map(cal => {
+    const slug = String(cal.name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'calendar'
+    let name = 'pearcal-' + slug + '.ics'
+    if (used.has(name)) name = 'pearcal-' + slug + '-' + String(cal.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toLowerCase() + '.ics'
+    used.add(name)
+    const evs = cal.id === 'personal'
+      ? own.filter(e => !Array.isArray(e.groups) || e.groups.length === 0)
+      : own.filter(e => Array.isArray(e.groups) && e.groups.includes(cal.id))
+    return { name, content: generateIcs(evs) }
+  })
+}
