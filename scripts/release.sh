@@ -629,6 +629,15 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
   # one (e.g., desktop-only release). Folded after the Play warning so the
   # earlier flag math doesn't need rework.
   if $PUBLISH_DESKTOP; then NEEDS_BUILD=true; fi
+elif $ZAPSTORE_ONLY; then
+  # Republish the existing GitHub release to Zapstore. Nothing is built, so
+  # every other destination stays off (they would otherwise run with no
+  # artifacts, or re-announce a release that already went out).
+  PUBLISH_GITHUB=false
+  PUBLISH_NOSTR=false
+  PUBLISH_PLAY=false
+  PUBLISH_APP_STORE=false
+  PUBLISH_DESKTOP=false
 fi
 
 # Artifact names and sizes, declared before the build fences so the post-notes
@@ -1737,7 +1746,9 @@ cp zapstore.yaml "$ZAPSTORE_YAML_BAK"
 LOCAL_APK=""
 if [ -f "$REPO_ROOT/${APK_NAME:-}" ]; then
   LOCAL_APK="$REPO_ROOT/${APK_NAME}"
-elif [ -f "$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk" ]; then
+# A Zapstore-only run builds nothing, so the build folder may hold some other build.
+# Leave LOCAL_APK empty there and zsp downloads the APK from the GitHub release.
+elif ! $ZAPSTORE_ONLY && [ -f "$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk" ]; then
   LOCAL_APK="$REPO_ROOT/android/app/build/outputs/apk/release/app-release.apk"
 fi
 
