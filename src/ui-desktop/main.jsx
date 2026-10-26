@@ -148,6 +148,11 @@ const db = {
   // electron/src/main/shell-handlers.js. Both resolve to the applied boolean.
   getLaunchAtLogin:     ()  => window.__pearDB.call('desktopGetLaunchAtLogin'),
   setLaunchAtLogin:     (b) => window.__pearDB.call('desktopSetLaunchAtLogin', b),
+  // Automatic .ics export to a folder (TODO #186), also intercepted in main.
+  getAutoExport:        ()  => window.__pearDB.call('desktopGetAutoExport'),
+  setAutoExport:        (p) => window.__pearDB.call('desktopSetAutoExport', p),
+  pickExportFolder:     ()  => window.__pearDB.call('desktopPickExportFolder'),
+  writeAutoExport:      (f) => window.__pearDB.call('desktopWriteAutoExport', f),
 }
 
 const notifs = {

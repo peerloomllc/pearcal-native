@@ -336,6 +336,45 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
       return { handled: true, result: words }
     }
 
+    // Automatic .ics export to a folder (TODO #186). The renderer builds the
+    // files from the events it already holds; main owns the folder, so the
+    // renderer can never choose where a file lands.
+    case 'desktopGetAutoExport':
+      return { handled: true, result: _autoExportConfig() }
+
+    case 'desktopSetAutoExport': {
+      const patch = args?.[0] ?? {}
+      const cfg = _autoExportConfig()
+      if (typeof patch.enabled === 'boolean') cfg.enabled = patch.enabled
+      if (Array.isArray(patch.calendars)) cfg.calendars = patch.calendars.map(String)
+      _saveAutoExportConfig(cfg)
+      return { handled: true, result: cfg }
+    }
+
+    case 'desktopPickExportFolder': {
+      const cfg = _autoExportConfig()
+      try {
+        const { canceled, filePaths } = await dialog.showOpenDialog(getMainWindow(), {
+          properties: ['openDirectory', 'createDirectory'],
+          defaultPath: cfg.folder || undefined,
+          buttonLabel: 'Use This Folder'
+        })
+        if (!canceled && filePaths?.[0]) {
+          // `written` names files in the old folder, so forget it rather than
+          // delete same-named files in the new one.
+          if (filePaths[0] !== cfg.folder) cfg.written = []
+          cfg.folder = filePaths[0]
+          _saveAutoExportConfig(cfg)
+        }
+      } catch (e) {
+        console.error('[shell] pick export folder failed:', e?.message ?? e)
+      }
+      return { handled: true, result: cfg }
+    }
+
+    case 'desktopWriteAutoExport':
+      return { handled: true, result: _writeAutoExport(args?.[0]) }
+
     case 'desktopGetLaunchAtLogin':
       // Opt-in "Launch at startup" (TODO #103). Default off — desktop
       // reminders are in-memory setTimeout handles that die with the process,
@@ -413,6 +452,81 @@ function _setLaunchAtLogin (enable) {
     path: process.env.APPIMAGE || process.execPath
   })
   try { return !!app.getLoginItemSettings().openAtLogin } catch (_) { return enable }
+}
+
+// ── Automatic .ics export (TODO #186) ───────────────────────────────────────
+// Settings live in a JSON file next to the app data because the folder is a
+// path on THIS computer: the profile syncs to linked phones, so it is the wrong
+// place for it. `written` remembers the files we created, so a calendar that is
+// unticked or renamed has its old file removed and nothing else is touched.
+
+const AUTO_EXPORT_NAME = /^pearcal-[a-z0-9-]+\.ics$/
+
+function _autoExportFile () {
+  return path.join(app.getPath('userData'), 'auto-export.json')
+}
+
+function _autoExportConfig () {
+  let cfg = {}
+  try { cfg = JSON.parse(fs.readFileSync(_autoExportFile(), 'utf8')) || {} } catch (_) {}
+  return {
+    enabled: !!cfg.enabled,
+    folder: typeof cfg.folder === 'string' ? cfg.folder : '',
+    calendars: Array.isArray(cfg.calendars) ? cfg.calendars : [],
+    written: Array.isArray(cfg.written) ? cfg.written : [],
+    lastWrite: cfg.lastWrite ?? null,
+    lastError: cfg.lastError ?? null
+  }
+}
+
+function _saveAutoExportConfig (cfg) {
+  try {
+    fs.writeFileSync(_autoExportFile(), JSON.stringify(cfg, null, 2))
+  } catch (e) {
+    console.error('[shell] save auto-export config failed:', e?.message ?? e)
+  }
+}
+
+// DTSTAMP is the export time, so it differs on every run. Leave it out of the
+// comparison or every change anywhere would rewrite every file, which wakes up
+// sync tools such as Syncthing for nothing.
+function _sameIcs (a, b) {
+  const strip = s => String(s).replace(/^DTSTAMP:.*$/gm, '')
+  return strip(a) === strip(b)
+}
+
+function _writeAutoExport (files) {
+  const cfg = _autoExportConfig()
+  if (!cfg.enabled || !cfg.folder) return cfg
+  const list = (Array.isArray(files) ? files : []).filter(f => AUTO_EXPORT_NAME.test(f?.name ?? ''))
+  const names = list.map(f => f.name)
+  let changed = false
+  try {
+    fs.mkdirSync(cfg.folder, { recursive: true })
+    for (const f of list) {
+      const target = path.join(cfg.folder, f.name)
+      let old = null
+      try { old = fs.readFileSync(target, 'utf8') } catch (_) {}
+      if (old != null && _sameIcs(old, f.content)) continue
+      // Write then rename, so a reader never sees half a file.
+      const tmp = target + '.tmp'
+      fs.writeFileSync(tmp, String(f.content ?? ''))
+      fs.renameSync(tmp, target)
+      changed = true
+    }
+    for (const name of cfg.written) {
+      if (names.includes(name) || !AUTO_EXPORT_NAME.test(name)) continue
+      try { fs.rmSync(path.join(cfg.folder, name), { force: true }); changed = true } catch (_) {}
+    }
+    cfg.written = names
+    if (changed || cfg.lastError || !cfg.lastWrite) cfg.lastWrite = Date.now()
+    cfg.lastError = null
+  } catch (e) {
+    console.error('[shell] auto-export failed:', e?.message ?? e)
+    cfg.lastError = String(e?.message ?? e)
+  }
+  _saveAutoExportConfig(cfg)
+  return cfg
 }
 
 async function _saveBlob (parentWindow, defaultName, content) {

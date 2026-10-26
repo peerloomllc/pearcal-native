@@ -32,6 +32,7 @@ import { LinkedDevicesModal } from './components/LinkedDevicesModal.jsx'
 import { OnboardingScreen } from './components/OnboardingScreen.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { useVisibleGroups } from './hooks/useVisibleGroups.js'
+import { useAutoExport } from './hooks/useAutoExport.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { canEditEvent } from './lib/eventPermissions.js'
@@ -88,6 +89,7 @@ export default function App ({ db, notifs, sync }) {
   useForeverTopUp(db, events, setEvents, eventsReady)
   const view      = useViewState()
   const visibleGroups = useVisibleGroups(groups)
+  const autoExport = useAutoExport(db, events, groups, eventsReady)
   const { saveEvent, deleteEvent } = useEventActions({
     db, notifs, sync, profile, events, setEvents,
   })
@@ -656,6 +658,8 @@ export default function App ({ db, notifs, sync }) {
           onDeleteEvent={deleteEvent}
           onOpenLinkedDevices={openLinkedDevices}
           onImportIcs={setIcsImport}
+          groups={groups}
+          autoExport={autoExport}
           onClose={() => setSettingsOpen(false)}
         />
       )}
