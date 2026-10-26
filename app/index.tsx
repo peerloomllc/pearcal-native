@@ -43,6 +43,7 @@ let _backgroundedAt = 0
 // gratuitous ~1-2s flash, so only recover after a background long enough for the
 // freezer to have actually kicked in. Tunable up if it feels eager.
 const WEBVIEW_RECOVERY_MIN_BG_MS = 20_000
+const LINK_REDELIVER_MS = 5_000
 
 const { makeStartLock } = require('../src/lib/backendBootstrap')
 const { buildInviteInjection } = require('../src/lib/inviteDelivery')
@@ -635,6 +636,13 @@ export default function Root () {
   const [error,        setError]        = useState<string | null>(null)
   const [html,         setHtml]         = useState<string | null>(null)
   const [pendingInvite, setPendingInvite] = useState<string | null>(null)
+  // The last link handed to the page, and when. Coming back from 20s+ in the
+  // background, the paused 2s link poll fires at once and injects the link into
+  // the renderer the recovery below is about to kill, so the link was lost
+  // (seen with a pearcal://event link from PearOffice, 2026-10-26). If the
+  // renderer dies within LINK_REDELIVER_MS of an injection, the link is handed
+  // to the reloaded page again.
+  const lastInjectedLinkRef = useRef<{ url: string, at: number } | null>(null)
   const webViewRef = useRef<any>(null)
   const dbReadyRef = useRef(false)
 
@@ -728,6 +736,7 @@ export default function Root () {
       // buildInviteInjection parks it on `window` instead, and the bundle drains
       // it the moment it defines the handler.
       webViewRef.current?.injectJavaScript(buildInviteInjection(url))
+      lastInjectedLinkRef.current = { url, at: Date.now() }
     }
   }, [pendingInvite, dbReady, webViewReady])
 
@@ -1348,6 +1357,11 @@ webViewRef.current?.injectJavaScript(
         console.warn('[webview] render process gone, didCrash=' + e?.nativeEvent?.didCrash + ' -> reload')
         setWebViewReady(false)
         webViewRef.current?.reload()
+        const last = lastInjectedLinkRef.current
+        if (last && Date.now() - last.at < LINK_REDELIVER_MS) {
+          lastInjectedLinkRef.current = null
+          setPendingInvite(last.url)
+        }
       }}
       onError={e => setError(e.nativeEvent.description)}
     />
