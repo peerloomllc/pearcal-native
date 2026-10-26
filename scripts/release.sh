@@ -630,11 +630,12 @@ if ! $ZAPSTORE_ONLY && ! $CHECK_VERSIONS_ONLY; then
   # earlier flag math doesn't need rework.
   if $PUBLISH_DESKTOP; then NEEDS_BUILD=true; fi
 elif $ZAPSTORE_ONLY; then
-  # Republish the existing GitHub release to Zapstore. Nothing is built, so
-  # every other destination stays off (they would otherwise run with no
-  # artifacts, or re-announce a release that already went out).
+  # Republish the existing GitHub release to Zapstore. Nothing is built, so the
+  # other stores stay off (they would run with no artifacts). The Nostr note is
+  # still offered: a rerun like this usually follows a failed release, which
+  # skipped the note too.
   PUBLISH_GITHUB=false
-  PUBLISH_NOSTR=false
+  release_ask_nostr
   PUBLISH_PLAY=false
   PUBLISH_APP_STORE=false
   PUBLISH_DESKTOP=false
@@ -2414,7 +2415,7 @@ fi # end PUBLISH_APP_STORE
 if ! $PUBLISH_NOSTR; then
   echo ""
   echo "==> Skipping Nostr announcement (not selected)."
-elif $PUBLISH_FAILED; then
+elif $PUBLISH_FAILED && ! release_nostr_after_failure; then
   echo ""
   echo "==> Skipping Nostr announcement — one or more publish steps failed."
 else
