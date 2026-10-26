@@ -88,7 +88,7 @@ app.whenReady().then(() => {
   // If we were cold-launched with a pearcal:// URL on Win/Linux, it lives
   // in process.argv. Capture it here so it gets delivered once the renderer
   // installs window.__pearHandleInvite.
-  const cliUrl = process.argv.find(a => /^(pearcal:\/\/(join|pair)|pear:\/\/pearcal\/(join|pair))/.test(a))
+  const cliUrl = process.argv.find(a => /^(pearcal:\/\/(join|pair|day\/|event\/)|pear:\/\/pearcal\/(join|pair))/.test(a))
   if (cliUrl) deliverDeepLink(cliUrl)
 
   // Reminders are stored as setTimeout handles in shell-handlers' in-memory
@@ -335,7 +335,7 @@ app.on('open-url', (event, url) => {
 // Win/Linux: second-instance fires when a second invocation is blocked by
 // requestSingleInstanceLock. The URL lives in argv.
 app.on('second-instance', (_event, argv) => {
-  const url = argv.find(a => /^(pearcal:\/\/(join|pair)|pear:\/\/pearcal\/(join|pair))/.test(a))
+  const url = argv.find(a => /^(pearcal:\/\/(join|pair|day\/|event\/)|pear:\/\/pearcal\/(join|pair))/.test(a))
   if (url) deliverDeepLink(url)
   if (mainWindow) { mainWindow.show(); mainWindow.focus() }
 })

@@ -20,6 +20,7 @@ import QRCode from 'qrcode'
 import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
 import { calendarListLine, calendarsLine, personalLine } from '../ui-shared/lib/seederStatus.js'
+import { linksInText, pearLinkLabel, parsePearLink, eventLink, findLinkedEvent, openPearLink, MISSING_EVENT_MESSAGE } from '../ui-shared/lib/pearLinks.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, generateIcs, icsFileGroups, routeIcsImport,
@@ -46,7 +47,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple, GridFour, PencilSimple, Broadcast, Cake, FolderSimple,
+  FunnelSimple, GridFour, PencilSimple, Broadcast, Cake, FolderSimple, FileText, LinkSimple,
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -186,6 +187,30 @@ function extractURLs (text) {
   if (!text) return []
   const re = /https?:\/\/[^\s<>"']+/gi
   return [...new Set(text.match(re) ?? [])]
+}
+
+// PearOffice and PearCal links (proposals/2026-10-26-pearcal-pearoffice-links.md
+// in the suite root); openPearLink is in ui-shared/lib/pearLinks.js.
+// One tappable row per PearOffice or PearCal link in an event's notes.
+function PearLinkRows ({ text }) {
+  const links = linksInText(text)
+  if (links.length === 0) return null
+  return links.map(l => {
+    const Icon = l.kind === 'file' ? FileText : l.kind === 'folder' ? FolderSimple : CalendarBlank
+    return (
+      <div key={l.url}
+        onClick={e => { e.stopPropagation(); openPearLink(l.url, window.__pearSync) }}
+        style={{ pointerEvents:'auto', display:'flex', alignItems:'center', gap:8,
+          marginTop:6, padding:'8px 10px', borderRadius:8, cursor:'pointer',
+          border:`1px solid ${colors.border}`, background: colors.surface.card }}>
+        <Icon size={15} weight="thin" color="var(--color-accent)" style={{ flexShrink: 0 }} />
+        <span style={{ fontSize:12, color:colors.primary,
+          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+          {pearLinkLabel(l)}
+        </span>
+      </div>
+    )
+  })
 }
 
 // Module-level camera consumer — whichever component most recently called takePhoto owns the next result
@@ -542,6 +567,68 @@ export default function App ({ db, notifs, sync }) {
   const [readyGroupKeys, setReadyGroupKeys] = useState(() => new Set())
   const [blindPeerKey,   setBlindPeerKey]   = useState(null)
   const [syncingGroups,  setSyncingGroups]  = useState(() => new Set())
+
+  // Incoming pearcal://day and pearcal://event links, from another app (via
+  // main.jsx's __pearHandleInvite) or from a link row in an event's notes.
+  const showDay = (date) => {
+    const [y, m] = date.split('-').map(Number)
+    if (tabRef.current !== 'calendar') goTab('calendar')
+    setSelectedDate(date)
+    setViewDate({ y, m: m - 1 })
+  }
+  const openLinkRef = useRef(null)
+  openLinkRef.current = async (url) => {
+    const l = parsePearLink(url)
+    if (!l) return
+    if (l.kind === 'day') { setModal(null); showDay(l.date); return }
+    if (l.kind !== 'event') return
+    const all = (db ? await db.listEvents().catch(() => null) : null) ?? events
+    const found = findLinkedEvent(all, l.calendarId, l.eventId)
+    if (found.missing) {
+      setInfoSheet({ title: 'Event not found', message: MISSING_EVENT_MESSAGE,
+        icon: <Warning size={36} weight="thin" color="var(--color-muted)" /> })
+      return
+    }
+    showDay(found.event.date)
+    // Close any open event first, so the modal starts fresh with this one.
+    setModal(null)
+    setTimeout(() => setModal({ mode:'edit', event:{ ...found.event } }), 0)
+  }
+  useEffect(() => {
+    // Drain the buffer on every link too, so one already handled here is not
+    // opened again on a later mount.
+    const onLink = (e) => {
+      let buffered = []
+      try { buffered = window.__pearDrainLinks?.() ?? [] } catch {}
+      const url = e?.detail || buffered[buffered.length - 1]
+      if (url) openLinkRef.current?.(url)
+    }
+    const onMissing = (e) => {
+      const app = e.detail
+      if (!app) return
+      setInfoSheet({
+        title: `${app.name} isn't installed`,
+        message: (
+          <>
+            {app.name} isn't installed on this device.{' '}
+            <span onClick={() => window.__pearSync?.openURL(app.page)}
+              style={{ color: colors.primary, textDecoration:'underline', cursor:'pointer' }}>
+              Get {app.name}
+            </span>
+          </>
+        ),
+        icon: <Warning size={36} weight="thin" color="var(--color-muted)" />,
+      })
+    }
+    window.addEventListener('pear:openLink', onLink)
+    window.addEventListener('pear:appMissing', onMissing)
+    // Links that arrived before this listener (cold open from a link).
+    onLink(null)
+    return () => {
+      window.removeEventListener('pear:openLink', onLink)
+      window.removeEventListener('pear:appMissing', onMissing)
+    }
+  }, [])
 
   const localeUse24h = !new Intl.DateTimeFormat([], { hour: 'numeric' }).format(0).match(/am|pm/i)
   const use24h    = profile?.use24h ?? localeUse24h
@@ -4502,6 +4589,19 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
   const [mlOpen, setMlOpen] = useState(!!modal.event?.meetingLink)
   const [locOpen, setLocOpen] = useState(!!modal.event?.location)
   const [notesOpen, setNotesOpen] = useState(!!modal.event?.desc)
+  // pearcal://event/<calendarId>/<eventId> for the occurrence that was tapped.
+  const shareLink = modal.mode === 'edit' && !modal.event?.isShadow
+    ? eventLink((modal.event?.groups ?? [])[0], modal.event?.id) : null
+  const [linkCopied, setLinkCopied] = useState(false)
+  async function copyEventLink () {
+    try {
+      const r = await window.__pearSync?.copyText(shareLink)
+      if (r?.ok === false) return
+      window.__pearSync?.haptic('success')
+      setLinkCopied(true)
+      setTimeout(() => setLinkCopied(false), 1600)
+    } catch {}
+  }
   const [privNotesOpen, setPrivNotesOpen] = useState(!!modal.event?.privateNote)
   const [titleErr, setTitleErr] = useState('')
   // Map<title, mostRecentEvent> — used to prefill fields when a suggestion is picked
@@ -4937,6 +5037,19 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
             <div style={{ fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
               textTransform:'uppercase', marginBottom:12 }}>Details</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {/* Copy link: only for a saved event in a shared calendar. */}
+              {shareLink && (
+                <button onClick={copyEventLink}
+                  style={{ display:'flex', alignItems:'center', gap:8,
+                    padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                    border:`1px solid ${colors.border}`, background:'transparent',
+                    color: linkCopied ? 'var(--color-success)' : colors.primary,
+                    fontSize:13, fontFamily:FONT, width:'100%' }}>
+                  {linkCopied
+                    ? <><CheckCircle size={15} weight="fill" /> Link copied</>
+                    : <><LinkSimple size={15} weight="thin" /> Copy link</>}
+                </button>
+              )}
               {/* Meeting Link */}
               {mlOpen ? (
                 <div>
@@ -5024,6 +5137,7 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
                       </span>
                     </div>
                   ))}
+                  <PearLinkRows text={ev.desc} />
                 </div>
               ) : (
                 <button onClick={() => setNotesOpen(true)}

@@ -763,7 +763,15 @@ export default function Root () {
       if (msg.method === 'exitApp') { if (Platform.OS === 'android') BackHandler.exitApp(); return }
       if (msg.method === 'haptic') { PearCalHaptic?.impact?.(msg.args?.[0] ?? 'light'); return }
       if (msg.method === 'openURL') {
-        PearCalDeepLink?.openURL?.(msg.args?.[0] ?? '').catch?.(() => {})
+        // Answers true or false, so the UI can say "PearOffice isn't installed"
+        // when no app takes a pearoffice:// link. Android rejects with
+        // ActivityNotFoundException, iOS resolves open's completion result.
+        const respond = (ok: boolean) => webViewRef.current?.injectJavaScript(
+          'window.__pearResponse(' + JSON.stringify({ id: msg.id, result: ok }) + ');true;'
+        )
+        Promise.resolve(PearCalDeepLink?.openURL?.(msg.args?.[0] ?? ''))
+          .then((r: any) => respond(r !== false))
+          .catch(() => respond(false))
         return
       }
       if (msg.method === 'canOpenLightning') {

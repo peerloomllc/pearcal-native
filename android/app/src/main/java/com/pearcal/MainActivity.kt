@@ -21,6 +21,9 @@ class MainActivity : ReactActivity() {
     if (uri.scheme == "https" && uri.host == "peerloomllc.com" && uri.path?.startsWith("/join") == true) return true
     // pear://pearcal/join?... (legacy)
     if (uri.scheme == "pear" && uri.host == "pearcal") return true
+    // pearcal://day/... and pearcal://event/... (links from PearOffice). The UI
+    // checks the exact format; this only routes them to it.
+    if (uri.scheme == "pearcal" && (uri.host == "day" || uri.host == "event")) return true
     return false
   }
 
