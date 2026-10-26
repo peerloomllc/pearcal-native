@@ -4,6 +4,7 @@ import App, { emitter } from './App.jsx'
 import { installFixtures } from './screenshot-fixtures.js'
 import { injectGlobalStyles } from './theme.js'
 import { drainEarlyInvites } from '../lib/inviteDelivery.js'
+import { isPearcalLink } from '../ui-shared/lib/pearLinks.js'
 
 // Tokens + reset go in before the first render, so nothing paints unthemed.
 // (:root is the dark palette, so no data-theme attribute is needed to start —
@@ -319,8 +320,20 @@ window.__pearDrainIcs = function() {
 // the URL, RN can inject __pearHandleInvite, and the CustomEvent can fire
 // before React has rendered <App> — without a buffer the event is lost.
 const __pearInviteBuffer = []
+// pearcal://day and pearcal://event links come in by the same route as invites
+// but open a day or an event (proposals/2026-10-26-pearcal-pearoffice-links.md
+// in the suite root). Buffered the same way, for a cold open from a link.
+const __pearLinkBuffer = []
+window.__pearDrainLinks = function() {
+  return __pearLinkBuffer.splice(0)
+}
 window.__pearHandleInvite = function(url) {
   if (!url) return
+  if (isPearcalLink(url)) {
+    __pearLinkBuffer.push(url)
+    window.dispatchEvent(new CustomEvent('pear:openLink'))
+    return
+  }
   __pearInviteBuffer.push(url)
   window.dispatchEvent(new CustomEvent('pear:pendingJoin', { detail: url }))
 }

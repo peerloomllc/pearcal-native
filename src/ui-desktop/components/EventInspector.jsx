@@ -3,8 +3,9 @@
 // the RSVP UI plumbs through saveRsvp + member-id + group-id checks
 // that are lighter to land alongside D7's full Settings/Profile work.
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { formatTime, derivedEventColors, leftStripeStyle } from '../../ui-shared/index.js'
+import { linksInText, pearLinkLabel, eventLink, openPearLink } from '../../ui-shared/lib/pearLinks.js'
 
 const POPOVER_WIDTH = 260
 
@@ -12,8 +13,19 @@ const POPOVER_WIDTH = 260
 // (#162). Delete is withheld then — it would append a group-wide deletion of an
 // event this user does not own. Edit stays, reading as "View", because the
 // modal opens read-only and is how you see the full details.
-export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdit = true, onEdit, onDelete, onDuplicate, onClose }) {
+export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdit = true, sync, onEdit, onDelete, onDuplicate, onClose }) {
   const ref = useRef(null)
+  // PearOffice and PearCal links in the notes, and this event's own link when
+  // it is in a shared calendar (proposals/2026-10-26-pearcal-pearoffice-links.md
+  // in the suite root).
+  const links = linksInText(ev.desc)
+  const shareLink = ev.isShadow ? null : eventLink((ev.groups ?? [])[0], ev.id)
+  const [copied, setCopied] = useState(false)
+  async function copyLink () {
+    try { await navigator.clipboard?.writeText?.(shareLink) } catch { return }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1600)
+  }
 
   useEffect(() => {
     function onDown (e) {
@@ -86,6 +98,22 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdi
         }}>
           {ev.desc}
         </div>
+      )}
+      {links.map(l => (
+        <button key={l.url} onClick={() => openPearLink(l.url, sync)} title={l.url} style={{
+          display: 'block', width: '100%', textAlign: 'left', marginBottom: 4,
+          padding: '5px 8px', fontSize: 12, borderRadius: 4, cursor: 'pointer',
+          fontFamily: tokens.font, border: `1px solid ${tokens.border}`,
+          background: tokens.bg, color: tokens.accent ?? tokens.text,
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {pearLinkLabel(l)}
+        </button>
+      ))}
+      {shareLink && (
+        <button onClick={copyLink} style={{ ...btn, display: 'block', width: '100%', flex: 'none', marginTop: 4 }}>
+          {copied ? 'Link copied' : 'Copy link'}
+        </button>
       )}
       <div style={{ display: 'flex', gap: 5, marginTop: 6 }}>
         <button onClick={onEdit}      style={btn}>{canEdit ? 'Edit' : 'View'}</button>

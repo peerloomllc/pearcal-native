@@ -7,7 +7,7 @@
 //   D7.1 — Profile / Settings / Group Settings modals
 // Mobile renderer (src/ui/App.jsx) is untouched.
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp,
   emitter, Tour,
@@ -37,6 +37,7 @@ import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
 import { canEditEvent } from './lib/eventPermissions.js'
 import { RecoveryPhraseModal } from './components/RecoveryPhraseModal.jsx'
+import { parsePearLink, findLinkedEvent, MISSING_EVENT_MESSAGE } from '../ui-shared/lib/pearLinks.js'
 
 const FONT = "'Manrope', -apple-system, BlinkMacSystemFont, sans-serif"
 
@@ -116,6 +117,9 @@ export default function App ({ db, notifs, sync }) {
     return () => clearTimeout(t)
   }, [profile?.onboardingComplete])
   const [linkedDevicesOpen, setLinkedDevicesOpen] = useState(false)
+  // A message about a link: an event this person does not have, or PearOffice
+  // not installed. { title, message, page? }
+  const [linkNotice, setLinkNotice] = useState(null)
 
   const groupsById = useMemo(() => {
     const map = new Map()
@@ -164,6 +168,47 @@ export default function App ({ db, notifs, sync }) {
     setInspector(null); setContextMenu(null); setPaletteOpen(false)
     setModal({ mode: 'edit', initial: ev, anchor: anchor ?? null })
   }
+
+  // Incoming pearcal://day and pearcal://event links, from another app (via
+  // main.jsx's __pearHandleInvite) or from a link in an event's notes
+  // (proposals/2026-10-26-pearcal-pearoffice-links.md in the suite root).
+  const openLinkRef = useRef(null)
+  openLinkRef.current = async (url) => {
+    const l = parsePearLink(url)
+    if (!l) return
+    if (l.kind === 'day') {
+      setModal(null); setInspector(null)
+      view.setSelectedDate(l.date); view.setMode('day')
+      return
+    }
+    if (l.kind !== 'event') return
+    const all = (db ? await db.listEvents().catch(() => null) : null) ?? events
+    const found = findLinkedEvent(all, l.calendarId, l.eventId)
+    if (found.missing) { setLinkNotice({ title: 'Event not found', message: MISSING_EVENT_MESSAGE }); return }
+    view.setSelectedDate(found.event.date); view.setMode('day')
+    // Close any open event first, so the modal starts fresh with this one.
+    setModal(null)
+    setTimeout(() => openEditModal(found.event), 0)
+  }
+  useEffect(() => {
+    const onLink = (e) => {
+      let buffered = []
+      try { buffered = window.__pearDrainLinks?.() ?? [] } catch {}
+      const url = e?.detail || buffered[buffered.length - 1]
+      if (url) openLinkRef.current?.(url)
+    }
+    const onMissing = (e) => {
+      const app = e.detail
+      if (app) setLinkNotice({ title: `${app.name} isn't installed`, message: `${app.name} isn't installed on this device.`, page: app.page, appName: app.name })
+    }
+    window.addEventListener('pear:openLink', onLink)
+    window.addEventListener('pear:appMissing', onMissing)
+    onLink(null)
+    return () => {
+      window.removeEventListener('pear:openLink', onLink)
+      window.removeEventListener('pear:appMissing', onMissing)
+    }
+  }, [])
   // Close any transient layer — the universal Esc handler. EventModal,
   // EventInspector, ContextMenu, CommandPalette, ProfileModal,
   // SettingsModal, and GroupSettingsModal each also bind Esc locally,
@@ -611,6 +656,7 @@ export default function App ({ db, notifs, sync }) {
           groupsById={groupsById}
           use24h={use24h}
           canEdit={canEditEvent(inspector.ev, profile?.id)}
+          sync={sync}
           onEdit={() => openEditModal(inspector.ev, { x: inspector.x, y: inspector.y })}
           onDelete={() => { deleteEvent(inspector.ev.id); setInspector(null) }}
           onDuplicate={() => {
@@ -620,6 +666,33 @@ export default function App ({ db, notifs, sync }) {
           }}
           onClose={() => setInspector(null)}
         />
+      )}
+      {linkNotice && (
+        <div onMouseDown={() => setLinkNotice(null)} style={{
+          position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.35)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div onMouseDown={e => e.stopPropagation()} style={{
+            width: 320, padding: 18, borderRadius: 8, fontFamily: tokens.font,
+            background: tokens.surface, color: tokens.text, border: `1px solid ${tokens.border}`,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>{linkNotice.title}</div>
+            <div style={{ fontSize: 13, color: tokens.muted, lineHeight: 1.5 }}>{linkNotice.message}</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+              {linkNotice.page && (
+                <button onClick={() => { sync?.openURL?.(linkNotice.page); setLinkNotice(null) }} style={{
+                  padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: tokens.font,
+                  border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
+                }}>Get {linkNotice.appName}</button>
+              )}
+              <button onClick={() => setLinkNotice(null)} style={{
+                padding: '6px 12px', fontSize: 12, borderRadius: 4, cursor: 'pointer', fontFamily: tokens.font,
+                border: 'none', background: tokens.accent, color: '#fff',
+              }}>OK</button>
+            </div>
+          </div>
+        </div>
       )}
       {contextMenu && (
         <ContextMenu

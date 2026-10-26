@@ -83,6 +83,10 @@ public class AppDelegate: ExpoAppDelegate {
   ) -> Bool {
     if url.scheme == "pearcal" {
       LinkModule.pendingLink = url.absoluteString
+      // pearcal://day/... and pearcal://event/... (links from PearOffice) are
+      // handled only by the WebView. Passing them on would also send Expo
+      // Router to a route that does not exist.
+      if url.host == "day" || url.host == "event" { return true }
     }
     if url.isFileURL, ["ics", "ical"].contains(url.pathExtension.lowercased()) {
       return queueCalendarFile(url)

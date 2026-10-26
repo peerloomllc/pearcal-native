@@ -9,6 +9,7 @@
 // intercepts. Both renderers see the same db/notifs/sync surface.
 
 import { handleInviteLink, buildReinviteLink } from '../invite.js'
+import { isPearcalLink } from '../ui-shared/lib/pearLinks.js'
 import { createRoot } from 'react-dom/client'
 import { emitter } from '../ui-shared/index.js'
 import App from './App.jsx'
@@ -224,8 +225,20 @@ window.__pearResolveAvatar = function (hash) {
 // surface as a CustomEvent the App can pick up. Same split mobile uses
 // in app/index.tsx:434-439 (electron's main process branches the URL
 // before injecting __pearHandleInvite vs __pearHandlePair).
+// pearcal://day and pearcal://event links open a day or an event instead
+// (proposals/2026-10-26-pearcal-pearoffice-links.md in the suite root).
+// Buffered for a cold launch from a link, until <App> has its listener.
+const __pearLinkBuffer = []
+window.__pearDrainLinks = function() {
+  return __pearLinkBuffer.splice(0)
+}
 window.__pearHandleInvite = function(url) {
   if (!url) return
+  if (isPearcalLink(url)) {
+    __pearLinkBuffer.push(url)
+    window.dispatchEvent(new CustomEvent('pear:openLink'))
+    return
+  }
   window.dispatchEvent(new CustomEvent('pear:pendingJoin', { detail: url }))
 }
 window.__pearHandlePair = function(url) {

@@ -3,7 +3,13 @@ import UIKit
 @objc(PearCalDeepLink)
 class DeepLinkModule: NSObject {
 
-  @objc func openURL(_ urlString: String) {
+  // Resolves false when no app opens the address (for example a pearoffice://
+  // link with PearOffice not installed), so the UI can say so.
+  @objc func openURL(
+    _ urlString: String,
+    resolve: @escaping RCTPromiseResolveBlock,
+    reject: @escaping RCTPromiseRejectBlock
+  ) {
     // Convert Android geo: URLs to iOS maps: URLs
     var resolved = urlString
     if urlString.hasPrefix("geo:") {
@@ -12,9 +18,9 @@ class DeepLinkModule: NSObject {
         resolved = "maps:0,0?q=\(encoded)"
       }
     }
-    guard let url = URL(string: resolved) else { return }
+    guard let url = URL(string: resolved) else { resolve(false); return }
     DispatchQueue.main.async {
-      UIApplication.shared.open(url)
+      UIApplication.shared.open(url, options: [:]) { ok in resolve(ok) }
     }
   }
 

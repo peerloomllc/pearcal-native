@@ -244,6 +244,13 @@ function _handleAppDataReset (data) {
 async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit, fireRendererEvent }) {
   switch (method) {
     case 'openURL':
+      // true or false, so the UI can say "PearOffice isn't installed" when no
+      // app takes a pearoffice:// link. openExternal rejects for that on macOS
+      // and Windows; on Linux xdg-open can report success and then do nothing.
+      try { await shell.openExternal(args?.[0] ?? ''); return { handled: true, result: true } } catch (e) {
+        return { handled: true, result: false }
+      }
+
     case 'openLightning':
       try { await shell.openExternal(args?.[0] ?? '') } catch (e) {}
       return { handled: true, result: null }
