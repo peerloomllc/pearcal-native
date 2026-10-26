@@ -1770,7 +1770,7 @@ if [ -n "${EXPLICIT_TAG:-}" ]; then
 fi
 
 if APP_VERSION="$ZSP_VERSION" GITHUB_TOKEN="$EXPORT_TOKEN" SIGN_WITH="$SIGN_WITH" \
-    zsp publish -y zapstore.yaml ${ZSP_OVERWRITE}; then
+    zsp publish -q zapstore.yaml ${ZSP_OVERWRITE}; then
   echo ""
   echo "==> Release $RELEASE_TAG complete."
 else
@@ -1781,7 +1781,7 @@ else
   echo "Manual retry:"
   echo "  source scripts/.env \\"
   echo "    && APP_VERSION=$ZSP_VERSION GITHUB_TOKEN=<token> SIGN_WITH=\"\$SIGN_WITH\" \\"
-  echo "    ~/.local/bin/zsp publish --overwrite-release -y zapstore.yaml"
+  echo "    ~/.local/bin/zsp publish --overwrite-release -q zapstore.yaml"
   echo ""
   echo "==> Release $RELEASE_TAG partially complete (GitHub release created, Zapstore skipped)."
 fi
