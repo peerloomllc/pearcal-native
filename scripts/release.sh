@@ -2436,11 +2436,4 @@ if $PUBLISH_FAILED; then
   echo "    Re-run with --retag to redo the release in place once fixed."
 fi
 
-if ${APP_STORE_DEFERRED:-false}; then
-  echo ""
-  echo "==> Reminder: App Store review submission deferred"
-  echo "    The IPA uploaded but Apple was still processing the build when the"
-  echo "    script checked. Once processing completes (5-15 min after upload),"
-  echo "    submit for review from App Store Connect or with the asc commands"
-  echo "    printed by step 11 above."
-fi
+release_deferred_reminders
