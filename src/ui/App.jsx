@@ -46,7 +46,7 @@ import {
   Lightning, BookOpen, EnvelopeSimple, Bug,
   Image, ArrowsClockwise, CurrencyDollar,
   ShieldCheck, Crown, UploadSimple, DownloadSimple,
-  FunnelSimple, GridFour, PencilSimple, Broadcast, Cake,
+  FunnelSimple, GridFour, PencilSimple, Broadcast, Cake, FolderSimple,
 } from '@phosphor-icons/react'
 
 // ─── Theme ────────────────────────────────────────────────────────────────────
@@ -7211,6 +7211,37 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
   // connect at all on a carrier NAT that can never hole-punch, and PearCal is
   // phone-to-phone so both ends are often on one. OFF is the privacy-maximalist
   // choice: pure peer-to-peer, accepting that such a network simply won't connect.
+  // Automatic .ics export to a folder (TODO #187). The shell owns the folder
+  // grant and does the writing; this only shows and edits the settings.
+  // null until the shell answers, and hidden when it says unsupported.
+  const [autoExport, setAutoExport] = useState(null)
+  const [autoExportBusy, setAutoExportBusy] = useState(false)
+  useEffect(() => {
+    db.getAutoExport?.().then(c => setAutoExport(c ?? null)).catch(() => {})
+  }, [db])
+  async function changeAutoExport (fn) {
+    setAutoExportBusy(true)
+    try { const c = await fn(); if (c) setAutoExport(c) } catch (e) {} finally { setAutoExportBusy(false) }
+  }
+  function toggleAutoExport (on) {
+    changeAutoExport(async () => {
+      let c = autoExport
+      if (on && !c?.hasFolder) {
+        c = await db.pickExportFolder()
+        if (!c?.hasFolder) return c
+      }
+      // First switch-on ticks every calendar, so it does something right away.
+      const patch = { enabled: on }
+      if (on && !(c?.calendars ?? []).length) patch.calendars = ['personal', ...(groups ?? []).map(g => g.id)]
+      return db.setAutoExport(patch)
+    })
+  }
+  function toggleAutoExportCalendar (id, on) {
+    const next = new Set(autoExport?.calendars ?? [])
+    if (on) next.add(id); else next.delete(id)
+    changeAutoExport(() => db.setAutoExport({ calendars: [...next] }))
+  }
+
   const [relayStatus, setRelayStatus] = useState(null)
   const loadRelayStatus = useCallback(() => {
     db.getRelayStatus?.().then(s => setRelayStatus(s ?? null)).catch(() => {})
@@ -7980,6 +8011,51 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                 <div style={{ fontSize:11, color:colors.text.muted }}>Export all events as .ics</div>
               </div>
             </button>
+            {autoExport?.supported && (
+              <div style={{ padding:'12px 14px', borderRadius:10, border:`1px solid ${colors.border}`,
+                display:'flex', flexDirection:'column', gap:10, opacity: autoExportBusy ? 0.6 : 1 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <FolderSimple size={18} weight="thin" color="var(--color-accent)" style={{ flexShrink:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:14, color: colors.text.primary }}>Keep a copy in a folder</div>
+                    <div style={{ fontSize:11, color: colors.text.muted, lineHeight:1.4 }}>
+                      {autoExport.enabled && autoExport.hasFolder
+                        ? (autoExport.lastError
+                            ? 'Could not write: ' + autoExport.lastError
+                            : autoExport.lastWrite ? 'Last updated ' + new Date(autoExport.lastWrite).toLocaleString() : 'Updating…')
+                        : 'One .ics file per calendar, updated while PearCal is open'}
+                    </div>
+                  </div>
+                  <Toggle val={!!(autoExport.enabled && autoExport.hasFolder)} accent={colors.primary}
+                    onChange={v => { if (!autoExportBusy) toggleAutoExport(v) }} />
+                </div>
+                {autoExport.enabled && autoExport.hasFolder && (<>
+                  <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                    <div style={{ flex:1, minWidth:0, fontSize:12, color: colors.text.muted,
+                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {autoExport.folderName || 'Folder chosen'}
+                    </div>
+                    <button disabled={autoExportBusy}
+                      onClick={() => changeAutoExport(() => db.pickExportFolder().then(() => db.setAutoExport({})))}
+                      style={{ padding:'6px 12px', borderRadius:8, cursor:'pointer', fontSize:12,
+                        border:`1px solid ${colors.border}`, background:'transparent', color: colors.text.primary, fontFamily:FONT }}>
+                      Change folder
+                    </button>
+                  </div>
+                  {[{ id: 'personal', name: 'Personal' }, ...(groups ?? []).map(g => ({ id: g.id, name: g.name || 'Untitled group' }))].map(c => (
+                    <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{ flex:1, fontSize:13, color: colors.text.primary }}>{c.name}</div>
+                      <Toggle val={(autoExport.calendars ?? []).includes(c.id)} accent={colors.primary}
+                        onChange={v => { if (!autoExportBusy) toggleAutoExportCalendar(c.id, v) }} />
+                    </div>
+                  ))}
+                  <div style={{ fontSize:11, color: colors.text.muted, lineHeight:1.4 }}>
+                    Other apps that can open this folder, such as Syncthing, Nextcloud or a backup tool, can read these events.
+                    The files update while PearCal is open and catch up the next time you open it.
+                  </div>
+                </>)}
+              </div>
+            )}
         </div>
       </div>
 

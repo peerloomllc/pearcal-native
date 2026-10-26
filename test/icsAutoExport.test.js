@@ -43,3 +43,17 @@ test('file names always match what main accepts', () => {
   const files = autoExportFiles(EVENTS, [{ id: 'x/../y', name: '../../etc' }, { id: 'z', name: '日本' }], ['x/../y', 'z'])
   for (const f of files) assert.match(f.name, /^pearcal-[a-z0-9-]+\.ics$/)
 })
+
+test('planAutoExport writes changed files and removes only its own old ones', async () => {
+  const { planAutoExport, icsFingerprint } = await import('../src/ui-shared/lib/ics.js')
+  const a1 = 'BEGIN:VCALENDAR\r\nDTSTAMP:20260101T000000Z\r\nSUMMARY:A\r\nEND:VCALENDAR'
+  const a2 = a1.replace('20260101', '20260202')
+  assert.strictEqual(icsFingerprint(a1), icsFingerprint(a2))
+  const first = planAutoExport([{ name: 'pearcal-a.ics', content: a1 }, { name: 'pearcal-b.ics', content: 'B' }], {})
+  assert.deepStrictEqual(first.write.map(f => f.name), ['pearcal-a.ics', 'pearcal-b.ics'])
+  const second = planAutoExport([{ name: 'pearcal-a.ics', content: a2 }], first.fingerprints)
+  assert.deepStrictEqual(second.write, [])
+  assert.deepStrictEqual(second.remove, ['pearcal-b.ics'])
+  const third = planAutoExport([{ name: 'pearcal-a.ics', content: a1.replace('A', 'A2') }], second.fingerprints)
+  assert.deepStrictEqual(third.write.map(f => f.name), ['pearcal-a.ics'])
+})
