@@ -365,3 +365,28 @@ export function autoExportFiles (events, groups, calendarIds) {
     return { name, content: generateIcs(evs) }
   })
 }
+
+// Fingerprint of an exported file that ignores DTSTAMP (the export time), so
+// the phones' automatic export (#187) can tell an unchanged calendar from a
+// changed one without reading the file back. djb2 over the stripped text.
+export function icsFingerprint (content) {
+  const s = String(content ?? '').replace(/^DTSTAMP:.*$/gm, '')
+  let h = 5381
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36) + ':' + s.length
+}
+
+// Which files to write and which earlier ones to delete. `prev` maps file
+// name to the fingerprint last written. Only names in `prev` are ever
+// deleted, so files the user keeps in the same folder are left alone.
+export function planAutoExport (files, prev = {}) {
+  const fingerprints = {}
+  const write = []
+  for (const f of files ?? []) {
+    const fp = icsFingerprint(f.content)
+    fingerprints[f.name] = fp
+    if (prev[f.name] !== fp) write.push(f)
+  }
+  const remove = Object.keys(prev).filter(name => !(name in fingerprints))
+  return { write, remove, fingerprints }
+}

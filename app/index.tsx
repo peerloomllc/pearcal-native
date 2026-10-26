@@ -17,6 +17,7 @@ import * as SecureStore from 'expo-secure-store'
 import * as Clipboard from 'expo-clipboard'
 import * as LocalAuthentication from 'expo-local-authentication'
 import { requestLocalNetworkPermission } from '../modules/local-network'
+import { autoExportFiles, planAutoExport } from '../src/ui-shared/lib/ics.js'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
@@ -69,6 +70,139 @@ function onEvent (event: string, fn: (data: any) => void) {
 
 function sendToWorklet (msg: object) {
   _worklet?.IPC.write(b4a.from(JSON.stringify(msg) + '\n'))
+}
+
+// --- Automatic .ics export (TODO #187) --------------------------------------
+// Same model as PearCircle's auto-backup. The user picks a folder once and the
+// shell keeps one .ics file per chosen calendar there, rewritten a few seconds
+// after events change, when the app comes to the foreground and every 30
+// minutes while it runs. Android keeps a Storage Access Framework grant on the
+// folder (dirUri); iOS keeps a security-scoped bookmark. Both write through
+// the PearCalFiles native module. Desktop has its own copy of this in
+// electron/src/main/shell-handlers.js.
+const { PearCalFiles } = NativeModules
+const AUTO_EXPORT_CFG_FILE = FileSystem.documentDirectory + 'auto-export.json'
+const AUTO_EXPORT_CHECK_MS = 30 * 60 * 1000
+const AUTO_EXPORT_DELAY_MS = 3000
+type AutoExportCfg = {
+  enabled: boolean, dirUri: string | null, bookmark: string | null, folderName: string | null,
+  calendars: string[], fingerprints: Record<string, string>, lastWrite: number | null, lastError: string | null
+}
+const autoExportSupported = () => !!PearCalFiles?.writeToFolder
+let _autoExportDbReady = false
+let _autoExportRunning = false
+let _autoExportAgain = false
+let _autoExportDelay: any = null
+let _autoExportTimer: any = null
+
+async function loadAutoExportCfg (): Promise<AutoExportCfg> {
+  const base: AutoExportCfg = { enabled: false, dirUri: null, bookmark: null, folderName: null, calendars: [], fingerprints: {}, lastWrite: null, lastError: null }
+  try {
+    const raw = await FileSystem.readAsStringAsync(AUTO_EXPORT_CFG_FILE)
+    return { ...base, ...JSON.parse(raw) }
+  } catch { return base }
+}
+async function saveAutoExportCfg (cfg: AutoExportCfg) {
+  await FileSystem.writeAsStringAsync(AUTO_EXPORT_CFG_FILE, JSON.stringify(cfg))
+}
+// What the settings screen sees. The grant itself stays in the shell.
+function publicAutoExportCfg (cfg: AutoExportCfg) {
+  return {
+    supported: autoExportSupported(), enabled: cfg.enabled, folderName: cfg.folderName,
+    hasFolder: !!(cfg.dirUri || cfg.bookmark), calendars: cfg.calendars,
+    lastWrite: cfg.lastWrite, lastError: cfg.lastError,
+  }
+}
+
+// A worklet call from the shell itself, with a timeout so a worklet that went
+// away mid-call cannot leave the export marked as running forever.
+function workletCall (method: string, args: any[] = []): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const id = _nextId++
+    const t = setTimeout(() => { _pending.delete(id); reject(new Error(method + ' timed out')) }, 20000)
+    _pending.set(id, (msg: any) => {
+      clearTimeout(t)
+      if (msg.error) reject(new Error(msg.error)); else resolve(msg.result)
+    })
+    sendToWorklet({ id, method, args })
+  })
+}
+
+async function runAutoExport () {
+  if (!autoExportSupported() || !_autoExportDbReady || !_worklet) return
+  if (_autoExportRunning) { _autoExportAgain = true; return }
+  _autoExportRunning = true
+  try {
+    const cfg = await loadAutoExportCfg()
+    const folder = Platform.OS === 'ios' ? cfg.bookmark : cfg.dirUri
+    if (!cfg.enabled || !folder) return
+    try {
+      const [events, groups] = await Promise.all([workletCall('listEvents'), workletCall('listGroups')])
+      const files = autoExportFiles(events ?? [], groups ?? [], cfg.calendars)
+      const plan = planAutoExport(files, cfg.fingerprints)
+      let bookmark = cfg.bookmark
+      for (const f of plan.write) {
+        const r = await PearCalFiles.writeToFolder(bookmark ?? cfg.dirUri, f.name, f.content)
+        if (typeof r?.bookmark === 'string') bookmark = r.bookmark
+      }
+      for (const name of plan.remove) {
+        const r = await PearCalFiles.deleteFromFolder(bookmark ?? cfg.dirUri, name)
+        if (typeof r?.bookmark === 'string') bookmark = r.bookmark
+      }
+      const changed = plan.write.length > 0 || plan.remove.length > 0
+      await saveAutoExportCfg({
+        ...cfg, bookmark, fingerprints: plan.fingerprints as Record<string, string>, lastError: null,
+        lastWrite: changed || cfg.lastError || !cfg.lastWrite ? Date.now() : cfg.lastWrite,
+      })
+    } catch (e: any) {
+      console.warn('[autoExport] failed:', e?.message ?? e)
+      await saveAutoExportCfg({ ...cfg, lastError: e?.message ?? String(e) }).catch(() => {})
+    }
+  } finally {
+    _autoExportRunning = false
+    if (_autoExportAgain) { _autoExportAgain = false; scheduleAutoExport() }
+  }
+}
+
+// Coalesce a burst of changes (a sync applying many entries, an import) into
+// one export a few seconds after the last one.
+function scheduleAutoExport () {
+  if (_autoExportDelay) clearTimeout(_autoExportDelay)
+  _autoExportDelay = setTimeout(() => { _autoExportDelay = null; runAutoExport().catch(() => {}) }, AUTO_EXPORT_DELAY_MS)
+  if (!_autoExportTimer) _autoExportTimer = setInterval(() => { runAutoExport().catch(() => {}) }, AUTO_EXPORT_CHECK_MS)
+}
+
+// Set while the folder picker is up. Leaving the app for the picker looks like
+// a trip to the background, and after WEBVIEW_RECOVERY_MIN_BG_MS the shell
+// recycles the WebView, which dropped the user back on the calendar.
+let _folderPickerOpen = false
+
+async function pickAutoExportFolder () {
+  _folderPickerOpen = true
+  // Cleared a moment later: the picker's result can arrive before AppState
+  // reports 'active', and the flag has to still be up when it does.
+  try { return await pickAutoExportFolderInner() } finally { setTimeout(() => { _folderPickerOpen = false }, 3000) }
+}
+
+async function pickAutoExportFolderInner () {
+  const cfg = await loadAutoExportCfg()
+  if (Platform.OS === 'ios') {
+    const picked = await PearCalFiles.pickFolder()
+    if (!picked?.bookmark) return cfg
+    cfg.bookmark = picked.bookmark
+    cfg.folderName = picked.name ?? null
+  } else {
+    const SAF = (FileSystem as any).StorageAccessFramework
+    const perm = await SAF.requestDirectoryPermissionsAsync()
+    if (!perm?.granted || !perm.directoryUri) return cfg
+    cfg.dirUri = perm.directoryUri
+    cfg.folderName = decodeURIComponent(perm.directoryUri).split(/[:/]/).filter(Boolean).pop() ?? null
+  }
+  // The fingerprints describe files in the old folder.
+  cfg.fingerprints = {}
+  cfg.lastError = null
+  await saveAutoExportCfg(cfg)
+  return cfg
 }
 
 const MNEMONIC_KEY = 'pearcal.identity.mnemonic'
@@ -684,6 +818,27 @@ export default function Root () {
         PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
         return
       }
+      if (msg.method === 'autoExportGet' || msg.method === 'autoExportSet' || msg.method === 'autoExportPickFolder') {
+        const respond = (o: any) => webViewRef.current?.injectJavaScript(
+          'window.__pearResponse(' + JSON.stringify({ ...o, id: msg.id }) + ');true;'
+        )
+        ;(async () => {
+          if (msg.method === 'autoExportPickFolder') {
+            await pickAutoExportFolder()
+          } else if (msg.method === 'autoExportSet') {
+            const patch = msg.args?.[0] ?? {}
+            const cfg = await loadAutoExportCfg()
+            if (typeof patch.enabled === 'boolean') cfg.enabled = patch.enabled
+            if (Array.isArray(patch.calendars)) cfg.calendars = patch.calendars.map(String)
+            await saveAutoExportCfg(cfg)
+          }
+          if (msg.method !== 'autoExportGet') await runAutoExport()
+          return publicAutoExportCfg(await loadAutoExportCfg())
+        })()
+          .then((result) => respond({ result }))
+          .catch((err: any) => respond({ error: err?.message ?? String(err) }))
+        return
+      }
 
       const bareId = _nextId++
       _pending.set(bareId, result => {
@@ -692,6 +847,8 @@ export default function Root () {
         )
       })
       sendToWorklet({ ...msg, id: bareId })
+      // Anything that changes events or groups refreshes the exported files.
+      if (/^(put|delete|remove|import|leave|join)/i.test(msg.method ?? '')) scheduleAutoExport()
     } catch (err) { console.error('WebView msg error:', err) }
   }, [])
 
@@ -854,6 +1011,8 @@ export default function Root () {
         // otherwise a warm remount's fresh component never leaves the loading screen.
         if (_notifyReady) _notifyReady()
         else { setDbReady(true); dbReadyRef.current = true }
+        _autoExportDbReady = true
+        scheduleAutoExport()
         if (Platform.OS === 'ios') {
           PearCalBGSync?.checkPendingBGSync?.().then((pending: boolean) => {
             if (pending) sendToWorklet({ method: 'sync', id: -99, args: [] })
@@ -879,6 +1038,7 @@ webViewRef.current?.injectJavaScript(
         webViewRef.current?.injectJavaScript(
           'window.__pearEvent("sync",' + JSON.stringify(payload) + ');true;'
         )
+        scheduleAutoExport()
         // No-op if no BGTask is pending; harmless for foreground syncs
         if (Platform.OS === 'ios') PearCalBGSync?.completeBGSync?.(true)
       })
@@ -1071,6 +1231,7 @@ webViewRef.current?.injectJavaScript(
       // fresh mount gets the 'ready' that leaves the loading screen.
       _notifyReady = null
       _remountWebView = null
+      _autoExportDbReady = false  // the shutdown below closes the database
       if (_worklet) {
         sendToWorklet({ method: 'shutdown', args: [], id: -1 })
         // Delay the terminate so a quick reopen can adopt the worklet and CANCEL
@@ -1116,13 +1277,14 @@ webViewRef.current?.injectJavaScript(
         _backgroundedAt = 0
       }
       if (Platform.OS === 'android' && state === 'active') {
-        if (bgMs >= WEBVIEW_RECOVERY_MIN_BG_MS && WebViewRecovery?.terminateRenderer) {
+        if (bgMs >= WEBVIEW_RECOVERY_MIN_BG_MS && !_folderPickerOpen && WebViewRecovery?.terminateRenderer) {
           WebViewRecovery.terminateRenderer().catch(() => {})
         }
       }
       if (state === 'active' && dbReadyRef.current) {
         sendToWorklet({ method: 'foregroundSync', id: -98, args: [{ bgMs, platform: Platform.OS }] })
         sendToWorklet({ method: 'refreshWidgetCache', id: -97, args: [] })
+        scheduleAutoExport()
       } else if (state === 'background' && Platform.OS === 'android') {
         // react-native-bare-kit registers a global AppState listener that
         // suspend()s the worklet on 'background' (node_modules/react-native-bare-kit

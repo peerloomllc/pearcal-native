@@ -105,6 +105,10 @@ const db = {
   putPrivateNote: (id, text) => window.__pearDB.call('putPrivateNote', id, text),
   getRelayStatus:     ()  => window.__pearDB.call('getRelayStatus'),
   setUseRelay:        (on) => window.__pearDB.call('setUseRelay', on),
+  // Automatic .ics export to a folder (TODO #187), handled in the RN shell.
+  getAutoExport:      ()  => window.__pearDB.call('autoExportGet'),
+  setAutoExport:      (p) => window.__pearDB.call('autoExportSet', p),
+  pickExportFolder:   ()  => window.__pearDB.call('autoExportPickFolder'),
   getBlindPeerKey:    ()  => window.__pearDB.call('getBlindPeerKey'),
   setBlindPeerKey:    (k) => window.__pearDB.call('setBlindPeerKey', k),
   removeBlindPeerKey: ()  => window.__pearDB.call('removeBlindPeerKey'),

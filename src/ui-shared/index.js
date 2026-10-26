@@ -3,7 +3,7 @@
 // no React, no DOM. React hooks live alongside in ./hooks/ once D1
 // extracts them.
 
-export { parseIcs, generateIcs, icsFileGroups, routeIcsImport, autoExportFiles } from './lib/ics.js'
+export { parseIcs, generateIcs, icsFileGroups, routeIcsImport, autoExportFiles, icsFingerprint, planAutoExport } from './lib/ics.js'
 export {
   MAX_COLOR_SEGMENTS,
   MEMBER_PALETTE,
