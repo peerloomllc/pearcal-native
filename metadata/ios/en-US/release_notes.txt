@@ -1,5 +1,8 @@
-## What's Changed
-
 ### ✨ New Features
+  - Link events to PearOffice files. Paste a PearOffice file or folder link into an event's description and it shows up as a button that opens PearOffice right there.
+  - Share a link to an event. Use "Copy link" on an event in a shared calendar to send it to people in that calendar. Tapping the link opens the event in PearCal.
+  - Links to a day. A PearCal day link opens your calendar on that date.
+  - Open PearCal from PearOffice. Event and day links in PearOffice now open PearCal, and dates in PearOffice get an "Open in PearCal" option.
 
-- Automatic calendar export: PearCal can now keep an up-to-date copy of the calendars you choose in a folder. Other apps, such as a backup tool, Nextcloud, Syncthing or a personal assistant, can then read your schedule. Turn it on in Settings. On a phone, the copy updates while PearCal is open and catches up the next time you open it.
+### 🐛 Bug Fixes
+  - If an app a link needs isn't installed, PearCal now tells you instead of doing nothing.

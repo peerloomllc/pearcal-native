@@ -64,12 +64,12 @@
           ]
         }
       ],
-      "versionCode": 1000052,
+      "versionCode": 1000053,
       "privacyPolicy": "https://peerloomllc.github.io/pearcal-native/privacy.html"
     },
     "ios": {
       "bundleIdentifier": "com.pearcal",
-      "buildNumber": "53",
+      "buildNumber": "54",
       "infoPlist": {
         "NSCameraUsageDescription": "Used to set your profile photo",
         "NSPhotoLibraryUsageDescription": "Used to set your profile photo",
@@ -113,6 +113,6 @@
     "assets": [
       "./assets/bare-universal.bundle"
     ],
-    "version": "1.0.52"
+    "version": "1.0.53"
   }
 }
