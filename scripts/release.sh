@@ -1209,104 +1209,6 @@ print(json.dumps({'tag_name': '${RELEASE_TAG}', 'name': '${RELEASE_TAG}', 'body'
   UPLOAD_URL=$(printf '%s' "$RELEASE_RESP" \
     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['upload_url'].split('{')[0])")
 
-  # Helper: pick a sensible Content-Type per extension. GitHub doesn't
-  # validate but it surfaces in the asset's metadata.
-
-  # Helper: upload one asset to the release. Returns 0 on success, 1 on
-  # parsable API error. We don't bail the whole script on a single asset
-  # failure — desktop artifacts are best-effort, and a single platform
-  # upload glitch shouldn't gate the rest of the release.
-  # Helper: delete an existing asset by name (used when re-uploading replaces a
-  # stale artifact from a prior partial run). Silent on failure — the caller's
-  # retry will surface any real problem.
-  _delete_release_asset_by_name () {
-    local name="$1"
-    [ -z "${RELEASE_ID:-}" ] && return 1
-    local list; list=$(curl -s \
-      -H "Authorization: Bearer $GH_TOKEN" \
-      -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${REPO_SLUG}/releases/${RELEASE_ID}/assets")
-    local asset_id; asset_id=$(printf '%s' "$list" \
-      | python3 -c "import sys,json
-try:
-    arr=json.load(sys.stdin)
-    for a in arr:
-        if a.get('name')=='${name}':
-            print(a.get('id',''))
-            break
-except Exception:
-    pass" 2>/dev/null || echo "")
-    [ -z "$asset_id" ] && return 1
-    curl -s -X DELETE \
-      -H "Authorization: Bearer $GH_TOKEN" \
-      -H "Accept: application/vnd.github+json" \
-      "https://api.github.com/repos/${REPO_SLUG}/releases/assets/${asset_id}" > /dev/null
-    return 0
-  }
-
-  _upload_release_asset () {
-    local file="$1"
-    local name; name=$(basename "$file")
-    local ctype; ctype=$(_asset_content_type "$name")
-    local attempt=0
-    while [ $attempt -lt 2 ]; do
-      attempt=$((attempt + 1))
-      echo "==> Uploading $name..."
-      local resp_file; resp_file=$(mktemp)
-      curl \
-        -X POST \
-        -H "Authorization: Bearer $GH_TOKEN" \
-        -H "Accept: application/vnd.github+json" \
-        -H "Content-Type: $ctype" \
-        "${UPLOAD_URL}?name=${name}" \
-        --data-binary "@${file}" \
-        --progress-bar \
-        -o "$resp_file" 2>&1
-      local resp; resp=$(cat "$resp_file"); rm -f "$resp_file"
-      local err; err=$(printf '%s' "$resp" \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" \
-        2>/dev/null || echo "")
-      if [ -z "$err" ]; then
-        echo "    ✓ Uploaded $name."
-        return 0
-      fi
-      # If GitHub says the asset already exists, delete the stale one and retry once.
-      local already; already=$(printf '%s' "$resp" \
-        | python3 -c "import sys,json
-try:
-    d=json.load(sys.stdin)
-    for e in d.get('errors',[]) or []:
-        if e.get('code')=='already_exists':
-            print('1'); break
-except Exception:
-    pass" 2>/dev/null || echo "")
-      if [ "$already" = "1" ] && [ $attempt -lt 2 ]; then
-        echo "    (asset $name already exists on the release — deleting and retrying)"
-        _delete_release_asset_by_name "$name" || true
-        continue
-      fi
-      echo "    ✗ Upload failed for $name:"
-      printf '%s\n' "$resp" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$resp"
-      return 1
-    done
-  }
-
-  # --- Upload every asset, several at a time ---
-  #
-  # These went out strictly one after another: the APK, up to five desktop
-  # installers, every .sha256 sidecar and the update manifests, one file at a time over a link nowhere
-  # near saturated. Uploads are network-bound and independent of each other,
-  # so they now overlap. Four at a time by default, because more streams to one
-  # host stop adding throughput and start competing; RELEASE_UPLOAD_JOBS
-  # overrides it.
-  #
-  # The per-file progress bars are gone, since interleaved bars are unreadable.
-  # Nothing else about an upload changed: every response is still captured and
-  # checked one by one below, a name that already exists on the release is
-  # still deleted and retried through _upload_release_asset, a failed desktop
-  # asset is still best-effort, and a failed APK still stops the run.
-  RELEASE_UPLOAD_JOBS="${RELEASE_UPLOAD_JOBS:-4}"
-
   if [ ! -f "$APK_NAME" ]; then
     echo ""
     echo "ERROR: $APK_NAME is missing - nothing to attach to the release."
@@ -1318,65 +1220,17 @@ except Exception:
     [ -n "$_f" ] && [ -f "$_f" ] && UPLOAD_QUEUE+=("$_f")
   done
 
-  echo "==> Uploading ${#UPLOAD_QUEUE[@]} asset(s), up to ${RELEASE_UPLOAD_JOBS} at a time..."
-  _upload_started_at=$(date +%s)
-  _upload_resps=()
-  for _f in "${UPLOAD_QUEUE[@]}"; do
-    _name=$(basename "$_f")
-    _ctype=$(_asset_content_type "$_name")
-    _rf=$(mktemp); _upload_resps+=("$_rf")
-    echo "    uploading $_name ($_ctype, $(du -h "$_f" | cut -f1))"
-    curl -s \
-      -X POST \
-      -H "Authorization: Bearer $GH_TOKEN" \
-      -H "Accept: application/vnd.github+json" \
-      -H "Content-Type: $_ctype" \
-      "${UPLOAD_URL}?name=${_name}" \
-      --data-binary "@${_f}" \
-      -o "$_rf" 2>/dev/null &
-    # Hold the queue at RELEASE_UPLOAD_JOBS. `wait -n` reaps whichever finishes
-    # first; `|| true` because a failed upload must not trip `set -e` here, it
-    # is diagnosed from its own response below.
-    while [ "$(jobs -rp | wc -l)" -ge "$RELEASE_UPLOAD_JOBS" ]; do wait -n 2>/dev/null || true; done
-  done
-  wait
-  echo "    Uploads finished in $(( $(date +%s) - _upload_started_at ))s. Checking each response..."
-
+  # Several at a time with one progress line (shared library). A failed desktop
+  # file does not stop the release; a failed APK does.
   APK_UPLOAD_OK=true
-  for _i in "${!UPLOAD_QUEUE[@]}"; do
-    _f="${UPLOAD_QUEUE[$_i]}"
-    _name=$(basename "$_f")
-    _resp=$(cat "${_upload_resps[$_i]}"); rm -f "${_upload_resps[$_i]}"
-    _err=$(printf '%s' "$_resp" \
-      | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('message',''))" \
-      2>/dev/null || echo "")
-    if [ -z "$_err" ]; then
-      echo "    ✓ Uploaded $_name."
-      continue
-    fi
-    _already=$(printf '%s' "$_resp" \
-      | python3 -c "import sys,json
-try:
-    d=json.load(sys.stdin)
-    for e in d.get('errors',[]) or []:
-        if e.get('code')=='already_exists':
-            print('1'); break
-except Exception:
-    pass" 2>/dev/null || echo "")
-    if [ "$_already" = "1" ]; then
-      echo "    (asset $_name already exists on the release - deleting and retrying)"
-      _delete_release_asset_by_name "$_name" || true
-      if _upload_release_asset "$_f"; then continue; fi
-    else
-      echo "    ✗ Upload failed for $_name:"
-      printf '%s\n' "$_resp" | python3 -m json.tool 2>/dev/null || printf '%s\n' "$_resp"
-    fi
-    if [ "$_f" = "$APK_NAME" ]; then
-      APK_UPLOAD_OK=false
-    else
+  if ! release_upload_assets "$UPLOAD_URL" "${UPLOAD_QUEUE[@]}"; then
+    for _f in "${RELEASE_UPLOAD_FAILED[@]}"; do
+      if [ "$_f" = "$APK_NAME" ]; then APK_UPLOAD_OK=false; fi
+    done
+    if $APK_UPLOAD_OK; then
       echo "    (continuing - a desktop artifact failure doesn't block the rest of the release)"
     fi
-  done
+  fi
 
   if ! $APK_UPLOAD_OK; then
     echo ""
