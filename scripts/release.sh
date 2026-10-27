@@ -1771,37 +1771,7 @@ if priors:
         asc validate --app "$ASC_APP_ID" --version "$APP_VERSION" || true
         _confirm "Submit version ${APP_VERSION} for App Store review?"
 
-        echo "    Submitting ${APP_VERSION} for review..."
-        _SUBMISSION_ID=$(asc review submissions-create --app "$ASC_APP_ID" --platform IOS --output json 2>/dev/null \
-          | python3 -c "
-import json, sys
-try:
-    print(json.load(sys.stdin).get('data', {}).get('id', ''))
-except Exception:
-    pass
-" 2>/dev/null)
-
-        if [ -z "$_SUBMISSION_ID" ]; then
-          echo "    WARNING: could not create a review submission."
-          echo "    Submit manually: https://appstoreconnect.apple.com/apps/${ASC_APP_ID}"
-        elif ! asc review items-add --submission "$_SUBMISSION_ID" \
-                --item-type appStoreVersions --item-id "$ASC_VERSION_ID" >/dev/null; then
-          echo "    WARNING: could not add version ${APP_VERSION} to the submission."
-          echo "    Cancel the empty submission: asc submit cancel --app ${ASC_APP_ID} --id ${_SUBMISSION_ID} --confirm"
-        elif asc review submissions-submit --id "$_SUBMISSION_ID" --confirm >/dev/null; then
-          echo "    Submitted for review."
-
-          # ── Step 5: Check review status ──
-          echo ""
-          echo "==> Checking review status..."
-          asc review status --app "$ASC_APP_ID" || true
-          echo ""
-          echo "    Monitor status:    asc review status --app $ASC_APP_ID"
-          echo "    Diagnose issues:   asc review doctor --app $ASC_APP_ID"
-        else
-          echo "    WARNING: Submission failed - build may still be processing."
-          echo "    Retry: asc review submissions-submit --id ${_SUBMISSION_ID} --confirm"
-        fi
+        release_submit_for_review "$ASC_VERSION_ID" || true
       fi
     fi
   else
