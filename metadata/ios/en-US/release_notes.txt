@@ -1,8 +1,4 @@
-### ✨ New Features
-  - Link events to PearOffice files. Paste a PearOffice file or folder link into an event's description and it shows up as a button that opens PearOffice right there.
-  - Share a link to an event. Use "Copy link" on an event in a shared calendar to send it to people in that calendar. Tapping the link opens the event in PearCal.
-  - Links to a day. A PearCal day link opens your calendar on that date.
-  - Open PearCal from PearOffice. Event and day links in PearOffice now open PearCal, and dates in PearOffice get an "Open in PearCal" option.
+PearCal v1.0.54
 
-### 🐛 Bug Fixes
-  - If an app a link needs isn't installed, PearCal now tells you instead of doing nothing.
+Privacy
+  - PearCal asks for fewer permissions. It no longer requests storage access or permission to draw over other apps. It never used either
