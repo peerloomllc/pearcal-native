@@ -1296,6 +1296,7 @@ else
   MAC_MINI_REPO_PATH="${MAC_MINI_REPO_PATH:-peerloomllc/pearcal-native}"
 
   # ── Step 1: Sync repo to Mac Mini ──
+  release_check_mac_space "$MAC_MINI"
   echo "    Syncing repo to $MAC_MINI (including freshly built bundles)..."
   MAC_MINI_HOST="$MAC_MINI" MAC_MINI_REPO_PATH="$MAC_MINI_REPO_PATH" \
     "$REPO_ROOT/scripts/mac-sync.sh" --rsync-path /opt/homebrew/bin/rsync
