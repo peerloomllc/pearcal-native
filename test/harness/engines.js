@@ -16,9 +16,14 @@ const fs = require('fs')
 const os = require('os')
 const { spawn } = require('child_process')
 
-const BARE_ENTRY = process.env.PEARCAL_E2E_ENGINE === 'desktop'
-  ? require.resolve('../../electron/vendor/src/bare.js')
-  : require.resolve('../../src/bare.js')
+// PEARCAL_E2E_BARE, set per peer through launch(name, env), runs that peer on
+// another copy of bare.js, e.g. an older release checked out as a worktree, to
+// test a mixed-version pair.
+const BARE_ENTRY = process.env.PEARCAL_E2E_BARE
+  ? require.resolve(process.env.PEARCAL_E2E_BARE)
+  : process.env.PEARCAL_E2E_ENGINE === 'desktop'
+    ? require.resolve('../../electron/vendor/src/bare.js')
+    : require.resolve('../../src/bare.js')
 
 if (require.main === module && process.argv[2] === 'peer') peer()
 

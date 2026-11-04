@@ -108,6 +108,12 @@ const db = {
   putRsvp:       (eid, mid, s, gids) => window.__pearDB.call('putRsvp', eid, mid, s, gids),
   getPrivateNote: (id)       => window.__pearDB.call('getPrivateNote', id),
   putPrivateNote: (id, text) => window.__pearDB.call('putPrivateNote', id, text),
+  // Personal calendars + per-device visibility (TODO #189).
+  listPersonalCalendars:  ()  => window.__pearDB.call('listPersonalCalendars'),
+  putPersonalCalendar:    (c) => window.__pearDB.call('putPersonalCalendar', c),
+  deletePersonalCalendar: (id) => window.__pearDB.call('deletePersonalCalendar', id),
+  getCalendarVisibility:  ()  => window.__pearDB.call('getCalendarVisibility'),
+  setCalendarVisibility:  (v) => window.__pearDB.call('setCalendarVisibility', v),
   // TODO #134 - the relay ENGINE was already here (prepack.js vendors src/, so
   // desktop picks up the shared worklet automatically), but the renderer is a
   // separate UI tree, so the relay was on with no way to turn it off. It is the

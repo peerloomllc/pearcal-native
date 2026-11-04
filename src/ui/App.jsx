@@ -23,7 +23,7 @@ import { calendarListLine, calendarsLine, personalLine } from '../ui-shared/lib/
 import { linksInText, pearLinkLabel, parsePearLink, eventLink, findLinkedEvent, openPearLink, MISSING_EVENT_MESSAGE } from '../ui-shared/lib/pearLinks.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
-  parseIcs, generateIcs, icsFileGroups, routeIcsImport,
+  parseIcs, icsCalendarName, generateIcs, icsFileGroups, routeIcsImport,
   MAX_COLOR_SEGMENTS,
   eventColors, memberColorFor, memberColorIndexed, derivedEventColors,
   stripeBackground, leftStripeStyle, dotBackground,
@@ -32,7 +32,7 @@ import {
   formatTime, formatRelativeTime, todayStr, dateStr, formatBytes,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
-  useProfile, useRsvps, useGroups, useEvents, useHolidayRepair,
+  useProfile, useRsvps, useGroups, useEvents, useHolidayRepair, useCalendars,
   emitter, Tour,
   KeylessNotice, SyncHealthNotice, PendingApprovalNotice, RecoveryNotice,
 } from '../ui-shared/index.js'
@@ -41,7 +41,7 @@ import {
   CalendarBlank, CalendarDot, Users, User, Info,
   ShareNetwork, ArrowSquareOut, MapPin, GearSix,
   Trash, SignOut, Repeat, Lock, Key, Hourglass,
-  CaretRight, CaretLeft, QrCode, Plus, UserPlus,
+  CaretRight, CaretLeft, QrCode, Plus, UserPlus, Stack,
   Check, CheckCircle, Copy, X, Eye, EyeSlash, Circle,
   Warning, ArrowLeft, DotsThree,
   Lightning, BookOpen, EnvelopeSimple, Bug,
@@ -489,6 +489,12 @@ export default function App ({ db, notifs, sync }) {
   const [myRsvps,       setMyRsvps]       = useRsvps(db)
   // Move any holiday event still sitting at a date an older build got wrong.
   useHolidayRepair(db, profile, events, setEvents, eventsReady)
+  // Personal calendars + per-device show/hide (TODO #189). `viewEvents` is what
+  // the calendar draws. `events` stays the full list that saves and deletes use,
+  // so a hidden occurrence is never skipped by a series edit.
+  const cal = useCalendars(db, { activeHolidayCountries: profile?.holidayCountries ?? [] })
+  const viewEvents = useMemo(() => cal.filterEvents(events), [events, cal.filterEvents])
+  const [calendarsOpen, setCalendarsOpen] = useState(false)
   const [selectedDate,  setSelectedDate]  = useState(todayStr())
   const [viewDate,      setViewDate]      = useState(() => {
     const t = new Date(); return { y: t.getFullYear(), m: t.getMonth() }
@@ -542,7 +548,7 @@ export default function App ({ db, notifs, sync }) {
         icon: <Warning size={36} weight="thin" color="var(--color-destructive)" /> })
       return
     }
-    setIcsImport({ events: parsed, filename })
+    setIcsImport({ events: parsed, filename, calName: icsCalendarName(text) })
   }, [])
   useEffect(() => {
     // Drain on every event as well as on mount, so a file is opened once.
@@ -1078,7 +1084,7 @@ export default function App ({ db, notifs, sync }) {
       // Non-frequency-change edit on a series — PROPAGATE patch.
       const PROPAGATE = ['title','allDay','endDate','start','end','reminder',
                          ...(options.propagateGroups ? ['groups','invitees'] : []),
-                         'color','desc','location','recurrence','recurrenceEnd',
+                         'color','desc','location','recurrence','recurrenceEnd','calendarId',
                          'repeatForever','recurrenceNth','recurrenceWeekday','recurrenceInterval','editPermission']
       const patch = {}
       for (const k of PROPAGATE) patch[k] = ev[k]
@@ -1655,7 +1661,7 @@ export default function App ({ db, notifs, sync }) {
     }
     return hidden
   }, [events])
-  const eventsOnDate = d => events.filter(e => e.date <= d && (e.endDate || e.date) >= d && !hiddenShadowIds.has(e.id))
+  const eventsOnDate = d => viewEvents.filter(e => e.date <= d && (e.endDate || e.date) >= d && !hiddenShadowIds.has(e.id))
 
   function openCreate (date, startTime) {
     let defaultStart, defaultEnd
@@ -1743,9 +1749,10 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={events} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
+              setModal={setModal} events={viewEvents} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
               saveEvent={saveEvent} profile={profile} sync={sync} myRsvps={myRsvps} myProfileId={profile?.id}
-              closeFullGridRef={closeFullGridRef} />
+              closeFullGridRef={closeFullGridRef}
+              onOpenCalendars={() => setCalendarsOpen(true)} hiddenCalendarCount={cal.hidden.size} />
           )}
           {blockedToast && (
             <div style={{ position:'fixed', bottom:'calc(53px + var(--safe-area-bottom) + 16px)',
@@ -1796,7 +1803,7 @@ export default function App ({ db, notifs, sync }) {
               joinOpen={joinOpen} setJoinOpen={setJoinOpen} />
           )}
           {tab === 'profile' && (
-            <ProfileTab profile={profile} groups={groups} onUpdateProfile={updateProfile}
+            <ProfileTab profile={profile} groups={groups} personalCalendars={cal.calendars} onUpdateProfile={updateProfile}
               db={db} events={events} setEvents={setEvents} dark={dark} sync={sync} saveEvent={saveEvent}
               deleteEventSeries={deleteEventSeries}
               blindPeerKey={blindPeerKey} setBlindPeerKey={setBlindPeerKey}
@@ -1881,11 +1888,18 @@ export default function App ({ db, notifs, sync }) {
         )}
 
         {icsImport && (
-          <ImportIcsSheet events={icsImport.events} filename={icsImport.filename}
-            groups={groups}
+          <ImportIcsSheet events={icsImport.events} filename={icsImport.filename} calName={icsImport.calName}
+            groups={groups} calendars={cal.calendars}
             existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
-            onImport={(toImport) => {
+            onImport={async (toImport, { calendarId, newCalendarName } = {}) => {
               if (!saveEvent) return
+              // Personal events land in the chosen calendar (TODO #189).
+              let calId = calendarId ?? 'default'
+              if (calId === '__new__') {
+                calId = (await cal.createCalendar({ name: newCalendarName,
+                  color: GROUP_COLORS[cal.calendars.length % GROUP_COLORS.length] }).catch(() => null))?.id ?? 'default'
+              }
+              const calColor = cal.calendarsById.get(calId)?.color ?? null
               for (const r of toImport) {
                 const { ev, uid, keptGroups } = r
                 const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
@@ -1905,11 +1919,23 @@ export default function App ({ db, notifs, sync }) {
                   recurrenceNth: ev.recurrenceNth ?? 0, recurrenceWeekday: ev.recurrenceWeekday ?? 0,
                   recurrenceInterval: ev.recurrenceInterval ?? 1, repeatForever: !!ev.repeatForever,
                   editPermission: 'everyone', creatorId: profile?.id ?? '',
+                  ...(keptGroups.length === 0 && calId !== 'default' ? { calendarId: calId } : {}),
+                  ...(keptGroups.length === 0 && calColor ? { color: calColor } : {}),
                 }, 'one', {}, [])
               }
               setIcsImport(null)
             }}
             onClose={() => setIcsImport(null)} />
+        )}
+
+        {calendarsOpen && (
+          <CalendarsSheet cal={cal} groups={groups} events={events}
+            saveEventQuiet={async ev => {
+              await db?.putEvent(ev)
+              setEvents(prev => prev.map(e => e.id === ev.id ? ev : e))
+            }}
+            removeEvent={ev => deleteEvent(ev.id)}
+            onClose={() => setCalendarsOpen(false)} />
         )}
 
         {infoSheet && (
@@ -2007,7 +2033,7 @@ export default function App ({ db, notifs, sync }) {
         )}
         {qrGroup && <QRModal link={qrGroup.link} onClose={() => setQrGroup(null)} />}
         {modal && (
-          <EventModal modal={modal} setModal={setModal} groups={groups} profile={profile} db={db}
+          <EventModal modal={modal} setModal={setModal} groups={groups} calendars={cal.calendars} profile={profile} db={db}
             events={events} onForward={forwardBusyTime}
             onSave={saveEvent} onDelete={deleteEvent} onDeleteSeries={deleteEventSeries} REMINDER_OPTIONS={REMINDER_OPTIONS}
             closeRef={closeEventModalRef} notifs={notifs} setMyRsvps={setMyRsvps}
@@ -2985,7 +3011,7 @@ function FullGridView ({ weekStart, events, todayStr, filterGroupIds, closeFullG
 
 function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelectedDate,
   eventsOnDate, todayStr, dateStr, selectedEvents, openCreate, setModal, events, groups, use24h, weekStart, eventsReady,
-  saveEvent, profile, sync, myRsvps = {}, myProfileId, closeFullGridRef }) {
+  saveEvent, profile, sync, myRsvps = {}, myProfileId, closeFullGridRef, onOpenCalendars, hiddenCalendarCount = 0 }) {
   const { y, m } = viewDate
   const [showMonthPicker, setShowMonthPicker] = useState(false)
   const [showYearPicker,  setShowYearPicker]  = useState(false)
@@ -3253,6 +3279,21 @@ function CalendarTab ({ viewDate, setViewDate, calDays, selectedDate, setSelecte
             <span style={{ fontSize:11, color:colors.text.muted, fontWeight:300, marginLeft:8 }}>past</span>}
         </span>
         <div style={{ display:'flex', gap:8 }}>
+          {onOpenCalendars && (
+          <button onClick={onOpenCalendars} aria-label="Calendars" style={{
+            width: 36, height: 36, borderRadius: 10, position: 'relative',
+            background: 'var(--color-surface)',
+            border: '1px solid var(--color-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+          }}>
+            <Stack size={18} weight="thin" color="var(--color-text)" />
+            {hiddenCalendarCount > 0 && (
+              <span style={{ position:'absolute', top:4, right:4, width:7, height:7, borderRadius:4,
+                background: colors.primary }} />
+            )}
+          </button>
+          )}
           <button onClick={() => { setFullGrid(true) }} style={{
             width: 36, height: 36, borderRadius: 10,
             background: 'var(--color-surface)',
@@ -4455,7 +4496,7 @@ function RemindersEditor ({ reminders, setReminders }) {
   )
 }
 
-function EventModal ({ modal, setModal, groups, profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef, notifs, setMyRsvps }) {
+function EventModal ({ modal, setModal, groups, calendars = [], profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS, db, onRequestConfirm, closeRef, notifs, setMyRsvps }) {
   const [ev, setEv] = useState(modal.event)
   const origDate = modal.mode === 'edit' ? modal.event.date : null
   const set = (k, v) => setEv(e => ({ ...e, [k]:v }))
@@ -4530,9 +4571,12 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
 
   useEffect(() => {
     const cols = ev.groups.map(gid => groups.find(x => x.id === gid)?.color).filter(Boolean)
-    if (cols.length > 0) setEv(e => ({ ...e, color: cols[0], colors: cols }))
-    else setEv(e => ({ ...e, colors: [] }))
-  }, [ev.groups, groups])
+    if (cols.length > 0) { setEv(e => ({ ...e, color: cols[0], colors: cols })); return }
+    // A personal event takes its calendar's color (TODO #189). Storing it on the
+    // event too means a linked device on older code still shows that color.
+    const calColor = ev.calendarId ? calendars.find(c => c.id === ev.calendarId)?.color : null
+    setEv(e => ({ ...e, colors: [], ...(calColor ? { color: calColor } : {}) }))
+  }, [ev.groups, groups, ev.calendarId, calendars])
 
   const [reminders, setReminders] = useState([])
 
@@ -4952,6 +4996,29 @@ function EventModal ({ modal, setModal, groups, profile, events = [], onSave, on
               )}
             </div>
           </div>
+
+          {/* ── Section: Calendar (TODO #189) ── personal events only; a shared
+              event lives in its groups instead. */}
+          {ev.groups.length === 0 && calendars.length > 1 && ev.creatorId !== 'system' && (
+          <div style={{ borderTop:`1px solid ${colors.border}`, paddingTop:12, marginTop:2 }}>
+            <div style={{ fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
+              textTransform:'uppercase', marginBottom:12 }}>Calendar</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+              {calendars.map(c => {
+                const sel = (ev.calendarId || 'default') === c.id
+                const tint = c.color || colors.text.muted
+                return (
+                  <button key={c.id} onClick={() => set('calendarId', c.id)}
+                    style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${tint}`, fontFamily:FONT,
+                      background: sel ? tint : 'transparent', color: sel ? '#fff' : tint,
+                      fontSize:13, cursor:'pointer' }}>
+                    {c.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          )}
 
           {/* ── Section: Reminders ── */}
           <div style={{ borderTop:`1px solid ${colors.border}`, paddingTop:12, marginTop:2 }}>
@@ -6805,7 +6872,139 @@ function BottomSheet ({ onClose, children, zIndex = 200, closeRef }) {
 }
 
 // Exported so test/harness can mount it standalone in a hidden Electron window.
-export function ImportIcsSheet ({ events, filename, groups, existingEventIds, onImport, onClose }) {
+// ─── Calendars sheet (TODO #189) ──────────────────────────────────────────────
+// Every calendar this device can show - personal calendars, holiday countries
+// and groups - each with a show/hide switch. Hidden state is per device. Tapping
+// a personal calendar's name edits it.
+function CalendarsSheet ({ cal, groups, events, saveEventQuiet, removeEvent, onClose }) {
+  const bsClose = useRef(null)
+  const [editing, setEditing] = useState(null) // null | { id?, name, color, isDefault }
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const label = { fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
+    textTransform:'uppercase', margin:'16px 0 8px' }
+  const row = { display:'flex', alignItems:'center', gap:12, padding:'10px 0',
+    borderBottom:`1px solid ${colors.border}` }
+  const dot = c => ({ width:12, height:12, borderRadius:6, background: c || colors.text.muted, flexShrink:0 })
+
+  const countFor = id => (events ?? []).filter(e => !(e.groups && e.groups.length) && (e.calendarId || 'default') === id).length
+
+  async function saveEdit () {
+    if (!editing?.name?.trim()) return
+    setBusy(true)
+    try {
+      if (editing.id) await cal.updateCalendar(editing.id, { name: editing.name.trim(), color: editing.color })
+      else await cal.createCalendar({ name: editing.name.trim(), color: editing.color })
+      setEditing(null)
+    } finally { setBusy(false) }
+  }
+
+  async function doDelete (moveEvents) {
+    setBusy(true)
+    try {
+      await cal.deleteCalendar(editing.id, {
+        events, moveTo: moveEvents ? 'default' : null,
+        saveEvent: saveEventQuiet, removeEvent,
+      })
+      setConfirmDelete(false)
+      setEditing(null)
+    } finally { setBusy(false) }
+  }
+
+  if (editing) {
+    const n = editing.id ? countFor(editing.id) : 0
+    return (
+      <BottomSheet onClose={onClose} zIndex={250} closeRef={bsClose}>
+        <div style={{ padding:'0 20px 16px' }}>
+          <div style={{ fontSize:17, color:colors.text.primary, marginBottom:14 }}>
+            {editing.id ? 'Edit calendar' : 'New calendar'}
+          </div>
+          <input value={editing.name} maxLength={60} placeholder="Calendar name" autoFocus={!editing.id}
+            onChange={e => setEditing(x => ({ ...x, name: e.target.value }))} style={inputStyle} />
+          <div style={{ display:'flex', flexWrap:'wrap', gap:10, margin:'14px 0' }}>
+            {GROUP_COLORS.map(c => (
+              <button key={c} onClick={() => setEditing(x => ({ ...x, color: c }))} aria-label={c}
+                style={{ width:32, height:32, borderRadius:16, background:c, cursor:'pointer',
+                  border: editing.color === c ? `3px solid ${colors.text.primary}` : '3px solid transparent' }} />
+            ))}
+          </div>
+          {confirmDelete ? (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ fontSize:13, color:colors.text.muted, lineHeight:1.5 }}>
+                {n === 0
+                  ? `Delete ${editing.name}? It has no events.`
+                  : `${editing.name} has ${n} event${n === 1 ? '' : 's'}. Move ${n === 1 ? 'it' : 'them'} to ${cal.calendars[0]?.name ?? 'Personal'}, or delete ${n === 1 ? 'it' : 'them'} too?`}
+              </div>
+              {n > 0 && (
+                <button disabled={busy} onClick={() => doDelete(true)}
+                  style={{ ...pillBtn, padding:12, fontSize:14 }}>Move events and delete calendar</button>
+              )}
+              <button disabled={busy} onClick={() => doDelete(false)}
+                style={{ ...pillBtn, padding:12, fontSize:14, background:'var(--color-destructive)' }}>
+                {n > 0 ? 'Delete calendar and its events' : 'Delete calendar'}
+              </button>
+              <button onClick={() => setConfirmDelete(false)}
+                style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:colors.text.muted }}>Cancel</button>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <button disabled={busy || !editing.name.trim()} onClick={saveEdit}
+                style={{ ...pillBtn, padding:12, fontSize:14, opacity: editing.name.trim() ? 1 : 0.4 }}>Save</button>
+              {editing.id && !editing.isDefault && (
+                <button onClick={() => setConfirmDelete(true)}
+                  style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:'var(--color-destructive)' }}>
+                  Delete calendar
+                </button>
+              )}
+              <button onClick={() => setEditing(null)}
+                style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:colors.text.muted }}>Back</button>
+            </div>
+          )}
+        </div>
+      </BottomSheet>
+    )
+  }
+
+  const switchRow = (key, name, color, onEdit, extra) => (
+    <div key={key} style={row}>
+      <div style={dot(color)} />
+      <button onClick={onEdit} disabled={!onEdit}
+        style={{ flex:1, minWidth:0, textAlign:'left', background:'none', border:'none', padding:0,
+          fontFamily:FONT, fontSize:15, color:colors.text.primary, cursor: onEdit ? 'pointer' : 'default',
+          overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+        {extra}{name}
+      </button>
+      <Toggle val={!cal.isHidden(key)} onChange={() => cal.toggle(key)} accent={color || colors.primary} />
+    </div>
+  )
+
+  return (
+    <BottomSheet onClose={onClose} zIndex={250} closeRef={bsClose}>
+      <div style={{ padding:'0 20px 16px' }}>
+        <div style={{ fontSize:17, color:colors.text.primary }}>Calendars</div>
+        <div style={{ fontSize:12, color:colors.text.muted, marginTop:4, lineHeight:1.5 }}>
+          Switched-off calendars are hidden on this device only. Reminders still go off.
+        </div>
+        <div style={label}>Personal</div>
+        {cal.calendars.map(c => switchRow('personal:' + c.id, c.name, c.color, () =>
+          setEditing({ id: c.id, name: c.name, color: c.color ?? null, isDefault: !!c.isDefault })))}
+        <button onClick={() => setEditing({ name: '', color: GROUP_COLORS[cal.calendars.length % GROUP_COLORS.length] })}
+          style={{ ...row, width:'100%', background:'none', border:'none', borderBottom:`1px solid ${colors.border}`,
+            fontFamily:FONT, fontSize:15, color:colors.primary, cursor:'pointer' }}>
+          <Plus size={14} weight="bold" /> New calendar
+        </button>
+        {cal.holidayCalendars.length > 0 && <div style={label}>Holidays</div>}
+        {cal.holidayCalendars.map(h => switchRow(h.key, h.name, h.color, null,
+          <span style={{ marginRight:6 }}>{h.flag}</span>))}
+        {(groups ?? []).length > 0 && <div style={label}>Groups</div>}
+        {(groups ?? []).map(g => switchRow('group:' + g.id, g.name, g.color, null,
+          g.emoji ? <span style={{ marginRight:6 }}>{g.emoji}</span> : null))}
+      </div>
+    </BottomSheet>
+  )
+}
+
+export function ImportIcsSheet ({ events, filename, calName, groups, calendars, existingEventIds, onImport, onClose }) {
   const bsClose = useRef(null)
   const myGroups = groups ?? []
   const memberIds = useMemo(() => new Set(myGroups.map(g => g.id)), [groups])
@@ -6822,6 +7021,12 @@ export function ImportIcsSheet ({ events, filename, groups, existingEventIds, on
   // otherwise personal — importing is never a surprise share.
   const [dest, setDest] = useState(hasFileGroups ? 'file' : 'personal')
   const destGroup = myGroups.find(g => g.id === dest) ?? null
+  // Which personal calendar the personal events land in (TODO #189). '__new__'
+  // makes a calendar named after the file.
+  const myCalendars = calendars ?? []
+  const [calDest, setCalDest] = useState('default')
+  const [newCalName, setNewCalName] = useState(() =>
+    calName || String(filename ?? '').replace(/\.(ics|ical)$/i, '').trim() || 'Imported')
 
   // Compute routing per event
   const routed = routeIcsImport(events, { dest, groupIds: memberIds, existingEventIds })
@@ -6899,6 +7104,32 @@ export function ImportIcsSheet ({ events, filename, groups, existingEventIds, on
           </div>
         </div>
         )}
+        {dest !== destGroup?.id && (
+        <div style={{ marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
+            textTransform:'uppercase', marginBottom:8 }}>Personal Calendar</div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
+            {[...myCalendars, { id: '__new__', name: 'New calendar', color: null }].map(c => {
+              const sel = calDest === c.id
+              const tint = c.color || colors.text.muted
+              return (
+                <button key={c.id} onClick={() => setCalDest(c.id)}
+                  style={{ padding:'6px 14px', borderRadius:20, border:`2px solid ${tint}`, fontFamily:FONT,
+                    background: sel ? tint : 'transparent', color: sel ? '#fff' : tint,
+                    fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}>
+                  {c.id === '__new__' && <Plus size={12} weight="bold" />}
+                  {c.name}
+                </button>
+              )
+            })}
+          </div>
+          {calDest === '__new__' && (
+            <input value={newCalName} onChange={e => setNewCalName(e.target.value)} maxLength={60}
+              placeholder="Calendar name"
+              style={{ ...inputStyle, marginTop:10, width:'100%', boxSizing:'border-box' }} />
+          )}
+        </div>
+        )}
         {summaryRows.length > 0 && (
           <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:12 }}>
             {summaryRows.map((row, i) => (
@@ -6935,7 +7166,7 @@ export function ImportIcsSheet ({ events, filename, groups, existingEventIds, on
             </div>
           ))}
         </div>
-        <button onClick={() => onImport(toImport)}
+        <button onClick={() => onImport(toImport, { calendarId: calDest, newCalendarName: newCalName.trim() || 'Imported' })}
           disabled={toImport.length === 0}
           style={{ ...pillBtn, width:'100%', padding:13, fontSize:15, 
             opacity: toImport.length === 0 ? 0.4 : 1 }}>
@@ -7163,7 +7394,7 @@ function AboutTab ({ sync, closeSheetRef, onReplayTour }) {
   )
 }
 
-function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef, onIcsFile }) {
+function ProfileTab ({ profile, groups, personalCalendars = [], onUpdateProfile, db, events, setEvents, dark, onToggleDark, sync, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef, onIcsFile }) {
   const [name,       setName]       = useState(profile?.name ?? '')
   const [editing,    setEditing]    = useState(false)
   const [saving,     setSaving]     = useState(false)
@@ -8156,7 +8387,9 @@ function ProfileTab ({ profile, groups, onUpdateProfile, db, events, setEvents, 
                       Change folder
                     </button>
                   </div>
-                  {[{ id: 'personal', name: 'Personal' }, ...(groups ?? []).map(g => ({ id: g.id, name: g.name || 'Untitled group' }))].map(c => (
+                  {[{ id: 'personal', name: personalCalendars.length > 1 ? 'All personal' : 'Personal' },
+                    ...(personalCalendars.length > 1 ? personalCalendars.map(c => ({ id: 'personal:' + c.id, name: c.name })) : []),
+                    ...(groups ?? []).map(g => ({ id: g.id, name: g.name || 'Untitled group' }))].map(c => (
                     <div key={c.id} style={{ display:'flex', alignItems:'center', gap:10 }}>
                       <div style={{ flex:1, fontSize:13, color: colors.text.primary }}>{c.name}</div>
                       <Toggle val={(autoExport.calendars ?? []).includes(c.id)} accent={colors.primary}

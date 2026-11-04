@@ -94,6 +94,16 @@ export function rruleToRecurrence (rrule, date, today = new Date()) {
   return { ...rec, date: fmtDate(cur), recurrenceEnd: '', repeatForever: true }
 }
 
+// The calendar's own name, from X-WR-CALNAME, used to name a new personal
+// calendar on import (TODO #189). Null when the file has none.
+export function icsCalendarName (text) {
+  const unfolded = String(text ?? '').replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '')
+  const m = unfolded.match(/^X-WR-CALNAME(?:;[^:\r\n]*)?:(.*)$/m)
+  if (!m) return null
+  const name = m[1].replace(/\\([,;\\])/g, '$1').replace(/\\n/gi, ' ').trim()
+  return name || null
+}
+
 export function parseIcs (text, today = new Date()) {
   // Unfold folded lines (continuation lines begin with space or tab)
   const unfolded = text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '')
@@ -347,10 +357,17 @@ export function generateIcs (events) {
 // ids. An event shared with two chosen groups appears in both files. Holidays
 // are left out, as in the manual export. File names come from the calendar
 // name so they read well in a folder; a clash gets the group id appended.
-export function autoExportFiles (events, groups, calendarIds) {
+//
+// TODO #189: 'personal' still means every personal event, so settings saved
+// before personal calendars keep working. 'personal:{calendarId}' picks one
+// personal calendar; `personalCalendars` supplies their names.
+export function autoExportFiles (events, groups, calendarIds, personalCalendars = []) {
   const chosen = new Set(calendarIds ?? [])
   const cals = []
   if (chosen.has('personal')) cals.push({ id: 'personal', name: 'Personal' })
+  for (const c of personalCalendars ?? []) {
+    if (chosen.has('personal:' + c.id)) cals.push({ id: 'personal:' + c.id, calendarId: c.id, name: c.name || c.id })
+  }
   for (const g of groups ?? []) if (chosen.has(g.id)) cals.push({ id: g.id, name: g.name || g.id })
   const own = (events ?? []).filter(e => !e.id?.startsWith('holiday-'))
   const used = new Set()
@@ -359,9 +376,12 @@ export function autoExportFiles (events, groups, calendarIds) {
     let name = 'pearcal-' + slug + '.ics'
     if (used.has(name)) name = 'pearcal-' + slug + '-' + String(cal.id).replace(/[^A-Za-z0-9]/g, '').slice(0, 8).toLowerCase() + '.ics'
     used.add(name)
+    const personal = own.filter(e => !Array.isArray(e.groups) || e.groups.length === 0)
     const evs = cal.id === 'personal'
-      ? own.filter(e => !Array.isArray(e.groups) || e.groups.length === 0)
-      : own.filter(e => Array.isArray(e.groups) && e.groups.includes(cal.id))
+      ? personal
+      : cal.calendarId
+        ? personal.filter(e => (e.calendarId || 'default') === cal.calendarId)
+        : own.filter(e => Array.isArray(e.groups) && e.groups.includes(cal.id))
     return { name, content: generateIcs(evs) }
   })
 }

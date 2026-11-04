@@ -70,7 +70,7 @@ export function useEventActions ({ db, notifs, sync, profile, events, setEvents 
       occurrences = expandRecurring(template).map(o => ({ ...o, recurrenceId: ev.recurrenceId }))
     } else if ((scope === 'future' || scope === 'all') && ev.recurrenceId) {
       // Ordinary edit propagated across the series.
-      const PROPAGATE = ['title','allDay','endDate','start','end','color','colors','desc','location',
+      const PROPAGATE = ['title','allDay','endDate','start','end','color','colors','calendarId','desc','location',
                          'meetingLink','recurrence','recurrenceEnd','repeatForever','recurrenceNth',
                          'recurrenceWeekday','recurrenceInterval','editPermission','rsvpEnabled','groups','invitees']
       const patch = {}

@@ -19,9 +19,11 @@ const EVENTS = [
 ]
 
 createRoot(document.getElementById('root')).render(
-  <ImportIcsSheet events={EVENTS} filename="calendar.ics" groups={GROUPS}
+  <ImportIcsSheet events={EVENTS} filename="calendar.ics" calName="Body stuff" groups={GROUPS}
+    calendars={[{ id: 'default', name: 'Personal', color: null, isDefault: true }, { id: 'health', name: 'Health', color: '#5DBF8A' }]}
     existingEventIds={new Set(['dupe'])}
-    onImport={(toImport) => {
+    onImport={(toImport, opts) => {
+      window.__importOpts = opts ?? null
       window.__imported = toImport.map(r => ({ title: r.ev.title, groups: r.keptGroups }))
     }}
     onClose={() => { window.__closed = true }} />

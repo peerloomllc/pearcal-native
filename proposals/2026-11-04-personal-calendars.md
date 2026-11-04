@@ -86,6 +86,13 @@ Group sync, invites, how holidays are computed (still offline), birthdays, and a
   spreads the stored event (`src/ui/App.jsx:1092`). An old device cannot move an
   event between calendars, and a series edit there does not carry `calendarId`
   across occurrences, which only matters if it differs between them.
+  The desktop editor on old code is different: it rebuilds the event from its
+  form fields, so saving an event there drops `calendarId` and the event moves
+  back to the default calendar. Found while building Phase 1; the new desktop
+  editor carries the field.
+- **A calendar made before linking a device** is copied into the personal base
+  by `migratePersonalData` along with events and notes, and by consolidation
+  after that.
 - **Old app version in a shared group.** No change, the field never reaches them.
 - **Downgrade.** The fields are ignored and every personal event shows in one
   calendar again. Nothing is lost.

@@ -22,7 +22,7 @@ function troubleWith (g, pendingApprovalGroups) {
   return null
 }
 
-export function GroupList ({ tokens, groups, isVisible, toggle, onContextMenu, onNewGroup, onJoinGroup, pendingApprovalGroups }) {
+export function GroupList ({ tokens, groups, isVisible, toggle, onContextMenu, onNewGroup, onJoinGroup, pendingApprovalGroups, collapsed = false, onToggleCollapsed }) {
   const headerBtn = {
     background: 'transparent', border: 'none',
     fontSize: 13, cursor: 'pointer', color: tokens.muted,
@@ -34,12 +34,16 @@ export function GroupList ({ tokens, groups, isVisible, toggle, onContextMenu, o
       <div data-tour="sidebar-add-group" style={{
         display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6,
       }}>
-        <div style={{
-          flex: 1, fontSize: 11, fontWeight: 600, color: tokens.muted,
-          textTransform: 'uppercase', letterSpacing: '0.08em',
-        }}>
-          Groups
-        </div>
+        <button onClick={onToggleCollapsed} disabled={!onToggleCollapsed}
+          title={collapsed ? 'Show groups' : 'Fold groups away'}
+          style={{
+            flex: 1, fontSize: 11, fontWeight: 600, color: tokens.muted,
+            textTransform: 'uppercase', letterSpacing: '0.08em',
+            background: 'transparent', border: 'none', padding: 0, textAlign: 'left',
+            cursor: onToggleCollapsed ? 'pointer' : 'default', fontFamily: tokens.font,
+          }}>
+          {onToggleCollapsed ? (collapsed ? '▸ ' : '▾ ') : ''}Groups{collapsed && groups.length ? ` (${groups.length})` : ''}
+        </button>
         {onJoinGroup && (
           <button onClick={onJoinGroup} title="Join a group" aria-label="Join a group" style={headerBtn}>↘</button>
         )}
@@ -48,12 +52,12 @@ export function GroupList ({ tokens, groups, isVisible, toggle, onContextMenu, o
                   style={{ ...headerBtn, fontSize: 16, fontWeight: 600 }}>+</button>
         )}
       </div>
-      {groups.length === 0 && (
+      {!collapsed && groups.length === 0 && (
         <div style={{ fontSize: 13, color: tokens.muted, fontWeight: 300 }}>
           No groups yet
         </div>
       )}
-      {groups.map(g => {
+      {!collapsed && groups.map(g => {
         const visible = isVisible(g.id)
         const hasIcon = typeof g.icon === 'string' && g.icon.startsWith('data:')
         return (

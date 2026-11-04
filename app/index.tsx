@@ -137,8 +137,11 @@ async function runAutoExport () {
     const folder = Platform.OS === 'ios' ? cfg.bookmark : cfg.dirUri
     if (!cfg.enabled || !folder) return
     try {
-      const [events, groups] = await Promise.all([workletCall('listEvents'), workletCall('listGroups')])
-      const files = autoExportFiles(events ?? [], groups ?? [], cfg.calendars)
+      const [events, groups, personalCalendars] = await Promise.all([
+        workletCall('listEvents'), workletCall('listGroups'),
+        workletCall('listPersonalCalendars').catch(() => []),
+      ])
+      const files = autoExportFiles(events ?? [], groups ?? [], cfg.calendars, personalCalendars ?? [])
       const plan = planAutoExport(files, cfg.fingerprints)
       let bookmark = cfg.bookmark
       for (const f of plan.write) {
