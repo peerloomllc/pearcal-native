@@ -57,3 +57,28 @@ test('planAutoExport writes changed files and removes only its own old ones', as
   const third = planAutoExport([{ name: 'pearcal-a.ics', content: a1.replace('A', 'A2') }], second.fingerprints)
   assert.deepStrictEqual(third.write.map(f => f.name), ['pearcal-a.ics'])
 })
+
+// TODO #189: one file per personal calendar, and 'personal' still meaning all.
+test('autoExportFiles splits personal calendars on request', async () => {
+  const { autoExportFiles } = await import('../src/ui-shared/lib/ics.js')
+  const ev = (id, extra = {}) => ({ id, title: id, date: '2026-11-20', allDay: true, groups: [], ...extra })
+  const events = [ev('a'), ev('b', { calendarId: 'health' }), ev('c', { groups: ['g1'], calendarId: 'health' })]
+  const cals = [{ id: 'default', name: 'Personal' }, { id: 'health', name: 'Health' }]
+  const files = autoExportFiles(events, [{ id: 'g1', name: 'Team' }], ['personal', 'personal:health', 'personal:default'], cals)
+  const byName = Object.fromEntries(files.map(f => [f.name, f.content]))
+  assert.ok(byName['pearcal-health.ics'].includes('SUMMARY:b'))
+  assert.ok(!byName['pearcal-health.ics'].includes('SUMMARY:c'), 'a group event stays out of a personal calendar file')
+  const personalFiles = files.filter(f => f.name.startsWith('pearcal-personal'))
+  assert.strictEqual(personalFiles.length, 2, 'all-personal and the default calendar each get a file')
+  // Old settings without the new argument behave exactly as before.
+  const legacy = autoExportFiles(events, [], ['personal'])
+  assert.strictEqual(legacy.length, 1)
+  assert.ok(legacy[0].content.includes('SUMMARY:a') && legacy[0].content.includes('SUMMARY:b'))
+})
+
+test('icsCalendarName reads X-WR-CALNAME', async () => {
+  const { icsCalendarName } = await import('../src/ui-shared/lib/ics.js')
+  assert.strictEqual(icsCalendarName('BEGIN:VCALENDAR\r\nX-WR-CALNAME:Health\\, body\r\nEND:VCALENDAR'), 'Health, body')
+  assert.strictEqual(icsCalendarName('BEGIN:VCALENDAR\r\nEND:VCALENDAR'), null)
+  assert.strictEqual(icsCalendarName('X-WR-CALNAME;VALUE=TEXT:Fêtes\r\n'), 'Fêtes')
+})

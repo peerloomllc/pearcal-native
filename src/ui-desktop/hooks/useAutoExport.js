@@ -10,7 +10,7 @@ import { autoExportFiles } from '../../ui-shared/index.js'
 // costs one comparison per file.
 const WRITE_DELAY_MS = 3000
 
-export function useAutoExport (db, events, groups, eventsReady) {
+export function useAutoExport (db, events, groups, eventsReady, personalCalendars = []) {
   const [config, setConfig] = useState(null)
 
   useEffect(() => {
@@ -26,14 +26,14 @@ export function useAutoExport (db, events, groups, eventsReady) {
     if (!enabled || !eventsReady || !db?.writeAutoExport) return
     // Groups load separately from events. Until they arrive a chosen group
     // looks deleted and main would remove its file, so wait for them.
-    if (groups.length === 0 && config.calendars.some(id => id !== 'personal')) return
+    if (groups.length === 0 && config.calendars.some(id => id !== 'personal' && !id.startsWith('personal:'))) return
     const t = setTimeout(() => {
-      const files = autoExportFiles(events, groups, config.calendars)
+      const files = autoExportFiles(events, groups, config.calendars, personalCalendars)
       db.writeAutoExport(files).then(c => { if (c) setConfig(c) }).catch(() => {})
     }, WRITE_DELAY_MS)
     return () => clearTimeout(t)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, eventsReady, db, events, groups, calendarKey, config?.folder])
+  }, [enabled, eventsReady, db, events, groups, calendarKey, config?.folder, personalCalendars])
 
   const update = useCallback(async (patch) => {
     const c = await db?.setAutoExport?.(patch)

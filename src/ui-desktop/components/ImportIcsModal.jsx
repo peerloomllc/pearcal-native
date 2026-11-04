@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { icsFileGroups, routeIcsImport } from '../../ui-shared/index.js'
 
-export function ImportIcsModal ({ tokens, events, filename, groups = [], existingEventIds, onImport, onClose }) {
+export function ImportIcsModal ({ tokens, events, filename, calName, groups = [], calendars = [], existingEventIds, onImport, onClose }) {
   const memberIds = useMemo(() => new Set(groups.map(g => g.id)), [groups])
   // Only a PearCal-exported .ics names groups; a file from Google/Apple/Outlook
   // has nothing to keep, so the "keep" option never appears for one.
@@ -16,6 +16,10 @@ export function ImportIcsModal ({ tokens, events, filename, groups = [], existin
     () => icsFileGroups(events, memberIds).size > 0, [events, memberIds])
   const [dest, setDest] = useState(hasFileGroups ? 'file' : 'personal')
   const destGroup = groups.find(g => g.id === dest) ?? null
+  // Which personal calendar the personal events land in (TODO #189).
+  const [calDest, setCalDest] = useState('default')
+  const [newCalName, setNewCalName] = useState(() =>
+    calName || String(filename ?? '').replace(/\.(ics|ical)$/i, '').trim() || 'Imported')
 
   // Esc closes, the same way every other desktop modal binds it locally.
   useEffect(() => {
@@ -110,6 +114,26 @@ export function ImportIcsModal ({ tokens, events, filename, groups = [], existin
           </div>
         )}
 
+        {dest !== destGroup?.id && (
+          <div style={{ marginBottom: 16 }}>
+            <div style={label}>Personal calendar</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[...calendars, { id: '__new__', name: '+ New calendar', color: null }].map(c => (
+                <button key={c.id} onClick={() => setCalDest(c.id)} style={pill(calDest === c.id, c.color)}>
+                  {c.name}
+                </button>
+              ))}
+            </div>
+            {calDest === '__new__' && (
+              <input value={newCalName} maxLength={60} onChange={e => setNewCalName(e.target.value)}
+                placeholder="Calendar name"
+                style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 5, fontSize: 13,
+                  border: `1px solid ${tokens.border}`, background: tokens.bg, color: tokens.text,
+                  fontFamily: tokens.font, boxSizing: 'border-box', outline: 'none' }} />
+            )}
+          </div>
+        )}
+
         {skippedCount > 0 && (
           <div style={{ fontSize: 12, color: tokens.muted, marginBottom: 10 }}>
             {skippedCount} event{skippedCount !== 1 ? 's' : ''} already
@@ -138,7 +162,7 @@ export function ImportIcsModal ({ tokens, events, filename, groups = [], existin
           ))}
         </div>
 
-        <button onClick={() => onImport(toImport)} disabled={toImport.length === 0}
+        <button onClick={() => onImport(toImport, { calendarId: calDest, newCalendarName: newCalName.trim() || 'Imported' })} disabled={toImport.length === 0}
           style={{ ...btnBase, width: '100%', padding: '9px 14px',
             background: tokens.accent, color: tokens.bg, borderColor: tokens.accent,
             cursor: toImport.length === 0 ? 'default' : 'pointer',

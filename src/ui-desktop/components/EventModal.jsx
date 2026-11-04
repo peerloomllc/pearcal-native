@@ -48,7 +48,10 @@ function defaultsFor (initialStart) {
 const MODAL_WIDTH  = 460
 const MODAL_MARGIN = 16
 
-export function EventModal ({ tokens, mode, initial, anchor, groups, profile, use24h, db, onSave, onDelete, onClose }) {
+export function EventModal ({ tokens, mode, initial, anchor, groups, calendars = [], profile, use24h, db, onSave, onDelete, onClose }) {
+  // Personal calendar (TODO #189). This form rebuilds the event from its own
+  // fields, so the calendar has to be carried explicitly or a save drops it.
+  const [calendarId, setCalendarId] = useState(initial?.calendarId || 'default')
   const [title,    setTitle]    = useState(initial?.title ?? '')
   const [date,     setDate]     = useState(initial?.date ?? '')
   const [allDay,   setAllDay]   = useState(initial?.allDay ?? false)
@@ -241,8 +244,9 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
       desc: notes,
       location,
       meetingLink: meetingLink.trim(),
-      color:       initial?.color ?? '',
+      color:       (!groupIds.length && calendars.find(c => c.id === calendarId)?.color) || (initial?.color ?? ''),
       colors:      initial?.colors ?? [],
+      calendarId,
       creatorId:   initial?.creatorId ?? profile?.id ?? 'unknown',
       recurrence,
       recurrenceId:      initial?.recurrenceId ?? '',
@@ -505,6 +509,28 @@ export function EventModal ({ tokens, mode, initial, anchor, groups, profile, us
             </button>
           )}
         </div>
+
+        {groupIds.length === 0 && calendars.length > 1 && initial?.creatorId !== 'system' && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={label}>Calendar</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {calendars.map(c => {
+                const selected = calendarId === c.id
+                return (
+                  <button key={c.id} onClick={() => setCalendarId(c.id)} style={{
+                    padding: '4px 10px', borderRadius: 14,
+                    background: selected ? (c.color ?? tokens.muted) : 'transparent',
+                    color: selected ? tokens.bg : tokens.text,
+                    border: `1px solid ${c.color ?? tokens.border}`,
+                    fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: tokens.font,
+                  }}>
+                    {c.name}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         <div style={{ marginBottom: 12 }}>
           <div style={label}>Groups</div>

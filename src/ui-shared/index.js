@@ -3,7 +3,7 @@
 // no React, no DOM. React hooks live alongside in ./hooks/ once D1
 // extracts them.
 
-export { parseIcs, generateIcs, icsFileGroups, routeIcsImport, autoExportFiles, icsFingerprint, planAutoExport } from './lib/ics.js'
+export { parseIcs, icsCalendarName, generateIcs, icsFileGroups, routeIcsImport, autoExportFiles, icsFingerprint, planAutoExport } from './lib/ics.js'
 export {
   MAX_COLOR_SEGMENTS,
   MEMBER_PALETTE,
@@ -45,6 +45,7 @@ export { useRsvps } from './hooks/useRsvps.js'
 export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
 export { useHolidayRepair } from './hooks/useHolidayRepair.js'
+export { useCalendars } from './hooks/useCalendars.js'
 export { useForeverTopUp } from './hooks/useForeverTopUp.js'
 
 export { emitter } from './emitter.js'

@@ -2,6 +2,8 @@
 // Called from bare.js after every mutation; the payload is sent to RN,
 // which writes it to the native widget cache location.
 
+const { widgetEventVisible } = require('./lib/calendars.js')
+
 function pad (n) { return String(n).padStart(2, '0') }
 
 function dateStringFor (d) {
@@ -87,7 +89,7 @@ function byDayOrder (a, b) {
   return (a.start || '').localeCompare(b.start || '')
 }
 
-async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM }) {
+async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, visibility, nowHHMM }) {
   const gt = 'events:' + date + ':'
   const lt = 'events:' + date + ':\xff'
   // Dedupe by id keeping highest updatedAt — see listEvents in bare.js for why.
@@ -95,6 +97,7 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (value.isShadow) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    if (visibility && !widgetEventVisible(value, visibility)) continue
     if (nowHHMM && !value.allDay) {
       // A wrapping event's end string is less than every clock time, so pruning
       // on it would drop the event for its whole day. It stays live until the
@@ -118,7 +121,7 @@ async function readDayEvents (db, date, { profileId, isInvitedToEvent, ownedGrou
 //
 // One range scan for the whole cache window, bucketed per day by `spansOn`, so
 // a week's worth of days costs the same single scan one day used to.
-async function readSpans (db, toDate, { profileId, isInvitedToEvent, ownedGroupIds }) {
+async function readSpans (db, toDate, { profileId, isInvitedToEvent, ownedGroupIds, visibility }) {
   const gt = 'events:' + daysAgoDateString(SPAN_LOOKBACK_DAYS) + ':'
   const lt = 'events:' + toDate + ':\xff'
   const byId = new Map()
@@ -127,6 +130,7 @@ async function readSpans (db, toDate, { profileId, isInvitedToEvent, ownedGroupI
     // A real span, i.e. one that ends after the day it starts on.
     if (!value.endDate || value.endDate <= value.date) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    if (visibility && !widgetEventVisible(value, visibility)) continue
     const prev = byId.get(value.id)
     if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
@@ -144,7 +148,7 @@ function spansOn (spans, date) {
 // A 23:00-07:00 shift is live at 00:30 today, but it is keyed under the date it
 // started, so today's key range alone would lose it the moment the day rolls
 // over. (TODO #114)
-async function readCarriedEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, nowHHMM }) {
+async function readCarriedEvents (db, date, { profileId, isInvitedToEvent, ownedGroupIds, visibility, nowHHMM }) {
   const gt = 'events:' + date + ':'
   const lt = 'events:' + date + ':\xff'
   const byId = new Map()
@@ -153,6 +157,7 @@ async function readCarriedEvents (db, date, { profileId, isInvitedToEvent, owned
     if (value.allDay || !wrapsPastMidnight(value)) continue
     if (!nowHHMM || value.end <= nowHHMM) continue  // already ended earlier today
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    if (visibility && !widgetEventVisible(value, visibility)) continue
     const prev = byId.get(value.id)
     if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
   }
@@ -176,13 +181,14 @@ function mergeCarried (events, carried) {
 // carrying its `date` so the widget can show a weekday label (TODO #107).
 // The keyspace is date-ordered (events:{date}:{id}), so the earliest dates
 // stream first; we read a small surplus then sort to order within a day.
-async function readUpcomingEvents (db, fromDate, limit, { profileId, isInvitedToEvent, ownedGroupIds }) {
+async function readUpcomingEvents (db, fromDate, limit, { profileId, isInvitedToEvent, ownedGroupIds, visibility }) {
   const gt = 'events:' + fromDate + ':'
   const lt = 'events:\xff'
   const byId = new Map()
   for await (const { value } of db.createReadStream({ gt, lt })) {
     if (value.isShadow) continue
     if (profileId && isInvitedToEvent && !isInvitedToEvent(value, profileId, ownedGroupIds)) continue
+    if (visibility && !widgetEventVisible(value, visibility)) continue
     const prev = byId.get(value.id)
     if (!prev || (value.updatedAt ?? 0) >= (prev.updatedAt ?? 0)) byId.set(value.id, value)
     if (byId.size >= limit * 4) break  // enough to cover the earliest day(s)
@@ -234,11 +240,13 @@ async function computeDay (db, date, prevDate, spans, opts) {
   return { date, events, slots: buildSlots(events) }
 }
 
-async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds, use24h, widgetShowUpcoming } = {}) {
+async function computeTodayCache (db, { profileId, isInvitedToEvent, ownedGroupIds, use24h, widgetShowUpcoming, visibility } = {}) {
   const date = todayDateString()
   const now = new Date()
   const nowHHMM = `${pad(now.getHours())}:${pad(now.getMinutes())}`
-  const who = { profileId, isInvitedToEvent, ownedGroupIds }
+  // visibility: the per-device hidden calendars (TODO #189), so the widget
+  // shows what the app shows.
+  const who = { profileId, isInvitedToEvent, ownedGroupIds, visibility }
   const spans = await readSpans(db, daysAheadDateString(CACHE_DAYS - 1), who)
   // Today first, then the rest of the window. The widgets render whichever entry
   // matches the date they wake up on, so the day rolls over without the app.

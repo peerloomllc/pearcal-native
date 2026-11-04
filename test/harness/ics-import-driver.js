@@ -92,6 +92,24 @@ app.whenReady().then(async () => {
     await clickPill('Keep from file')
     eq(await importNow(), FROM_FILE, 'keep-from-file preserves per-event groups')
 
+    // TODO #189: which personal calendar the personal events land in.
+    const opts = async () => JSON.parse(await run('JSON.stringify(window.__importOpts ?? null)'))
+    await clickPill('Personal')
+    has((await text()).toUpperCase(), 'PERSONAL CALENDAR', 'personal calendar picker shown')
+    await importNow()
+    eq((await opts())?.calendarId, 'default', 'default calendar chosen by default')
+    await clickPill('Health')
+    await importNow()
+    eq((await opts())?.calendarId, 'health', 'picked calendar reaches onImport')
+    await clickPill(target === 'desktop' ? '+ New calendar' : 'New calendar')
+    const val = await run(`(document.querySelector('input[placeholder="Calendar name"]') || {}).value ?? null`)
+    eq(val, 'Body stuff', 'new calendar is named from the file')
+    await importNow()
+    eq(await opts(), { calendarId: '__new__', newCalendarName: 'Body stuff' }, 'new calendar request reaches onImport')
+    await clickPill('\u{1F3E1}Family')
+    if (!(await text()).toUpperCase().includes('PERSONAL CALENDAR')) ok(t('picker hidden for a group import'))
+    else fail(t('picker hidden for a group import'))
+
     if (SHOT) {
       await clickPill('Personal')
       await new Promise(r => setTimeout(r, 800))  // let the sheet finish sliding up

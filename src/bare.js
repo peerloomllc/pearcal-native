@@ -17,6 +17,7 @@ const {
   shouldClearScopedTombstone, eventIdFromKey,
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
+const calendarsLib = require('./lib/calendars.js')
 const { mergeSyncDelta } = require('./lib/syncDelta.js')
 const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
 const {
@@ -387,6 +388,11 @@ async function handle (method, args) {
     case 'putRsvp':          return putRsvp(args[0], args[1], args[2], args[3])
     case 'getPrivateNote':   return getPrivateNote(args[0])
     case 'putPrivateNote':   return putPrivateNote(args[0], args[1])
+    case 'listPersonalCalendars': return listPersonalCalendars()
+    case 'putPersonalCalendar':   return putPersonalCalendar(args[0])
+    case 'deletePersonalCalendar': return deletePersonalCalendar(args[0])
+    case 'getCalendarVisibility': return getCalendarVisibility()
+    case 'setCalendarVisibility': return setCalendarVisibility(args[0])
     case 'refreshWidgetCache': return refreshWidgetCache()
     case 'scheduleMorningDigest': return scheduleMorningDigest()
     // Notifications handled on RN side
@@ -627,6 +633,72 @@ async function appendGroupWithAvatarSplit (base, groupValue) {
 async function getPrivateNote (eventId) {
   const node = await db.get(NS.privateNotes + eventId).catch(() => null)
   return node?.value?.text ?? ''
+}
+
+// ── Personal calendars (TODO #189) ──────────────────────────────────────────
+// Rows at personalCalendar:{id}, synced to linked devices through the personal
+// base (type 'personalCalendar', LWW by updatedAt). Deletes are soft
+// (`deleted: true`) so a stale put cannot resurrect a calendar. See
+// src/lib/calendars.js and proposals/2026-11-04-personal-calendars.md.
+async function readPersonalCalendarRows () {
+  const rows = []
+  const p = calendarsLib.CALENDAR_KEY_PREFIX
+  for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+    if (value?.id) rows.push(value)
+  }
+  return rows
+}
+
+async function listPersonalCalendars () {
+  return calendarsLib.listCalendars(await readPersonalCalendarRows())
+}
+
+async function writePersonalCalendar (input) {
+  const key = calendarsLib.calendarKey(input.id)
+  const prev = (await db.get(key).catch(() => null))?.value ?? null
+  const rec = calendarsLib.makeCalendarRecord(input, prev)
+  await db.put(key, rec)
+  // The marker means "this version is in the personal base". With no writable
+  // base yet the append is a no-op, so leave it unset for consolidation.
+  if (personalBase?.writable) {
+    await personalBaseAppendCalendar(rec).catch(() => {})
+    await db.put('cons:cal:' + rec.id, { updatedAt: rec.updatedAt }).catch(() => {})
+  }
+  pokePersonal()
+  scheduleWidgetCacheRefresh()
+  return rec
+}
+
+async function putPersonalCalendar (input) {
+  if (!input || typeof input !== 'object') throw new Error('putPersonalCalendar: object required')
+  const id = input.id || calendarsLib.newCalendarId()
+  const { deleted, ...rest } = input
+  return writePersonalCalendar({ ...rest, id })
+}
+
+// Only the row. Moving or deleting the calendar's events is the caller's job,
+// through putEvent / deleteEvent, so those changes sync the usual way.
+async function deletePersonalCalendar (id) {
+  return writePersonalCalendar({ id, deleted: true })
+}
+
+async function getCalendarVisibility () {
+  const v = (await db.get(calendarsLib.VISIBILITY_KEY).catch(() => null))?.value
+  return calendarsLib.normalizeVisibility(v)
+}
+
+// Per device. Never appended to the personal base.
+async function setCalendarVisibility (v) {
+  const value = calendarsLib.normalizeVisibility(v)
+  await db.put(calendarsLib.VISIBILITY_KEY, value)
+  scheduleWidgetCacheRefresh()
+  return value
+}
+
+async function personalBaseAppendCalendar (rec) {
+  if (!personalBase?.writable) return
+  try { await safeAppend(personalBase, { op: 'put', type: 'personalCalendar', key: calendarsLib.calendarKey(rec.id), value: rec }) }
+  catch (e) { console.warn('[personal] append calendar failed:', e.message) }
 }
 
 async function putPrivateNote (eventId, text) {
@@ -2423,6 +2495,7 @@ async function refreshWidgetCache () {
     ownedGroupIds,
     use24h: profile?.use24h,
     widgetShowUpcoming: profile?.widgetShowUpcoming,
+    visibility: await getCalendarVisibility().catch(() => null),
   })
   send({ type: 'event', event: 'widgetCache', data: payload })
   scheduleMorningDigest().catch(e => console.warn('morning digest refresh:', e.message))
@@ -4066,6 +4139,21 @@ function makePersonalApply () {
         await db.put(val.key, val.value).catch(() => {})
         continue
       }
+
+      // Personal calendars (TODO #189). LWW by updatedAt against the local row,
+      // so a sibling replaying an older version cannot undo a rename or delete.
+      // Peers on older code skip this type entirely.
+      if (val.op === 'put' && val.type === 'personalCalendar' && val.key && val.value?.id) {
+        if (val.key !== calendarsLib.calendarKey(val.value.id)) continue
+        const prev = (await db.get(val.key).catch(() => null))?.value ?? null
+        if (calendarsLib.newerCalendar(prev, val.value) !== val.value) continue
+        await view.put(val.key, val.value)
+        await db.put(val.key, val.value).catch(() => {})
+        await db.put('cons:cal:' + val.value.id, { updatedAt: val.value.updatedAt ?? 0 }).catch(() => {})
+        send({ type: 'event', event: 'personalCalendarsChanged', data: {} })
+        scheduleWidgetCacheRefresh()
+        continue
+      }
       if (val.op === 'del' && val.type === 'note' && val.key) {
         await view.del(val.key)
         await db.del(val.key).catch(() => {})
@@ -4440,6 +4528,15 @@ async function migratePersonalData () {
     await safeAppend(personalBase, { op: 'put', type: 'note', key, value })
     noteCount++
   }
+  // Personal calendars (TODO #189), made before this device had a personal base.
+  {
+    const p = calendarsLib.CALENDAR_KEY_PREFIX
+    for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+      if (!value?.id) continue
+      await safeAppend(personalBase, { op: 'put', type: 'personalCalendar', key: calendarsLib.calendarKey(value.id), value })
+      await db.put('cons:cal:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
+    }
+  }
   // Group membership (one entry per group the user is currently in)
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
     if (!value?.id || !value?.groupKey) continue
@@ -4582,6 +4679,19 @@ async function runPersonalConsolidation (force = false) {
     await personalBaseAppendNote(id, null).catch(() => {})
     await db.del('cons:note:' + id).catch(() => {})
     n++; c.noteDel++
+  }
+
+  // (5) Personal calendars (TODO #189) - LWW rows, deletes are soft, so puts only.
+  {
+    const p = calendarsLib.CALENDAR_KEY_PREFIX
+    for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+      if (!value?.id) continue
+      const marker = (await db.get('cons:cal:' + value.id).catch(() => null))?.value
+      if ((marker?.updatedAt ?? -1) >= (value.updatedAt ?? 0)) continue
+      await personalBaseAppendCalendar(value).catch(() => {})
+      await db.put('cons:cal:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
+      n++
+    }
   }
 
   if (n) console.log('[consolidate] re-published', n, 'record(s) ev=' + c.ev + ' del=' + c.del + ' rem=' + c.rem + ' note=' + c.note + ' noteDel=' + c.noteDel)
@@ -6382,7 +6492,8 @@ async function syncPutEvent (groupId, event) {
   const base = bases.get(groupId)
   if (!base) throw new Error('Not in group: ' + groupId)
   // Carry _prevDate in the value so receiving devices can clean up the old key
-  const { privateNote, ...shared } = event
+  // calendarId / colorCustom are personal metadata and never reach a group.
+  const { privateNote, ...shared } = calendarsLib.stripPersonalFields(event)
   const value = { ...shared, updatedAt: event.updatedAt || Date.now() }
   await safeAppend(base, { op: 'put', type: 'event', key: 'events:' + event.date + ':' + event.id, value })
 }

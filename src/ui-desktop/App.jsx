@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp,
+  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp, useCalendars,
   emitter, Tour,
 } from '../ui-shared/index.js'
 import { Sidebar } from './components/Sidebar/index.jsx'
@@ -31,7 +31,7 @@ import { JoinGroupModal } from './components/JoinGroupModal.jsx'
 import { LinkedDevicesModal } from './components/LinkedDevicesModal.jsx'
 import { OnboardingScreen } from './components/OnboardingScreen.jsx'
 import { useViewState } from './hooks/useViewState.js'
-import { useVisibleGroups } from './hooks/useVisibleGroups.js'
+import { CalendarEditModal } from './components/CalendarEditModal.jsx'
 import { useAutoExport } from './hooks/useAutoExport.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
@@ -89,8 +89,15 @@ export default function App ({ db, notifs, sync }) {
   // Another year of every "repeat forever" series, birthdays included (#183).
   useForeverTopUp(db, events, setEvents, eventsReady)
   const view      = useViewState()
-  const visibleGroups = useVisibleGroups(groups)
-  const autoExport = useAutoExport(db, events, groups, eventsReady)
+  // Personal calendars + per-device show/hide, persisted (TODO #189). The group
+  // checkboxes the sidebar already had now go through the same stored list.
+  const cal = useCalendars(db, { activeHolidayCountries: profile?.holidayCountries ?? [] })
+  const visibleGroups = useMemo(() => ({
+    isVisible: id => !cal.isHidden('group:' + id),
+    toggle: id => cal.toggle('group:' + id),
+  }), [cal.isHidden, cal.toggle])
+  const [calendarEdit, setCalendarEdit] = useState(null) // null | {} (new) | calendar
+  const autoExport = useAutoExport(db, events, groups, eventsReady, cal.calendars)
   const { saveEvent, deleteEvent } = useEventActions({
     db, notifs, sync, profile, events, setEvents,
   })
@@ -127,14 +134,7 @@ export default function App ({ db, notifs, sync }) {
     return map
   }, [groups])
 
-  const visibleEvents = useMemo(() => {
-    if (visibleGroups.hiddenIds.size === 0) return events
-    return events.filter(ev => {
-      const ids = ev.groups ?? []
-      if (ids.length === 0) return true
-      return ids.some(id => visibleGroups.isVisible(id))
-    })
-  }, [events, visibleGroups])
+  const visibleEvents = useMemo(() => cal.filterEvents(events), [events, cal.filterEvents])
 
   // Profile may be null on first render (the bare backend hasn't replied
   // to getProfile yet). Don't early-return here: every hook below this
@@ -594,6 +594,15 @@ export default function App ({ db, notifs, sync }) {
         miniCursor={view.miniCursor}
         setMiniCursor={view.setMiniCursor}
         visibleGroups={visibleGroups}
+        cal={cal}
+        onNewCalendar={() => setCalendarEdit({})}
+        onCalendarContextMenu={(c, x, y) => {
+          openContextMenu(x, y, [
+            { label: 'Edit calendar…', onClick: () => setCalendarEdit(c) },
+            { label: cal.isHidden('personal:' + c.id) ? 'Show events' : 'Hide events',
+              onClick: () => cal.toggle('personal:' + c.id) },
+          ])
+        }}
         pendingApprovalGroups={pendingApprovalGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
@@ -640,6 +649,7 @@ export default function App ({ db, notifs, sync }) {
           initial={modal.initial}
           anchor={modal.anchor}
           groups={groups}
+          calendars={cal.calendars}
           profile={profile}
           use24h={use24h}
           db={db}
@@ -721,6 +731,7 @@ export default function App ({ db, notifs, sync }) {
       {settingsOpen && (
         <SettingsModal
           tokens={tokens}
+          personalCalendars={cal.calendars}
           profile={profile}
           updateProfile={updateProfile}
           db={db}
@@ -741,9 +752,19 @@ export default function App ({ db, notifs, sync }) {
           tokens={tokens}
           events={icsImport.events}
           filename={icsImport.filename}
+          calName={icsImport.calName}
           groups={groups}
+          calendars={cal.calendars}
           existingEventIds={new Set((events ?? []).flatMap(e => e.recurrenceId ? [e.id, e.recurrenceId] : [e.id]))}
-          onImport={(toImport) => {
+          onImport={async (toImport, { calendarId, newCalendarName } = {}) => {
+            // Personal events land in the chosen calendar (TODO #189).
+            let calId = calendarId ?? 'default'
+            if (calId === '__new__') {
+              calId = (await cal.createCalendar({ name: newCalendarName,
+                color: ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54'][cal.calendars.length % 8] })
+                .catch(() => null))?.id ?? 'default'
+            }
+            const calColor = cal.calendarsById.get(calId)?.color ?? null
             for (const { ev, uid, keptGroups } of toImport) {
               const id = uid || ('e' + Date.now() + '-' + Math.random().toString(36).slice(2, 7))
               const firstGroup = keptGroups.length ? groupsById.get(keptGroups[0]) : null
@@ -763,11 +784,26 @@ export default function App ({ db, notifs, sync }) {
                 repeatForever: !!ev.repeatForever, rsvpEnabled: false,
                 editPermission: keptGroups.length ? 'everyone' : 'creator',
                 creatorId: profile?.id ?? 'unknown',
+                ...(keptGroups.length === 0 && calId !== 'default' ? { calendarId: calId } : {}),
+                ...(keptGroups.length === 0 && calColor ? { color: calColor } : {}),
               }, {})
             }
             setIcsImport(null)
           }}
           onClose={() => setIcsImport(null)} />
+      )}
+      {calendarEdit && (
+        <CalendarEditModal
+          tokens={tokens}
+          cal={cal}
+          calendar={calendarEdit.id ? calendarEdit : null}
+          events={events}
+          saveEventQuiet={async ev => {
+            await db?.putEvent(ev)
+            setEvents(prev => prev.map(e => e.id === ev.id ? ev : e))
+          }}
+          removeEvent={ev => deleteEvent(ev.id)}
+          onClose={() => setCalendarEdit(null)} />
       )}
       {aboutOpen && (
         <AboutModal

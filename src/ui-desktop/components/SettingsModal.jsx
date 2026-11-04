@@ -13,7 +13,7 @@
 // on sibling-device sync, never on local writes.
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs } from '../../ui-shared/index.js'
+import { HOLIDAY_COUNTRIES, holidayEventId, holidayCalendarIds, strayHolidayEvents, generateIcs, parseIcs, icsCalendarName } from '../../ui-shared/index.js'
 import { REMINDER_OPTIONS } from '../lib/reminderOptions.js'
 import { StorageReportModal } from './StorageReportModal.jsx'
 import { RecoveryPhraseModal } from './RecoveryPhraseModal.jsx'
@@ -33,7 +33,7 @@ const WEEK_STARTS = [
 ]
 
 
-export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, groups = [], autoExport, onClose }) {
+export function SettingsModal ({ tokens, profile, updateProfile, db, sync, events = [], setEvents, onSaveEvent, onDeleteEvent, onOpenLinkedDevices, onImportIcs, groups = [], personalCalendars = [], autoExport, onClose }) {
   const [phraseOpen, setPhraseOpen] = useState(false)
   const [resetOpen, setResetOpen] = useState(false)
   const [holidayWorking, setHolidayWorking] = useState(false)
@@ -412,9 +412,10 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
               const reader = new FileReader()
               reader.onerror = () => setIcsError('Could not read that file.')
               reader.onload = ev => {
-                const parsed = parseIcs(String(ev.target.result ?? ''))
+                const text = String(ev.target.result ?? '')
+                const parsed = parseIcs(text)
                 if (!parsed.length) { setIcsError('No events found in that file.'); return }
-                onImportIcs?.({ events: parsed, filename: file.name })
+                onImportIcs?.({ events: parsed, filename: file.name, calName: icsCalendarName(text) })
               }
               reader.readAsText(file)
             }} />
@@ -434,7 +435,7 @@ export function SettingsModal ({ tokens, profile, updateProfile, db, sync, event
         </div>
 
         {autoExport?.config && (
-          <AutoExportSection tokens={tokens} groups={groups} autoExport={autoExport}
+          <AutoExportSection tokens={tokens} groups={groups} personalCalendars={personalCalendars} autoExport={autoExport}
             label={label} row={row} btnBase={btnBase} />
         )}
 
@@ -746,10 +747,13 @@ function SeederSection ({ tokens, db, sync, label, btnBase }) {
 // Automatic .ics export to a folder (TODO #186). Settings and the folder live
 // in Electron main; useAutoExport in App.jsx does the writing, so this section
 // only edits the settings.
-function AutoExportSection ({ tokens, groups, autoExport, label, row, btnBase }) {
+function AutoExportSection ({ tokens, groups, personalCalendars = [], autoExport, label, row, btnBase }) {
   const { config, update, pickFolder } = autoExport
   const chosen = new Set(config.calendars ?? [])
-  const calendars = [{ id: 'personal', name: 'Personal' }, ...groups.map(g => ({ id: g.id, name: g.name || 'Untitled group' }))]
+  // TODO #189: one entry per personal calendar once there is more than one.
+  const calendars = [{ id: 'personal', name: personalCalendars.length > 1 ? 'All personal' : 'Personal' },
+                    ...(personalCalendars.length > 1 ? personalCalendars.map(c => ({ id: 'personal:' + c.id, name: c.name })) : []),
+                    ...groups.map(g => ({ id: g.id, name: g.name || 'Untitled group' }))]
 
   async function handleEnable (next) {
     let cfg = config
