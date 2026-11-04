@@ -33,7 +33,6 @@ class MainApplication : Application(), ReactApplication {
               add(CameraPackage())
               add(ScreenshotPackage())
               add(WidgetCachePackage())
-              add(BlockStorePackage())
               add(WebViewRecoveryPackage())
               add(FilesPackage())
             }
