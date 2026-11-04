@@ -18,6 +18,7 @@ const {
 } = require('./lib/eventTombstone.js')
 const { planEventWrite, personalAppendValue } = require('./lib/eventMove.js')
 const calendarsLib = require('./lib/calendars.js')
+const webCalLib = require('./lib/webCalendars.js')
 const { mergeSyncDelta } = require('./lib/syncDelta.js')
 const { SEEDER_PAIR_SCAN_TIMEOUT_MS } = require('./lib/seederPairTiming.js')
 const {
@@ -393,6 +394,11 @@ async function handle (method, args) {
     case 'deletePersonalCalendar': return deletePersonalCalendar(args[0])
     case 'getCalendarVisibility': return getCalendarVisibility()
     case 'setCalendarVisibility': return setCalendarVisibility(args[0])
+    case 'listSubscriptions':     return listSubscriptions()
+    case 'putSubscription':       return putSubscription(args[0])
+    case 'deleteSubscription':    return deleteSubscription(args[0])
+    case 'getSubscriptionFeeds':  return getSubscriptionFeeds()
+    case 'putSubscriptionFeed':   return putSubscriptionFeed(args[0], args[1])
     case 'refreshWidgetCache': return refreshWidgetCache()
     case 'scheduleMorningDigest': return scheduleMorningDigest()
     // Notifications handled on RN side
@@ -699,6 +705,86 @@ async function personalBaseAppendCalendar (rec) {
   if (!personalBase?.writable) return
   try { await safeAppend(personalBase, { op: 'put', type: 'personalCalendar', key: calendarsLib.calendarKey(rec.id), value: rec }) }
   catch (e) { console.warn('[personal] append calendar failed:', e.message) }
+}
+
+// ── Web calendar subscriptions (TODO #189 phase 2) ──────────────────────────
+// The subscription list syncs like personal calendars (type 'subscription').
+// The downloaded feed (subFeed:{id}) is per device and never leaves it. See
+// src/lib/webCalendars.js.
+async function readSubscriptionRows () {
+  const rows = []
+  const p = webCalLib.SUBSCRIPTION_KEY_PREFIX
+  for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+    if (value?.id) rows.push(value)
+  }
+  return rows
+}
+
+async function listSubscriptions () {
+  return webCalLib.listSubscriptions(await readSubscriptionRows())
+}
+
+async function writeSubscription (input) {
+  const key = webCalLib.subscriptionKey(input.id)
+  const prev = (await db.get(key).catch(() => null))?.value ?? null
+  const rec = webCalLib.makeSubscriptionRecord(input, prev)
+  await db.put(key, rec)
+  if (rec.deleted) await db.del(webCalLib.feedKey(rec.id)).catch(() => {})
+  if (personalBase?.writable) {
+    await personalBaseAppendSubscription(rec).catch(() => {})
+    await db.put('cons:sub:' + rec.id, { updatedAt: rec.updatedAt }).catch(() => {})
+  }
+  pokePersonal()
+  return rec
+}
+
+async function putSubscription (input) {
+  if (!input || typeof input !== 'object') throw new Error('putSubscription: object required')
+  const id = input.id || webCalLib.newSubscriptionId()
+  const { deleted, ...rest } = input
+  return writeSubscription({ ...rest, id })
+}
+
+async function deleteSubscription (id) {
+  return writeSubscription({ id, deleted: true })
+}
+
+async function getSubscriptionFeeds () {
+  const out = {}
+  const p = webCalLib.FEED_KEY_PREFIX
+  for await (const { key, value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+    out[key.slice(p.length)] = value
+  }
+  return out
+}
+
+// Written by the UI after the shell downloads a feed (or fails to). Local only.
+async function putSubscriptionFeed (id, feed) {
+  if (!id || typeof id !== 'string') throw new Error('putSubscriptionFeed: id required')
+  const sub = (await db.get(webCalLib.subscriptionKey(id)).catch(() => null))?.value
+  if (!sub || sub.deleted) return null
+  const value = {
+    url: String(feed?.url ?? sub.url),
+    attemptedAt: Number(feed?.attemptedAt ?? Date.now()),
+  }
+  const prev = (await db.get(webCalLib.feedKey(id)).catch(() => null))?.value ?? null
+  if (typeof feed?.text === 'string') {
+    if (feed.text.length > webCalLib.MAX_FEED_BYTES) throw new Error('feed too large')
+    value.text = feed.text
+    value.fetchedAt = value.attemptedAt
+  } else {
+    // A failed refresh keeps the last good copy so the events stay visible.
+    if (prev?.text && prev.url === value.url) { value.text = prev.text; value.fetchedAt = prev.fetchedAt }
+    value.error = String(feed?.error ?? 'Download failed')
+  }
+  await db.put(webCalLib.feedKey(id), value)
+  return { ...value, text: undefined }
+}
+
+async function personalBaseAppendSubscription (rec) {
+  if (!personalBase?.writable) return
+  try { await safeAppend(personalBase, { op: 'put', type: 'subscription', key: webCalLib.subscriptionKey(rec.id), value: rec }) }
+  catch (e) { console.warn('[personal] append subscription failed:', e.message) }
 }
 
 async function putPrivateNote (eventId, text) {
@@ -4154,6 +4240,18 @@ function makePersonalApply () {
         scheduleWidgetCacheRefresh()
         continue
       }
+      // Web calendar subscriptions (TODO #189 phase 2), same LWW rule.
+      if (val.op === 'put' && val.type === 'subscription' && val.key && val.value?.id) {
+        if (val.key !== webCalLib.subscriptionKey(val.value.id)) continue
+        const prev = (await db.get(val.key).catch(() => null))?.value ?? null
+        if (webCalLib.newerSubscription(prev, val.value) !== val.value) continue
+        await view.put(val.key, val.value)
+        await db.put(val.key, val.value).catch(() => {})
+        if (val.value.deleted) await db.del(webCalLib.feedKey(val.value.id)).catch(() => {})
+        await db.put('cons:sub:' + val.value.id, { updatedAt: val.value.updatedAt ?? 0 }).catch(() => {})
+        send({ type: 'event', event: 'subscriptionsChanged', data: {} })
+        continue
+      }
       if (val.op === 'del' && val.type === 'note' && val.key) {
         await view.del(val.key)
         await db.del(val.key).catch(() => {})
@@ -4537,6 +4635,15 @@ async function migratePersonalData () {
       await db.put('cons:cal:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
     }
   }
+  // Web calendar subscriptions (TODO #189 phase 2).
+  {
+    const p = webCalLib.SUBSCRIPTION_KEY_PREFIX
+    for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+      if (!value?.id) continue
+      await safeAppend(personalBase, { op: 'put', type: 'subscription', key: webCalLib.subscriptionKey(value.id), value })
+      await db.put('cons:sub:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
+    }
+  }
   // Group membership (one entry per group the user is currently in)
   for await (const { value } of db.createReadStream({ gt: NS.groups, lt: NS.groups + '\xff' })) {
     if (!value?.id || !value?.groupKey) continue
@@ -4690,6 +4797,18 @@ async function runPersonalConsolidation (force = false) {
       if ((marker?.updatedAt ?? -1) >= (value.updatedAt ?? 0)) continue
       await personalBaseAppendCalendar(value).catch(() => {})
       await db.put('cons:cal:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
+      n++
+    }
+  }
+  // (6) Web calendar subscriptions (TODO #189 phase 2), same shape.
+  {
+    const p = webCalLib.SUBSCRIPTION_KEY_PREFIX
+    for await (const { value } of db.createReadStream({ gt: p, lt: p + '\xff' })) {
+      if (!value?.id) continue
+      const marker = (await db.get('cons:sub:' + value.id).catch(() => null))?.value
+      if ((marker?.updatedAt ?? -1) >= (value.updatedAt ?? 0)) continue
+      await personalBaseAppendSubscription(value).catch(() => {})
+      await db.put('cons:sub:' + value.id, { updatedAt: value.updatedAt ?? 0 }).catch(() => {})
       n++
     }
   }

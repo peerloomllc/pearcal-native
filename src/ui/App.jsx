@@ -32,7 +32,7 @@ import {
   formatTime, formatRelativeTime, todayStr, dateStr, formatBytes,
   getUSFederalHolidays, getCanadaHolidays, getBitcoinHolidays, getUKHolidays, HOLIDAY_COUNTRIES,
   holidayEventId, holidayCalendarIds, strayHolidayEvents,
-  useProfile, useRsvps, useGroups, useEvents, useHolidayRepair, useCalendars,
+  useProfile, useRsvps, useGroups, useEvents, useHolidayRepair, useCalendars, useWebCalendars,
   emitter, Tour,
   KeylessNotice, SyncHealthNotice, PendingApprovalNotice, RecoveryNotice,
 } from '../ui-shared/index.js'
@@ -493,7 +493,28 @@ export default function App ({ db, notifs, sync }) {
   // the calendar draws. `events` stays the full list that saves and deletes use,
   // so a hidden occurrence is never skipped by a series edit.
   const cal = useCalendars(db, { activeHolidayCountries: profile?.holidayCountries ?? [] })
-  const viewEvents = useMemo(() => cal.filterEvents(events), [events, cal.filterEvents])
+  // Web calendar subscriptions (TODO #189 phase 2): read-only events built in
+  // memory from each downloaded feed. Never saved, never shared.
+  const web = useWebCalendars(db)
+  const viewEvents = useMemo(() => cal.filterEvents(web.events.length ? events.concat(web.events) : events),
+    [events, web.events, cal.filterEvents])
+  // A web calendar event opens a read-only card, not the editor.
+  const openModal = useCallback(m => {
+    const ev = m?.event
+    if (ev?.subscriptionId) {
+      const sub = web.subscriptions.find(s => s.id === ev.subscriptionId)
+      const when = ev.allDay
+        ? (ev.endDate && ev.endDate !== ev.date ? ev.date + ' to ' + ev.endDate : ev.date)
+        : ev.date + ', ' + formatTime(ev.start, profile?.use24h) + (ev.end ? ' - ' + formatTime(ev.end, profile?.use24h) : '')
+      setInfoSheet({
+        title: ev.title,
+        message: [when, ev.location, ev.desc, 'From the web calendar "' + (sub?.name ?? 'Web calendar') + '". It can only be changed on that website.']
+          .filter(Boolean).join('\n\n'),
+      })
+      return
+    }
+    setModal(m)
+  }, [web.subscriptions, profile?.use24h])
   const [calendarsOpen, setCalendarsOpen] = useState(false)
   const [selectedDate,  setSelectedDate]  = useState(todayStr())
   const [viewDate,      setViewDate]      = useState(() => {
@@ -1749,7 +1770,7 @@ export default function App ({ db, notifs, sync }) {
               calDays={calDays} selectedDate={selectedDate} setSelectedDate={setSelectedDate}
               eventsOnDate={eventsOnDate} todayStr={todayStr()} dateStr={dateStr}
               selectedEvents={eventsOnDate(selectedDate)} openCreate={openCreate}
-              setModal={setModal} events={viewEvents} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
+              setModal={openModal} events={viewEvents} groups={groups} use24h={use24h} weekStart={weekStart} eventsReady={eventsReady}
               saveEvent={saveEvent} profile={profile} sync={sync} myRsvps={myRsvps} myProfileId={profile?.id}
               closeFullGridRef={closeFullGridRef}
               onOpenCalendars={() => setCalendarsOpen(true)} hiddenCalendarCount={cal.hidden.size} />
@@ -1929,7 +1950,7 @@ export default function App ({ db, notifs, sync }) {
         )}
 
         {calendarsOpen && (
-          <CalendarsSheet cal={cal} groups={groups} events={events}
+          <CalendarsSheet cal={cal} web={web} groups={groups} events={events}
             saveEventQuiet={async ev => {
               await db?.putEvent(ev)
               setEvents(prev => prev.map(e => e.id === ev.id ? ev : e))
@@ -6793,7 +6814,7 @@ function InfoSheet ({ title, message, icon, onDismiss, closeRef }) {
       <div style={{ padding:'24px 20px 8px', display:'flex', flexDirection:'column', alignItems:'center', gap:12, textAlign:'center' }}>
         {icon && <div style={{ marginBottom:4 }}>{icon}</div>}
         <div style={{ fontSize:17, color: colors.text.primary }}>{title}</div>
-        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5 }}>{message}</div>
+        <div style={{ fontSize:14, color:'var(--color-muted)', lineHeight:1.5, whiteSpace:'pre-line' }}>{message}</div>
         <Button onClick={() => bsCloseRef.current?.()} style={{ marginTop:8 }}>
           OK
         </Button>
@@ -6876,9 +6897,12 @@ function BottomSheet ({ onClose, children, zIndex = 200, closeRef }) {
 // Every calendar this device can show - personal calendars, holiday countries
 // and groups - each with a show/hide switch. Hidden state is per device. Tapping
 // a personal calendar's name edits it.
-function CalendarsSheet ({ cal, groups, events, saveEventQuiet, removeEvent, onClose }) {
+function CalendarsSheet ({ cal, web, groups, events, saveEventQuiet, removeEvent, onClose }) {
   const bsClose = useRef(null)
   const [editing, setEditing] = useState(null) // null | { id?, name, color, isDefault }
+  // Web calendar being added or edited (TODO #189 phase 2): null | { id?, url, name, color }
+  const [webEditing, setWebEditing] = useState(null)
+  const [webErr, setWebErr] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [busy, setBusy] = useState(false)
   const label = { fontSize:10, fontWeight:400, color:colors.text.muted, letterSpacing:'0.1em',
@@ -6909,6 +6933,74 @@ function CalendarsSheet ({ cal, groups, events, saveEventQuiet, removeEvent, onC
       setConfirmDelete(false)
       setEditing(null)
     } finally { setBusy(false) }
+  }
+
+  async function saveWeb () {
+    setWebErr('')
+    setBusy(true)
+    try {
+      if (webEditing.id) {
+        await web.updateSubscription(webEditing.id, { url: webEditing.url, name: webEditing.name.trim(), color: webEditing.color })
+        setWebEditing(null)
+      } else {
+        const { error } = await web.addSubscription({ url: webEditing.url, name: webEditing.name, color: webEditing.color })
+        if (error) setWebErr('Added, but the first download failed: ' + error + ' PearCal will keep trying.')
+        else setWebEditing(null)
+      }
+    } catch (e) { setWebErr(e?.message ?? String(e)) } finally { setBusy(false) }
+  }
+
+  if (webEditing) {
+    const feed = webEditing.id ? web.feeds[webEditing.id] : null
+    const status = !webEditing.id ? null
+      : web.busy[webEditing.id] ? 'Downloading…'
+      : feed?.error ? 'Last try failed: ' + feed.error + (feed.fetchedAt ? ' Showing the copy from ' + new Date(feed.fetchedAt).toLocaleString() + '.' : '')
+      : feed?.fetchedAt ? 'Updated ' + new Date(feed.fetchedAt).toLocaleString() + '.'
+      : 'Not downloaded yet.'
+    return (
+      <BottomSheet onClose={onClose} zIndex={250} closeRef={bsClose}>
+        <div style={{ padding:'0 20px 16px' }}>
+          <div style={{ fontSize:17, color:colors.text.primary, marginBottom:6 }}>
+            {webEditing.id ? 'Web calendar' : 'Add a web calendar'}
+          </div>
+          <div style={{ fontSize:12, color:colors.text.muted, lineHeight:1.5, marginBottom:12 }}>
+            Paste a calendar link (https:// or webcal://). Each of your devices downloads it from
+            that website itself, about twice a day, so the website can see your IP address.
+            Its events are read-only and are never shared with your groups.
+          </div>
+          <input value={webEditing.url} placeholder="https://example.com/calendar.ics" autoFocus={!webEditing.id}
+            autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="url"
+            onChange={e => { setWebEditing(x => ({ ...x, url: e.target.value })); setWebErr('') }} style={inputStyle} />
+          <input value={webEditing.name} maxLength={60} placeholder={webEditing.id ? 'Name' : 'Name (optional, taken from the calendar)'}
+            onChange={e => setWebEditing(x => ({ ...x, name: e.target.value }))} style={{ ...inputStyle, marginTop:10 }} />
+          <div style={{ display:'flex', flexWrap:'wrap', gap:10, margin:'14px 0' }}>
+            {GROUP_COLORS.map(c => (
+              <button key={c} onClick={() => setWebEditing(x => ({ ...x, color: c }))} aria-label={c}
+                style={{ width:32, height:32, borderRadius:16, background:c, cursor:'pointer',
+                  border: webEditing.color === c ? `3px solid ${colors.text.primary}` : '3px solid transparent' }} />
+            ))}
+          </div>
+          {status && <div style={{ fontSize:12, color: feed?.error ? 'var(--color-destructive)' : colors.text.muted, marginBottom:10, lineHeight:1.5 }}>{status}</div>}
+          {webErr && <div style={{ fontSize:12, color:'var(--color-destructive)', marginBottom:10, lineHeight:1.5 }}>{webErr}</div>}
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            <button disabled={busy || !webEditing.url.trim()} onClick={saveWeb}
+              style={{ ...pillBtn, padding:12, fontSize:14, opacity: webEditing.url.trim() ? 1 : 0.4 }}>
+              {webEditing.id ? 'Save' : 'Add'}
+            </button>
+            {webEditing.id && (
+              <button disabled={!!web.busy[webEditing.id]} onClick={() => web.refresh(web.subscriptions.find(x => x.id === webEditing.id))}
+                style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:colors.primary }}>Download now</button>
+            )}
+            {webEditing.id && (
+              <button disabled={busy} onClick={async () => { setBusy(true); try { await web.removeSubscription(webEditing.id); setWebEditing(null) } finally { setBusy(false) } }}
+                style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:'var(--color-destructive)' }}>Remove web calendar</button>
+            )}
+            <button onClick={() => { setWebEditing(null); setWebErr('') }}
+              style={{ ...pillBtn, padding:12, fontSize:14, background:'transparent', color:colors.text.muted }}>Back</button>
+          </div>
+        </div>
+      </BottomSheet>
+    )
   }
 
   if (editing) {
@@ -6993,6 +7085,17 @@ function CalendarsSheet ({ cal, groups, events, saveEventQuiet, removeEvent, onC
             fontFamily:FONT, fontSize:15, color:colors.primary, cursor:'pointer' }}>
           <Plus size={14} weight="bold" /> New calendar
         </button>
+        {web?.supported && <div style={label}>Web calendars</div>}
+        {web?.supported && web.subscriptions.map(sb => switchRow('sub:' + sb.id, sb.name || 'Web calendar', sb.color, () =>
+          setWebEditing({ id: sb.id, url: sb.url, name: sb.name ?? '', color: sb.color ?? null }),
+          web.feeds[sb.id]?.error ? <span style={{ marginRight:6, color:'var(--color-destructive)' }}>!</span> : null))}
+        {web?.supported && (
+          <button onClick={() => setWebEditing({ url: '', name: '', color: GROUP_COLORS[(web.subscriptions.length + 5) % GROUP_COLORS.length] })}
+            style={{ ...row, width:'100%', background:'none', border:'none', borderBottom:`1px solid ${colors.border}`,
+              fontFamily:FONT, fontSize:15, color:colors.primary, cursor:'pointer' }}>
+            <Plus size={14} weight="bold" /> Add web calendar
+          </button>
+        )}
         {cal.holidayCalendars.length > 0 && <div style={label}>Holidays</div>}
         {cal.holidayCalendars.map(h => switchRow(h.key, h.name, h.color, null,
           <span style={{ marginRight:6 }}>{h.flag}</span>))}

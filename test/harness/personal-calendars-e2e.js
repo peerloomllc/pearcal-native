@@ -76,6 +76,28 @@ async function main () {
     const visA = await A.call('getCalendarVisibility')
     check('visibility stays on B only', !(visA?.hidden ?? []).length, JSON.stringify(visA))
 
+    // Phase 2: the subscription list syncs, the downloaded feed does not.
+    const sub = await A.call('putSubscription', { url: 'webcal://example.org/fr.ics', name: 'France', color: '#4BBDCC' })
+    check('A adds a web calendar', sub?.url === 'https://example.org/fr.ics', sub?.url)
+    await A.call('putSubscriptionFeed', sub.id, { url: sub.url, text: 'BEGIN:VCALENDAR\r\nEND:VCALENDAR' })
+    const subOnB = await until(async () => (await B.call('listSubscriptions')).find(x => x.id === sub.id), 60000)
+    check('web calendar reaches B', subOnB?.name === 'France')
+    const feedsB = await B.call('getSubscriptionFeeds')
+    check('A\'s downloaded copy stays on A', !feedsB[sub.id], JSON.stringify(Object.keys(feedsB)))
+    const feedsA = await A.call('getSubscriptionFeeds')
+    check('A keeps its downloaded copy', !!feedsA[sub.id]?.text)
+    await B.call('putSubscriptionFeed', sub.id, { url: sub.url, error: 'offline' })
+    const errB = (await B.call('getSubscriptionFeeds'))[sub.id]
+    check('a failed download is recorded on B', errB?.error === 'offline' && !errB.text)
+    await B.call('deleteSubscription', sub.id)
+    const subGone = await until(async () => {
+      const l = await A.call('listSubscriptions')
+      return l.some(x => x.id === sub.id) ? null : true
+    }, 60000)
+    check('removing it on B reaches A', !!subGone)
+    const feedGone = await until(async () => (await A.call('getSubscriptionFeeds'))[sub.id] ? null : true, 30000)
+    check('A drops its downloaded copy too', !!feedGone)
+
     const defaults = await A.call('listPersonalCalendars')
     check('default calendar listed first', defaults?.[0]?.id === 'default' && defaults[0].name === 'Personal')
   } catch (e) {

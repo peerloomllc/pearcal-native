@@ -23,6 +23,7 @@ export function Sidebar ({
   miniCursor, setMiniCursor,
   visibleGroups,
   cal, onNewCalendar, onCalendarContextMenu,
+  web, onNewWebCalendar, onWebCalendarContextMenu,
   pendingApprovalGroups,
   onOpenProfile, onOpenSettings, onOpenAbout, onGroupContextMenu,
   onNewGroup, onJoinGroup,
@@ -47,8 +48,9 @@ export function Sidebar ({
 
       <div data-tour="sidebar-groups" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflowY: 'auto' }}>
         {cal && (
-          <CalendarList tokens={tokens} cal={cal}
-                        onNewCalendar={onNewCalendar} onCalendarContextMenu={onCalendarContextMenu} />
+          <CalendarList tokens={tokens} cal={cal} web={web}
+                        onNewCalendar={onNewCalendar} onCalendarContextMenu={onCalendarContextMenu}
+                        onNewWebCalendar={onNewWebCalendar} onWebCalendarContextMenu={onWebCalendarContextMenu} />
         )}
         <GroupList tokens={tokens} groups={groups}
                    collapsed={groupsFolded} onToggleCollapsed={toggleFolded}

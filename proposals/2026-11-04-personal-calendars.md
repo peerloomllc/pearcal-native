@@ -72,6 +72,10 @@ chosen calendar; personal calendars become choices there too.
 - Adding a feed tells the user that the app will contact that website, which can
   see their IP address. The privacy wording on the site and in the store
   listings, which says PearCal uses no servers, gets a line for this.
+- As built: the UI parses the stored text into read-only events in memory
+  (`src/ui-shared/hooks/useWebCalendars.js`) rather than writing them to
+  Hyperbee, so they are not in the home-screen widget. A web event opens a
+  read-only card on the phone and the read-only editor on desktop.
 
 ### Not changing
 
