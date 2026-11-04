@@ -40,7 +40,7 @@ Two phases, two PRs. Phase 2 starts after Phase 1 is merged and released.
 **Visibility.** One per-device list of hidden calendars, stored locally under
 `ui:hiddenCalendars` and not synced, so hiding Health on the desktop does not
 hide it on the phone. It covers personal calendars and groups. Hidden events
-drop out of every view and search, but reminders still fire (open question 2).
+drop out of every view, search and the home-screen widget. Reminders still fire.
 
 **Mobile UI.** A calendars sheet listing personal calendars, then groups, each
 with its color and an on/off switch, plus "New calendar". The event editor gets
@@ -75,8 +75,7 @@ chosen calendar; personal calendars become choices there too.
 
 ### Not changing
 
-Group sync, invites, holidays (still a built-in list), birthdays, the widget's
-data source, and anything about how group events are stored.
+Group sync, invites, how holidays are computed (still offline), birthdays, and anything about how group events are stored.
 
 ## Compat
 
@@ -112,14 +111,10 @@ data source, and anything about how group events are stored.
 Revert the PR. The new keys and fields stay on disk and are ignored, as in the
 downgrade case. No cleanup is needed.
 
-## Open questions
+## Decisions (Tim, 2026-11-04)
 
-1. Should a hidden calendar also be hidden from the home-screen widget? Proposed:
-   yes, the widget follows the same list.
-2. Should reminders fire for events in a hidden calendar? Proposed: yes. Hiding
-   is a view filter, and missing an appointment because a calendar was hidden is
-   worse than seeing a reminder.
-3. Should built-in holidays and birthdays become calendars with their own switch,
-   now that switches exist? Proposed: each chosen holiday country becomes a
-   calendar with a switch in Phase 1, since countries are already picked one by
-   one in settings. Birthdays stay as they are.
+1. A hidden calendar is also hidden from the home-screen widget. The widget
+   follows the same list.
+2. Reminders still fire for events in a hidden calendar. Hiding is a view filter.
+3. Each chosen holiday country becomes a calendar with its own switch, in
+   Phase 1. Birthdays stay as they are.
