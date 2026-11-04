@@ -26,7 +26,6 @@ const { PearCalCamera } = NativeModules
 const { PearCalHaptic } = NativeModules
 const { PearCalDeepLink } = NativeModules
 const { PearCalBGSync } = NativeModules
-const { PearCalBlockStore } = NativeModules
 const { PearCalICloudKeychain } = NativeModules
 // GrapheneOS/Vanadium WebView resume-freeze recovery (WEBVIEW_FREEZE_FIX_PORT.md).
 // Android's cached-app freezer freezes the out-of-process Vanadium renderer while
@@ -216,7 +215,13 @@ const CLOUD_SCRUBBED_KEY = 'pearcal.identity.cloudScrubbed'
 // uploaded. The reveal / copy / export / backup-toggle surfaces were removed
 // 2026-07-27; what remains here is local storage of the seed, plus a one-time
 // scrub of the cloud copies the old backup feature left behind.
-const platformBackup: any = Platform.OS === 'ios' ? PearCalICloudKeychain : PearCalBlockStore
+//
+// iOS only. The Android half used Google Block Store, which was removed
+// 2026-11-04 so the app carries no Google Play Services library (needed for
+// IzzyOnDroid / F-Droid, TODO #190). Android installs that uploaded a seed
+// between 1.0.22 and the July removal and never opened a later version keep
+// that copy; Tim accepted that tradeoff.
+const platformBackup: any = Platform.OS === 'ios' ? PearCalICloudKeychain : null
 
 async function platformIsAvailable (): Promise<boolean> {
   if (!platformBackup?.isAvailable) return false
@@ -236,7 +241,8 @@ async function platformDeleteMnemonic (): Promise<boolean> {
 // One-time cleanup for installs that ran the old backup feature.
 //
 // Backup defaulted to ON and had no reachable toggle, so every device that ever
-// generated a seed also uploaded it to iCloud Keychain or Google Block Store.
+// generated a seed also uploaded it to iCloud Keychain (or, on Android before
+// 2026-11-04, Google Block Store).
 // Removing the feature without this would leave those copies sitting there for
 // good, which is the one outcome the removal is meant to prevent - a Block Store
 // entry survives until it is explicitly deleted, and an iCloud Keychain item
@@ -246,14 +252,14 @@ async function platformDeleteMnemonic (): Promise<boolean> {
 // simply leaves the flag unset so the next launch tries again. Fire-and-forget,
 // because nothing about starting the app depends on it.
 //
-// These native modules exist ONLY for this scrub now. Once installs have rolled
-// past this release they can be deleted outright, along with
-// modules/PearCalBlockStore + ios/PearCal/ICloudKeychain.*.
+// The iCloud Keychain module exists ONLY for this scrub now. Once iOS installs
+// have rolled past this release it can be deleted outright, along with
+// ios/PearCal/ICloudKeychain.*.
 async function scrubLegacyCloudBackup (): Promise<void> {
   try {
     if (await SecureStore.getItemAsync(CLOUD_SCRUBBED_KEY)) return
     if (!(await platformIsAvailable())) {
-      // No backend to scrub on this device (no Play Services, or desktop).
+      // No backend to scrub on this device (Android, or desktop).
       // Nothing was ever uploaded, so mark it done rather than retry forever.
       await SecureStore.setItemAsync(CLOUD_SCRUBBED_KEY, '1')
       return
