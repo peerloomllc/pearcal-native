@@ -2,7 +2,7 @@
 // (TODO #189). Click a row to show or hide it on this device; right-click a
 // personal calendar to rename, recolor or delete it.
 
-export function CalendarList ({ tokens, cal, onNewCalendar, onCalendarContextMenu }) {
+export function CalendarList ({ tokens, cal, web, onNewCalendar, onCalendarContextMenu, onNewWebCalendar, onWebCalendarContextMenu }) {
   const headerBtn = {
     background: 'transparent', border: 'none',
     fontSize: 16, fontWeight: 600, cursor: 'pointer', color: tokens.muted,
@@ -47,6 +47,19 @@ export function CalendarList ({ tokens, cal, onNewCalendar, onCalendarContextMen
       </div>
       {cal.calendars.map(c => row('personal:' + c.id, c.name, c.color, onCalendarContextMenu
         ? (x, y) => onCalendarContextMenu(c, x, y) : null))}
+      {web?.supported && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, margin: '10px 0 6px' }}>
+            <div style={heading}>Web calendars</div>
+            {onNewWebCalendar && (
+              <button onClick={onNewWebCalendar} title="Add a web calendar" aria-label="Add a web calendar" style={headerBtn}>+</button>
+            )}
+          </div>
+          {web.subscriptions.map(sb => row('sub:' + sb.id, sb.name || 'Web calendar', sb.color,
+            onWebCalendarContextMenu ? (x, y) => onWebCalendarContextMenu(sb, x, y) : null,
+            web.feeds[sb.id]?.error ? '⚠' : null))}
+        </>
+      )}
       {cal.holidayCalendars.length > 0 && (
         <>
           <div style={{ ...heading, margin: '10px 0 6px' }}>Holidays</div>

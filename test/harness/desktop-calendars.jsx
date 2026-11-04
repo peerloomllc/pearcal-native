@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client'
 import { Sidebar } from '../../src/ui-desktop/components/Sidebar/index.jsx'
 import { EventModal } from '../../src/ui-desktop/components/EventModal.jsx'
 import { useCalendars } from '../../src/ui-shared/hooks/useCalendars.js'
+import { useWebCalendars } from '../../src/ui-shared/hooks/useWebCalendars.js'
 
 const TOKENS = {
   font: 'system-ui, sans-serif',
@@ -28,12 +29,26 @@ const db = {
   getCalendarVisibility: async () => window.__vis,
   setCalendarVisibility: async v => { window.__vis = v; return v },
   listReminders: async () => [], getReminders: async () => [], getPrivateNote: async () => null,
+  // Web calendars (phase 2). fetchCalendarUrl stands in for the native shell.
+  listSubscriptions: async () => subs.filter(s => !s.deleted),
+  putSubscription: async s => {
+    const r = { ...s, id: s.id || 'sub' + subs.length, url: String(s.url).replace(/^webcal:/, 'https:'), updatedAt: Date.now() }
+    const i = subs.findIndex(x => x.id === r.id); if (i >= 0) subs[i] = r; else subs.push(r); return r
+  },
+  deleteSubscription: async id => { const s = subs.find(x => x.id === id); if (s) s.deleted = true; return s },
+  getSubscriptionFeeds: async () => feeds,
+  putSubscriptionFeed: async (id, f) => { feeds[id] = { ...f, fetchedAt: f.text ? Date.now() : undefined }; return feeds[id] },
+  fetchCalendarUrl: async () => 'BEGIN:VCALENDAR\r\nX-WR-CALNAME:Jours feries\r\nBEGIN:VEVENT\r\nUID:a\r\nDTSTART;VALUE=DATE:20261111\r\nSUMMARY:Armistice\r\nEND:VEVENT\r\nEND:VCALENDAR',
 }
+const subs = []
+const feeds = {}
 
 function Harness () {
   const [selectedDate, setSelectedDate] = useState('2026-11-04')
   const [miniCursor, setMiniCursor] = useState({ y: 2026, m: 10 })
   const cal = useCalendars(db, { activeHolidayCountries: [] })
+  const web = useWebCalendars(db)
+  window.__web = web
   const visibleGroups = { isVisible: id => !cal.isHidden('group:' + id), toggle: id => cal.toggle('group:' + id) }
   window.__cal = cal
   return (
@@ -42,6 +57,7 @@ function Harness () {
         selectedDate={selectedDate} setSelectedDate={setSelectedDate}
         miniCursor={miniCursor} setMiniCursor={setMiniCursor}
         visibleGroups={visibleGroups} cal={cal} onNewCalendar={() => {}} pendingApprovalGroups={new Set()}
+        web={web} onNewWebCalendar={() => {}}
         onOpenProfile={() => {}} onOpenSettings={() => {}} onOpenAbout={() => {}} />
       <div id="editor">
         <EventModal tokens={TOKENS} mode="create"

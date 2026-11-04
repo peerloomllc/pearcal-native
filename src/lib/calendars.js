@@ -12,7 +12,8 @@
 // later cannot bring it back.
 //
 // Visibility is a per-device list of hidden keys. It is not synced. Keys are
-// `personal:{calendarId}`, `group:{groupId}` and `holiday:{countryCode}`.
+// `personal:{calendarId}`, `group:{groupId}`, `holiday:{countryCode}` and
+// `sub:{subscriptionId}`.
 //
 // Shared by bare.js (widget filter, storage) and both UIs, so it is plain
 // CommonJS with no dependencies.
@@ -38,6 +39,8 @@ function isPersonalEvent (ev) {
 // `holidayKeysFor(ev)` returns the holiday keys claiming a built-in holiday
 // event, or an empty list for anything else.
 function visibilityKeys (ev, { holidayKeysFor } = {}) {
+  // Read-only events from a web calendar subscription (phase 2).
+  if (ev && ev.subscriptionId) return ['sub:' + ev.subscriptionId]
   if (!isPersonalEvent(ev)) return ev.groups.map(g => 'group:' + g)
   if (holidayKeysFor) {
     const keys = holidayKeysFor(ev)

@@ -346,6 +346,14 @@ async function tryHandle (method, args, { getMainWindow, sendToast, requestQuit,
     // Automatic .ics export to a folder (TODO #186). The renderer builds the
     // files from the events it already holds; main owns the folder, so the
     // renderer can never choose where a file lands.
+    // Web calendar subscriptions (TODO #189): download the feed here, where
+    // there is no CORS, and hand the text to the renderer.
+    case 'fetchCalendarUrl': {
+      const { fetchCalendarText } = require('../../vendor/src/lib/webCalendars.js')
+      // A throw rejects the renderer's call, which is how it learns the reason.
+      return { handled: true, result: await fetchCalendarText(args?.[0] ?? '') }
+    }
+
     case 'desktopGetAutoExport':
       return { handled: true, result: _autoExportConfig() }
 

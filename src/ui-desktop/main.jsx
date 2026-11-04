@@ -114,6 +114,14 @@ const db = {
   deletePersonalCalendar: (id) => window.__pearDB.call('deletePersonalCalendar', id),
   getCalendarVisibility:  ()  => window.__pearDB.call('getCalendarVisibility'),
   setCalendarVisibility:  (v) => window.__pearDB.call('setCalendarVisibility', v),
+  // Web calendar subscriptions (TODO #189 phase 2). fetchCalendarUrl is
+  // answered by the native shell, the rest by the worklet.
+  listSubscriptions:      ()  => window.__pearDB.call('listSubscriptions'),
+  putSubscription:        (s) => window.__pearDB.call('putSubscription', s),
+  deleteSubscription:     (id) => window.__pearDB.call('deleteSubscription', id),
+  getSubscriptionFeeds:   ()  => window.__pearDB.call('getSubscriptionFeeds'),
+  putSubscriptionFeed:    (id, f) => window.__pearDB.call('putSubscriptionFeed', id, f),
+  fetchCalendarUrl:       (url) => window.__pearDB.call('fetchCalendarUrl', url),
   // TODO #134 - the relay ENGINE was already here (prepack.js vendors src/, so
   // desktop picks up the shared worklet automatically), but the renderer is a
   // separate UI tree, so the relay was on with no way to turn it off. It is the

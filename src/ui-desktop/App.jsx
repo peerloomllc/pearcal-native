@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp, useCalendars,
+  useProfile, useGroups, useEvents, useRsvps, useHolidayRepair, useForeverTopUp, useCalendars, useWebCalendars,
   emitter, Tour,
 } from '../ui-shared/index.js'
 import { Sidebar } from './components/Sidebar/index.jsx'
@@ -32,6 +32,7 @@ import { LinkedDevicesModal } from './components/LinkedDevicesModal.jsx'
 import { OnboardingScreen } from './components/OnboardingScreen.jsx'
 import { useViewState } from './hooks/useViewState.js'
 import { CalendarEditModal } from './components/CalendarEditModal.jsx'
+import { WebCalendarModal } from './components/WebCalendarModal.jsx'
 import { useAutoExport } from './hooks/useAutoExport.js'
 import { useEventActions } from './hooks/useEventActions.js'
 import { useKeyboard } from './hooks/useKeyboard.js'
@@ -97,6 +98,10 @@ export default function App ({ db, notifs, sync }) {
     toggle: id => cal.toggle('group:' + id),
   }), [cal.isHidden, cal.toggle])
   const [calendarEdit, setCalendarEdit] = useState(null) // null | {} (new) | calendar
+  // Web calendar subscriptions (TODO #189 phase 2): read-only events built in
+  // memory from each downloaded feed.
+  const web = useWebCalendars(db)
+  const [webEdit, setWebEdit] = useState(null) // null | {} (new) | subscription
   const autoExport = useAutoExport(db, events, groups, eventsReady, cal.calendars)
   const { saveEvent, deleteEvent } = useEventActions({
     db, notifs, sync, profile, events, setEvents,
@@ -134,7 +139,8 @@ export default function App ({ db, notifs, sync }) {
     return map
   }, [groups])
 
-  const visibleEvents = useMemo(() => cal.filterEvents(events), [events, cal.filterEvents])
+  const visibleEvents = useMemo(() => cal.filterEvents(web.events.length ? events.concat(web.events) : events),
+    [events, web.events, cal.filterEvents])
 
   // Profile may be null on first render (the bare backend hasn't replied
   // to getProfile yet). Don't early-return here: every hook below this
@@ -603,6 +609,16 @@ export default function App ({ db, notifs, sync }) {
               onClick: () => cal.toggle('personal:' + c.id) },
           ])
         }}
+        web={web}
+        onNewWebCalendar={() => setWebEdit({})}
+        onWebCalendarContextMenu={(sb, x, y) => {
+          openContextMenu(x, y, [
+            { label: 'Edit web calendar…', onClick: () => setWebEdit(sb) },
+            { label: 'Download now', onClick: () => web.refresh(sb) },
+            { label: cal.isHidden('sub:' + sb.id) ? 'Show events' : 'Hide events',
+              onClick: () => cal.toggle('sub:' + sb.id) },
+          ])
+        }}
         pendingApprovalGroups={pendingApprovalGroups}
         onOpenProfile={openProfile}
         onOpenSettings={openSettings}
@@ -791,6 +807,11 @@ export default function App ({ db, notifs, sync }) {
             setIcsImport(null)
           }}
           onClose={() => setIcsImport(null)} />
+      )}
+      {webEdit && (
+        <WebCalendarModal tokens={tokens} web={web}
+          subscription={webEdit.id ? webEdit : null}
+          onClose={() => setWebEdit(null)} />
       )}
       {calendarEdit && (
         <CalendarEditModal

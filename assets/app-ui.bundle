@@ -14589,6 +14589,7 @@
         return !(ev2 && Array.isArray(ev2.groups) && ev2.groups.length);
       }
       function visibilityKeys(ev2, { holidayKeysFor } = {}) {
+        if (ev2 && ev2.subscriptionId) return ["sub:" + ev2.subscriptionId];
         if (!isPersonalEvent(ev2)) return ev2.groups.map((g) => "group:" + g);
         if (holidayKeysFor) {
           const keys = holidayKeysFor(ev2);
@@ -14697,6 +14698,133 @@
         stripPersonalFields,
         planCalendarDelete: planCalendarDelete2,
         newCalendarId
+      };
+    }
+  });
+
+  // src/lib/webCalendars.js
+  var require_webCalendars = __commonJS({
+    "src/lib/webCalendars.js"(exports, module) {
+      "use strict";
+      var SUBSCRIPTION_KEY_PREFIX = "subscription:";
+      var FEED_KEY_PREFIX = "subFeed:";
+      var DEFAULT_REFRESH_HOURS = 12;
+      var MIN_REFRESH_HOURS = 1;
+      var MAX_REFRESH_HOURS = 24 * 7;
+      var MAX_FEED_BYTES = 5 * 1024 * 1024;
+      var FETCH_TIMEOUT_MS = 2e4;
+      var NAME_MAX = 60;
+      function subscriptionKey(id) {
+        return SUBSCRIPTION_KEY_PREFIX + id;
+      }
+      function feedKey(id) {
+        return FEED_KEY_PREFIX + id;
+      }
+      function normalizeFeedUrl2(input) {
+        let s13 = String(input ?? "").trim();
+        if (!s13) throw new Error("Enter the calendar's web address.");
+        s13 = s13.replace(/^webcals?:\/\//i, "https://");
+        if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s13)) s13 = "https://" + s13;
+        let u;
+        try {
+          u = new URL(s13);
+        } catch {
+          throw new Error("That is not a web address.");
+        }
+        if (u.protocol !== "https:" && u.protocol !== "http:") throw new Error("Only http, https and webcal addresses work.");
+        if (!u.hostname) throw new Error("That is not a web address.");
+        return u.toString();
+      }
+      function clampRefresh(h2) {
+        const n21 = Number(h2);
+        if (!Number.isFinite(n21)) return DEFAULT_REFRESH_HOURS;
+        return Math.min(MAX_REFRESH_HOURS, Math.max(MIN_REFRESH_HOURS, Math.round(n21)));
+      }
+      function cleanName(name) {
+        return String(name ?? "").replace(/\s+/g, " ").trim().slice(0, NAME_MAX);
+      }
+      function makeSubscriptionRecord(input, prev, now = Date.now()) {
+        const id = String(input?.id ?? "").trim();
+        if (!id) throw new Error("subscription id required");
+        if (id.includes(":")) throw new Error('subscription id must not contain ":"');
+        const rec = {
+          id,
+          url: input.deleted ? prev?.url ?? input.url ?? "" : normalizeFeedUrl2(input.url ?? prev?.url),
+          name: cleanName(input.name ?? prev?.name),
+          color: typeof input.color === "string" ? input.color : prev?.color ?? null,
+          refreshHours: clampRefresh(input.refreshHours ?? prev?.refreshHours),
+          createdAt: prev?.createdAt ?? input.createdAt ?? now,
+          updatedAt: Math.max(now, (prev?.updatedAt ?? 0) + 1)
+        };
+        if (input.deleted) rec.deleted = true;
+        return rec;
+      }
+      function newerSubscription(prev, next) {
+        if (!next) return prev ?? null;
+        if (!prev) return next;
+        return (next.updatedAt ?? 0) > (prev.updatedAt ?? 0) ? next : prev;
+      }
+      function listSubscriptions(rows) {
+        const byId = /* @__PURE__ */ new Map();
+        for (const r11 of rows ?? []) {
+          if (!r11?.id) continue;
+          byId.set(r11.id, newerSubscription(byId.get(r11.id), r11));
+        }
+        return [...byId.values()].filter((r11) => !r11.deleted).sort((a50, b) => (a50.createdAt ?? 0) - (b.createdAt ?? 0) || a50.id.localeCompare(b.id));
+      }
+      function isFeedDue2(sub, feed, now = Date.now()) {
+        if (!sub) return false;
+        if (!feed) return true;
+        if (feed.url && feed.url !== sub.url) return true;
+        const every = clampRefresh(sub.refreshHours) * 3600 * 1e3;
+        const last = feed.error ? feed.attemptedAt ?? 0 : feed.fetchedAt ?? 0;
+        return now - last >= (feed.error ? every / 4 : every);
+      }
+      async function fetchCalendarText(url, { fetchImpl, timeoutMs = FETCH_TIMEOUT_MS, maxBytes = MAX_FEED_BYTES } = {}) {
+        const target = normalizeFeedUrl2(url);
+        const f = fetchImpl ?? (typeof fetch === "function" ? fetch : null);
+        if (!f) throw new Error("No way to download on this device.");
+        const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+        const timer = setTimeout(() => ctrl?.abort(), timeoutMs);
+        let res;
+        try {
+          res = await f(target, {
+            signal: ctrl?.signal,
+            headers: { Accept: "text/calendar, text/plain;q=0.9, */*;q=0.5" },
+            redirect: "follow",
+            credentials: "omit"
+          });
+        } catch (e73) {
+          throw new Error(ctrl?.signal?.aborted ? "The website took too long to answer." : "Could not reach that website.");
+        } finally {
+          clearTimeout(timer);
+        }
+        if (!res.ok) throw new Error("The website answered with error " + res.status + ".");
+        const len = Number(res.headers?.get?.("content-length") ?? 0);
+        if (len > maxBytes) throw new Error("That calendar is too large.");
+        const text = await res.text();
+        if (text.length > maxBytes) throw new Error("That calendar is too large.");
+        if (!/BEGIN:VCALENDAR/i.test(text)) throw new Error("That address did not return a calendar file.");
+        return text;
+      }
+      function newSubscriptionId(rand = Math.random) {
+        return "sub" + Date.now().toString(36) + rand().toString(36).slice(2, 8);
+      }
+      module.exports = {
+        SUBSCRIPTION_KEY_PREFIX,
+        FEED_KEY_PREFIX,
+        DEFAULT_REFRESH_HOURS,
+        MAX_FEED_BYTES,
+        subscriptionKey,
+        feedKey,
+        normalizeFeedUrl: normalizeFeedUrl2,
+        clampRefresh,
+        makeSubscriptionRecord,
+        newerSubscription,
+        listSubscriptions,
+        isFeedDue: isFeedDue2,
+        fetchCalendarText,
+        newSubscriptionId
       };
     }
   });
@@ -14875,7 +15003,7 @@
   var import_client = __toESM(require_client());
 
   // src/ui/App.jsx
-  var import_react10 = __toESM(require_react());
+  var import_react11 = __toESM(require_react());
   var import_react_dom = __toESM(require_react_dom());
   var import_seederPairTiming = __toESM(require_seederPairTiming());
   var import_joinOutcome = __toESM(require_joinOutcome());
@@ -16223,8 +16351,189 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     };
   }
 
-  // src/ui-shared/hooks/useForeverTopUp.js
+  // src/ui-shared/hooks/useWebCalendars.js
   var import_react7 = __toESM(require_react());
+  var import_webCalendars = __toESM(require_webCalendars());
+  var { isFeedDue, normalizeFeedUrl } = import_webCalendars.default;
+  var CHECK_EVERY_MS = 15 * 60 * 1e3;
+  var COLORS = ["#4BBDCC", "#A97FD4", "#F5C842", "#E07B54", "#6C9BF5", "#5DBF8A", "#E5864A", "#D45F7A"];
+  function cleanError(e73) {
+    return String(e73?.message ?? e73 ?? "Download failed").replace(/^Error invoking remote method '[^']+': (Error: )?/, "");
+  }
+  function feedEvents(sub, text, today = /* @__PURE__ */ new Date()) {
+    if (!sub || !text) return [];
+    let parsed;
+    try {
+      parsed = parseIcs(text, today);
+    } catch {
+      return [];
+    }
+    const out = [];
+    for (let i2 = 0; i2 < parsed.length; i2++) {
+      const p5 = parsed[i2];
+      const base = "web-" + sub.id + "-" + String(p5.uid || i2).replace(/[^A-Za-z0-9_.@-]/g, "") + "-" + p5.date;
+      const ev2 = {
+        id: base,
+        title: p5.title,
+        date: p5.date,
+        endDate: p5.endDate ?? "",
+        allDay: p5.allDay ?? true,
+        start: p5.start ?? "",
+        end: p5.end ?? "",
+        desc: p5.desc ?? "",
+        location: p5.location ?? "",
+        meetingLink: p5.meetingLink ?? "",
+        groups: [],
+        invitees: [],
+        color: sub.color || COLORS[0],
+        colors: [],
+        recurrence: p5.recurrence ?? "none",
+        recurrenceEnd: p5.recurrenceEnd ?? "",
+        repeatForever: !!p5.repeatForever,
+        recurrenceNth: p5.recurrenceNth ?? 0,
+        recurrenceWeekday: p5.recurrenceWeekday ?? 0,
+        recurrenceInterval: p5.recurrenceInterval ?? 1,
+        recurrenceId: "",
+        creatorId: "web-calendar",
+        editPermission: "creator",
+        subscriptionId: sub.id,
+        readOnly: true
+      };
+      for (const occ of expandRecurring(ev2)) out.push(occ);
+    }
+    return out;
+  }
+  function useWebCalendars(db2) {
+    const [subs, setSubs] = (0, import_react7.useState)([]);
+    const [feeds, setFeeds] = (0, import_react7.useState)({});
+    const [busy, setBusy] = (0, import_react7.useState)({});
+    const feedsRef = (0, import_react7.useRef)(feeds);
+    feedsRef.current = feeds;
+    const subsRef = (0, import_react7.useRef)(subs);
+    subsRef.current = subs;
+    const supported = !!db2?.listSubscriptions;
+    const reload = (0, import_react7.useCallback)(async () => {
+      if (!supported) return;
+      try {
+        const [s13, f] = await Promise.all([db2.listSubscriptions(), db2.getSubscriptionFeeds()]);
+        setSubs(s13 ?? []);
+        setFeeds(f ?? {});
+      } catch {
+      }
+    }, [db2, supported]);
+    (0, import_react7.useEffect)(() => {
+      reload();
+    }, [reload]);
+    (0, import_react7.useEffect)(() => {
+      const on = () => {
+        reload();
+      };
+      window.addEventListener("pear:subscriptionsChanged", on);
+      return () => window.removeEventListener("pear:subscriptionsChanged", on);
+    }, [reload]);
+    const inflight = (0, import_react7.useRef)(/* @__PURE__ */ new Map());
+    const refresh = (0, import_react7.useCallback)((sub) => {
+      if (!supported || !sub?.id) return Promise.resolve(null);
+      const running = inflight.current.get(sub.id);
+      if (running) return running;
+      const p5 = refreshOnce(sub).finally(() => inflight.current.delete(sub.id));
+      inflight.current.set(sub.id, p5);
+      return p5;
+    }, [supported]);
+    async function refreshOnce(sub) {
+      setBusy((b) => ({ ...b, [sub.id]: true }));
+      let saved = null;
+      try {
+        const text = await db2.fetchCalendarUrl(sub.url);
+        saved = { url: sub.url, text, fetchedAt: Date.now(), attemptedAt: Date.now() };
+        await db2.putSubscriptionFeed(sub.id, { url: sub.url, text, attemptedAt: saved.attemptedAt });
+      } catch (e73) {
+        const prev = feedsRef.current[sub.id];
+        saved = {
+          url: sub.url,
+          attemptedAt: Date.now(),
+          error: cleanError(e73),
+          ...prev?.text && prev.url === sub.url ? { text: prev.text, fetchedAt: prev.fetchedAt } : {}
+        };
+        await db2.putSubscriptionFeed(sub.id, { url: sub.url, error: saved.error, attemptedAt: saved.attemptedAt }).catch(() => {
+        });
+      } finally {
+        setBusy((b) => {
+          const n21 = { ...b };
+          delete n21[sub.id];
+          return n21;
+        });
+      }
+      setFeeds((f) => ({ ...f, [sub.id]: saved }));
+      return saved;
+    }
+    const refreshDue = (0, import_react7.useCallback)(async () => {
+      for (const s13 of subsRef.current) {
+        if (isFeedDue(s13, feedsRef.current[s13.id])) await refresh(s13);
+      }
+    }, [refresh]);
+    (0, import_react7.useEffect)(() => {
+      if (!supported || subs.length === 0) return;
+      refreshDue();
+      const t8 = setInterval(refreshDue, CHECK_EVERY_MS);
+      return () => clearInterval(t8);
+    }, [supported, subs, refreshDue]);
+    const events = (0, import_react7.useMemo)(() => {
+      const today = /* @__PURE__ */ new Date();
+      const out = [];
+      for (const s13 of subs) out.push(...feedEvents(s13, feeds[s13.id]?.text, today));
+      return out;
+    }, [subs, feeds]);
+    const addSubscription = (0, import_react7.useCallback)(async ({ url, name, color }) => {
+      const clean = normalizeFeedUrl(url);
+      let sub = await db2.putSubscription({
+        url: clean,
+        name: (name ?? "").trim(),
+        color: color || COLORS[subsRef.current.length % COLORS.length]
+      });
+      setSubs((prev) => [...prev, sub]);
+      const feed = await refresh(sub);
+      if (!sub.name) {
+        const fromFile = feed?.text ? icsCalendarName(feed.text) : null;
+        const host = (() => {
+          try {
+            return new URL(clean).hostname;
+          } catch {
+            return "Web calendar";
+          }
+        })();
+        sub = await db2.putSubscription({ ...sub, name: fromFile || host });
+      }
+      await reload();
+      return { sub, error: feed?.error ?? null };
+    }, [db2, refresh, reload]);
+    const updateSubscription = (0, import_react7.useCallback)(async (id, patch) => {
+      const cur = subsRef.current.find((s13) => s13.id === id);
+      if (!cur) return null;
+      const next = await db2.putSubscription({ ...cur, ...patch });
+      await reload();
+      if (patch.url && next.url !== cur.url) await refresh(next);
+      return next;
+    }, [db2, reload, refresh]);
+    const removeSubscription = (0, import_react7.useCallback)(async (id) => {
+      await db2.deleteSubscription(id);
+      await reload();
+    }, [db2, reload]);
+    return {
+      supported,
+      subscriptions: subs,
+      feeds,
+      busy,
+      events,
+      refresh,
+      addSubscription,
+      updateSubscription,
+      removeSubscription
+    };
+  }
+
+  // src/ui-shared/hooks/useForeverTopUp.js
+  var import_react8 = __toESM(require_react());
 
   // src/ui-shared/emitter.js
   var Emitter = class {
@@ -16244,18 +16553,18 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   var emitter = new Emitter();
 
   // src/ui-shared/components/Tour.jsx
-  var import_react8 = __toESM(require_react());
+  var import_react9 = __toESM(require_react());
   var import_jsx_runtime = __toESM(require_jsx_runtime());
   var PADDING = 6;
   var TOOLTIP_W = 280;
   var TOOLTIP_GAP = 12;
   var VIEWPORT_PAD = 12;
   function Tour({ steps, onDone, onSkip, tokens }) {
-    const [stepIdx, setStepIdx] = (0, import_react8.useState)(0);
-    const [bbox, setBbox] = (0, import_react8.useState)(null);
-    const [vp, setVp] = (0, import_react8.useState)(() => viewport());
+    const [stepIdx, setStepIdx] = (0, import_react9.useState)(0);
+    const [bbox, setBbox] = (0, import_react9.useState)(null);
+    const [vp, setVp] = (0, import_react9.useState)(() => viewport());
     const step = steps[stepIdx];
-    (0, import_react8.useLayoutEffect)(() => {
+    (0, import_react9.useLayoutEffect)(() => {
       if (!step) return;
       function measure() {
         const el = document.querySelector('[data-tour="' + step.anchor + '"]');
@@ -16272,7 +16581,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         window.removeEventListener("scroll", measure, true);
       };
     }, [step?.anchor]);
-    (0, import_react8.useEffect)(() => {
+    (0, import_react9.useEffect)(() => {
       function onKey(e73) {
         if (e73.key === "Escape") {
           e73.preventDefault();
@@ -18055,8 +18364,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   var e42 = __toESM(require_react(), 1);
 
   // node_modules/@phosphor-icons/react/dist/lib/context.es.js
-  var import_react9 = __toESM(require_react(), 1);
-  var o = (0, import_react9.createContext)({
+  var import_react10 = __toESM(require_react(), 1);
+  var o = (0, import_react10.createContext)({
     color: "currentColor",
     size: "1em",
     weight: "regular",
@@ -18396,7 +18705,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     { name: "Phoenix", url: "https://phoenix.acinq.co", desc: "Self-custodial Lightning wallet" }
   ];
   function CopyField({ sync: sync2, value, hint }) {
-    const [copied, setCopied] = (0, import_react10.useState)(false);
+    const [copied, setCopied] = (0, import_react11.useState)(false);
     const copy = async () => {
       try {
         const r11 = await sync2?.copyText(value);
@@ -18455,11 +18764,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   }
   var _backStack = [];
   function useBackHandler(active, onBack) {
-    const handler = (0, import_react10.useRef)(onBack);
-    (0, import_react10.useEffect)(() => {
+    const handler = (0, import_react11.useRef)(onBack);
+    (0, import_react11.useEffect)(() => {
       handler.current = onBack;
     });
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!active) return;
       const entry = () => handler.current?.();
       _backStack.push(entry);
@@ -18759,63 +19068,80 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     return merged;
   }
   function App({ db: db2, notifs: notifs2, sync: sync2 }) {
-    const [dark, setDark] = (0, import_react10.useState)(() => {
+    const [dark, setDark] = (0, import_react11.useState)(() => {
       setTheme2(true);
       return true;
     });
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       setTheme2(dark);
     }, [dark]);
-    const [tab, setTab] = (0, import_react10.useState)("calendar");
-    const [ready, setReady] = (0, import_react10.useState)(false);
-    const [error, setError] = (0, import_react10.useState)(null);
+    const [tab, setTab] = (0, import_react11.useState)("calendar");
+    const [ready, setReady] = (0, import_react11.useState)(false);
+    const [error, setError] = (0, import_react11.useState)(null);
     const [profile, setProfile] = useProfile(db2, emitter);
     const [groups, setGroups] = useGroups(db2);
     const [events, setEvents, eventsReady] = useEvents(db2);
     const [myRsvps, setMyRsvps] = useRsvps(db2);
     useHolidayRepair(db2, profile, events, setEvents, eventsReady);
     const cal = useCalendars(db2, { activeHolidayCountries: profile?.holidayCountries ?? [] });
-    const viewEvents = (0, import_react10.useMemo)(() => cal.filterEvents(events), [events, cal.filterEvents]);
-    const [calendarsOpen, setCalendarsOpen] = (0, import_react10.useState)(false);
-    const [selectedDate, setSelectedDate] = (0, import_react10.useState)(todayStr());
-    const [viewDate, setViewDate] = (0, import_react10.useState)(() => {
+    const web = useWebCalendars(db2);
+    const viewEvents = (0, import_react11.useMemo)(
+      () => cal.filterEvents(web.events.length ? events.concat(web.events) : events),
+      [events, web.events, cal.filterEvents]
+    );
+    const openModal = (0, import_react11.useCallback)((m3) => {
+      const ev2 = m3?.event;
+      if (ev2?.subscriptionId) {
+        const sub = web.subscriptions.find((s13) => s13.id === ev2.subscriptionId);
+        const when = ev2.allDay ? ev2.endDate && ev2.endDate !== ev2.date ? ev2.date + " to " + ev2.endDate : ev2.date : ev2.date + ", " + formatTime(ev2.start, profile?.use24h) + (ev2.end ? " - " + formatTime(ev2.end, profile?.use24h) : "");
+        setInfoSheet({
+          title: ev2.title,
+          message: [when, ev2.location, ev2.desc, 'From the web calendar "' + (sub?.name ?? "Web calendar") + '". It can only be changed on that website.'].filter(Boolean).join("\n\n")
+        });
+        return;
+      }
+      setModal(m3);
+    }, [web.subscriptions, profile?.use24h]);
+    const [calendarsOpen, setCalendarsOpen] = (0, import_react11.useState)(false);
+    const [selectedDate, setSelectedDate] = (0, import_react11.useState)(todayStr());
+    const [viewDate, setViewDate] = (0, import_react11.useState)(() => {
       const t8 = /* @__PURE__ */ new Date();
       return { y: t8.getFullYear(), m: t8.getMonth() };
     });
-    const [modal, setModal] = (0, import_react10.useState)(null);
-    const [newGroupOpen, setNewGroupOpen] = (0, import_react10.useState)(false);
-    const [settingsGroup, setSettingsGroup] = (0, import_react10.useState)(null);
-    const [blockedToast, setBlockedToast] = (0, import_react10.useState)(false);
-    const [joinToast, setJoinToast] = (0, import_react10.useState)(null);
-    const [pendingApprovalGroups, setPendingApprovalGroups] = (0, import_react10.useState)(() => /* @__PURE__ */ new Set());
-    const [qrGroup, setQrGroup] = (0, import_react10.useState)(null);
-    const [joinOpen, setJoinOpen] = (0, import_react10.useState)(false);
-    const [joinPasteMode, setJoinPasteMode] = (0, import_react10.useState)(false);
-    const [pendingJoin, setPendingJoin] = (0, import_react10.useState)(null);
-    const closePendingJoinRef = (0, import_react10.useRef)(null);
-    const groupsRef = (0, import_react10.useRef)(groups);
-    (0, import_react10.useEffect)(() => {
+    const [modal, setModal] = (0, import_react11.useState)(null);
+    const [newGroupOpen, setNewGroupOpen] = (0, import_react11.useState)(false);
+    const [settingsGroup, setSettingsGroup] = (0, import_react11.useState)(null);
+    const [blockedToast, setBlockedToast] = (0, import_react11.useState)(false);
+    const [joinToast, setJoinToast] = (0, import_react11.useState)(null);
+    const [pendingApprovalGroups, setPendingApprovalGroups] = (0, import_react11.useState)(() => /* @__PURE__ */ new Set());
+    const [qrGroup, setQrGroup] = (0, import_react11.useState)(null);
+    const [joinOpen, setJoinOpen] = (0, import_react11.useState)(false);
+    const [joinPasteMode, setJoinPasteMode] = (0, import_react11.useState)(false);
+    const [pendingJoin, setPendingJoin] = (0, import_react11.useState)(null);
+    const closePendingJoinRef = (0, import_react11.useRef)(null);
+    const groupsRef = (0, import_react11.useRef)(groups);
+    (0, import_react11.useEffect)(() => {
       groupsRef.current = groups;
     }, [groups]);
-    const [onboardStep, setOnboardStep] = (0, import_react10.useState)(0);
+    const [onboardStep, setOnboardStep] = (0, import_react11.useState)(0);
     const showOnboarding = ready && !profile?.onboardingComplete;
-    const qrScanModeRef = (0, import_react10.useRef)(null);
-    const closeOnboardSubModeRef = (0, import_react10.useRef)(null);
-    const [showDonationReminder, setShowDonationReminder] = (0, import_react10.useState)(false);
-    const [showEncryptionNotice, setShowEncryptionNotice] = (0, import_react10.useState)(false);
-    const tabHistoryRef = (0, import_react10.useRef)([]);
-    const tabRef = (0, import_react10.useRef)("calendar");
-    const backHandlerRef = (0, import_react10.useRef)(null);
-    const closeAboutSheetRef = (0, import_react10.useRef)(null);
-    const closeJoinSheetRef = (0, import_react10.useRef)(null);
-    const closeInviteSheetRef = (0, import_react10.useRef)(null);
-    const closeNewGroupSheetRef = (0, import_react10.useRef)(null);
-    const [groupCreatedToast, setGroupCreatedToast] = (0, import_react10.useState)(null);
-    const [confirmSheet, setConfirmSheet] = (0, import_react10.useState)(null);
-    const closeConfirmSheetRef = (0, import_react10.useRef)(null);
-    const [infoSheet, setInfoSheet] = (0, import_react10.useState)(null);
-    const [icsImport, setIcsImport] = (0, import_react10.useState)(null);
-    const openIcsFile = (0, import_react10.useCallback)((text, filename) => {
+    const qrScanModeRef = (0, import_react11.useRef)(null);
+    const closeOnboardSubModeRef = (0, import_react11.useRef)(null);
+    const [showDonationReminder, setShowDonationReminder] = (0, import_react11.useState)(false);
+    const [showEncryptionNotice, setShowEncryptionNotice] = (0, import_react11.useState)(false);
+    const tabHistoryRef = (0, import_react11.useRef)([]);
+    const tabRef = (0, import_react11.useRef)("calendar");
+    const backHandlerRef = (0, import_react11.useRef)(null);
+    const closeAboutSheetRef = (0, import_react11.useRef)(null);
+    const closeJoinSheetRef = (0, import_react11.useRef)(null);
+    const closeInviteSheetRef = (0, import_react11.useRef)(null);
+    const closeNewGroupSheetRef = (0, import_react11.useRef)(null);
+    const [groupCreatedToast, setGroupCreatedToast] = (0, import_react11.useState)(null);
+    const [confirmSheet, setConfirmSheet] = (0, import_react11.useState)(null);
+    const closeConfirmSheetRef = (0, import_react11.useRef)(null);
+    const [infoSheet, setInfoSheet] = (0, import_react11.useState)(null);
+    const [icsImport, setIcsImport] = (0, import_react11.useState)(null);
+    const openIcsFile = (0, import_react11.useCallback)((text, filename) => {
       const parsed = parseIcs(text);
       if (parsed.length === 0) {
         setInfoSheet({
@@ -18827,7 +19153,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       setIcsImport({ events: parsed, filename, calName: icsCalendarName(text) });
     }, []);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const drain = () => {
         const files = window.__pearDrainIcs?.() ?? [];
         const last = files[files.length - 1];
@@ -18837,29 +19163,29 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       window.addEventListener("pear:pendingIcs", drain);
       return () => window.removeEventListener("pear:pendingIcs", drain);
     }, [openIcsFile]);
-    const closeInfoSheetRef = (0, import_react10.useRef)(null);
-    const [scopeSheet, setScopeSheet] = (0, import_react10.useState)(null);
-    const closeScopeSheetRef = (0, import_react10.useRef)(null);
-    const [deleteScopeSheet, setDeleteScopeSheet] = (0, import_react10.useState)(null);
-    const closeDeleteScopeSheetRef = (0, import_react10.useRef)(null);
-    const closeEventModalRef = (0, import_react10.useRef)(null);
-    const closeGroupSettingsRef = (0, import_react10.useRef)(null);
-    const closeFullGridRef = (0, import_react10.useRef)(null);
+    const closeInfoSheetRef = (0, import_react11.useRef)(null);
+    const [scopeSheet, setScopeSheet] = (0, import_react11.useState)(null);
+    const closeScopeSheetRef = (0, import_react11.useRef)(null);
+    const [deleteScopeSheet, setDeleteScopeSheet] = (0, import_react11.useState)(null);
+    const closeDeleteScopeSheetRef = (0, import_react11.useRef)(null);
+    const closeEventModalRef = (0, import_react11.useRef)(null);
+    const closeGroupSettingsRef = (0, import_react11.useRef)(null);
+    const closeFullGridRef = (0, import_react11.useRef)(null);
     const goTab = (t8) => {
       tabHistoryRef.current.push(tabRef.current);
       tabRef.current = t8;
       setTab(t8);
     };
-    const [readyGroupKeys, setReadyGroupKeys] = (0, import_react10.useState)(() => /* @__PURE__ */ new Set());
-    const [blindPeerKey, setBlindPeerKey] = (0, import_react10.useState)(null);
-    const [syncingGroups, setSyncingGroups] = (0, import_react10.useState)(() => /* @__PURE__ */ new Set());
+    const [readyGroupKeys, setReadyGroupKeys] = (0, import_react11.useState)(() => /* @__PURE__ */ new Set());
+    const [blindPeerKey, setBlindPeerKey] = (0, import_react11.useState)(null);
+    const [syncingGroups, setSyncingGroups] = (0, import_react11.useState)(() => /* @__PURE__ */ new Set());
     const showDay = (date) => {
       const [y, m3] = date.split("-").map(Number);
       if (tabRef.current !== "calendar") goTab("calendar");
       setSelectedDate(date);
       setViewDate({ y, m: m3 - 1 });
     };
-    const openLinkRef = (0, import_react10.useRef)(null);
+    const openLinkRef = (0, import_react11.useRef)(null);
     openLinkRef.current = async (url) => {
       const l9 = parsePearLink(url);
       if (!l9) return;
@@ -18883,7 +19209,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       setModal(null);
       setTimeout(() => setModal({ mode: "edit", event: { ...found.event } }), 0);
     };
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const onLink = (e73) => {
         let buffered = [];
         try {
@@ -18928,7 +19254,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
     const weekStart = profile?.weekStart ?? 0;
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!db2) {
         setReady(true);
         return;
@@ -18975,7 +19301,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         cancelled = true;
       };
     }, [db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!db2) return;
       function scheduleDefaultReminders(newEvents) {
         if (!newEvents || newEvents.length === 0) return;
@@ -19200,11 +19526,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         emitter.off("pendingApprovalCleared", onPendingApprovalCleared);
       };
     }, [db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       tabRef.current = tab;
     }, [tab]);
     const _scene = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!_scene) return;
       if (_scene.tab) setTab(_scene.tab);
       if (_scene.date) {
@@ -19213,12 +19539,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         setViewDate({ y: parseInt(y), m: parseInt(m3) - 1 });
       }
     }, []);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!_scene?.openEventId || !events.length) return;
       const ev2 = events.find((e73) => e73.id === _scene.openEventId);
       if (ev2) setModal({ mode: "edit", event: { ...ev2 } });
     }, [events]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       backHandlerRef.current = () => {
         if (runBackStack()) return;
         if (showOnboarding) {
@@ -19238,13 +19564,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         window.ReactNativeWebView?.postMessage(JSON.stringify({ method: "exitApp", id: -1 }));
       };
     }, [showOnboarding, onboardStep]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       window.__pearBack = () => backHandlerRef.current?.();
     }, []);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       window.__pearSync = sync2;
     }, [sync2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       function onQrScanResult(url) {
         if (!url || !db2 || !sync2) return;
         const mode = qrScanModeRef.current;
@@ -19283,7 +19609,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         emitter.off("cameraResult", onCameraResult);
       };
     }, [db2, sync2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!db2 || !sync2) return;
       window.__pearCal = {
         handleLink: (url) => openPendingJoin(url),
@@ -19302,8 +19628,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         delete window.__pearCal;
       };
     }, [db2, sync2, notifs2, events]);
-    const forwardBusyTimeRef = (0, import_react10.useRef)(null);
-    const saveEvent = (0, import_react10.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
+    const forwardBusyTimeRef = (0, import_react11.useRef)(null);
+    const saveEvent = (0, import_react11.useCallback)((ev2, scope = "one", options = {}, reminders = []) => {
       const { _prevDate, _myForwards, ...evClean } = ev2;
       ev2 = evClean;
       const original = events.find((e73) => e73.id === ev2.id);
@@ -19421,7 +19747,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         }
       }
     }, [db2, notifs2, sync2, profile, events, myRsvps]);
-    const forwardBusyTime = (0, import_react10.useCallback)((sourceOrOccs, newTargetGroupIds) => {
+    const forwardBusyTime = (0, import_react11.useCallback)((sourceOrOccs, newTargetGroupIds) => {
       if (!db2 || !sync2 || !profile?.id) return;
       const myId = profile.id;
       const myName = profile?.name ?? "Someone";
@@ -19471,7 +19797,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
     }, [db2, sync2, events, profile]);
     forwardBusyTimeRef.current = forwardBusyTime;
-    const deleteEvent = (0, import_react10.useCallback)(async (id) => {
+    const deleteEvent = (0, import_react11.useCallback)(async (id) => {
       const ev2 = events.find((e73) => e73.id === id);
       if (!ev2) return;
       const myId = profile?.id;
@@ -19505,7 +19831,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       setModal(null);
       notifs2?.reconcile?.();
     }, [db2, notifs2, sync2, events, profile]);
-    const deleteEventSeries = (0, import_react10.useCallback)(async (recurrenceId) => {
+    const deleteEventSeries = (0, import_react11.useCallback)(async (recurrenceId) => {
       if (!recurrenceId || !db2) return;
       await db2.deleteEventSeries(recurrenceId).catch(() => {
       });
@@ -19537,7 +19863,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       setModal(null);
       notifs2?.reconcile?.();
     }, [db2, notifs2, sync2, events, profile]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!db2 || !sync2 || !profile?.id || events.length === 0) return;
       const myId = profile.id;
       const myName = profile?.name ?? "Someone";
@@ -19642,7 +19968,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       setPendingJoin({ url, groupName });
     }
-    const joinWithNickname = (0, import_react10.useCallback)(async (url, nickname) => {
+    const joinWithNickname = (0, import_react11.useCallback)(async (url, nickname) => {
       const nick = nickname && nickname !== profile?.name ? nickname : null;
       let result;
       try {
@@ -19683,7 +20009,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       return result;
     }, [db2, sync2, profile]);
-    const addGroup = (0, import_react10.useCallback)(async (g, opts) => {
+    const addGroup = (0, import_react11.useCallback)(async (g, opts) => {
       if (db2) {
         if (!opts?.alreadyJoined) {
           await db2.putGroup(g);
@@ -19701,7 +20027,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       setGroups((prev) => prev.some((x) => x.id === g.id) ? prev : [...prev, g]);
     }, [db2, sync2]);
-    const updateGroup = (0, import_react10.useCallback)(async (updated) => {
+    const updateGroup = (0, import_react11.useCallback)(async (updated) => {
       if (db2) {
         const prev = groups.find((g) => g.id === updated.id);
         const oldIds = new Set((prev?.members ?? []).map((m3) => m3.id));
@@ -19719,7 +20045,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       setGroups((prev) => prev.map((g) => g.id === updated.id ? mergeGroupState(g, updated) : g));
       setSettingsGroup((prev) => prev?.id === updated.id ? updated : prev);
     }, [db2, sync2, groups]);
-    const deleteGroup = (0, import_react10.useCallback)(async (id, action = "delete") => {
+    const deleteGroup = (0, import_react11.useCallback)(async (id, action = "delete") => {
       if (db2) {
         const g = groups.find((x) => x.id === id);
         const isOwner = g?.ownerId === profile?.id;
@@ -19742,14 +20068,14 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       setEvents((prev) => prev.map((e73) => ({ ...e73, groups: e73.groups.filter((gid) => gid !== id) })).filter((e73) => e73.groups.length > 0));
       setSettingsGroup(null);
     }, [db2, sync2, groups, profile]);
-    const removeBrokenGroup = (0, import_react10.useCallback)(async (id) => {
+    const removeBrokenGroup = (0, import_react11.useCallback)(async (id) => {
       if (sync2?.removeBrokenGroup) await sync2.removeBrokenGroup(id).catch(() => {
       });
       setGroups((prev) => prev.filter((g) => g.id !== id));
       setEvents((prev) => prev.map((e73) => ({ ...e73, groups: e73.groups.filter((gid) => gid !== id) })).filter((e73) => e73.groups.length > 0));
       setSettingsGroup(null);
     }, [sync2]);
-    const removeMember = (0, import_react10.useCallback)(async (g, uid) => {
+    const removeMember = (0, import_react11.useCallback)(async (g, uid) => {
       const removedMember = g.members.find((m3) => m3.id === uid);
       const removedEntry = removedMember ? { ...removedMember } : { id: uid, name: "Member", avatar: "?" };
       const removedMembers = [...g.removedMembers ?? [], removedEntry];
@@ -19758,7 +20084,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       await sync2?.memberLeft(g.id, uid).catch(() => {
       });
     }, [updateGroup, sync2]);
-    const purgeMember = (0, import_react10.useCallback)(async (g, memberId) => {
+    const purgeMember = (0, import_react11.useCallback)(async (g, memberId) => {
       const updated = {
         ...g,
         removedMembers: (g.removedMembers ?? []).filter((m3) => (m3.id ?? m3) !== memberId)
@@ -19767,7 +20093,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       await sync2?.purgeMember(g.id, memberId).catch(() => {
       });
     }, [updateGroup, sync2]);
-    const updateProfile = (0, import_react10.useCallback)(async (updates) => {
+    const updateProfile = (0, import_react11.useCallback)(async (updates) => {
       if (db2) {
         const hasPhoto = updates.avatar?.startsWith?.("data:") || profile?.avatar?.startsWith?.("data:");
         const settingPhoto = updates.avatar?.startsWith?.("data:");
@@ -19805,9 +20131,9 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         members: g.members?.map((m3) => m3.id === updatedProfile2.id ? { ...m3, name: updatedProfile2.name, avatar: memberAvatarForState, avatarHash: null } : m3) ?? []
       })));
     }, [db2, profile, groups, sync2]);
-    const updateProfileRef = (0, import_react10.useRef)(updateProfile);
+    const updateProfileRef = (0, import_react11.useRef)(updateProfile);
     updateProfileRef.current = updateProfile;
-    const calDays = (0, import_react10.useMemo)(() => {
+    const calDays = (0, import_react11.useMemo)(() => {
       const { y, m: m3 } = viewDate;
       const first = new Date(y, m3, 1).getDay();
       const firstAdj = (first - weekStart + 7) % 7;
@@ -19827,7 +20153,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         cells.push({ d: nextD++, y: nextY, m: nextM, type: "next" });
       return cells;
     }, [viewDate, weekStart]);
-    const hiddenShadowIds = (0, import_react10.useMemo)(() => {
+    const hiddenShadowIds = (0, import_react11.useMemo)(() => {
       const haveSource = new Set(events.filter((e73) => !e73.isShadow).map((e73) => e73.id));
       const hidden = /* @__PURE__ */ new Set();
       for (const e73 of events) {
@@ -19893,7 +20219,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { fontSize: 16 }, children: "Failed to load PearCal" }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { fontSize: 12, color: "#888", fontFamily: "monospace" }, children: error })
     ] });
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!ready || !profile || !profile.onboardingComplete) return;
       if (profile.donationReminderShown) return;
       const TWO_WEEKS = 14 * 24 * 60 * 60 * 1e3;
@@ -19901,13 +20227,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         setShowDonationReminder(true);
       }
     }, [ready, profile?.onboardingComplete, profile?.donationReminderShown]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!ready || !profile || !profile.onboardingComplete) return;
       if (profile.encryptionNoticeSeen) return;
       setShowEncryptionNotice(true);
     }, [ready, profile?.onboardingComplete, profile?.encryptionNoticeSeen]);
-    const [showPhraseIntro, setShowPhraseIntro] = (0, import_react10.useState)(false);
-    (0, import_react10.useEffect)(() => {
+    const [showPhraseIntro, setShowPhraseIntro] = (0, import_react11.useState)(false);
+    (0, import_react11.useEffect)(() => {
       if (!ready || !profile || !profile.onboardingComplete) return;
       if (profile.recoveryPhraseIntroSeen || profile.tourPending) return;
       if (showEncryptionNotice || showDonationReminder) return;
@@ -19954,7 +20280,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
             dateStr,
             selectedEvents: eventsOnDate(selectedDate),
             openCreate,
-            setModal,
+            setModal: openModal,
             events: viewEvents,
             groups,
             use24h,
@@ -20222,6 +20548,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         CalendarsSheet,
         {
           cal,
+          web,
           groups,
           events,
           saveEventQuiet: async (ev2) => {
@@ -20680,8 +21007,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(MemberAvatarByHash, { avatarHash, fallback: avatar, name, color, size, fontSize });
   }
   function MemberAvatarByHash({ avatarHash, fallback, name, color, size, fontSize }) {
-    const [resolved, setResolved] = (0, import_react10.useState)(null);
-    (0, import_react10.useEffect)(() => {
+    const [resolved, setResolved] = (0, import_react11.useState)(null);
+    (0, import_react11.useEffect)(() => {
       if (!window.__pearResolveAvatar) return;
       let cancelled = false;
       window.__pearResolveAvatar(avatarHash).then((d) => {
@@ -20763,7 +21090,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     myRsvps = {},
     myProfileId
   }) {
-    const weekDays = (0, import_react10.useMemo)(() => {
+    const weekDays = (0, import_react11.useMemo)(() => {
       const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
       const dow = d.getDay();
       const off = (dow - weekStart + 7) % 7;
@@ -20775,8 +21102,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
       });
     }, [selectedDate, weekStart, dateStr2]);
-    const weekScrollRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const weekScrollRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (!weekScrollRef.current) return;
       const el = weekScrollRef.current.querySelector('[data-weekday="' + selectedDate + '"]');
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -20953,8 +21280,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     myProfileId
   }) {
     const HOUR_H = 60;
-    const hourGridRef = (0, import_react10.useRef)(null);
-    const adjacentDays = (0, import_react10.useMemo)(() => {
+    const hourGridRef = (0, import_react11.useRef)(null);
+    const adjacentDays = (0, import_react11.useMemo)(() => {
       const d = /* @__PURE__ */ new Date(selectedDate + "T12:00:00");
       return Array.from({ length: 7 }, (_, i2) => {
         const day = new Date(d);
@@ -20962,7 +21289,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         return dateStr2(day.getFullYear(), day.getMonth(), day.getDate());
       });
     }, [selectedDate, dateStr2]);
-    const dayEvents = (0, import_react10.useMemo)(() => {
+    const dayEvents = (0, import_react11.useMemo)(() => {
       let evs = eventsOnDate(selectedDate);
       if (filterGroupIds.size > 0) evs = evs.filter((e73) => (e73.groups ?? []).some((gid) => filterGroupIds.has(gid)));
       evs = evs.filter((e73) => isInAgenda(e73, myProfileId));
@@ -20976,7 +21303,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       const [h2, m3] = t8.split(":").map(Number);
       return (h2 + m3 / 60) * HOUR_H;
     };
-    const positioned = (0, import_react10.useMemo)(() => {
+    const positioned = (0, import_react11.useMemo)(() => {
       const sorted = [...timedEvents].sort((a50, b) => (a50.start || "").localeCompare(b.start || ""));
       const cols = [];
       return sorted.map((ev2) => {
@@ -20990,7 +21317,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         return { ev: ev2, top, height, col, totalCols };
       });
     }, [dayEvents]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!hourGridRef.current) return;
       const isToday = selectedDate === todayStr2;
       let scrollTarget;
@@ -21305,7 +21632,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   }
   function FullGridView({ weekStart, events, todayStr: todayStr2, filterGroupIds, closeFullGridRef, onExit, onDayTap, onEventTap, myProfileId, groups }) {
     useBackHandler(true, onExit);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!closeFullGridRef) return;
       closeFullGridRef.current = () => {
         onExit();
@@ -21329,13 +21656,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     const dow = today.getDay();
     const startOffset = (dow - weekStart + 7) % 7;
     const initialWeekStart = addDays(today, -startOffset);
-    const [range, setRange] = (0, import_react10.useState)({ before: 40, after: 40 });
-    const [todayVisible, setTodayVisible] = (0, import_react10.useState)(true);
-    const scrollRef = (0, import_react10.useRef)(null);
-    const didInitialScroll = (0, import_react10.useRef)(false);
+    const [range, setRange] = (0, import_react11.useState)({ before: 40, after: 40 });
+    const [todayVisible, setTodayVisible] = (0, import_react11.useState)(true);
+    const scrollRef = (0, import_react11.useRef)(null);
+    const didInitialScroll = (0, import_react11.useRef)(false);
     const totalWeeks = range.before + range.after + 1;
     const firstWeek = addDays(initialWeekStart, -range.before * 7);
-    const weeks = (0, import_react10.useMemo)(() => {
+    const weeks = (0, import_react11.useMemo)(() => {
       const out = [];
       for (let i2 = 0; i2 < totalWeeks; i2++) {
         const ws = addDays(firstWeek, i2 * 7);
@@ -21378,7 +21705,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       return { placed: placed.filter((p5) => p5.lane < MAX_LANES), overflow };
     };
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (didInitialScroll.current || !scrollRef.current) return;
       const container = scrollRef.current;
       const el = container.querySelector(`[data-weekindex="${range.before}"]`);
@@ -21633,29 +21960,29 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     hiddenCalendarCount = 0
   }) {
     const { y, m: m3 } = viewDate;
-    const [showMonthPicker, setShowMonthPicker] = (0, import_react10.useState)(false);
-    const [showYearPicker, setShowYearPicker] = (0, import_react10.useState)(false);
-    const [slideDir, setSlideDir] = (0, import_react10.useState)(0);
-    const [isSliding, setIsSliding] = (0, import_react10.useState)(false);
-    const touchStartX = (0, import_react10.useRef)(null);
-    const scrollRef = (0, import_react10.useRef)(null);
-    const isProgrammaticScroll = (0, import_react10.useRef)(false);
-    const isUserScrolling = (0, import_react10.useRef)(false);
-    const userScrollTimer = (0, import_react10.useRef)(null);
-    const scrollToDateRef = (0, import_react10.useRef)(null);
-    const [filterGroupIds, setFilterGroupIds] = (0, import_react10.useState)(/* @__PURE__ */ new Set());
-    const [calView, setCalView] = (0, import_react10.useState)(() => {
+    const [showMonthPicker, setShowMonthPicker] = (0, import_react11.useState)(false);
+    const [showYearPicker, setShowYearPicker] = (0, import_react11.useState)(false);
+    const [slideDir, setSlideDir] = (0, import_react11.useState)(0);
+    const [isSliding, setIsSliding] = (0, import_react11.useState)(false);
+    const touchStartX = (0, import_react11.useRef)(null);
+    const scrollRef = (0, import_react11.useRef)(null);
+    const isProgrammaticScroll = (0, import_react11.useRef)(false);
+    const isUserScrolling = (0, import_react11.useRef)(false);
+    const userScrollTimer = (0, import_react11.useRef)(null);
+    const scrollToDateRef = (0, import_react11.useRef)(null);
+    const [filterGroupIds, setFilterGroupIds] = (0, import_react11.useState)(/* @__PURE__ */ new Set());
+    const [calView, setCalView] = (0, import_react11.useState)(() => {
       const s13 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
       return s13?.calendarView || "month";
     });
-    const [fullGrid, setFullGrid] = (0, import_react10.useState)(() => {
+    const [fullGrid, setFullGrid] = (0, import_react11.useState)(() => {
       try {
         return typeof localStorage !== "undefined" && localStorage.getItem("pearcal:fullGrid") === "1";
       } catch {
         return false;
       }
     });
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       try {
         localStorage.setItem("pearcal:fullGrid", fullGrid ? "1" : "0");
       } catch {
@@ -21703,13 +22030,13 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         isProgrammaticScroll.current = false;
       }, smooth ? 600 : 50);
     };
-    const didInitialScroll = (0, import_react10.useRef)(false);
-    (0, import_react10.useEffect)(() => {
+    const didInitialScroll = (0, import_react11.useRef)(false);
+    (0, import_react11.useEffect)(() => {
       if (!eventsReady.current || didInitialScroll.current) return;
       didInitialScroll.current = true;
       requestAnimationFrame(() => scrollToDate(todayStr2, false));
     }, [events]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (calView !== "month" || !eventsReady.current) return;
       requestAnimationFrame(() => scrollToDate(todayStr2, false));
     }, [calView]);
@@ -22350,14 +22677,14 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] }) });
   }
   function BirthdaysSection({ events, saveEvent, deleteEventSeries }) {
-    const list = (0, import_react10.useMemo)(() => listBirthdays(events), [events]);
-    const [adding, setAdding] = (0, import_react10.useState)(false);
-    const [name, setName] = (0, import_react10.useState)("");
-    const [month, setMonth] = (0, import_react10.useState)("");
-    const [day, setDay] = (0, import_react10.useState)("");
-    const [year, setYear] = (0, import_react10.useState)("");
-    const [err, setErr] = (0, import_react10.useState)("");
-    const [confirmId, setConfirmId] = (0, import_react10.useState)(null);
+    const list = (0, import_react11.useMemo)(() => listBirthdays(events), [events]);
+    const [adding, setAdding] = (0, import_react11.useState)(false);
+    const [name, setName] = (0, import_react11.useState)("");
+    const [month, setMonth] = (0, import_react11.useState)("");
+    const [day, setDay] = (0, import_react11.useState)("");
+    const [year, setYear] = (0, import_react11.useState)("");
+    const [err, setErr] = (0, import_react11.useState)("");
+    const [confirmId, setConfirmId] = (0, import_react11.useState)(null);
     const field = {
       background: colors.surface.input,
       border: `1px solid ${colors.border}`,
@@ -22456,7 +22783,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function useScreenSecure(on) {
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!on || IS_DESKTOP) return;
       window.__pearDB?.call("setScreenSecure", true).catch(() => {
       });
@@ -22474,11 +22801,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   }
   function PhraseEntry({ onSubmit, onBack }) {
     useScreenSecure(true);
-    const [words, setWords] = (0, import_react10.useState)([]);
-    const [typed, setTyped] = (0, import_react10.useState)("");
-    const [err, setErr] = (0, import_react10.useState)("");
-    const [busy, setBusy] = (0, import_react10.useState)(false);
-    const inputRef = (0, import_react10.useRef)(null);
+    const [words, setWords] = (0, import_react11.useState)([]);
+    const [typed, setTyped] = (0, import_react11.useState)("");
+    const [err, setErr] = (0, import_react11.useState)("");
+    const [busy, setBusy] = (0, import_react11.useState)(false);
+    const inputRef = (0, import_react11.useRef)(null);
     const full = words.length === 12;
     const suggestions = full ? [] : suggestWords(typed, english_default);
     function accept(w) {
@@ -22636,17 +22963,17 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function OnboardingModal({ step, setStep, profile, onUpdateProfile, db: db2, sync: sync2, qrScanModeRef, closeOnboardSubModeRef, onComplete }) {
-    const [name, setName] = (0, import_react10.useState)(profile?.name ?? "");
-    const [saving, setSaving] = (0, import_react10.useState)(false);
-    const [photoSaving, setPhotoSaving] = (0, import_react10.useState)(false);
-    const fileRef = (0, import_react10.useRef)(null);
+    const [name, setName] = (0, import_react11.useState)(profile?.name ?? "");
+    const [saving, setSaving] = (0, import_react11.useState)(false);
+    const [photoSaving, setPhotoSaving] = (0, import_react11.useState)(false);
+    const fileRef = (0, import_react11.useRef)(null);
     const total = 5;
-    const [slideDir, setSlideDir] = (0, import_react10.useState)(1);
-    const [restoreMode, setRestoreMode] = (0, import_react10.useState)(null);
-    const [restored, setRestored] = (0, import_react10.useState)(false);
-    const [restoreError, setRestoreError] = (0, import_react10.useState)("");
-    const [pairInput, setPairInput] = (0, import_react10.useState)("");
-    (0, import_react10.useEffect)(() => {
+    const [slideDir, setSlideDir] = (0, import_react11.useState)(1);
+    const [restoreMode, setRestoreMode] = (0, import_react11.useState)(null);
+    const [restored, setRestored] = (0, import_react11.useState)(false);
+    const [restoreError, setRestoreError] = (0, import_react11.useState)("");
+    const [pairInput, setPairInput] = (0, import_react11.useState)("");
+    (0, import_react11.useEffect)(() => {
       if (!closeOnboardSubModeRef) return;
       closeOnboardSubModeRef.current = () => {
         if (restoreMode === "pair-waiting") return true;
@@ -22672,7 +22999,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         if (closeOnboardSubModeRef) closeOnboardSubModeRef.current = null;
       };
     }, [restoreMode, closeOnboardSubModeRef, db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       function onPairingStarted(data) {
         if (!data || data.role !== "secondary") return;
         setRestoreMode("pair-waiting");
@@ -23169,10 +23496,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function PairingHostModal({ data, error, onRegenerate, onCancel }) {
-    const canvasRef = (0, import_react10.useRef)(null);
-    const [qrError, setQrError] = (0, import_react10.useState)(null);
+    const canvasRef = (0, import_react11.useRef)(null);
+    const [qrError, setQrError] = (0, import_react11.useState)(null);
     const link = data?.url;
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!canvasRef.current || !link) return;
       try {
         import_qrcode.default.toCanvas(canvasRef.current, link, { width: 240, margin: 2 }, (err) => {
@@ -23297,10 +23624,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     );
   }
   function QRModal({ link, onClose }) {
-    const canvasRef = (0, import_react10.useRef)(null);
-    const [qrError, setQrError] = (0, import_react10.useState)(null);
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const canvasRef = (0, import_react11.useRef)(null);
+    const [qrError, setQrError] = (0, import_react11.useState)(null);
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (!canvasRef.current || !link) return;
       try {
         import_qrcode.default.toCanvas(canvasRef.current, link, { width: 260, margin: 2 }, (err) => {
@@ -23502,15 +23829,15 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
   }
   function RemindersEditor({ reminders, setReminders }) {
     const inp = { ...inputStyle, padding: "8px 10px", appearance: "none" };
-    const [customMode, setCustomMode] = (0, import_react10.useState)(
+    const [customMode, setCustomMode] = (0, import_react11.useState)(
       () => reminders.map((v2) => !isPresetReminder(v2))
     );
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       setCustomMode(
         (prev) => prev.length === reminders.length ? prev : reminders.map((v2) => !isPresetReminder(v2))
       );
     }, [reminders.length]);
-    const [amountDraft, setAmountDraft] = (0, import_react10.useState)({});
+    const [amountDraft, setAmountDraft] = (0, import_react11.useState)({});
     function addReminder() {
       if (reminders.length >= 3) return;
       const next = REMINDER_OPTIONS.find((o44) => !reminders.includes(o44.value));
@@ -23650,12 +23977,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function EventModal({ modal, setModal, groups, calendars = [], profile, events = [], onSave, onForward, onDelete, onDeleteSeries, REMINDER_OPTIONS: REMINDER_OPTIONS2, db: db2, onRequestConfirm, closeRef, notifs: notifs2, setMyRsvps }) {
-    const [ev2, setEv] = (0, import_react10.useState)(modal.event);
+    const [ev2, setEv] = (0, import_react11.useState)(modal.event);
     const origDate = modal.mode === "edit" ? modal.event.date : null;
     const set = (k, v2) => setEv((e73) => ({ ...e73, [k]: v2 }));
-    const [customMode, setCustomMode] = (0, import_react10.useState)(() => (modal.event?.recurrenceInterval ?? 1) > 1);
-    const [intervalDraft, setIntervalDraft] = (0, import_react10.useState)(null);
-    const [myForwards, setMyForwards] = (0, import_react10.useState)(() => {
+    const [customMode, setCustomMode] = (0, import_react11.useState)(() => (modal.event?.recurrenceInterval ?? 1) > 1);
+    const [intervalDraft, setIntervalDraft] = (0, import_react11.useState)(null);
+    const [myForwards, setMyForwards] = (0, import_react11.useState)(() => {
       if (!profile?.id) return [];
       const myId = profile.id;
       const srcIds = modal.event.recurrenceId ? new Set(events.filter((e73) => !e73.isShadow && e73.recurrenceId === modal.event.recurrenceId).map((e73) => e73.id)) : /* @__PURE__ */ new Set([modal.event.id]);
@@ -23669,10 +23996,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       return Array.from(targets);
     });
-    const initialForwardsRef = (0, import_react10.useRef)(null);
+    const initialForwardsRef = (0, import_react11.useRef)(null);
     if (initialForwardsRef.current === null) initialForwardsRef.current = myForwards;
     const toggleForward = (gid) => setMyForwards((cur) => cur.includes(gid) ? cur.filter((x) => x !== gid) : [...cur, gid]);
-    const forwardsDirty = (0, import_react10.useMemo)(() => {
+    const forwardsDirty = (0, import_react11.useMemo)(() => {
       const a50 = [...initialForwardsRef.current ?? []].sort().join(",");
       const b = [...myForwards].sort().join(",");
       return a50 !== b;
@@ -23680,7 +24007,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     function toggleGroup(gid) {
       setEv((e73) => ({ ...e73, groups: e73.groups.includes(gid) ? e73.groups.filter((x) => x !== gid) : [...e73.groups, gid] }));
     }
-    const allMembers = (0, import_react10.useMemo)(() => {
+    const allMembers = (0, import_react11.useMemo)(() => {
       const seen = {}, res = [];
       ev2.groups.forEach((gid) => {
         const g = groups.find((x) => x.id === gid);
@@ -23696,7 +24023,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     function toggleInvitee(uid) {
       setEv((e73) => ({ ...e73, invitees: e73.invitees.includes(uid) ? e73.invitees.filter((x) => x !== uid) : [...e73.invitees, uid] }));
     }
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const cols = ev2.groups.map((gid) => groups.find((x) => x.id === gid)?.color).filter(Boolean);
       if (cols.length > 0) {
         setEv((e73) => ({ ...e73, color: cols[0], colors: cols }));
@@ -23705,8 +24032,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       const calColor = ev2.calendarId ? calendars.find((c9) => c9.id === ev2.calendarId)?.color : null;
       setEv((e73) => ({ ...e73, colors: [], ...calColor ? { color: calColor } : {} }));
     }, [ev2.groups, groups, ev2.calendarId, calendars]);
-    const [reminders, setReminders] = (0, import_react10.useState)([]);
-    (0, import_react10.useEffect)(() => {
+    const [reminders, setReminders] = (0, import_react11.useState)([]);
+    (0, import_react11.useEffect)(() => {
       if (!db2) return;
       const eventId = modal.event?.id;
       if (!eventId) return;
@@ -23722,10 +24049,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       });
     }, [modal.event?.id]);
     const isEventCreator = !ev2.creatorId || ev2.creatorId === profile?.id;
-    const [myRsvp, setMyRsvp] = (0, import_react10.useState)(null);
-    const [rsvpList, setRsvpList] = (0, import_react10.useState)([]);
-    const [rsvpExpanded, setRsvpExpanded] = (0, import_react10.useState)(false);
-    (0, import_react10.useEffect)(() => {
+    const [myRsvp, setMyRsvp] = (0, import_react11.useState)(null);
+    const [rsvpList, setRsvpList] = (0, import_react11.useState)([]);
+    const [rsvpExpanded, setRsvpExpanded] = (0, import_react11.useState)(false);
+    (0, import_react11.useEffect)(() => {
       if (!db2 || modal.mode !== "edit") return;
       const eid = modal.event?.id;
       if (!eid || !ev2.rsvpEnabled) return;
@@ -23752,12 +24079,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
         console.warn("[RSVP-ERR]", e73?.message);
       }
     }
-    const [moreOpen, setMoreOpen] = (0, import_react10.useState)(false);
-    const [mlOpen, setMlOpen] = (0, import_react10.useState)(!!modal.event?.meetingLink);
-    const [locOpen, setLocOpen] = (0, import_react10.useState)(!!modal.event?.location);
-    const [notesOpen, setNotesOpen] = (0, import_react10.useState)(!!modal.event?.desc);
+    const [moreOpen, setMoreOpen] = (0, import_react11.useState)(false);
+    const [mlOpen, setMlOpen] = (0, import_react11.useState)(!!modal.event?.meetingLink);
+    const [locOpen, setLocOpen] = (0, import_react11.useState)(!!modal.event?.location);
+    const [notesOpen, setNotesOpen] = (0, import_react11.useState)(!!modal.event?.desc);
     const shareLink = modal.mode === "edit" && !modal.event?.isShadow ? eventLink((modal.event?.groups ?? [])[0], modal.event?.id) : null;
-    const [linkCopied, setLinkCopied] = (0, import_react10.useState)(false);
+    const [linkCopied, setLinkCopied] = (0, import_react11.useState)(false);
     async function copyEventLink() {
       try {
         const r11 = await window.__pearSync?.copyText(shareLink);
@@ -23768,12 +24095,12 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       } catch {
       }
     }
-    const [privNotesOpen, setPrivNotesOpen] = (0, import_react10.useState)(!!modal.event?.privateNote);
-    const [titleErr, setTitleErr] = (0, import_react10.useState)("");
-    const [pastEvents, setPastEvents] = (0, import_react10.useState)(/* @__PURE__ */ new Map());
-    const [suggestions, setSuggestions] = (0, import_react10.useState)([]);
-    const [showSuggestions, setShowSuggestions] = (0, import_react10.useState)(false);
-    (0, import_react10.useEffect)(() => {
+    const [privNotesOpen, setPrivNotesOpen] = (0, import_react11.useState)(!!modal.event?.privateNote);
+    const [titleErr, setTitleErr] = (0, import_react11.useState)("");
+    const [pastEvents, setPastEvents] = (0, import_react11.useState)(/* @__PURE__ */ new Map());
+    const [suggestions, setSuggestions] = (0, import_react11.useState)([]);
+    const [showSuggestions, setShowSuggestions] = (0, import_react11.useState)(false);
+    (0, import_react11.useEffect)(() => {
       db2.listEvents().then((evts) => {
         const byTitle = /* @__PURE__ */ new Map();
         for (const e73 of evts ?? []) {
@@ -23818,8 +24145,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       onSave(toSave, "one", {}, reminders);
     }
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -24935,11 +25262,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function JoinGroupModal({ onClose, closeRef, db: db2, sync: sync2, onJoined, onPendingJoin }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    const [pasteMode, setPasteMode] = (0, import_react10.useState)(false);
-    const [pasteUrl, setPasteUrl] = (0, import_react10.useState)("");
-    const [pasteErr, setPasteErr] = (0, import_react10.useState)("");
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    const [pasteMode, setPasteMode] = (0, import_react11.useState)(false);
+    const [pasteUrl, setPasteUrl] = (0, import_react11.useState)("");
+    const [pasteErr, setPasteErr] = (0, import_react11.useState)("");
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -25084,11 +25411,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] }) });
   }
   function NicknameBeforeJoinSheet({ groupName, defaultName, onConfirm, onClose, closeRef, onOutcome }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    const [nickname, setNickname] = (0, import_react10.useState)(defaultName);
-    const [joining, setJoining] = (0, import_react10.useState)(false);
-    const [err, setErr] = (0, import_react10.useState)("");
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    const [nickname, setNickname] = (0, import_react11.useState)(defaultName);
+    const [joining, setJoining] = (0, import_react11.useState)(false);
+    const [err, setErr] = (0, import_react11.useState)("");
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -25166,10 +25493,10 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] }) });
   }
   function GroupsTab({ groups, profile, sync: sync2, db: db2, readyGroupKeys, pendingApprovalGroups, onNewGroup, onSettings, onQrGroup, onJoined, joinOpen, setJoinOpen, closeInviteSheetRef }) {
-    const [copiedId, setCopiedId] = (0, import_react10.useState)(null);
-    const [copyFailed, setCopyFailed] = (0, import_react10.useState)(null);
-    const [recovering, setRecovering] = (0, import_react10.useState)(null);
-    const [recoverErr, setRecoverErr] = (0, import_react10.useState)({});
+    const [copiedId, setCopiedId] = (0, import_react11.useState)(null);
+    const [copyFailed, setCopyFailed] = (0, import_react11.useState)(null);
+    const [recovering, setRecovering] = (0, import_react11.useState)(null);
+    const [recoverErr, setRecoverErr] = (0, import_react11.useState)({});
     async function recoverCopy(g) {
       setRecovering(g.id);
       setRecoverErr((prev) => ({ ...prev, [g.id]: "" }));
@@ -25180,8 +25507,8 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
       }
       setRecovering(null);
     }
-    const [inviteModalGroup, setInviteModalGroup] = (0, import_react10.useState)(null);
-    (0, import_react10.useEffect)(() => {
+    const [inviteModalGroup, setInviteModalGroup] = (0, import_react11.useState)(null);
+    (0, import_react11.useEffect)(() => {
       const s13 = typeof window !== "undefined" ? window.__pearScreenshotScene : null;
       if (s13?.openInviteGroupId) {
         const g = groups.find((gr) => gr.id === s13.openInviteGroupId);
@@ -25384,11 +25711,11 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
     ] });
   }
   function InviteOptionsModal({ group, link, sync: sync2, onQrGroup, onClose, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
+    const bsCloseRef = (0, import_react11.useRef)(null);
     const shareMsg = `You've been invited to join ${group.name} as a peer in PearCal. To join, paste this link into PearCal:
 
 ${link}`;
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -25505,8 +25832,8 @@ ${link}`;
     ] }) });
   }
   function GroupSettingsModal({ group, me, db: db2, sync: sync2, totalGroupsCount = 1, pendingApproval = false, onClose, onUpdate, onDelete, onMemberLeft, onNicknameChange, onRequestConfirm, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -25517,16 +25844,16 @@ ${link}`;
         };
       }
     }, []);
-    const [g, setG] = (0, import_react10.useState)({ ...group });
-    const [nameErr, setNameErr] = (0, import_react10.useState)("");
-    const [saved, setSaved] = (0, import_react10.useState)(false);
-    const [saving, setSaving] = (0, import_react10.useState)(false);
-    const [nickInput, setNickInput] = (0, import_react10.useState)(() => (group.members ?? []).find((m3) => m3.id === me?.id)?.nickname ?? "");
-    const [nickSaved, setNickSaved] = (0, import_react10.useState)(false);
-    const [rejoinRequests, setRejoinRequests] = (0, import_react10.useState)([]);
-    const [transferPicker, setTransferPicker] = (0, import_react10.useState)(false);
-    const [showAllHistory, setShowAllHistory] = (0, import_react10.useState)(false);
-    const fileRef = (0, import_react10.useRef)();
+    const [g, setG] = (0, import_react11.useState)({ ...group });
+    const [nameErr, setNameErr] = (0, import_react11.useState)("");
+    const [saved, setSaved] = (0, import_react11.useState)(false);
+    const [saving, setSaving] = (0, import_react11.useState)(false);
+    const [nickInput, setNickInput] = (0, import_react11.useState)(() => (group.members ?? []).find((m3) => m3.id === me?.id)?.nickname ?? "");
+    const [nickSaved, setNickSaved] = (0, import_react11.useState)(false);
+    const [rejoinRequests, setRejoinRequests] = (0, import_react11.useState)([]);
+    const [transferPicker, setTransferPicker] = (0, import_react11.useState)(false);
+    const [showAllHistory, setShowAllHistory] = (0, import_react11.useState)(false);
+    const fileRef = (0, import_react11.useRef)();
     const isOwner = g.ownerId === me?.id;
     const isAdmin = !isOwner && (g.admins ?? []).includes(me?.id);
     const canManage = isOwner || isAdmin;
@@ -25536,7 +25863,7 @@ ${link}`;
     const ownerInactiveMs = Date.now() - lastOwnerActivityTs;
     const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS;
     const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 864e5));
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!canManage) return;
       let cancelled = false;
       const refresh = () => {
@@ -25556,7 +25883,7 @@ ${link}`;
         emitter.off("pendingRejoin", onPending);
       };
     }, [canManage, g.id]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       setG((prev) => ({
         ...prev,
         members: group.members ?? prev.members,
@@ -26405,15 +26732,15 @@ ${link}`;
     ] });
   }
   function NewGroupModal({ onClose, onAdd, onUpdate, me, sync: sync2, onCreated, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    const [name, setName] = (0, import_react10.useState)("");
-    const [color, setColor] = (0, import_react10.useState)(GROUP_COLORS[0]);
-    const [emoji, setEmoji] = (0, import_react10.useState)(GROUP_EMOJIS[0]);
-    const [icon, setIcon] = (0, import_react10.useState)(null);
-    const [nameErr, setNameErr] = (0, import_react10.useState)("");
-    const [creating, setCreating] = (0, import_react10.useState)(false);
-    const fileRef = (0, import_react10.useRef)();
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    const [name, setName] = (0, import_react11.useState)("");
+    const [color, setColor] = (0, import_react11.useState)(GROUP_COLORS[0]);
+    const [emoji, setEmoji] = (0, import_react11.useState)(GROUP_EMOJIS[0]);
+    const [icon, setIcon] = (0, import_react11.useState)(null);
+    const [nameErr, setNameErr] = (0, import_react11.useState)("");
+    const [creating, setCreating] = (0, import_react11.useState)(false);
+    const fileRef = (0, import_react11.useRef)();
+    (0, import_react11.useEffect)(() => {
       if (closeRef) closeRef.current = () => {
         bsCloseRef.current?.();
         return true;
@@ -26569,8 +26896,8 @@ ${link}`;
     ] });
   }
   function ScopeSheet({ ev: ev2, onSave, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -26601,8 +26928,8 @@ ${link}`;
     ] }) });
   }
   function DeleteScopeSheet({ onChoose, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -26683,8 +27010,8 @@ ${link}`;
     ] }) });
   }
   function ConfirmSheet({ title, message, icon, confirmLabel, dangerous, onConfirm, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -26717,11 +27044,11 @@ ${link}`;
     ] }) });
   }
   function RecoveryPhraseSheet({ intro = false, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    const [words, setWords] = (0, import_react10.useState)(null);
-    const [busy, setBusy] = (0, import_react10.useState)(false);
-    const [msg, setMsg] = (0, import_react10.useState)("");
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    const [words, setWords] = (0, import_react11.useState)(null);
+    const [busy, setBusy] = (0, import_react11.useState)(false);
+    const [msg, setMsg] = (0, import_react11.useState)("");
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -26779,8 +27106,8 @@ ${link}`;
     ] }) });
   }
   function InfoSheet({ title, message, icon, onDismiss, closeRef }) {
-    const bsCloseRef = (0, import_react10.useRef)(null);
-    (0, import_react10.useEffect)(() => {
+    const bsCloseRef = (0, import_react11.useRef)(null);
+    (0, import_react11.useEffect)(() => {
       if (closeRef) {
         closeRef.current = () => {
           bsCloseRef.current?.();
@@ -26794,21 +27121,21 @@ ${link}`;
     return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BottomSheet, { onClose: onDismiss, zIndex: 250, closeRef: bsCloseRef, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { padding: "24px 20px 8px", display: "flex", flexDirection: "column", alignItems: "center", gap: 12, textAlign: "center" }, children: [
       icon && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { marginBottom: 4 }, children: icon }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 17, color: colors.text.primary }, children: title }),
-      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5 }, children: message }),
+      /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: "var(--color-muted)", lineHeight: 1.5, whiteSpace: "pre-line" }, children: message }),
       /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(Button, { onClick: () => bsCloseRef.current?.(), style: { marginTop: 8 }, children: "OK" })
     ] }) });
   }
   function BottomSheet({ onClose, children, zIndex = 200, closeRef }) {
-    const [visible, setVisible] = (0, import_react10.useState)(false);
-    const [closing, setClosing] = (0, import_react10.useState)(false);
-    const touchStartY = (0, import_react10.useRef)(null);
+    const [visible, setVisible] = (0, import_react11.useState)(false);
+    const [closing, setClosing] = (0, import_react11.useState)(false);
+    const touchStartY = (0, import_react11.useRef)(null);
     const DURATION = 280;
     useBackHandler(true, close);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const id = setTimeout(() => setVisible(true), 20);
       return () => clearTimeout(id);
     }, []);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (closeRef) closeRef.current = close;
     }, [closing]);
     function close() {
@@ -26887,11 +27214,13 @@ ${link}`;
       document.body
     );
   }
-  function CalendarsSheet({ cal, groups, events, saveEventQuiet, removeEvent, onClose }) {
-    const bsClose = (0, import_react10.useRef)(null);
-    const [editing, setEditing] = (0, import_react10.useState)(null);
-    const [confirmDelete, setConfirmDelete] = (0, import_react10.useState)(false);
-    const [busy, setBusy] = (0, import_react10.useState)(false);
+  function CalendarsSheet({ cal, web, groups, events, saveEventQuiet, removeEvent, onClose }) {
+    const bsClose = (0, import_react11.useRef)(null);
+    const [editing, setEditing] = (0, import_react11.useState)(null);
+    const [webEditing, setWebEditing] = (0, import_react11.useState)(null);
+    const [webErr, setWebErr] = (0, import_react11.useState)("");
+    const [confirmDelete, setConfirmDelete] = (0, import_react11.useState)(false);
+    const [busy, setBusy] = (0, import_react11.useState)(false);
     const label = {
       fontSize: 10,
       fontWeight: 400,
@@ -26934,6 +27263,125 @@ ${link}`;
       } finally {
         setBusy(false);
       }
+    }
+    async function saveWeb() {
+      setWebErr("");
+      setBusy(true);
+      try {
+        if (webEditing.id) {
+          await web.updateSubscription(webEditing.id, { url: webEditing.url, name: webEditing.name.trim(), color: webEditing.color });
+          setWebEditing(null);
+        } else {
+          const { error } = await web.addSubscription({ url: webEditing.url, name: webEditing.name, color: webEditing.color });
+          if (error) setWebErr("Added, but the first download failed: " + error + " PearCal will keep trying.");
+          else setWebEditing(null);
+        }
+      } catch (e73) {
+        setWebErr(e73?.message ?? String(e73));
+      } finally {
+        setBusy(false);
+      }
+    }
+    if (webEditing) {
+      const feed = webEditing.id ? web.feeds[webEditing.id] : null;
+      const status = !webEditing.id ? null : web.busy[webEditing.id] ? "Downloading\u2026" : feed?.error ? "Last try failed: " + feed.error + (feed.fetchedAt ? " Showing the copy from " + new Date(feed.fetchedAt).toLocaleString() + "." : "") : feed?.fetchedAt ? "Updated " + new Date(feed.fetchedAt).toLocaleString() + "." : "Not downloaded yet.";
+      return /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(BottomSheet, { onClose, zIndex: 250, closeRef: bsClose, children: /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { padding: "0 20px 16px" }, children: [
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 17, color: colors.text.primary, marginBottom: 6 }, children: webEditing.id ? "Web calendar" : "Add a web calendar" }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 12, color: colors.text.muted, lineHeight: 1.5, marginBottom: 12 }, children: "Paste a calendar link (https:// or webcal://). Each of your devices downloads it from that website itself, about twice a day, so the website can see your IP address. Its events are read-only and are never shared with your groups." }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "input",
+          {
+            value: webEditing.url,
+            placeholder: "https://example.com/calendar.ics",
+            autoFocus: !webEditing.id,
+            autoCapitalize: "none",
+            autoCorrect: "off",
+            spellCheck: false,
+            inputMode: "url",
+            onChange: (e73) => {
+              setWebEditing((x) => ({ ...x, url: e73.target.value }));
+              setWebErr("");
+            },
+            style: inputStyle
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "input",
+          {
+            value: webEditing.name,
+            maxLength: 60,
+            placeholder: webEditing.id ? "Name" : "Name (optional, taken from the calendar)",
+            onChange: (e73) => setWebEditing((x) => ({ ...x, name: e73.target.value })),
+            style: { ...inputStyle, marginTop: 10 }
+          }
+        ),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { display: "flex", flexWrap: "wrap", gap: 10, margin: "14px 0" }, children: GROUP_COLORS.map((c9) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+          "button",
+          {
+            onClick: () => setWebEditing((x) => ({ ...x, color: c9 })),
+            "aria-label": c9,
+            style: {
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              background: c9,
+              cursor: "pointer",
+              border: webEditing.color === c9 ? `3px solid ${colors.text.primary}` : "3px solid transparent"
+            }
+          },
+          c9
+        )) }),
+        status && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 12, color: feed?.error ? "var(--color-destructive)" : colors.text.muted, marginBottom: 10, lineHeight: 1.5 }, children: status }),
+        webErr && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 12, color: "var(--color-destructive)", marginBottom: 10, lineHeight: 1.5 }, children: webErr }),
+        /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { display: "flex", flexDirection: "column", gap: 8 }, children: [
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              disabled: busy || !webEditing.url.trim(),
+              onClick: saveWeb,
+              style: { ...pillBtn, padding: 12, fontSize: 14, opacity: webEditing.url.trim() ? 1 : 0.4 },
+              children: webEditing.id ? "Save" : "Add"
+            }
+          ),
+          webEditing.id && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              disabled: !!web.busy[webEditing.id],
+              onClick: () => web.refresh(web.subscriptions.find((x) => x.id === webEditing.id)),
+              style: { ...pillBtn, padding: 12, fontSize: 14, background: "transparent", color: colors.primary },
+              children: "Download now"
+            }
+          ),
+          webEditing.id && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              disabled: busy,
+              onClick: async () => {
+                setBusy(true);
+                try {
+                  await web.removeSubscription(webEditing.id);
+                  setWebEditing(null);
+                } finally {
+                  setBusy(false);
+                }
+              },
+              style: { ...pillBtn, padding: 12, fontSize: 14, background: "transparent", color: "var(--color-destructive)" },
+              children: "Remove web calendar"
+            }
+          ),
+          /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
+            "button",
+            {
+              onClick: () => {
+                setWebEditing(null);
+                setWebErr("");
+              },
+              style: { ...pillBtn, padding: 12, fontSize: 14, background: "transparent", color: colors.text.muted },
+              children: "Back"
+            }
+          )
+        ] })
+      ] }) });
     }
     if (editing) {
       const n21 = editing.id ? countFor(editing.id) : 0;
@@ -27079,6 +27527,35 @@ ${link}`;
           ]
         }
       ),
+      web?.supported && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: label, children: "Web calendars" }),
+      web?.supported && web.subscriptions.map((sb) => switchRow(
+        "sub:" + sb.id,
+        sb.name || "Web calendar",
+        sb.color,
+        () => setWebEditing({ id: sb.id, url: sb.url, name: sb.name ?? "", color: sb.color ?? null }),
+        web.feeds[sb.id]?.error ? /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("span", { style: { marginRight: 6, color: "var(--color-destructive)" }, children: "!" }) : null
+      )),
+      web?.supported && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(
+        "button",
+        {
+          onClick: () => setWebEditing({ url: "", name: "", color: GROUP_COLORS[(web.subscriptions.length + 5) % GROUP_COLORS.length] }),
+          style: {
+            ...row,
+            width: "100%",
+            background: "none",
+            border: "none",
+            borderBottom: `1px solid ${colors.border}`,
+            fontFamily: FONT,
+            fontSize: 15,
+            color: colors.primary,
+            cursor: "pointer"
+          },
+          children: [
+            /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(n9, { size: 14, weight: "bold" }),
+            " Add web calendar"
+          ]
+        }
+      ),
       cal.holidayCalendars.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: label, children: "Holidays" }),
       cal.holidayCalendars.map((h2) => switchRow(
         h2.key,
@@ -27098,18 +27575,18 @@ ${link}`;
     ] }) });
   }
   function ImportIcsSheet({ events, filename, calName, groups, calendars, existingEventIds, onImport, onClose }) {
-    const bsClose = (0, import_react10.useRef)(null);
+    const bsClose = (0, import_react11.useRef)(null);
     const myGroups = groups ?? [];
-    const memberIds = (0, import_react10.useMemo)(() => new Set(myGroups.map((g) => g.id)), [groups]);
-    const hasFileGroups = (0, import_react10.useMemo)(
+    const memberIds = (0, import_react11.useMemo)(() => new Set(myGroups.map((g) => g.id)), [groups]);
+    const hasFileGroups = (0, import_react11.useMemo)(
       () => icsFileGroups(events, memberIds).size > 0,
       [events, memberIds]
     );
-    const [dest, setDest] = (0, import_react10.useState)(hasFileGroups ? "file" : "personal");
+    const [dest, setDest] = (0, import_react11.useState)(hasFileGroups ? "file" : "personal");
     const destGroup = myGroups.find((g) => g.id === dest) ?? null;
     const myCalendars = calendars ?? [];
-    const [calDest, setCalDest] = (0, import_react10.useState)("default");
-    const [newCalName, setNewCalName] = (0, import_react10.useState)(() => calName || String(filename ?? "").replace(/\.(ics|ical)$/i, "").trim() || "Imported");
+    const [calDest, setCalDest] = (0, import_react11.useState)("default");
+    const [newCalName, setNewCalName] = (0, import_react11.useState)(() => calName || String(filename ?? "").replace(/\.(ics|ical)$/i, "").trim() || "Imported");
     const routed = routeIcsImport(events, { dest, groupIds: memberIds, existingEventIds });
     const toImport = routed.filter((r11) => !r11.skipped);
     const skippedCount = routed.length - toImport.length;
@@ -27345,10 +27822,10 @@ ${link}`;
     ] }) });
   }
   function AboutTab({ sync: sync2, closeSheetRef, onReplayTour }) {
-    const lsBsCloseRef = (0, import_react10.useRef)(null);
-    const [lightningModal, setLightningModal] = (0, import_react10.useState)(false);
-    const [lnDetected, setLnDetected] = (0, import_react10.useState)(false);
-    (0, import_react10.useEffect)(() => {
+    const lsBsCloseRef = (0, import_react11.useRef)(null);
+    const [lightningModal, setLightningModal] = (0, import_react11.useState)(false);
+    const [lnDetected, setLnDetected] = (0, import_react11.useState)(false);
+    (0, import_react11.useEffect)(() => {
       if (closeSheetRef) closeSheetRef.current = () => {
         if (lightningModal) {
           setLightningModal(false);
@@ -27377,7 +27854,7 @@ ${link}`;
       setLnDetected(!!detected);
       setLightningModal(true);
     }
-    const [openSection, setOpenSection] = (0, import_react10.useState)(null);
+    const [openSection, setOpenSection] = (0, import_react11.useState)(null);
     const toggleSection = (id) => setOpenSection((s13) => s13 === id ? null : id);
     const donateBody = { fontSize: 13, color: colors.text.muted, lineHeight: "1.7" };
     const donateSecLabel = { fontSize: 11, fontWeight: 400, color: colors.text.muted, letterSpacing: "0.04em", margin: "20px 0 8px", textAlign: "center" };
@@ -27720,69 +28197,69 @@ ${link}`;
     ] });
   }
   function ProfileTab({ profile, groups, personalCalendars = [], onUpdateProfile, db: db2, events, setEvents, dark, onToggleDark, sync: sync2, saveEvent, deleteEventSeries, blindPeerKey, setBlindPeerKey, qrScanModeRef, onIcsFile }) {
-    const [name, setName] = (0, import_react10.useState)(profile?.name ?? "");
-    const [editing, setEditing] = (0, import_react10.useState)(false);
-    const [saving, setSaving] = (0, import_react10.useState)(false);
-    const [photoSaving, setPhotoSaving] = (0, import_react10.useState)(false);
-    const [holidayWorking, setHolidayWorking] = (0, import_react10.useState)(false);
-    const [holidaysOpen, setHolidaysOpen] = (0, import_react10.useState)((profile?.holidayCountries ?? []).length > 0);
-    const [personalOpen, setPersonalOpen] = (0, import_react10.useState)(false);
-    const [advancedOpen, setAdvancedOpen] = (0, import_react10.useState)(false);
-    const [appearanceOpen, setAppearanceOpen] = (0, import_react10.useState)(false);
-    const [timeFormatOpen, setTimeFormatOpen] = (0, import_react10.useState)(false);
-    const [weekStartOpen, setWeekStartOpen] = (0, import_react10.useState)(false);
-    const [defaultRemOpen, setDefaultRemOpen] = (0, import_react10.useState)(false);
-    const [importExportOpen, setImportExportOpen] = (0, import_react10.useState)(false);
-    const [reclaimBusy, setReclaimBusy] = (0, import_react10.useState)(false);
-    const [reclaimResult, setReclaimResult] = (0, import_react10.useState)(null);
-    const [rebuildConfirm, setRebuildConfirm] = (0, import_react10.useState)(false);
-    const [storageOpen, setStorageOpen] = (0, import_react10.useState)(false);
-    const [reportOpen, setReportOpen] = (0, import_react10.useState)(null);
-    const [sweepReport, setSweepReport] = (0, import_react10.useState)(null);
-    const [sweepBusy, setSweepBusy] = (0, import_react10.useState)(false);
-    const [sweepResult, setSweepResult] = (0, import_react10.useState)(null);
-    const [resetSheet, setResetSheet] = (0, import_react10.useState)(false);
-    const [resetMode, setResetMode] = (0, import_react10.useState)(null);
-    const [resetTyped, setResetTyped] = (0, import_react10.useState)("");
-    const [resetBusy, setResetBusy] = (0, import_react10.useState)(false);
-    const [resetError, setResetError] = (0, import_react10.useState)(null);
-    const closeResetSheetRef = (0, import_react10.useRef)(null);
-    const icsFileRef = (0, import_react10.useRef)(null);
+    const [name, setName] = (0, import_react11.useState)(profile?.name ?? "");
+    const [editing, setEditing] = (0, import_react11.useState)(false);
+    const [saving, setSaving] = (0, import_react11.useState)(false);
+    const [photoSaving, setPhotoSaving] = (0, import_react11.useState)(false);
+    const [holidayWorking, setHolidayWorking] = (0, import_react11.useState)(false);
+    const [holidaysOpen, setHolidaysOpen] = (0, import_react11.useState)((profile?.holidayCountries ?? []).length > 0);
+    const [personalOpen, setPersonalOpen] = (0, import_react11.useState)(false);
+    const [advancedOpen, setAdvancedOpen] = (0, import_react11.useState)(false);
+    const [appearanceOpen, setAppearanceOpen] = (0, import_react11.useState)(false);
+    const [timeFormatOpen, setTimeFormatOpen] = (0, import_react11.useState)(false);
+    const [weekStartOpen, setWeekStartOpen] = (0, import_react11.useState)(false);
+    const [defaultRemOpen, setDefaultRemOpen] = (0, import_react11.useState)(false);
+    const [importExportOpen, setImportExportOpen] = (0, import_react11.useState)(false);
+    const [reclaimBusy, setReclaimBusy] = (0, import_react11.useState)(false);
+    const [reclaimResult, setReclaimResult] = (0, import_react11.useState)(null);
+    const [rebuildConfirm, setRebuildConfirm] = (0, import_react11.useState)(false);
+    const [storageOpen, setStorageOpen] = (0, import_react11.useState)(false);
+    const [reportOpen, setReportOpen] = (0, import_react11.useState)(null);
+    const [sweepReport, setSweepReport] = (0, import_react11.useState)(null);
+    const [sweepBusy, setSweepBusy] = (0, import_react11.useState)(false);
+    const [sweepResult, setSweepResult] = (0, import_react11.useState)(null);
+    const [resetSheet, setResetSheet] = (0, import_react11.useState)(false);
+    const [resetMode, setResetMode] = (0, import_react11.useState)(null);
+    const [resetTyped, setResetTyped] = (0, import_react11.useState)("");
+    const [resetBusy, setResetBusy] = (0, import_react11.useState)(false);
+    const [resetError, setResetError] = (0, import_react11.useState)(null);
+    const closeResetSheetRef = (0, import_react11.useRef)(null);
+    const icsFileRef = (0, import_react11.useRef)(null);
     const localeUse24h = !new Intl.DateTimeFormat([], { hour: "numeric" }).format(0).match(/am|pm/i);
     const use24h = profile?.use24h ?? localeUse24h;
     const weekStart = profile?.weekStart ?? 0;
-    const fileRef = (0, import_react10.useRef)();
-    const [blindPeers, setBlindPeers] = (0, import_react10.useState)([]);
-    const [removeBpConfirm, setRemoveBpConfirm] = (0, import_react10.useState)(null);
-    const [renameBpKey, setRenameBpKey] = (0, import_react10.useState)(null);
-    const [bpRenameDraft, setBpRenameDraft] = (0, import_react10.useState)("");
-    const [bpRenameSaving, setBpRenameSaving] = (0, import_react10.useState)(false);
-    const loadBlindPeers = (0, import_react10.useCallback)(() => {
+    const fileRef = (0, import_react11.useRef)();
+    const [blindPeers, setBlindPeers] = (0, import_react11.useState)([]);
+    const [removeBpConfirm, setRemoveBpConfirm] = (0, import_react11.useState)(null);
+    const [renameBpKey, setRenameBpKey] = (0, import_react11.useState)(null);
+    const [bpRenameDraft, setBpRenameDraft] = (0, import_react11.useState)("");
+    const [bpRenameSaving, setBpRenameSaving] = (0, import_react11.useState)(false);
+    const loadBlindPeers = (0, import_react11.useCallback)(() => {
       db2.listBlindPeers?.().then((list) => setBlindPeers(list ?? [])).catch(() => {
       });
     }, [db2]);
-    const [plSeeders, setPlSeeders] = (0, import_react10.useState)([]);
-    const [plLink, setPlLink] = (0, import_react10.useState)("");
-    const [plBusy, setPlBusy] = (0, import_react10.useState)(false);
-    const [plMsg, setPlMsg] = (0, import_react10.useState)("");
-    const [plPasting, setPlPasting] = (0, import_react10.useState)(false);
-    const [plModal, setPlModal] = (0, import_react10.useState)(null);
-    const [plPending, setPlPending] = (0, import_react10.useState)({});
-    const [showPhrase, setShowPhrase] = (0, import_react10.useState)(false);
-    const [keyringSt, setKeyringSt] = (0, import_react10.useState)(null);
-    const loadPlSeeders = (0, import_react10.useCallback)(() => {
+    const [plSeeders, setPlSeeders] = (0, import_react11.useState)([]);
+    const [plLink, setPlLink] = (0, import_react11.useState)("");
+    const [plBusy, setPlBusy] = (0, import_react11.useState)(false);
+    const [plMsg, setPlMsg] = (0, import_react11.useState)("");
+    const [plPasting, setPlPasting] = (0, import_react11.useState)(false);
+    const [plModal, setPlModal] = (0, import_react11.useState)(null);
+    const [plPending, setPlPending] = (0, import_react11.useState)({});
+    const [showPhrase, setShowPhrase] = (0, import_react11.useState)(false);
+    const [keyringSt, setKeyringSt] = (0, import_react11.useState)(null);
+    const loadPlSeeders = (0, import_react11.useCallback)(() => {
       db2.keyringStatus?.().then((st) => setKeyringSt(st ?? null)).catch(() => {
       });
       return db2.listPeerloomSeeders?.().then((list) => setPlSeeders(list ?? [])).catch(() => {
       });
     }, [db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       loadPlSeeders();
       const t8 = setInterval(loadPlSeeders, 5e3);
       return () => clearInterval(t8);
     }, [loadPlSeeders]);
-    const plInputRef = (0, import_react10.useRef)(null);
-    const [plNoteDismissed, setPlNoteDismissed] = (0, import_react10.useState)(() => {
+    const plInputRef = (0, import_react11.useRef)(null);
+    const [plNoteDismissed, setPlNoteDismissed] = (0, import_react11.useState)(() => {
       try {
         return localStorage.getItem("pearcal:plsNoteDismissed") === "1";
       } catch {
@@ -27823,9 +28300,9 @@ ${link}`;
       qrScanModeRef.current = "seederAny";
       sync2.qrScan();
     };
-    const pairAnyRef = (0, import_react10.useRef)(pairAnySeeder);
+    const pairAnyRef = (0, import_react11.useRef)(pairAnySeeder);
     pairAnyRef.current = pairAnySeeder;
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const onScanned = (url) => pairAnyRef.current(url);
       emitter.on("seederScanned", onScanned);
       return () => emitter.off("seederScanned", onScanned);
@@ -27882,9 +28359,9 @@ ${link}`;
       } catch {
       }
     };
-    const [autoExport, setAutoExport] = (0, import_react10.useState)(null);
-    const [autoExportBusy, setAutoExportBusy] = (0, import_react10.useState)(false);
-    (0, import_react10.useEffect)(() => {
+    const [autoExport, setAutoExport] = (0, import_react11.useState)(null);
+    const [autoExportBusy, setAutoExportBusy] = (0, import_react11.useState)(false);
+    (0, import_react11.useEffect)(() => {
       db2.getAutoExport?.().then((c9) => setAutoExport(c9 ?? null)).catch(() => {
       });
     }, [db2]);
@@ -27916,12 +28393,12 @@ ${link}`;
       else next.delete(id);
       changeAutoExport(() => db2.setAutoExport({ calendars: [...next] }));
     }
-    const [relayStatus, setRelayStatus] = (0, import_react10.useState)(null);
-    const loadRelayStatus = (0, import_react10.useCallback)(() => {
+    const [relayStatus, setRelayStatus] = (0, import_react11.useState)(null);
+    const loadRelayStatus = (0, import_react11.useCallback)(() => {
       db2.getRelayStatus?.().then((s13) => setRelayStatus(s13 ?? null)).catch(() => {
       });
     }, [db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       let stopped = false;
       let timer = null;
       const ask = () => {
@@ -27938,10 +28415,10 @@ ${link}`;
         clearTimeout(timer);
       };
     }, [db2]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       loadBlindPeers();
     }, [loadBlindPeers]);
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       const onBlindPeersChanged = () => loadBlindPeers();
       emitter.on("blindPeersChanged", onBlindPeersChanged);
       return () => emitter.off("blindPeersChanged", onBlindPeersChanged);
@@ -27970,15 +28447,15 @@ ${link}`;
       }
       setBpRenameSaving(false);
     }
-    const [pairHost, setPairHost] = (0, import_react10.useState)(null);
-    const [pairHostBusy, setPairHostBusy] = (0, import_react10.useState)(false);
-    const [pairHostError, setPairHostError] = (0, import_react10.useState)(null);
-    const [linkedDevices, setLinkedDevices] = (0, import_react10.useState)([]);
-    const [renamingKey, setRenamingKey] = (0, import_react10.useState)(null);
-    const [renameDraft, setRenameDraft] = (0, import_react10.useState)("");
-    const [renameSaving, setRenameSaving] = (0, import_react10.useState)(false);
-    const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react10.useState)(null);
-    const [removingKey, setRemovingKey] = (0, import_react10.useState)(null);
+    const [pairHost, setPairHost] = (0, import_react11.useState)(null);
+    const [pairHostBusy, setPairHostBusy] = (0, import_react11.useState)(false);
+    const [pairHostError, setPairHostError] = (0, import_react11.useState)(null);
+    const [linkedDevices, setLinkedDevices] = (0, import_react11.useState)([]);
+    const [renamingKey, setRenamingKey] = (0, import_react11.useState)(null);
+    const [renameDraft, setRenameDraft] = (0, import_react11.useState)("");
+    const [renameSaving, setRenameSaving] = (0, import_react11.useState)(false);
+    const [removeConfirmKey, setRemoveConfirmKey] = (0, import_react11.useState)(null);
+    const [removingKey, setRemovingKey] = (0, import_react11.useState)(null);
     async function saveName() {
       setSaving(true);
       await onUpdateProfile({ name });
@@ -28007,7 +28484,7 @@ ${link}`;
     const hasPhoto = profile?.avatar?.startsWith?.("data:");
     const publicKey = profile?.publicKey ?? "\u2014";
     const identityId = profile?.id ?? "\u2014";
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       if (!pairHost || pairHost.status === "completed") return;
       function onPairingCompleted(data) {
         if (!data || data.role !== "primary") return;
@@ -28044,7 +28521,7 @@ ${link}`;
       }
       setPairHostBusy(false);
     }
-    (0, import_react10.useEffect)(() => {
+    (0, import_react11.useEffect)(() => {
       let cancelled = false;
       async function refresh() {
         try {
@@ -30517,6 +30994,14 @@ ${link}`;
     deletePersonalCalendar: (id) => window.__pearDB.call("deletePersonalCalendar", id),
     getCalendarVisibility: () => window.__pearDB.call("getCalendarVisibility"),
     setCalendarVisibility: (v2) => window.__pearDB.call("setCalendarVisibility", v2),
+    // Web calendar subscriptions (TODO #189 phase 2). fetchCalendarUrl is
+    // answered by the native shell, the rest by the worklet.
+    listSubscriptions: () => window.__pearDB.call("listSubscriptions"),
+    putSubscription: (s13) => window.__pearDB.call("putSubscription", s13),
+    deleteSubscription: (id) => window.__pearDB.call("deleteSubscription", id),
+    getSubscriptionFeeds: () => window.__pearDB.call("getSubscriptionFeeds"),
+    putSubscriptionFeed: (id, f) => window.__pearDB.call("putSubscriptionFeed", id, f),
+    fetchCalendarUrl: (url) => window.__pearDB.call("fetchCalendarUrl", url),
     getRelayStatus: () => window.__pearDB.call("getRelayStatus"),
     setUseRelay: (on) => window.__pearDB.call("setUseRelay", on),
     // Automatic .ics export to a folder (TODO #187), handled in the RN shell.

@@ -18,6 +18,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as LocalAuthentication from 'expo-local-authentication'
 import { requestLocalNetworkPermission } from '../modules/local-network'
 import { autoExportFiles, planAutoExport } from '../src/ui-shared/lib/ics.js'
+import { fetchCalendarText } from '../src/lib/webCalendars.js'
 
 const { PearCalNotifications } = NativeModules
 const { PearCalShare } = NativeModules
@@ -842,6 +843,17 @@ export default function Root () {
       }
       if (msg.method === 'exportIcs') {
         PearCalShare?.shareCalendar?.(msg.args?.[0] ?? '').catch?.(() => {})
+        return
+      }
+      // Web calendar subscriptions (TODO #189): the WebView cannot fetch an
+      // arbitrary site (CORS), so the shell downloads the feed and hands the
+      // text back. Nothing else is sent anywhere.
+      if (msg.method === 'fetchCalendarUrl') {
+        fetchCalendarText(msg.args?.[0] ?? '')
+          .then((result: string) => webViewRef.current?.injectJavaScript(
+            'window.__pearResponse(' + JSON.stringify({ id: msg.id, result }) + ');true;'))
+          .catch((err: any) => webViewRef.current?.injectJavaScript(
+            'window.__pearResponse(' + JSON.stringify({ id: msg.id, error: err?.message ?? String(err) }) + ');true;'))
         return
       }
       if (msg.method === 'autoExportGet' || msg.method === 'autoExportSet' || msg.method === 'autoExportPickFolder') {

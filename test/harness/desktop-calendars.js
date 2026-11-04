@@ -92,6 +92,19 @@ function driver () {
     check(saved?.calendarId === 'health', 'saved event carries its calendar')
     check(saved?.color === '#5DBF8A', 'saved event takes the calendar color')
 
+    // Phase 2: web calendars in the sidebar.
+    check((await sidebarText()).includes('WEB CALENDARS'), 'Web calendars section shown')
+    await js(`window.__web.addSubscription({ url: 'webcal://example.org/fr.ics' })`)
+    await sleep(400)
+    const t2 = await sidebarText()
+    check(t2.includes('Jours feries'), 'web calendar named from the file')
+    const n = await js('window.__web.events.length')
+    check(n === 1, 'its events are built from the download', String(n))
+    const id = await js('window.__web.subscriptions[0]?.id')
+    check(await clickIn('aside', 'Jours feries'), 'clicked the web calendar row')
+    await sleep(200)
+    check((await vis()).hidden.includes('sub:' + id), 'web calendar switch stored')
+
     console.log(out.join('\n'))
     app.exit(failed ? 1 : 0)
   }).catch(e => { console.error(e); app.exit(1) })

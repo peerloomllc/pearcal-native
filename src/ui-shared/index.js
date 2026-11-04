@@ -46,6 +46,7 @@ export { useGroups } from './hooks/useGroups.js'
 export { useEvents } from './hooks/useEvents.js'
 export { useHolidayRepair } from './hooks/useHolidayRepair.js'
 export { useCalendars } from './hooks/useCalendars.js'
+export { useWebCalendars, feedEvents } from './hooks/useWebCalendars.js'
 export { useForeverTopUp } from './hooks/useForeverTopUp.js'
 
 export { emitter } from './emitter.js'
