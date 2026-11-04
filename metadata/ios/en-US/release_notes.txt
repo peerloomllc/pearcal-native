@@ -1,4 +1,14 @@
-PearCal v1.0.54
+New Features
+  - Personal calendars: keep separate calendars like Work, Health or Family, each with its own name and color. They sync to your other linked devices.
+  - Show or hide any calendar: tap the new Calendars button to switch personal calendars, holiday countries and groups on or off. Each device remembers its own choices, and reminders still go off for hidden calendars.
+  - Web calendars: paste a calendar link (https:// or webcal://), such as your country's public holidays, and PearCal keeps it up to date. These events are read-only and never shared with your groups.
+  - Import into any calendar: when you import an .ics file, choose which personal calendar it goes into, or create a new one named after the file.
+
+Improvements
+  - Desktop: personal and web calendars now appear above Groups in the sidebar, and you can fold the Groups list away.
+  - Desktop: your choices for which calendars to show are now remembered after you close the app.
+  - Automatic export can now save each personal calendar to its own file.
 
 Privacy
-  - PearCal asks for fewer permissions. It no longer requests storage access or permission to draw over other apps. It never used either
+  - The Android app no longer includes any Google Play Services code.
+
