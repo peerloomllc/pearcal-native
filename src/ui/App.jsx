@@ -16,6 +16,7 @@ import { createPortal } from 'react-dom'
 import { handleInviteLink } from '../invite.js'
 import { SEEDER_PAIR_SCAN_TIMEOUT_MS, secondsRemaining, formatCountdown } from '../lib/seederPairTiming.js'
 import { joinOutcomeMessage, isBenignJoinOutcome } from '../lib/joinOutcome.js'
+import { claimOwnershipOffer, claimErrorMessage } from '../lib/claimOffer.js'
 import QRCode from 'qrcode'
 import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
@@ -2258,8 +2259,7 @@ export default function App ({ db, notifs, sync }) {
                   },
                 })
               } else if (req.type === 'claimOwnership') {
-                const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0
-                const days = Math.max(0, Math.floor((Date.now() - lastTs) / 86_400_000))
+                const days = claimOwnershipOffer({ group: req.g, selfId: null, now: Date.now() }).inactiveDays
                 raise({
                   title: 'Claim ownership?',
                   message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? '' : 's'}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
@@ -2272,7 +2272,7 @@ export default function App ({ db, notifs, sync }) {
                     } catch (e) {
                       setInfoSheet({
                         title: 'Claim failed',
-                        message: e?.message ?? String(e),
+                        message: claimErrorMessage(e),
                         icon: <Warning size={36} weight="thin" color="var(--color-destructive)" />,
                       })
                     }
@@ -5879,12 +5879,14 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
   const isAdmin  = !isOwner && (g.admins ?? []).includes(me?.id)
   const canManage = isOwner || isAdmin
   const isMember = g.members.some(m => m.id === me?.id)
-  // Mirrors the bare.js constant (CLAIM_OWNERSHIP_INACTIVITY_MS). Keep in sync.
-  const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000
-  const lastOwnerActivityTs = g.lastOwnerActivityTs ?? g.updatedAt ?? 0
-  const ownerInactiveMs = Date.now() - lastOwnerActivityTs
-  const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS
-  const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 86_400_000))
+  // GitHub #399: a join that never reached the owner has no owner timestamp and
+  // a placeholder owner. Never offer a claim off that (see src/lib/claimOffer.js).
+  const {
+    canClaim: canClaimOwnership,
+    inactiveDays: ownerInactiveDays,
+    pendingJoin,
+    lastActivityTs: lastOwnerActivityTs,
+  } = claimOwnershipOffer({ group: g, selfId: me?.id, now: Date.now() })
 
   useEffect(() => {
     if (!canManage) return
@@ -6275,9 +6277,13 @@ function GroupSettingsModal ({ group, me, db, sync, totalGroupsCount = 1, pendin
                         </>
                       ) : (
                         <>
-                          <div style={{ fontSize:14, color: colors.text.primary }}>{ownerName}</div>
+                          <div style={{ fontSize:14, color: colors.text.primary }}>
+                            {pendingJoin ? 'Waiting for the owner' : ownerName}
+                          </div>
                           <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>
-                            Active {formatRelativeTime(lastOwnerActivityTs) || 'recently'}
+                            {pendingJoin
+                              ? "This device hasn't reached anyone in the group yet. The group fills in once the owner or another member is online at the same time."
+                              : <>Active {(lastOwnerActivityTs && formatRelativeTime(lastOwnerActivityTs)) || 'recently'}</>}
                           </div>
                         </>
                       )}
