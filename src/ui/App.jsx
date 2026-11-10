@@ -22,6 +22,7 @@ import BIP39_WORDS from 'bip39-mnemonic/wordlist/english.json'
 import { phraseWordsFrom, suggestWords, pickWord, unknownWords } from '../ui-shared/lib/phraseWords.js'
 import { calendarListLine, calendarsLine, personalLine } from '../ui-shared/lib/seederStatus.js'
 import { linksInText, pearLinkLabel, parsePearLink, eventLink, findLinkedEvent, openPearLink, MISSING_EVENT_MESSAGE } from '../ui-shared/lib/pearLinks.js'
+import { eventAddedByName } from '../ui-shared/lib/addedBy.js'
 import { FONT, colors, injectGlobalStyles, setTheme as applyTheme } from './theme.js'
 import {
   parseIcs, icsCalendarName, generateIcs, icsFileGroups, routeIcsImport,
@@ -4281,6 +4282,8 @@ function EventCard ({ ev, onClick, compact, isPast, use24h, myRsvpStatus, myProf
   const isShadow = !!ev.isShadow
   const shadowEditable = isShadow && viewerIsCreator
   const creatorName = isShadow ? shadowCreatorName(ev, groups) : null
+  // GitHub #400: who added a shared event, when it was someone else.
+  const addedBy = compact ? null : eventAddedByName(ev, groups, myProfileId)
   return (
     <div onClick={() => { if (isShadow && !shadowEditable) return; window.__pearSync?.haptic('light'); onClick?.() }}
       style={{ display:'flex', gap:12, alignItems:'flex-start',
@@ -4310,6 +4313,7 @@ function EventCard ({ ev, onClick, compact, isPast, use24h, myRsvpStatus, myProf
           {compact && ` · ${new Date(ev.date + 'T12:00:00').toLocaleDateString('en-US',
             { month:'short', day:'numeric' })}`}
         </div>
+        {addedBy ? <div style={{ fontSize:11, color:colors.text.muted, marginTop:2 }}>Added by {addedBy}</div> : null}
         {!compact && ev.meetingLink ? (
           <div onClick={e => { e.stopPropagation(); window.__pearSync?.openURL(ev.meetingLink.trim()) }}
             style={{ display:'flex', alignItems:'center', gap:4, marginTop:4, cursor:'pointer', minWidth:0 }}>
@@ -4744,6 +4748,15 @@ function EventModal ({ modal, setModal, groups, calendars = [], profile, events 
           <span style={{ fontSize:17, color: colors.text.primary, flex:1, minWidth:0,
             overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
             {modal.mode === 'create' ? 'New Event' : 'Edit Event'}
+            {(() => {
+              // GitHub #400: who added this shared event.
+              const addedBy = modal.mode === 'edit' ? eventAddedByName(modal.event, groups, profile?.id) : null
+              return addedBy ? (
+                <span style={{ display:'block', fontSize:12, color:colors.text.muted, marginTop:2 }}>
+                  Added by {addedBy}
+                </span>
+              ) : null
+            })()}
           </span>
           {(() => {
             const isCreator = ev.creatorId && profile?.id && ev.creatorId === profile.id
