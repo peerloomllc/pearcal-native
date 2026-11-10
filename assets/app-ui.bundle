@@ -12492,6 +12492,55 @@
     }
   });
 
+  // src/lib/claimOffer.js
+  var require_claimOffer = __commonJS({
+    "src/lib/claimOffer.js"(exports, module) {
+      "use strict";
+      var CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1e3;
+      var DAY_MS = 864e5;
+      function isPendingJoin(group) {
+        return (group?.members ?? []).some((m3) => m3?.name === "Inviter" && m3?.avatar === "?");
+      }
+      function claimOwnershipOffer2({ group, selfId, now, inactivityMs = CLAIM_OWNERSHIP_INACTIVITY_MS }) {
+        const pendingJoin = isPendingJoin(group);
+        const raw = group?.lastOwnerActivityTs ?? group?.updatedAt;
+        const lastActivityTs = typeof raw === "number" && raw > 0 ? raw : null;
+        const isOwner = group?.ownerId === selfId;
+        const isMember = (group?.members ?? []).some((m3) => m3?.id === selfId);
+        const inactiveMs = lastActivityTs == null ? 0 : now - lastActivityTs;
+        const canClaim = !pendingJoin && !isOwner && isMember && lastActivityTs != null && inactiveMs > inactivityMs;
+        return {
+          canClaim,
+          inactiveDays: Math.max(0, Math.floor(inactiveMs / DAY_MS)),
+          pendingJoin,
+          lastActivityTs
+        };
+      }
+      var CLAIM_ERROR_MESSAGES = {
+        "view-unreadable": "This device hasn't received the group from its owner yet, so it can't claim it. Once it syncs with the owner or another member, try again.",
+        "group base not open": "This device hasn't received the group from its owner yet, so it can't claim it. Once it syncs with the owner or another member, try again.",
+        "owner-active": "The owner has been active recently, so the group cannot be claimed.",
+        "already-owner": "You already own this group.",
+        "already owner": "You already own this group.",
+        "not-a-member": "This device is not a member of the group yet.",
+        "not a member": "This device is not a member of the group yet.",
+        "group not found": "This group is no longer on this device.",
+        "append failed": "The claim couldn't be saved. Try again in a moment."
+      };
+      function claimErrorMessage2(err) {
+        const msg = String(err?.message ?? err ?? "");
+        const reason = msg.replace(/^claimOwnership:\s*/, "");
+        return CLAIM_ERROR_MESSAGES[reason] ?? "The claim didn't go through. Try again in a moment.";
+      }
+      module.exports = {
+        CLAIM_OWNERSHIP_INACTIVITY_MS,
+        isPendingJoin,
+        claimOwnershipOffer: claimOwnershipOffer2,
+        claimErrorMessage: claimErrorMessage2
+      };
+    }
+  });
+
   // node_modules/qrcode/lib/can-promise.js
   var require_can_promise = __commonJS({
     "node_modules/qrcode/lib/can-promise.js"(exports, module) {
@@ -15007,6 +15056,7 @@
   var import_react_dom = __toESM(require_react_dom());
   var import_seederPairTiming = __toESM(require_seederPairTiming());
   var import_joinOutcome = __toESM(require_joinOutcome());
+  var import_claimOffer = __toESM(require_claimOffer());
   var import_qrcode = __toESM(require_browser());
 
   // node_modules/bip39-mnemonic/wordlist/english.json
@@ -20916,8 +20966,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                 }
               });
             } else if (req.type === "claimOwnership") {
-              const lastTs = req.g.lastOwnerActivityTs ?? req.g.updatedAt ?? 0;
-              const days = Math.max(0, Math.floor((Date.now() - lastTs) / 864e5));
+              const days = (0, import_claimOffer.claimOwnershipOffer)({ group: req.g, selfId: null, now: Date.now() }).inactiveDays;
               raise({
                 title: "Claim ownership?",
                 message: `The current owner of "${req.g.name}" has been inactive for ${days} day${days === 1 ? "" : "s"}. Claiming ownership will give you the ability to remove members and approve rejoins. If the owner returns and writes again before your claim is accepted by other peers, the claim may be rejected.`,
@@ -20930,7 +20979,7 @@ input:focus, textarea:focus { border-color: var(--color-primary) !important; }
                   } catch (e73) {
                     setInfoSheet({
                       title: "Claim failed",
-                      message: e73?.message ?? String(e73),
+                      message: (0, import_claimOffer.claimErrorMessage)(e73),
                       icon: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(c8, { size: 36, weight: "thin", color: "var(--color-destructive)" })
                     });
                   }
@@ -25858,11 +25907,12 @@ ${link}`;
     const isAdmin = !isOwner && (g.admins ?? []).includes(me?.id);
     const canManage = isOwner || isAdmin;
     const isMember = g.members.some((m3) => m3.id === me?.id);
-    const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1e3;
-    const lastOwnerActivityTs = g.lastOwnerActivityTs ?? g.updatedAt ?? 0;
-    const ownerInactiveMs = Date.now() - lastOwnerActivityTs;
-    const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS;
-    const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 864e5));
+    const {
+      canClaim: canClaimOwnership,
+      inactiveDays: ownerInactiveDays,
+      pendingJoin,
+      lastActivityTs: lastOwnerActivityTs
+    } = (0, import_claimOffer.claimOwnershipOffer)({ group: g, selfId: me?.id, now: Date.now() });
     (0, import_react11.useEffect)(() => {
       if (!canManage) return;
       let cancelled = false;
@@ -26463,11 +26513,11 @@ ${link}`;
                   /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: "You are the owner" }),
                   /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: "Only you can remove members and approve rejoin requests" })
                 ] }) : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: ownerName }),
-                  /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: [
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 14, color: colors.text.primary }, children: pendingJoin ? "Waiting for the owner" : ownerName }),
+                  /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { style: { fontSize: 11, color: colors.text.muted, marginTop: 2 }, children: pendingJoin ? "This device hasn't reached anyone in the group yet. The group fills in once the owner or another member is online at the same time." : /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(import_jsx_runtime3.Fragment, { children: [
                     "Active ",
-                    formatRelativeTime(lastOwnerActivityTs) || "recently"
-                  ] })
+                    lastOwnerActivityTs && formatRelativeTime(lastOwnerActivityTs) || "recently"
+                  ] }) })
                 ] }) })
               ] }),
               isOwner && nonOwnerMembers.length > 0 && !transferPicker && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)(

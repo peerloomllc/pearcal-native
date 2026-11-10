@@ -12,6 +12,7 @@ import { compressImage } from '../lib/imagePicker.js'
 import { MemberAvatar } from './MemberAvatar.jsx'
 import { QRCodeCanvas } from './QRCode.jsx'
 import { GroupNotices } from '../../ui-shared/index.js'
+import { claimOwnershipOffer, claimErrorMessage } from '../../lib/claimOffer.js'
 
 const GROUP_COLORS = ['#6C9BF5','#5DBF8A','#E5864A','#D45F7A','#A97FD4','#4BBDCC','#F5C842','#E07B54']
 const GROUP_EMOJIS = ['👨‍👩‍👧‍👦','⚽','📚','🎮','🏋️','🎵','🌿','🐾','✈️','🍕','💼','🎨']
@@ -43,11 +44,9 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
 
   const isOwner   = group?.ownerId === profile?.id
   const isMember  = (group?.members ?? []).some(m => m.id === profile?.id)
-  // Mirrors the bare.js constant (CLAIM_OWNERSHIP_INACTIVITY_MS). Keep in sync.
-  const CLAIM_OWNERSHIP_INACTIVITY_MS = 30 * 24 * 60 * 60 * 1000
-  const ownerInactiveMs = Date.now() - (group?.lastOwnerActivityTs ?? group?.updatedAt ?? 0)
-  const canClaimOwnership = !isOwner && isMember && ownerInactiveMs > CLAIM_OWNERSHIP_INACTIVITY_MS
-  const ownerInactiveDays = Math.max(0, Math.floor(ownerInactiveMs / 86_400_000))
+  // GitHub #399: no claim offer for a join that never reached the owner.
+  const { canClaim: canClaimOwnership, inactiveDays: ownerInactiveDays } =
+    claimOwnershipOffer({ group, selfId: profile?.id, now: Date.now() })
   const nonOwnerMembers = (group?.members ?? []).filter(m => m.id !== group?.ownerId)
   const [transferPicker, setTransferPicker] = useState(false)
   const [ownershipBusy, setOwnershipBusy] = useState(false)
@@ -116,7 +115,7 @@ export function GroupSettingsModal ({ tokens, group, profile, db, pendingApprova
   async function handleClaim () {
     if (!confirm('Claim ownership of "' + (group?.name ?? 'this group') + '"? The current owner has been inactive for ' + ownerInactiveDays + ' day' + (ownerInactiveDays === 1 ? '' : 's') + '. You will be able to remove members and approve rejoins. If the owner returns and writes again before other members accept your claim, it may be rejected.')) return
     setOwnershipBusy(true); setOwnershipErr('')
-    try { await db.claimOwnership(group.id) } catch (e) { setOwnershipErr('Claim failed: ' + (e?.message ?? e)) }
+    try { await db.claimOwnership(group.id) } catch (e) { setOwnershipErr(claimErrorMessage(e)) }
     setOwnershipBusy(false)
   }
 
