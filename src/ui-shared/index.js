@@ -26,6 +26,7 @@ export {
 export { formatTime, formatRelativeTime, todayStr, dateStr } from './lib/time.js'
 export { birthdayTitle, withBirthdayTitle, parseBirthday, birthdayEvent, listBirthdays } from './lib/birthdays.js'
 export { formatBytes } from './lib/bytes.js'
+export { eventAddedByName } from './lib/addedBy.js'
 export {
   computeEaster,
   getUSFederalHolidays,

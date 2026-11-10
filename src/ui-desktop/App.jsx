@@ -680,6 +680,7 @@ export default function App ({ db, notifs, sync }) {
           ev={inspector.ev}
           anchor={{ x: inspector.x, y: inspector.y }}
           groupsById={groupsById}
+          myId={profile?.id}
           use24h={use24h}
           canEdit={canEditEvent(inspector.ev, profile?.id)}
           sync={sync}

@@ -4,7 +4,7 @@
 // that are lighter to land alongside D7's full Settings/Profile work.
 
 import { useEffect, useRef, useState } from 'react'
-import { formatTime, derivedEventColors, leftStripeStyle } from '../../ui-shared/index.js'
+import { formatTime, derivedEventColors, leftStripeStyle, eventAddedByName } from '../../ui-shared/index.js'
 import { linksInText, pearLinkLabel, eventLink, openPearLink } from '../../ui-shared/lib/pearLinks.js'
 
 const POPOVER_WIDTH = 260
@@ -13,7 +13,7 @@ const POPOVER_WIDTH = 260
 // (#162). Delete is withheld then — it would append a group-wide deletion of an
 // event this user does not own. Edit stays, reading as "View", because the
 // modal opens read-only and is how you see the full details.
-export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdit = true, sync, onEdit, onDelete, onDuplicate, onClose }) {
+export function EventInspector ({ tokens, ev, anchor, groupsById, myId, use24h, canEdit = true, sync, onEdit, onDelete, onDuplicate, onClose }) {
   const ref = useRef(null)
   // PearOffice and PearCal links in the notes, and this event's own link when
   // it is in a shared calendar (proposals/2026-10-26-pearcal-pearoffice-links.md
@@ -54,6 +54,8 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdi
     .filter(Boolean)
     .map(g => (g.emoji ? g.emoji + ' ' : '') + g.name)
   const colors = derivedEventColors(ev, (ev.groups ?? []).map(id => groupsById.get(id)).filter(Boolean))
+  // GitHub #400: who added a shared event, when it was someone else.
+  const addedBy = eventAddedByName(ev, [...groupsById.values()], myId)
 
   const btn = {
     flex: 1, padding: '6px 10px', fontSize: 12, fontWeight: 500,
@@ -84,6 +86,11 @@ export function EventInspector ({ tokens, ev, anchor, groupsById, use24h, canEdi
       {groupNames.length > 0 && (
         <div style={{ fontSize: 11, color: tokens.muted, marginBottom: 5 }}>
           {groupNames.join(', ')}
+        </div>
+      )}
+      {addedBy && (
+        <div style={{ fontSize: 11, color: tokens.muted, marginBottom: 5 }}>
+          Added by {addedBy}
         </div>
       )}
       {ev.location && (
